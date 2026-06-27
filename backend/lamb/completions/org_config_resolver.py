@@ -196,7 +196,8 @@ class OrganizationConfigResolver:
                     ks_config.get("api_token")
                     or ks_config.get("api_key")
                     or ks_config.get("token")
-                    or os.getenv("LAMB_KB_SERVER_V2_TOKEN", "")
+                    or os.getenv("LAMB_KB_SERVER_V2_TOKEN")
+                    or None
                 ),
                 "allowed_vector_db_backends": ks_config.get("allowed_vector_db_backends", []),
                 "allowed_chunking_strategies": ks_config.get("allowed_chunking_strategies", []),

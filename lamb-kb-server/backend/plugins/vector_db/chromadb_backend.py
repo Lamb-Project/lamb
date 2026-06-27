@@ -13,6 +13,7 @@ of the child text so the LLM receives richer context.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 from typing import Any
@@ -130,6 +131,19 @@ class ChromaDBBackend(VectorDBBackend):
         collection is already gone (idempotent).  Then removes the storage
         directory entirely.
         """
+        # Idempotent fast path: if there's no cached client AND the storage
+        # directory is already gone, the collection has been fully deleted.
+        # Returning here avoids re-creating a PersistentClient against a path
+        # that was just ``rmtree``-d — ChromaDB's process-global system cache
+        # would otherwise hand back a stale system pointing at the deleted
+        # sqlite file, surfacing as a spurious "disk I/O error".
+        if storage_path not in _clients and not os.path.isdir(storage_path):
+            logger.debug(
+                "ChromaDB delete_collection: '%s' storage already absent, skipping",
+                collection_id,
+            )
+            return
+
         client = _get_client(storage_path)
         try:
             client.delete_collection(name=collection_id)
@@ -228,6 +242,127 @@ class ChromaDBBackend(VectorDBBackend):
 
         return count
 
+    def get_chunks_by_id(
+        self,
+        *,
+        collection_id: str,
+        storage_path: str,
+        chunk_ids: list[str],
+        embedding_function: EmbeddingFunction,
+    ) -> list[QueryResult]:
+        """Return chunks for ``chunk_ids`` in the order they were requested.
+
+        Used by KG-RAG to materialize chunks discovered through graph
+        traversal. Score is set to a constant 0.72 sentinel so callers can
+        tell graph-sourced results apart from real similarity hits without
+        having to inspect metadata.
+        """
+        if not chunk_ids:
+            return []
+        client = _get_client(storage_path)
+        try:
+            collection = client.get_collection(
+                name=collection_id,
+                embedding_function=_to_chroma_ef(embedding_function),  # type: ignore[arg-type]
+            )
+            rows = collection.get(
+                ids=chunk_ids,
+                include=["documents", "metadatas"],
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("ChromaDB get_chunks_by_id failed: %s", exc)
+            return []
+
+        ids = rows.get("ids") or chunk_ids
+        documents = rows.get("documents") or []
+        metadatas = rows.get("metadatas") or []
+        results: list[QueryResult] = []
+        for index, chunk_id in enumerate(ids):
+            document = documents[index] if index < len(documents) else ""
+            metadata: dict[str, Any] = (
+                dict(metadatas[index] or {}) if index < len(metadatas) else {}
+            )
+            metadata.setdefault("document_id", chunk_id)
+            text = metadata.pop("parent_text", None) or document
+            results.append(QueryResult(text=text, score=0.72, metadata=metadata))
+        return results
+
+    def get_chunks_by_source(
+        self,
+        *,
+        collection_id: str,
+        storage_path: str,
+        source_item_id: str,
+        embedding_function: EmbeddingFunction,
+    ) -> list[QueryResult]:
+        """Return every chunk whose ``source_item_id`` matches.
+
+        Score is the 0.72 sentinel (these are exact lookups, not
+        similarity results). Empty list when no chunks are found.
+        """
+        client = _get_client(storage_path)
+        try:
+            collection = client.get_collection(
+                name=collection_id,
+                embedding_function=_to_chroma_ef(embedding_function),  # type: ignore[arg-type]
+            )
+            rows = collection.get(
+                where={"source_item_id": source_item_id},
+                include=["documents", "metadatas"],
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("ChromaDB get_chunks_by_source failed: %s", exc)
+            return []
+
+        ids = rows.get("ids") or []
+        documents = rows.get("documents") or []
+        metadatas = rows.get("metadatas") or []
+        results: list[QueryResult] = []
+        for index, chunk_id in enumerate(ids):
+            document = documents[index] if index < len(documents) else ""
+            metadata: dict[str, Any] = (
+                dict(metadatas[index] or {}) if index < len(metadatas) else {}
+            )
+            metadata.setdefault("chunk_id", chunk_id)
+            results.append(QueryResult(text=document, score=0.72, metadata=metadata))
+        return results
+
+    def iter_all_chunks(
+        self,
+        *,
+        collection_id: str,
+        storage_path: str,
+        embedding_function: EmbeddingFunction,
+        batch_size: int = 500,
+    ):
+        """Yield ``(ids, texts, metadatas)`` tuples until the collection is drained.
+
+        Wraps ChromaDB's ``get(limit, offset)`` paginator so the graph
+        migration route can iterate without each caller re-implementing
+        the offset bookkeeping.
+        """
+        client = _get_client(storage_path)
+        chroma_collection = client.get_collection(
+            name=collection_id,
+            embedding_function=_to_chroma_ef(embedding_function),  # type: ignore[arg-type]
+        )
+        offset = 0
+        while True:
+            result = chroma_collection.get(
+                include=["documents", "metadatas"],
+                limit=batch_size,
+                offset=offset,
+            )
+            ids = result.get("ids") or []
+            if not ids:
+                return
+            yield (
+                list(ids),
+                list(result.get("documents") or []),
+                [dict(m or {}) for m in (result.get("metadatas") or [])],
+            )
+            offset += len(ids)
+
     def query(
         self,
         *,
@@ -261,12 +396,20 @@ class ChromaDBBackend(VectorDBBackend):
         )
 
         results: list[QueryResult] = []
+        ids = (raw.get("ids") or [[]])[0]
         documents = (raw.get("documents") or [[]])[0]
         metadatas = (raw.get("metadatas") or [[]])[0]
         distances = (raw.get("distances") or [[]])[0]
 
-        for doc, meta, dist in zip(documents, metadatas, distances):
+        for idx, (doc, meta, dist) in enumerate(zip(documents, metadatas, distances)):
             meta_dict: dict[str, Any] = dict(meta) if meta else {}
+            # Propagate the backend's internal chunk ID so downstream
+            # consumers (KG-RAG plugin in particular) can look the chunk
+            # back up by ID. ChromaDB always returns ``ids`` alongside
+            # documents — we surface it as ``chunk_id`` for the plugin's
+            # seed-extraction step.
+            if idx < len(ids) and ids[idx]:  # pragma: no branch - chromadb always aligns ids
+                meta_dict.setdefault("chunk_id", ids[idx])
             # For hierarchical retrieval: return parent context if available
             text = meta_dict.pop("parent_text", None) or doc
             score = max(0.0, min(1.0, 1.0 - float(dist)))

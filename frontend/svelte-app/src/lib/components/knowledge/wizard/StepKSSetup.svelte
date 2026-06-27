@@ -125,6 +125,7 @@
 		/** @type {Record<string, unknown>} */ (wizardState.ksConfig?.vector_db_params || {})
 	);
 	let vectorDbParamErrors = $state(/** @type {Record<string, string>} */ ({}));
+	let graphEnabled = $state(!!wizardState.ksConfig?.graph_enabled);
 
 	let currentStrategyParams = $derived.by(() => {
 		const s = (options.chunking_strategies ?? []).find(
@@ -354,7 +355,8 @@
 					embedding_endpoint: embeddingEndpoint,
 					embedding_params: { ...embeddingParams },
 					vector_db_backend: vectorDb,
-					vector_db_params: { ...vectorDbParams }
+					vector_db_params: { ...vectorDbParams },
+					graph_enabled: graphEnabled
 				}
 			});
 		});
@@ -775,6 +777,23 @@
 									/>
 								</fieldset>
 							{/if}
+						</section>
+
+						<!-- ── Graph RAG sub-section ────────────────────────────── -->
+						<section class="space-y-3">
+							<h4 class="type-label">
+								{$_('knowledge.wizard.ksStep.graphHeading', { default: 'Graph RAG' })}
+							</h4>
+							<Checkbox
+								bind:checked={graphEnabled}
+								label={$_('knowledge.wizard.step6.graphLabel', {
+									default: 'Enable semantic graph (Graph RAG)'
+								})}
+								description={$_('knowledge.wizard.step6.graphHint', {
+									default:
+										'Extracts concepts and relationships from ingested chunks and stores them in Neo4j. Requires KG_RAG_ENABLED=true on the KB server.'
+								})}
+							/>
 						</section>
 					{/if}
 				</div>

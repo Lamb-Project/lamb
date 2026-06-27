@@ -30,6 +30,14 @@ os.environ.setdefault("MAX_REQUEST_SIZE_BYTES", "2048")
 os.environ.setdefault("EMBEDDING_LOCAL", "DISABLE")
 os.environ.setdefault("VECTOR_DB_QDRANT", "DISABLE")
 
+# Canonical Ollama embedding endpoint the suite asserts against. Read at
+# import time by ``plugins.embedding.ollama``; pin it here (before any plugin
+# import) so the default-endpoint tests are deterministic in every
+# environment. A real CI/Docker export still wins via ``setdefault``.
+os.environ.setdefault(
+    "OLLAMA_DEFAULT_ENDPOINT", "http://host.docker.internal:11435/api/embeddings"
+)
+
 # Make backend & tests packages importable without editable install.
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT / "backend"))

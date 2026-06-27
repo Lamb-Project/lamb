@@ -9,7 +9,12 @@ from uuid import uuid4
 from config import STORAGE_DIR
 from database.models import Collection
 from fastapi import HTTPException, status
-from plugins.base import ChunkingRegistry, EmbeddingRegistry, VectorDBRegistry
+from plugins.base import (
+    ChunkingRegistry,
+    EmbeddingRegistry,
+    LLMExtractionRegistry,
+    VectorDBRegistry,
+)
 from plugins.chunking._common import validate_chunking_params
 from schemas.collection import CreateCollectionRequest, UpdateCollectionRequest
 from sqlalchemy.orm import Session
@@ -36,6 +41,17 @@ def _validate_plugins(req: CreateCollectionRequest) -> None:
             f"Embedding vendor '{req.embedding.vendor}' is not registered. "
             f"Available: {[p['name'] for p in EmbeddingRegistry.list_plugins()]}"
         )
+    # Validate extraction config when provided. Only enforced when
+    # graph_enabled=true; otherwise the field is irrelevant and ignored.
+    if getattr(req, "graph_enabled", False) and req.extraction is not None:
+        if req.extraction.vendor and not LLMExtractionRegistry.is_registered(
+            req.extraction.vendor
+        ):
+            errors.append(
+                f"LLM extraction vendor '{req.extraction.vendor}' is not "
+                f"registered. Available: "
+                f"{[p['name'] for p in LLMExtractionRegistry.list_plugins()]}"
+            )
     if errors:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -162,6 +178,10 @@ def create_collection(db: Session, req: CreateCollectionRequest) -> Collection:
         backend_collection_id = backend_name
 
         # Persist metadata row.
+        # Extraction config is only meaningful when graph_enabled=true; we
+        # null it out otherwise so non-graph collections don't carry stale
+        # references to a vendor/model they never use.
+        extraction = req.extraction if bool(getattr(req, "graph_enabled", False)) else None
         collection = Collection(
             id=collection_id,
             organization_id=req.organization_id,
@@ -175,6 +195,10 @@ def create_collection(db: Session, req: CreateCollectionRequest) -> Collection:
             vector_db_backend=req.vector_db_backend,
             backend_collection_id=backend_collection_id,
             storage_path=storage_path,
+            graph_enabled=bool(getattr(req, "graph_enabled", False)),
+            extraction_vendor=(extraction.vendor if extraction else None),
+            extraction_model=(extraction.model if extraction else None),
+            extraction_endpoint=(extraction.api_endpoint if extraction else None),
             status="ready",
             document_count=0,
             chunk_count=0,
@@ -332,6 +356,7 @@ def delete_collection(db: Session, collection_id: str) -> None:
     """
     collection = get_collection(db, collection_id)
     storage_path = collection.storage_path
+    graph_enabled = bool(getattr(collection, "graph_enabled", False))
 
     # Step 2: drop vectors from the backend. Use the stored
     # backend_collection_id (with its "kb_" prefix) so the backend finds
@@ -349,6 +374,26 @@ def delete_collection(db: Session, collection_id: str) -> None:
             "Vector backend delete failed for collection %s — proceeding with DB delete",
             collection_id,
         )
+
+    # Step 2b: drop the matching subgraph in Neo4j if this collection
+    # had graph indexing enabled. Failure is non-fatal — the DB row is
+    # the source of truth and we'd rather orphan a few Neo4j nodes than
+    # block the user's delete.
+    if graph_enabled:
+        try:
+            import config as config_module  # noqa: PLC0415
+
+            if config_module.get_kg_rag_config().get("enabled"):
+                from services.graph_store import get_graph_store  # noqa: PLC0415
+
+                gs = get_graph_store()
+                if gs.is_configured() and gs.is_available():
+                    gs.delete_collection(collection_id)
+        except Exception:
+            logger.exception(
+                "Graph delete failed for collection %s — proceeding with DB delete",
+                collection_id,
+            )
 
     # Step 3: remove DB row first.
     db.delete(collection)

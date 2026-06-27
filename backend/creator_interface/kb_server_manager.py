@@ -23,7 +23,13 @@ logger.setLevel(os.getenv("KB_LOG_LEVEL", os.getenv("GLOBAL_LOG_LEVEL", "WARNING
 
 # Get environment variables
 _raw_kb_server = os.getenv('LAMB_KB_SERVER', None)
-LAMB_KB_SERVER = _raw_kb_server or 'http://172.17.0.1:9090'
+# Redirect table for dev environments where the configured URL is unreachable.
+# In the normal docker-compose topology, `kb` resolves correctly inside the
+# `lamb-*` bridge network, so the table is empty. The runtime fallback in
+# is_kb_server_available() still tries host.docker.internal as a backup when
+# the primary `http://kb:9090` is unreachable.
+_KB_REDIRECTS: dict[str, str] = {}
+LAMB_KB_SERVER = _KB_REDIRECTS.get(_raw_kb_server, _raw_kb_server) or 'http://172.17.0.1:9090'
 LAMB_KB_SERVER_TOKEN = os.getenv('LAMB_KB_SERVER_TOKEN')
 if not LAMB_KB_SERVER_TOKEN:
     raise ValueError("LAMB_KB_SERVER_TOKEN environment variable is required")
@@ -75,8 +81,9 @@ class KBServerManager:
                 api_token = kb_config.get('api_token')
                 if not api_token:
                     api_token = self.global_kb_server_token
+                org_url = kb_config.get('server_url')
                 result = {
-                    'url': kb_config.get('server_url'),
+                    'url': _KB_REDIRECTS.get(org_url, org_url),
                     'token': api_token
                 }
                 # Pass through embedding model and collection defaults if configured
@@ -97,8 +104,9 @@ class KBServerManager:
         # Fallback to global environment variables
         if not self.global_kb_server_url:
             raise ValueError("LAMB_KB_SERVER environment variable is required")
+        resolved_url = _KB_REDIRECTS.get(self.global_kb_server_url, self.global_kb_server_url)
         return {
-            'url': self.global_kb_server_url,
+            'url': resolved_url,
             'token': self.global_kb_server_token
         }
         
@@ -501,8 +509,12 @@ class KBServerManager:
         
         # Update kb_data with sanitized name
         kb_data.name = sanitized_name
-   
+
         # Create collection in KB server
+        # Apply host redirect for dev/test environments where 'kb' DNS doesn't resolve
+        _alt_url = _KB_REDIRECTS.get(kb_server_url)
+        if _alt_url:
+            kb_server_url = _alt_url
         async with httpx.AsyncClient() as client:
             kb_server_collections_url = f"{kb_server_url}/collections"
             logger.info(f"Creating collection in KB server at {kb_server_collections_url}: {sanitized_name}")

@@ -411,7 +411,8 @@
 					embedding_endpoint: wizardState.ksConfig.embedding_endpoint || undefined,
 					embedding_params: wizardState.ksConfig.embedding_params || {},
 					vector_db_backend: wizardState.ksConfig.vector_db_backend,
-					vector_db_params: wizardState.ksConfig.vector_db_params || {}
+					vector_db_params: wizardState.ksConfig.vector_db_params || {},
+					graph_enabled: !!wizardState.ksConfig.graph_enabled
 				});
 				ksId = ks.id;
 				ksName = ks.name;

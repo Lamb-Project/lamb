@@ -72,9 +72,6 @@
 		"connector": "Konektorea",
 		"llm": "LLM",
 		"ragProcessor": "RAG Prozesatzailea",
-    "loadingConfig": "Konfigurazioa kargatzen...",
-    "errorConfig": "Errorea konfigurazioa kargatzean:",
-    "initializingForm": "Formularioa hasieratzen...",
 		"noDescription": "Deskribapenik gabe",
 		"showing": "Erakusten",
 		"to": "tik",
@@ -221,8 +218,8 @@
 			"name": {
 				"label": "Laguntzailearen Izena",
 				"placeholder": "Sartu izen bakarra (gehienez 20 karaktere)",
-        "willBeSaved": "Honela gordeko da:",
-        "hint": "Karaktere bereziak eta zuriuneak azpimarra bilakatuko dira"
+				"willBeSaved": "Honela gordeko da:",
+				"hint": "Karaktere bereziak eta zuriuneak azpimarra bilakatuko dira"
 			},
 			"description": {
 				"label": "Deskribapena",
@@ -242,7 +239,7 @@
 			"promptTemplate": {
 				"label": "Prompt Txantiloia",
 				"help": "Prozesatzaile honek prompt txantiloi baliozko bat behar du.",
-        "placeholder": "adib. Erabili {context} galderari erantzuteko: {user_input}"
+				"placeholder": "adib. Erabili {context} galderari erantzuteko: {user_input}"
 			},
 			"configSection": {
 				"title": "Konfigurazioa"
@@ -257,55 +254,9 @@
 				"label": "Hizkuntza Modeloa (LLM)",
 				"noneAvailable": "Ez dago modelo erabilgarririk hautatutako konektorearentzat"
 			},
-      "vision": {
-        "label": "Ikusmen Gaitasuna Gaitu",
-        "description": "Baimendu laguntzaile honi irudiak testu mezuekin batera prozesatzea",
-        "imageToImageDescription": "Baimendu laguntzaile honi irudiak sarrera gisa onartzea iruditik-irudira sortzeko (edizioa, estilo transferentzia, etab.)"
-      },
-      "imageGeneration": {
-        "label": "Irudi Sorkuntza Gaitu",
-        "requiredForModel": "Gaitasun hau beharrezkoa da hautatutako modeloarentzat",
-        "requiredForModelPrefix": "Beharrezkoa modelo honentzat - ",
-        "geminiDescription": "Baimendu laguntzaile honi irudiak sortzea Google Gemini erabiliz"
-      },
-      "exposeSources": {
-        "label": "Utzi ikasleei aipatutako iturriak irekitzen",
-        "description": "Erakutsi ikasleei esteka klikagarriak laguntzaile honek bere erantzunetan aipatzen dituen dokumentuak ireki eta deskargatzeko. Desgaituta lehenetsita."
-      },
 			"ragProcessor": {
 				"label": "RAG Prozesatzailea"
 			},
-      "rubric": {
-        "label": "Hautatu Errubrika",
-        "loading": "Errubrikak kargatzen...",
-        "error": "Errorea errubrikak kargatzean:",
-        "noneFound": "Ez dago errubrika erabilgarririk.",
-        "createLink": "Sortu errubrika bat",
-        "search": {
-          "label": "Bilatu errubrikak",
-          "placeholder": "Bilatu errubrikak izenburu edo deskribapenaren arabera..."
-        },
-        "selected": "Hautatuta:",
-        "view": "Ikusi",
-        "table": {
-          "select": "Hautatu",
-          "title": "Izenburua",
-          "description": "Deskribapena",
-          "type": "Mota",
-          "actions": "Ekintzak"
-        },
-        "noMatches": "Ez da errubrikarik aurkitu bilaketarekin.",
-        "mine": "Nirea",
-        "public": "Publikoa",
-        "required": "Mesedez hautatu errubrika bat",
-        "format": {
-          "label": "Errubrika Formatua LLMrako",
-          "markdown": "Markdown (taula formatua)",
-          "json": "JSON (datu egituratuak)",
-          "help": "Aukeratu zure hautatutako LLMarekin ondoen funtzionatzen duen formatua. Biak proba ditzakezu zeinek emaitza hobeak ematen dituen ikusteko."
-        },
-        "configLocation": "Ikusi errubrika aukerak Prompt Txantiloiaren atalaren azpian"
-      },
 			"import": {
 				"button": "JSON-etik inportatu",
 				"error": "Inportazio Errorea",
@@ -330,21 +281,9 @@
 				"loading": "Ezagutza iturriak kargatzen...",
 				"error": "Errorea ezagutza iturriak kargatzean:",
 				"noneFound": "Ez da aurkitu eskuragarri dagoen ezagutza iturririk.",
-        "myKB": "Nire Ezagutza Iturriak",
-        "sharedKB": "Partekatutako Ezagutza Baseak",
-        "shared": "{shared_by}(e)k partekatua"
-			},
-			"knowledgeStores": {
-				"label": "Ezagutza Iturriak",
-				"loading": "Ezagutza iturriak kargatzen...",
-				"error": "Errorea ezagutza iturriak kargatzean:",
-				"noneFound": "Ez da ezagutza iturri sarbiderik aurkitu.",
-				"myKS": "Nire Ezagutza Iturriak",
-				"sharedKS": "Partekatutako Ezagutza Iturriak"
-			},
-			"documentRag": {
-				"label": "Erreferentzia Dokumentua",
-				"description": "Erreferentzia dokumentu bat erantsi, sistemaren testuan erabilgarri egongo dena mezu guztietarako."
+				"myKB": "Nire Ezagutza Iturriak",
+				"sharedKB": "Partekatutako Ezagutza Baseak",
+				"shared": "{shared_by}(e)k partekatua"
 			},
 			"singleFile": {
 				"label": "Fitxategia Hautatu",
@@ -361,8 +300,69 @@
 				"manageLibraries": "Liburutegiak kudeatu",
 				"itemLabel": "Dokumentua",
 				"loadingItems": "Dokumentuak kargatzen..."
+			},
+			"vision": {
+				"label": "Ikusmen Gaitasuna Gaitu",
+				"description": "Baimendu laguntzaile honi irudiak testu mezuekin batera prozesatzea",
+				"imageToImageDescription": "Baimendu laguntzaile honi irudiak sarrera gisa onartzea iruditik-irudira sortzeko (edizioa, estilo transferentzia, etab.)"
+			},
+			"imageGeneration": {
+				"label": "Irudi Sorkuntza Gaitu",
+				"requiredForModel": "Gaitasun hau beharrezkoa da hautatutako modeloarentzat",
+				"requiredForModelPrefix": "Beharrezkoa modelo honentzat - ",
+				"geminiDescription": "Baimendu laguntzaile honi irudiak sortzea Google Gemini erabiliz"
+			},
+			"exposeSources": {
+				"label": "Utzi ikasleei aipatutako iturriak irekitzen",
+				"description": "Erakutsi ikasleei esteka klikagarriak laguntzaile honek bere erantzunetan aipatzen dituen dokumentuak ireki eta deskargatzeko. Desgaituta lehenetsita."
+			},
+			"rubric": {
+				"label": "Hautatu Errubrika",
+				"loading": "Errubrikak kargatzen...",
+				"error": "Errorea errubrikak kargatzean:",
+				"noneFound": "Ez dago errubrika erabilgarririk.",
+				"createLink": "Sortu errubrika bat",
+				"search": {
+					"label": "Bilatu errubrikak",
+					"placeholder": "Bilatu errubrikak izenburu edo deskribapenaren arabera..."
+				},
+				"selected": "Hautatuta:",
+				"view": "Ikusi",
+				"table": {
+					"select": "Hautatu",
+					"title": "Izenburua",
+					"description": "Deskribapena",
+					"type": "Mota",
+					"actions": "Ekintzak"
+				},
+				"noMatches": "Ez da errubrikarik aurkitu bilaketarekin.",
+				"mine": "Nirea",
+				"public": "Publikoa",
+				"required": "Mesedez hautatu errubrika bat",
+				"format": {
+					"label": "Errubrika Formatua LLMrako",
+					"markdown": "Markdown (taula formatua)",
+					"json": "JSON (datu egituratuak)",
+					"help": "Aukeratu zure hautatutako LLMarekin ondoen funtzionatzen duen formatua. Biak proba ditzakezu zeinek emaitza hobeak ematen dituen ikusteko."
+				},
+				"configLocation": "Ikusi errubrika aukerak Prompt Txantiloiaren atalaren azpian"
+			},
+			"knowledgeStores": {
+				"label": "Ezagutza Iturriak",
+				"loading": "Ezagutza iturriak kargatzen...",
+				"error": "Errorea ezagutza iturriak kargatzean:",
+				"noneFound": "Ez da ezagutza iturri sarbiderik aurkitu.",
+				"myKS": "Nire Ezagutza Iturriak",
+				"sharedKS": "Partekatutako Ezagutza Iturriak"
+			},
+			"documentRag": {
+				"label": "Erreferentzia Dokumentua",
+				"description": "Erreferentzia dokumentu bat erantsi, sistemaren testuan erabilgarri egongo dena mezu guztietarako."
 			}
-		}
+		},
+		"loadingConfig": "Konfigurazioa kargatzen...",
+		"errorConfig": "Errorea konfigurazioa kargatzean:",
+		"initializingForm": "Formularioa hasieratzen..."
 	},
 	"help": {
 		"title": "LAMB Laguntza",
@@ -371,14 +371,11 @@
 		"close": "Itxi"
 	},
 	"common": {
-		"close": "Itxi",
-		"next": "Hurrengoa",
 		"loading": "Kargatzen...",
 		"error": "Errorea",
 		"success": "Arrakasta",
 		"cancel": "Utzi",
 		"save": "Gorde",
-    "saveChanges": "Aldaketak Gorde",
 		"edit": "Editatu",
 		"delete": "Ezabatu",
 		"confirm": "Berretsi",
@@ -394,7 +391,10 @@
 		"exporting": "Esportatzen...",
 		"retry": "Berriro saiatu",
 		"remove": "Kendu",
-		"cannotBeUndone": "Ekintza hau ezin da desegin."
+		"cannotBeUndone": "Ekintza hau ezin da desegin.",
+		"close": "Itxi",
+		"next": "Hurrengoa",
+		"saveChanges": "Aldaketak Gorde"
 	},
 	"list": {
 		"searchPlaceholder": "Bilatu...",
@@ -1067,7 +1067,9 @@
 		"fileTooLarge": "Fitxategiak 500 MB-ko muga gainditzen du.",
 		"importContent": "Inportatu URL / YouTube",
 		"importSuccess": "Inportazioa hasita.",
-		"addContent": "Edukia Gehitu",
+		"addContent": {
+			"title": "Gehitu edukia"
+		},
 		"export": "Esportatu",
 		"itemDeleteSuccess": "Elementua ezabatua.",
 		"detail": {
@@ -1107,9 +1109,6 @@
 		"empty": {
 			"title": "Oraindik ez dago liburutegirik",
 			"description": "Sortu bat edukia inportatzen hasteko."
-		},
-		"addContent": {
-			"title": "Gehitu edukia"
 		},
 		"capabilities": {
 			"imageLoadFailed": "Ezin izan da irudi hau kargatu. Beharbada kendu egin da."
@@ -1276,6 +1275,96 @@
 			"stepLibrary": "Liburutegia",
 			"stepReview": "Berrikusi"
 		},
+		"createModal": {
+			"extractionTitle": "Graph RAG: kontzeptuak erauzteko LLMa",
+			"extractionHint": "Irensteko unean zati bakoitzetik entitateak eta mota duten erlazioak erauzteko erabiltzen den eredua. Sortzean blokeatuta, embeddinga bezala.",
+			"extractionVendor": "Erauzketa-hornitzailea",
+			"extractionModel": "Erauzketa-eredua",
+			"extractionEndpoint": "Erauzketa-endpointa (aukerakoa)",
+			"graphLabel": "Gaitu Graph RAG",
+			"graphRequiresChromadb": "Graph RAGek chromadb backend bektoriala behar du (hautatu ezazu Aurreratuan).",
+			"graphHint": "Ezagutza-grafo bat eraikitzen du indize bektorialarekin batera. Dokumentuak LLM erauzle batekin indexatzen dira irensteko unean; kontsulta-garaian, antzekotasun bektoriala eta grafoaren zeharkatzea konbinatzen ditu. Ezin da aldatu sortu ondoren."
+		},
+		"graphSection": "Ezagutza-grafoa",
+		"graphEnabledBadge": "Graph RAG",
+		"graphEnabledHint": "Graph RAG sortzean gaitu zen eta blokeatuta dago.",
+		"extractionSummary": "Erauzlea:",
+		"extractedEntities": "Erauzitako entitateak (KG-RAG)",
+		"extractedEntitiesEmpty": "Ez da izendun entitaterik aurkitu galderan.",
+		"graph": {
+			"viewFullGraph": "Ikusi grafo osoa",
+			"viewFullGraphTitle": "Ireki grafo osoa ikuspegi interaktiboan",
+			"notEnabledTitle": "Graph RAG ez dago gaituta Ezagutza Biltegi honetan.",
+			"notEnabledTitleShort": "Graph RAG ez dago gaituta Ezagutza Biltegi honetan",
+			"notEnabledBody": "Graph RAG sortzean blokeatzen da, zatiketarekin, embeddingarekin eta datu-base bektorialarekin batera. Graph RAG erabiltzeko, sortu Ezagutza Biltegi berri bat <span class=\"font-medium\">Gaitu Graph RAG</span> aldagailuarekin.",
+			"retrievalPolicyHtml": "<span class=\"font-semibold\">Berreskuratze-politika:</span> <span class=\"rounded bg-green-100 px-1 py-0.5 font-medium text-green-800\">verified</span> gisa markatzen dituzun kontzeptuak eta erlazioak soilik erabiltzen dira LLMaren berreskuratzea hobetzeko. LLMak berreskuratutako <span class=\"font-medium\">zatiak</span> jasotzen ditu testuinguru gisa — grafoak zehazten du <em>zein</em> zati itzultzen diren (galderaren entitateen hedapena + RRF fusioa oinarri bektorialarekin), baina kontzeptu/erlazio hirukoteak ez dira promptari gehitzen. Onartu konfiantzazko elementuak berreskuratzean lagun dezaten.",
+			"refresh": "Eguneratu",
+			"loading": "Kargatzen…",
+			"loadingGraph": "Grafoa kargatzen…",
+			"fullGraphLoading": "Grafoa kargatzen (denbora pixka bat behar dezake ezagutza biltegi handietan)…",
+			"conceptLabel": "Kontzeptua",
+			"conceptPlaceholder": "kontzeptuaren izenaren zatia",
+			"filenameLabel": "Fitxategi-izena",
+			"filenamePlaceholder": "iturburuko fitxategi-izena",
+			"documentIdLabel": "Dokumentuaren IDa",
+			"documentIdPlaceholder": "grafoaren dokumentuaren ida",
+			"concepts": "Kontzeptuak",
+			"relationships": "Erlazioak",
+			"documents": "Dokumentuak",
+			"chunks": "Zatiak",
+			"edges": "Ertzak",
+			"verifiedCount": "{count} egiaztatuta · {pct}",
+			"verifiedRatio": "{count}/{total} egiaztatuta",
+			"filterAll": "Guztiak",
+			"filterUnverified": "Egiaztatu gabeak",
+			"filterVerified": "Egiaztatuak",
+			"filterRejected": "Baztertuak",
+			"approveAll": "Onartu guztiak",
+			"rejectAll": "Baztertu guztiak",
+			"noConcepts": "Oraindik ez dago kontzeptu-nodorik.",
+			"noConceptsFilter": "Ez dago hautatutako iragazkiarekin bat datorren kontzepturik.",
+			"noRelationships": "Oraindik ez dago erlaziorik.",
+			"noRelationshipsFilter": "Ez dago hautatutako iragazkiarekin bat datorren erlaziorik.",
+			"state": {
+				"verified": "egiaztatuta",
+				"unverified": "egiaztatu gabe",
+				"rejected": "baztertuta"
+			},
+			"save": "Gorde",
+			"cancel": "Utzi",
+			"verify": "Egiaztatu",
+			"unverify": "Egiaztapena kendu",
+			"edit": "Editatu",
+			"prev": "← Aurrekoa",
+			"next": "Hurrengoa →",
+			"pageInfo": "{page}/{total} orria · {items} elementu",
+			"bulkApproval": "Onarpen masiboa",
+			"bulkRejection": "Baztertze masiboa",
+			"confirmBulkConcepts": "Ezagutza Biltegi honetako kontzeptu GUZTIEN {reason}. Jarraitu nahi duzu?",
+			"confirmBulkRelationships": "Ezagutza Biltegi honetako erlazio GUZTIEN {reason}. Jarraitu nahi duzu?",
+			"reasonSetState": "{state} egoerara ezarrita Ezagutza Biltegiaren interfazetik",
+			"reasonRename": "Ezagutza Biltegiaren interfazetik berrizendatua",
+			"reasonEdit": "Ezagutza Biltegiaren interfazetik editatua",
+			"errorLoad": "Ezin izan da grafoa kargatu",
+			"errorSetState": "Ezin izan da {state} egoera ezarri",
+			"errorRename": "Berrizendatzeak huts egin du",
+			"errorEdit": "Editatzeak huts egin du",
+			"title": "Ezagutza Grafoa",
+			"statsLine": "{nodes} kontzeptu · {edges} erlazio",
+			"findConcept": "Bilatu kontzeptu bat (Sartu zentratzeko)",
+			"find": "Bilatu",
+			"close": "Itxi",
+			"legend": "Legenda",
+			"legendApproved": "Onartuta",
+			"legendUnverified": "Egiaztatu gabe",
+			"legendRejected": "Baztertuta",
+			"legendRelatesTo": "RELATES_TO ertza",
+			"nodeType": "mota: {type}",
+			"nodeEntity": "entitatea: {entity}",
+			"nodeVerification": "egiaztapena: {verification}",
+			"nodeFilename": "fitxategia: {filename}",
+			"nodeChunks": "{count} zati"
+		},
 		"addDescription": "Gehitu deskribapena",
 		"chunkingParams": "Zatiketa-parametroak",
 		"collapseDetail": "Ezkutatu blokeatutako konfigurazioa",
@@ -1320,6 +1409,9 @@
 			"next": "Hurrengoa",
 			"back": "Atzera",
 			"skip": "Saltatu",
+			"create": "Sortu",
+			"cancel": "Utzi",
+			"abort": "Bertan behera utzi",
 			"useExisting": "Erabili lehendik dagoen bat",
 			"createNew": "Sortu berri bat",
 			"advancedLabel": "Ezarpen aurreratuak",
@@ -1334,18 +1426,69 @@
 				"body": "Zatiketa-estrategia, txertaketa-hornitzaile/eredua eta datu-base bektoriala Knowledge Store sortzen denean blokeatzen dira. Aldatzeko, sortu Knowledge Store berri bat.",
 				"paramsBody": "Zatiketa-parametroak geroago edita daitezke, baina aldaketak indexatu berri den edukiari soilik aplikatzen zaizkio; lehendik dauden zatiek hasieran sortu zituzten parametroak mantentzen dituzte."
 			},
+			"editDefaults": "Lehenetsiak editatu",
+			"progress": "{current}. urratsa, {total}etik",
+			"step0": {
+				"title": "Aukeratu Liburutegi bat",
+				"description": "Erabili lehendik dagoen Liburutegi bat edo sortu berri bat.",
+				"newLibrary": "Sortu Liburutegi berri bat",
+				"existingLibrary": "Erabili lehendik dagoen Liburutegi bat",
+				"pickLibrary": "Aukeratu Liburutegi bat"
+			},
+			"step1": {
+				"title": "Liburutegiaren xehetasunak",
+				"description": "Eman izen bat zure Liburutegiari eta deskribapen aukerakoa.",
+				"nameLabel": "Liburutegiaren izena",
+				"descriptionLabel": "Deskribapena (aukerakoa)",
+				"sharedLabel": "Erakundearekin partekatu"
+			},
+			"step2": {
+				"title": "Liburutegiaren inportazio-ezarpenak",
+				"description": "Lehenetsiak kasu gehienetan funtzionatzen dute. Zabaldu inportazio-pluginak pertsonalizatzeko.",
+				"defaultPluginLabel": "Inportazio-plugin lehenetsia"
+			},
+			"step3": {
+				"title": "Hasierako edukia gehitu",
+				"description": "Aukeran, igo fitxategi bat edo gehiago orain. Beti gehiago gehi ditzakezu geroago.",
+				"uploadHint": "Jaregin fitxategiak hemen edo egin klik arakatzeko",
+				"uploaded": "igota",
+				"processing": "prozesatzen",
+				"ready": "prest",
+				"failed": "huts egin du"
+			},
+			"step4": {
+				"title": "Aukeratu Ezagutza-biltegi bat",
+				"description": "Erabili lehendik dagoen Ezagutza-biltegi bat edo sortu berri bat.",
+				"newKs": "Sortu Ezagutza-biltegi berri bat",
+				"existingKs": "Erabili lehendik dagoen Ezagutza-biltegi bat",
+				"pickKs": "Aukeratu Ezagutza-biltegi bat"
+			},
+			"step5": {
+				"title": "Ezagutza-biltegiaren xehetasunak",
+				"description": "Ezagutza-biltegiaren izena eta deskribapen aukerakoa.",
+				"nameLabel": "Ezagutza-biltegiaren izena",
+				"descriptionLabel": "Deskribapena (aukerakoa)",
+				"sharedLabel": "Erakundearekin partekatu"
+			},
 			"step6": {
+				"title": "Knowledge Store configuration",
+				"description": "These choices control chunking and embedding. They are LOCKED after creation.",
 				"chunkingLabel": "Chunking strategy",
 				"vectorDbLabel": "Vector DB backend",
+				"embeddingVendorLabel": "Embedding vendor",
+				"embeddingModelLabel": "Embedding model",
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
 				"endpointLabel": "Embedding endpoint (optional)",
 				"noVendorConfigured": "Zure erakundeak ez du embedding hornitzailerik konfiguratuta. Eskatu administratzaile bati API gako bat gehitzeko erakundearen ezarpenetan.",
+				"graphLabel": "Gaitu grafo semantikoa (Graph RAG)",
+				"graphHint": "Irentsitako zatietatik kontzeptuak eta erlazioak erauzten ditu eta Neo4j-n gordetzen. KG_RAG_ENABLED=true behar du KB zerbitzarian.",
 				"modelRequired": "APIak ez du modelorik itzuli hornitzaile honentzat; idatzi modelo-izen bat jarraitzeko."
 			},
 			"step7": {
 				"title": "Aukeratu ingeritzeko elementuak",
 				"description": "Aukeratu zein liburutegiko elementu indexatu Ezagutza-biltegian.",
+				"allItems": "Elementu guztiak",
 				"heading": "Hautatu indexatzeko elementuak",
 				"newBadge": "BERRIA",
 				"noItems": "Liburutegi honek ez du prest dagoen elementurik. Urrats hau saltatu eta edukia geroago gehi dezakezu."
@@ -1355,9 +1498,14 @@
 				"description": "Review your choices below. Click Create to proceed.",
 				"libraryHeading": "Library",
 				"ksHeading": "Knowledge Store",
+				"itemsHeading": "Items to ingest",
 				"itemsToIngest": "Ingeritzeko elementuak",
 				"submit": "Create",
+				"submitting": "Creating...",
 				"heading": "Review & create",
+				"ingestionHeading": "Ingestion",
+				"ingestionCount": "{n} item(s) will be ingested",
+				"libraryPlugin": "Import plugin: {plugin}",
 				"libraryFileCount": "{n} file(s) to upload",
 				"libraryUrlCount": "{n} URL/YouTube source(s) to import",
 				"progressLibrary": "Creating library...",
@@ -1373,18 +1521,26 @@
 				"submitAdd": "Gehitu"
 			},
 			"step9": {
+				"title": "Dena prest",
 				"heading": "Dena prest dago",
 				"description": "Zure Liburutegia eta Ezagutza-biltegia prest daude. Ingestioa atzeko planoan exekutatzen da — aurrerapena Ezagutza-biltegiaren orrian ikus dezakezu.",
+				"openKs": "Ezagutza-biltegia ireki",
 				"openLibrary": "Liburutegia ireki",
 				"createAnother": "Beste bat sortu",
 				"toast": "Ezagutza-biltegia sortuta.",
 				"openKS": "Ireki Ezagutza-biltegia"
 			},
+			"stepProgress": "{n}. urratsa {total}etik",
 			"creating": "Sortzen...",
 			"draft": {
 				"banner": "Bukaeratu gabeko zirriborro bat duzu {time}tik.",
 				"resume": "Jarraitu",
-				"discard": "Baztertu"
+				"discard": "Baztertu",
+				"savePrompt": {
+					"title": "Zirriborro gisa gorde?",
+					"body": "Zure aurrerapena gordeta egongo da saioa edo fitxa itxi arte.",
+					"save": "Zirriborroa gorde"
+				}
 			},
 			"libraryStep": {
 				"title": "Liburutegiaren konfigurazioa",
@@ -1402,6 +1558,7 @@
 				"advancedLabel": "Aurreratua: inportazio plugina eta parametroak",
 				"noPlugins": "Ez dago inportazio pluginik.",
 				"pluginLabel": "Inportazio plugina",
+				"pluginNote": "Plugin bakoitzeko parametroak geroago pertsonaliza daitezke liburutegiaren xehetasun ikuspegitik.",
 				"descriptionLabel": "Deskribapena",
 				"pluginParamsHint": "Balio lehenetsiak pluginetik datoz eta dokumentu gehienetan funtzionatzen dute; aldatu beharrezkoa bada soilik.",
 				"pluginParamsLabel": "Pluginaren parametroak"
@@ -1409,10 +1566,16 @@
 			"libraryContent": {
 				"title": "Liburutegiaren edukia",
 				"heading": "Hasierako edukia",
+				"description": "Gehitu edukia zure Liburutegi berriari orain (aukerakoa). Edukia geroago ere gehi dezakezu.",
+				"sourceTypeFiles": "Fitxategiak",
+				"sourceTypeUrl": "URL",
+				"sourceTypeYouTube": "YouTube",
+				"pickLabel": "Fitxategiak hautatu",
 				"invalidUrl": "HTTP(S) URL baliodun bat behar da.",
 				"invalidYoutubeUrl": "YouTube URL baliodun bat behar da.",
 				"titleOptional": "Izenburua (aukerakoa)",
 				"youtubeUrl": "YouTube URL",
+				"ytLanguage": "Transkripzioaren hizkuntza",
 				"addUrl": "+ URL gehitu",
 				"addYouTube": "+ YouTube gehitu",
 				"queuedLabel": "Iturri ilarakoak",
@@ -1441,14 +1604,15 @@
 				"nameTooLong": "Izenak 100 karaktere baino gutxiago izan behar ditu",
 				"shareLabel": "Partekatu nire erakundearekin",
 				"shareHint": "Geroago alda dezakezu Knowledge Store xehetasun ikuspegitik.",
+				"advancedLabel": "Aurreratua: zatiketa, embedding hornitzailea/modeloa, vector DB",
+				"graphHeading": "Graph RAG",
 				"vectorIndexingLabel": "Bektore-indexazioa: zatiketa, txertaketa hornitzaile/eredua, datu-base bektoriala",
 				"otherIndexingLabel": "Beste indexazio-estrategia bat (laster)",
 				"otherIndexingHint": "Etorkizuneko bertsio batean, beste indexazio-estrategia batzuk (bektorialaz haratago) hemen hautatu ahal izango dira.",
 				"chunkingHeading": "Zatiketa",
 				"chunkingParamsHint": "Balio lehenetsiek dokumentu gehienetan funtzionatzen dute; egokitu arrazoiren bat baduzu soilik. Geroago alda ditzakezu Ezagutza-biltegiaren xehetasun-ikuspegitik, baina aldaketak edizioaren ondoren indexatutako edukiari soilik aplikatzen zaizkio.",
 				"embeddingHeading": "Embedding",
-				"storageHeading": "Biltegiratzea",
-				"advancedLabel": "Aurreratua: zatiketa, embedding hornitzailea/modeloa, vector DB"
+				"storageHeading": "Biltegiratzea"
 			},
 			"adding": "Gehitzen...",
 			"titleAddContent": "Gehitu edukia"

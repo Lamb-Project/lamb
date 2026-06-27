@@ -122,6 +122,32 @@ services:
     volumes:
       - ollama-data:/root/.ollama
 
+  # Optional Neo4j for KG-RAG / semantic graph. Only starts with the
+  # ``kg-rag`` profile so existing deployments keep their current behavior.
+  #
+  #   docker compose -f docker-compose.next.yaml --profile kg-rag up -d
+  #
+  # Set KG_RAG_ENABLED=true in the kb service env, plus KG_RAG_NEO4J_URI=bolt://neo4j:7687.
+  neo4j:
+    image: neo4j:5-community
+    profiles: ["kg-rag"]
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: ${KG_RAG_NEO4J_USER:-neo4j}/${KG_RAG_NEO4J_PASSWORD:-change-this-password}
+      NEO4J_PLUGINS: '[]'
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7474/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
 volumes:
   lamb-data:
   kb-data:
@@ -129,3 +155,5 @@ volumes:
   openwebui-data:
   library-manager-data:
   ollama-data:
+  neo4j-data:
+  neo4j-logs:

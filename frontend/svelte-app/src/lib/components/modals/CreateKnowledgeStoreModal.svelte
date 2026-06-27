@@ -16,6 +16,7 @@
 	import axios from 'axios';
 	import {
 		getOptions,
+		getLlmVendors,
 		createKnowledgeStore,
 		toggleSharing,
 		KnowledgeStoreUnavailableError
@@ -32,6 +33,7 @@
 	let name = $state('');
 	let description = $state('');
 	let isShared = $state(false);
+	let graphEnabled = $state(false);
 	let advancedOpen = $state(false);
 
 	// ── Options + config ──────────────────────────────────────────────
@@ -59,6 +61,13 @@
 	let vectorDb = $state('');
 	let vectorDbParams = $state(/** @type {Record<string, unknown>} */ ({}));
 	let vectorDbParamErrors = $state(/** @type {Record<string, string>} */ ({}));
+
+	// LLM extraction picker — only relevant when graph_enabled === true.
+	// Loaded lazily once the modal opens.
+	let llmVendors = $state(/** @type {Array<any>} */ ([]));
+	let extractionVendor = $state('');
+	let extractionModel = $state('');
+	let extractionEndpoint = $state('');
 
 	let currentStrategyParams = $derived.by(() => {
 		const s = (options.chunking_strategies ?? []).find(
@@ -90,6 +99,16 @@
 	let availableModels = $derived.by(() => {
 		if (!embeddingVendor) return [];
 		return options.embedding_models?.[embeddingVendor] ?? [];
+	});
+
+	// Extraction vendor params (schema declared by the kb-server plugin).
+	let currentExtractionVendor = $derived.by(() =>
+		llmVendors.find((/** @type {any} */ v) => v.name === extractionVendor)
+	);
+	let extractionModelChoices = $derived.by(() => {
+		const params = currentExtractionVendor?.parameters || [];
+		const modelParam = params.find((/** @type {any} */ p) => p.name === 'model');
+		return Array.isArray(modelParam?.choices) ? modelParam.choices : [];
 	});
 
 	// Reset plugin-param dicts when the user picks a different
@@ -163,6 +182,27 @@
 			if (!vectorDb && options.vector_db_backends?.length) {
 				vectorDb = options.vector_db_backends[0].name;
 			}
+			// LLM extraction vendors (best-effort — older kb-servers may not
+			// expose /llm-vendors yet; we tolerate that gracefully).
+			try {
+				const llmRes = await getLlmVendors();
+				llmVendors = Array.isArray(llmRes?.vendors) ? llmRes.vendors : [];
+				if (!extractionVendor && llmVendors.length > 0) {
+					extractionVendor = llmVendors[0].name;
+				}
+				if (!extractionModel) {
+					const params = llmVendors.find(
+						(/** @type {any} */ v) => v.name === extractionVendor
+					)?.parameters || [];
+					const modelParam = params.find(
+						(/** @type {any} */ p) => p.name === 'model'
+					);
+					extractionModel = modelParam?.default || '';
+				}
+			} catch (/** @type {unknown} */ llmErr) {
+				console.warn('getLlmVendors failed (graph picker unavailable)', llmErr);
+				llmVendors = [];
+			}
 			optionsLoaded = true;
 		} catch (/** @type {unknown} */ err) {
 			if (err instanceof KnowledgeStoreUnavailableError) {
@@ -217,6 +257,21 @@
 		name = '';
 		description = '';
 		isShared = false;
+		graphEnabled = false;
+		// Keep llmVendors loaded across reopen so we don't re-fetch every
+		// time; just reset the user's picks back to the loaded defaults.
+		if (llmVendors.length > 0) {
+			extractionVendor = llmVendors[0].name;
+			const params = llmVendors[0].parameters || [];
+			const modelParam = params.find(
+				(/** @type {any} */ p) => p.name === 'model'
+			);
+			extractionModel = modelParam?.default || '';
+		} else {
+			extractionVendor = '';
+			extractionModel = '';
+		}
+		extractionEndpoint = '';
 		error = '';
 		nameError = '';
 		isSubmitting = false;
@@ -268,6 +323,7 @@
 		error = '';
 
 		try {
+			const wantsGraph = graphEnabled && vectorDb === 'chromadb';
 			const ks = await createKnowledgeStore({
 				name: name.trim(),
 				description: description.trim() || '',
@@ -278,7 +334,13 @@
 				embedding_endpoint: embeddingEndpoint.trim() || undefined,
 				embedding_params: { ...embeddingParams },
 				vector_db_backend: vectorDb,
-				vector_db_params: { ...vectorDbParams }
+				vector_db_params: { ...vectorDbParams },
+				graph_enabled: wantsGraph,
+				extraction_vendor: wantsGraph ? extractionVendor || undefined : undefined,
+				extraction_model: wantsGraph ? extractionModel.trim() || undefined : undefined,
+				extraction_endpoint: wantsGraph
+					? extractionEndpoint.trim() || undefined
+					: undefined
 			});
 			if (isShared) {
 				// Sharing is a separate endpoint; failure here shouldn't
@@ -403,6 +465,35 @@
 					</span>
 				</label>
 
+				<label class="flex items-start gap-3">
+					<input
+						type="checkbox"
+						bind:checked={graphEnabled}
+						class="mt-1"
+						disabled={isSubmitting || vectorDb !== 'chromadb'}
+					/>
+					<span>
+						<span class="block text-sm font-medium text-gray-700">
+							{$_('knowledgeStores.createModal.graphLabel', {
+								default: 'Enable Graph RAG'
+							})}
+						</span>
+						<span class="block text-xs text-gray-500">
+							{#if vectorDb !== 'chromadb'}
+								{$_('knowledgeStores.createModal.graphRequiresChromadb', {
+									default:
+										'Graph RAG requires the chromadb vector backend (select it in Advanced).'
+								})}
+							{:else}
+								{$_('knowledgeStores.createModal.graphHint', {
+									default:
+										'Builds a knowledge graph alongside the vector index. Documents are indexed with an LLM extractor at ingest time; query-time retrieval combines vector similarity with graph traversal. Cannot be changed after creation.'
+								})}
+							{/if}
+						</span>
+					</span>
+				</label>
+
 				<!-- Advanced: locked-at-create config. Defaults come from the
 				     server-provided options so a user can ignore this panel. -->
 				<details bind:open={advancedOpen} class="rounded-md border border-gray-200 bg-gray-50">
@@ -421,7 +512,7 @@
 						>
 							{$_('knowledgeStores.createModal.lockedNotice', {
 								default:
-									'Chunking strategy, embedding vendor/model, and vector DB are locked once the Knowledge Store is created. Chunking parameters can be edited later but only apply to newly indexed content.'
+									'Chunking strategy, embedding vendor/model, vector DB, and Graph RAG are locked once the Knowledge Store is created. Chunking parameters can be edited later but only apply to newly ingested content.'
 							})}
 						</div>
 
@@ -609,6 +700,86 @@
 										idPrefix="ks-modal-vectordb-param"
 									/>
 								</fieldset>
+							{/if}
+
+							{#if graphEnabled && vectorDb === 'chromadb' && llmVendors.length > 0}
+								<div class="mt-2 rounded border border-[#2271b3]/30 bg-[#2271b3]/5 p-3 space-y-3">
+									<div class="text-xs font-semibold text-[#2271b3]">
+										{$_('knowledgeStores.createModal.extractionTitle', {
+											default: 'Graph RAG: concept extraction LLM'
+										})}
+									</div>
+									<p class="text-[11px] text-gray-600">
+										{$_('knowledgeStores.createModal.extractionHint', {
+											default:
+												'The model used at ingest time to extract entities and typed relationships from each chunk. Locked at creation, like embedding.'
+										})}
+									</p>
+									<div>
+										<label for="ks-extraction-vendor" class="block text-xs font-medium text-gray-700">
+											{$_('knowledgeStores.createModal.extractionVendor', {
+												default: 'Extraction vendor'
+											})}
+										</label>
+										<select
+											id="ks-extraction-vendor"
+											bind:value={extractionVendor}
+											class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+											disabled={isSubmitting}
+										>
+											{#each llmVendors as v (v.name)}
+												<option value={v.name}>{v.name}</option>
+											{/each}
+										</select>
+									</div>
+									<div>
+										<label for="ks-extraction-model" class="block text-xs font-medium text-gray-700">
+											{$_('knowledgeStores.createModal.extractionModel', {
+												default: 'Extraction model'
+											})}
+										</label>
+										{#if extractionModelChoices.length > 0}
+											<select
+												id="ks-extraction-model"
+												bind:value={extractionModel}
+												class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+												disabled={isSubmitting}
+											>
+												{#each extractionModelChoices as m (m)}
+													<option value={m}>{m}</option>
+												{/each}
+											</select>
+										{:else}
+											<input
+												type="text"
+												id="ks-extraction-model"
+												bind:value={extractionModel}
+												placeholder={extractionVendor === 'ollama'
+													? 'llama3.1:8b'
+													: 'gpt-4o-mini'}
+												class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+												disabled={isSubmitting}
+											/>
+										{/if}
+									</div>
+									<div>
+										<label for="ks-extraction-endpoint" class="block text-xs font-medium text-gray-700">
+											{$_('knowledgeStores.createModal.extractionEndpoint', {
+												default: 'Extraction endpoint (optional)'
+											})}
+										</label>
+										<input
+											type="text"
+											id="ks-extraction-endpoint"
+											bind:value={extractionEndpoint}
+											placeholder={extractionVendor === 'ollama'
+												? 'http://localhost:11434'
+												: 'https://api.openai.com/v1'}
+											class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+											disabled={isSubmitting}
+										/>
+									</div>
+								</div>
 							{/if}
 						{/if}
 					</div>

@@ -72,9 +72,6 @@
 		"connector": "Connector",
 		"llm": "LLM",
 		"ragProcessor": "RAG Processor",
-    "loadingConfig": "Loading configuration...",
-    "errorConfig": "Error loading configuration:",
-    "initializingForm": "Initializing form...",
 		"noDescription": "No description provided",
 		"showing": "Showing",
 		"to": "to",
@@ -221,8 +218,8 @@
 			"name": {
 				"label": "Assistant Name",
 				"placeholder": "Enter a unique name (max 20 chars)",
-        "willBeSaved": "Will be saved as:",
-        "hint": "Special characters and spaces will be converted to underscores"
+				"willBeSaved": "Will be saved as:",
+				"hint": "Special characters and spaces will be converted to underscores"
 			},
 			"description": {
 				"label": "Description",
@@ -242,7 +239,7 @@
 			"promptTemplate": {
 				"label": "Prompt Template",
 				"help": "This processor requires a valid prompt template.",
-        "placeholder": "e.g. Use the {context} to answer the question: {user_input}"
+				"placeholder": "e.g. Use the {context} to answer the question: {user_input}"
 			},
 			"configSection": {
 				"title": "Configuration"
@@ -257,55 +254,9 @@
 				"label": "Language Model (LLM)",
 				"noneAvailable": "No models available for selected connector"
 			},
-      "vision": {
-        "label": "Enable Vision Capability",
-        "description": "Allow this assistant to process images alongside text messages",
-        "imageToImageDescription": "Allow this assistant to accept images as input for image-to-image generation (editing, style transfer, etc.)"
-      },
-      "imageGeneration": {
-        "label": "Enable Image Generation",
-        "requiredForModel": "This capability is required for the selected model",
-        "requiredForModelPrefix": "Required for this model - ",
-        "geminiDescription": "Allow this assistant to generate images using Google Gemini"
-      },
-      "exposeSources": {
-        "label": "Let students open cited sources",
-        "description": "Show students clickable links to open and download the documents this assistant cites in its answers. Off by default."
-      },
 			"ragProcessor": {
 				"label": "RAG Processor"
 			},
-      "rubric": {
-        "label": "Select Rubric",
-        "loading": "Loading rubrics...",
-        "error": "Error loading rubrics:",
-        "noneFound": "No rubrics available.",
-        "createLink": "Create a rubric",
-        "search": {
-          "label": "Search rubrics",
-          "placeholder": "Search rubrics by title or description..."
-        },
-        "selected": "Selected:",
-        "view": "View",
-        "table": {
-          "select": "Select",
-          "title": "Title",
-          "description": "Description",
-          "type": "Type",
-          "actions": "Actions"
-        },
-        "noMatches": "No rubrics match your search.",
-        "mine": "Mine",
-        "public": "Public",
-        "required": "Please select a rubric",
-        "format": {
-          "label": "Rubric Format for LLM",
-          "markdown": "Markdown (table format)",
-          "json": "JSON (structured data)",
-          "help": "Choose the format that works best with your selected LLM. You can test both to see which produces better results."
-        },
-        "configLocation": "See rubric options below the Prompt Template section"
-      },
 			"import": {
 				"button": "Import from JSON",
 				"error": "Import Error",
@@ -330,21 +281,9 @@
 				"loading": "Loading knowledge bases...",
 				"error": "Error loading knowledge bases:",
 				"noneFound": "No accessible knowledge bases found.",
-        "myKB": "My Knowledge Bases",
-        "sharedKB": "Shared Knowledge Bases",
-        "shared": "Shared by {shared_by}"
-			},
-			"knowledgeStores": {
-				"label": "Knowledge Stores",
-				"loading": "Loading knowledge stores...",
-				"error": "Error loading knowledge stores:",
-				"noneFound": "No accessible knowledge stores found.",
-				"myKS": "My Knowledge Stores",
-				"sharedKS": "Shared Knowledge Stores"
-			},
-			"documentRag": {
-				"label": "Reference Document",
-				"description": "Attach a reference document that will be available in the system context for all messages."
+				"myKB": "My Knowledge Bases",
+				"sharedKB": "Shared Knowledge Bases",
+				"shared": "Shared by {shared_by}"
 			},
 			"singleFile": {
 				"label": "Select File",
@@ -361,8 +300,69 @@
 				"manageLibraries": "Manage libraries",
 				"itemLabel": "Document",
 				"loadingItems": "Loading documents..."
+			},
+			"vision": {
+				"label": "Enable Vision Capability",
+				"description": "Allow this assistant to process images alongside text messages",
+				"imageToImageDescription": "Allow this assistant to accept images as input for image-to-image generation (editing, style transfer, etc.)"
+			},
+			"imageGeneration": {
+				"label": "Enable Image Generation",
+				"requiredForModel": "This capability is required for the selected model",
+				"requiredForModelPrefix": "Required for this model - ",
+				"geminiDescription": "Allow this assistant to generate images using Google Gemini"
+			},
+			"exposeSources": {
+				"label": "Let students open cited sources",
+				"description": "Show students clickable links to open and download the documents this assistant cites in its answers. Off by default."
+			},
+			"rubric": {
+				"label": "Select Rubric",
+				"loading": "Loading rubrics...",
+				"error": "Error loading rubrics:",
+				"noneFound": "No rubrics available.",
+				"createLink": "Create a rubric",
+				"search": {
+					"label": "Search rubrics",
+					"placeholder": "Search rubrics by title or description..."
+				},
+				"selected": "Selected:",
+				"view": "View",
+				"table": {
+					"select": "Select",
+					"title": "Title",
+					"description": "Description",
+					"type": "Type",
+					"actions": "Actions"
+				},
+				"noMatches": "No rubrics match your search.",
+				"mine": "Mine",
+				"public": "Public",
+				"required": "Please select a rubric",
+				"format": {
+					"label": "Rubric Format for LLM",
+					"markdown": "Markdown (table format)",
+					"json": "JSON (structured data)",
+					"help": "Choose the format that works best with your selected LLM. You can test both to see which produces better results."
+				},
+				"configLocation": "See rubric options below the Prompt Template section"
+			},
+			"knowledgeStores": {
+				"label": "Knowledge Stores",
+				"loading": "Loading knowledge stores...",
+				"error": "Error loading knowledge stores:",
+				"noneFound": "No accessible knowledge stores found.",
+				"myKS": "My Knowledge Stores",
+				"sharedKS": "Shared Knowledge Stores"
+			},
+			"documentRag": {
+				"label": "Reference Document",
+				"description": "Attach a reference document that will be available in the system context for all messages."
 			}
-		}
+		},
+		"loadingConfig": "Loading configuration...",
+		"errorConfig": "Error loading configuration:",
+		"initializingForm": "Initializing form..."
 	},
 	"help": {
 		"title": "LAMB Help",
@@ -371,14 +371,11 @@
 		"close": "Close"
 	},
 	"common": {
-		"close": "Close",
-		"next": "Next",
 		"loading": "Loading...",
 		"error": "Error",
 		"success": "Success!",
 		"cancel": "Cancel",
 		"save": "Save",
-    "saveChanges": "Save Changes",
 		"edit": "Edit",
 		"delete": "Delete",
 		"confirm": "Confirm",
@@ -394,7 +391,10 @@
 		"exporting": "Exporting...",
 		"retry": "Retry",
 		"remove": "Remove",
-		"cannotBeUndone": "This action cannot be undone."
+		"cannotBeUndone": "This action cannot be undone.",
+		"close": "Close",
+		"next": "Next",
+		"saveChanges": "Save Changes"
 	},
 	"list": {
 		"searchPlaceholder": "Search...",
@@ -1067,7 +1067,9 @@
 		"fileTooLarge": "File exceeds 500 MB limit.",
 		"importContent": "Import URL / YouTube",
 		"importSuccess": "Import started.",
-		"addContent": "Add Content",
+		"addContent": {
+			"title": "Add content"
+		},
 		"export": "Export",
 		"itemDeleteSuccess": "Item deleted.",
 		"detail": {
@@ -1107,9 +1109,6 @@
 		"empty": {
 			"title": "No libraries yet",
 			"description": "Create one to start importing content."
-		},
-		"addContent": {
-			"title": "Add content"
 		},
 		"capabilities": {
 			"imageLoadFailed": "Couldn't load this image. It may have been removed."
@@ -1276,6 +1275,96 @@
 			"stepLibrary": "Library",
 			"stepReview": "Review"
 		},
+		"createModal": {
+			"extractionTitle": "Graph RAG: concept extraction LLM",
+			"extractionHint": "The model used at ingest time to extract entities and typed relationships from each chunk. Locked at creation, like embedding.",
+			"extractionVendor": "Extraction vendor",
+			"extractionModel": "Extraction model",
+			"extractionEndpoint": "Extraction endpoint (optional)",
+			"graphLabel": "Enable Graph RAG",
+			"graphRequiresChromadb": "Graph RAG requires the chromadb vector backend (select it in Advanced).",
+			"graphHint": "Builds a knowledge graph alongside the vector index. Documents are indexed with an LLM extractor at ingest time; query-time retrieval combines vector similarity with graph traversal. Cannot be changed after creation."
+		},
+		"graphSection": "Knowledge Graph",
+		"graphEnabledBadge": "Graph RAG",
+		"graphEnabledHint": "Graph RAG was enabled at creation and is locked.",
+		"extractionSummary": "Extractor:",
+		"extractedEntities": "Extracted entities (KG-RAG)",
+		"extractedEntitiesEmpty": "No named entities found in the question.",
+		"graph": {
+			"viewFullGraph": "View full graph",
+			"viewFullGraphTitle": "Open the full graph in an interactive view",
+			"notEnabledTitle": "Graph RAG is not enabled on this Knowledge Store.",
+			"notEnabledTitleShort": "Graph RAG is not enabled on this Knowledge Store",
+			"notEnabledBody": "Graph RAG is locked at creation time alongside chunking, embedding, and vector DB. To use Graph RAG, create a new Knowledge Store with the <span class=\"font-medium\">Enable Graph RAG</span> toggle.",
+			"retrievalPolicyHtml": "<span class=\"font-semibold\">Retrieval policy:</span> only concepts and relationships you mark as <span class=\"rounded bg-green-100 px-1 py-0.5 font-medium text-green-800\">verified</span> are used to enhance LLM retrieval. The LLM receives the retrieved <span class=\"font-medium\">chunks</span> as context — the graph drives <em>which</em> chunks are returned (via question-entity expansion + RRF fusion with the vector baseline) but the concept/relation triples themselves are not added to the prompt. Approve the items you trust to make them contribute to the retrieval.",
+			"refresh": "Refresh",
+			"loading": "Loading…",
+			"loadingGraph": "Loading graph…",
+			"fullGraphLoading": "Loading graph (this may take a moment for large knowledge stores)…",
+			"conceptLabel": "Concept",
+			"conceptPlaceholder": "concept name fragment",
+			"filenameLabel": "Filename",
+			"filenamePlaceholder": "source filename",
+			"documentIdLabel": "Document ID",
+			"documentIdPlaceholder": "graph document id",
+			"concepts": "Concepts",
+			"relationships": "Relationships",
+			"documents": "Documents",
+			"chunks": "Chunks",
+			"edges": "Edges",
+			"verifiedCount": "{count} verified · {pct}",
+			"verifiedRatio": "{count}/{total} verified",
+			"filterAll": "All",
+			"filterUnverified": "Unverified",
+			"filterVerified": "Verified",
+			"filterRejected": "Rejected",
+			"approveAll": "Approve all",
+			"rejectAll": "Reject all",
+			"noConcepts": "No concept nodes yet.",
+			"noConceptsFilter": "No concepts match the selected filter.",
+			"noRelationships": "No relationships yet.",
+			"noRelationshipsFilter": "No relationships match the selected filter.",
+			"state": {
+				"verified": "verified",
+				"unverified": "unverified",
+				"rejected": "rejected"
+			},
+			"save": "Save",
+			"cancel": "Cancel",
+			"verify": "Verify",
+			"unverify": "Unverify",
+			"edit": "Edit",
+			"prev": "← Prev",
+			"next": "Next →",
+			"pageInfo": "Page {page} of {total} · {items} items",
+			"bulkApproval": "Bulk approval",
+			"bulkRejection": "Bulk rejection",
+			"confirmBulkConcepts": "{reason} of ALL concepts in this Knowledge Store. Continue?",
+			"confirmBulkRelationships": "{reason} of ALL relationships in this Knowledge Store. Continue?",
+			"reasonSetState": "Set to {state} via Knowledge Store UI",
+			"reasonRename": "Renamed via Knowledge Store UI",
+			"reasonEdit": "Edited via Knowledge Store UI",
+			"errorLoad": "Failed to load graph",
+			"errorSetState": "Failed to {state}",
+			"errorRename": "Rename failed",
+			"errorEdit": "Edit failed",
+			"title": "Knowledge Graph",
+			"statsLine": "{nodes} concepts · {edges} relationships",
+			"findConcept": "Find a concept (Enter to center)",
+			"find": "Find",
+			"close": "Close",
+			"legend": "Legend",
+			"legendApproved": "Approved",
+			"legendUnverified": "Unverified",
+			"legendRejected": "Rejected",
+			"legendRelatesTo": "RELATES_TO edge",
+			"nodeType": "type: {type}",
+			"nodeEntity": "entity: {entity}",
+			"nodeVerification": "verification: {verification}",
+			"nodeFilename": "filename: {filename}",
+			"nodeChunks": "{count} chunks"
+		},
 		"addDescription": "Add description",
 		"chunkingParams": "Chunking parameters",
 		"collapseDetail": "Hide locked configuration",
@@ -1320,6 +1409,9 @@
 			"next": "Next",
 			"back": "Back",
 			"skip": "Skip",
+			"create": "Create",
+			"cancel": "Cancel",
+			"abort": "Abort",
 			"useExisting": "Use an existing",
 			"createNew": "Create new",
 			"advancedLabel": "Advanced settings",
@@ -1334,18 +1426,69 @@
 				"body": "Chunking strategy, embedding vendor / model, and vector DB are locked once the Knowledge Store is created. To change them, create a new Knowledge Store.",
 				"paramsBody": "Chunking parameters can be edited later, but changes only apply to newly indexed content — existing chunks keep the parameters they were originally created with."
 			},
+			"editDefaults": "Edit defaults",
+			"progress": "Step {current} of {total}",
+			"step0": {
+				"title": "Choose a Library",
+				"description": "Use an existing Library or create a new one.",
+				"newLibrary": "Create a new Library",
+				"existingLibrary": "Use an existing Library",
+				"pickLibrary": "Pick a Library"
+			},
+			"step1": {
+				"title": "Library details",
+				"description": "Give your Library a name and an optional description.",
+				"nameLabel": "Library name",
+				"descriptionLabel": "Description (optional)",
+				"sharedLabel": "Share with organization"
+			},
+			"step2": {
+				"title": "Library import settings",
+				"description": "Defaults work for most cases. Expand to customise import plugins.",
+				"defaultPluginLabel": "Default import plugin"
+			},
+			"step3": {
+				"title": "Add initial content",
+				"description": "Optionally upload one or more files now. You can always add more later.",
+				"uploadHint": "Drop files here or click to browse",
+				"uploaded": "uploaded",
+				"processing": "processing",
+				"ready": "ready",
+				"failed": "failed"
+			},
+			"step4": {
+				"title": "Choose a Knowledge Store",
+				"description": "Use an existing Knowledge Store or create a new one.",
+				"newKs": "Create a new Knowledge Store",
+				"existingKs": "Use an existing Knowledge Store",
+				"pickKs": "Pick a Knowledge Store"
+			},
+			"step5": {
+				"title": "Knowledge Store details",
+				"description": "Name and optional description for the Knowledge Store.",
+				"nameLabel": "Knowledge Store name",
+				"descriptionLabel": "Description (optional)",
+				"sharedLabel": "Share with organization"
+			},
 			"step6": {
+				"title": "Knowledge Store configuration",
+				"description": "These choices control chunking and embedding. They are LOCKED after creation.",
 				"chunkingLabel": "Chunking strategy",
 				"vectorDbLabel": "Vector DB backend",
+				"embeddingVendorLabel": "Embedding vendor",
+				"embeddingModelLabel": "Embedding model",
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
 				"endpointLabel": "Embedding endpoint (optional)",
 				"noVendorConfigured": "Your organization has no embedding providers configured. Ask an admin to add an API key in the organization settings.",
+				"graphLabel": "Enable semantic graph (Graph RAG)",
+				"graphHint": "Extracts concepts and relationships from ingested chunks and stores them in Neo4j. Requires KG_RAG_ENABLED=true on the KB server.",
 				"modelRequired": "No models returned by the API for this vendor — type a model name to continue."
 			},
 			"step7": {
 				"title": "Pick items to index",
 				"description": "Choose which library items to index in the Knowledge Store.",
+				"allItems": "All items",
 				"heading": "Pick items to index",
 				"newBadge": "NEW",
 				"noItems": "This library has no ready items. You can skip this step and add content later."
@@ -1355,9 +1498,14 @@
 				"description": "Review your choices below. Click Create to proceed.",
 				"libraryHeading": "Library",
 				"ksHeading": "Knowledge Store",
+				"itemsHeading": "Items to ingest",
 				"itemsToIngest": "Items to index",
 				"submit": "Create",
+				"submitting": "Creating...",
 				"heading": "Review & create",
+				"ingestionHeading": "Ingestion",
+				"ingestionCount": "{n} item(s) will be ingested",
+				"libraryPlugin": "Import plugin: {plugin}",
 				"libraryFileCount": "{n} file(s) to upload",
 				"libraryUrlCount": "{n} URL/YouTube source(s) to import",
 				"progressLibrary": "Creating library...",
@@ -1373,18 +1521,26 @@
 				"submitAdd": "Add"
 			},
 			"step9": {
+				"title": "All done",
 				"heading": "You're all set",
 				"description": "Your Library and Knowledge Store are ready. Ingestion runs in the background — you can check progress on the Knowledge Store page.",
+				"openKs": "Open Knowledge Store",
 				"openLibrary": "Open Library",
 				"createAnother": "Create another",
 				"toast": "Knowledge Store created.",
 				"openKS": "Open Knowledge Store"
 			},
+			"stepProgress": "Step {n} of {total}",
 			"creating": "Creating...",
 			"draft": {
 				"banner": "You have an unfinished draft from {time}.",
 				"resume": "Resume",
-				"discard": "Discard"
+				"discard": "Discard",
+				"savePrompt": {
+					"title": "Save as draft?",
+					"body": "Your progress will be saved until you log out or close the tab.",
+					"save": "Save draft"
+				}
 			},
 			"libraryStep": {
 				"title": "Library Setup",
@@ -1402,6 +1558,7 @@
 				"advancedLabel": "Advanced: import plugin & params",
 				"noPlugins": "No import plugins available.",
 				"pluginLabel": "Import plugin",
+				"pluginNote": "Per-plugin parameters can be customized later from the library detail view.",
 				"descriptionLabel": "Description",
 				"pluginParamsHint": "Defaults come from the plugin and work for most documents — override only if needed.",
 				"pluginParamsLabel": "Plugin parameters"
@@ -1409,10 +1566,16 @@
 			"libraryContent": {
 				"title": "Library Content",
 				"heading": "Initial content",
+				"description": "Optionally add content to your new Library now. You can also skip this and add content later.",
+				"sourceTypeFiles": "Files",
+				"sourceTypeUrl": "URL",
+				"sourceTypeYouTube": "YouTube",
+				"pickLabel": "Pick files",
 				"invalidUrl": "A valid HTTP(S) URL is required.",
 				"invalidYoutubeUrl": "A valid YouTube URL is required.",
 				"titleOptional": "Title (optional)",
 				"youtubeUrl": "YouTube URL",
+				"ytLanguage": "Transcript language",
 				"addUrl": "+ Add URL",
 				"addYouTube": "+ Add YouTube",
 				"queuedLabel": "Queued sources",
@@ -1442,6 +1605,7 @@
 				"shareLabel": "Share with my organization",
 				"shareHint": "You can change this later from the Knowledge Store detail view.",
 				"advancedLabel": "Advanced: chunking, embedding vendor/model, vector DB",
+				"graphHeading": "Graph RAG",
 				"chunkingHeading": "Chunking",
 				"chunkingParamsHint": "Defaults work for most documents — adjust only if you have a reason to. You can change these later from the Knowledge Store detail view, but changes only apply to content indexed after the edit.",
 				"embeddingHeading": "Embedding",

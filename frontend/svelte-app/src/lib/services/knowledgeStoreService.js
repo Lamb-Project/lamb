@@ -128,6 +128,19 @@ export async function getOptions() {
 	}
 }
 
+/**
+ * Fetch registered LLM extraction vendors (KG-RAG concept extraction)
+ * along with their parameter schemas so the create form can render a
+ * vendor + model picker.
+ * @returns {Promise<{ vendors: Array<{ name: string, description: string, parameters: Array<{ name: string, type: string, default: any, choices: any }> }> }>}
+ */
+export async function getLlmVendors() {
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl('/knowledge-stores/llm-vendors');
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data;
+}
+
 // ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
@@ -174,6 +187,10 @@ export async function getKnowledgeStore(ksId) {
  *   embedding_params?: Object,
  *   vector_db_backend: string,
  *   vector_db_params?: Object,
+ *   graph_enabled?: boolean,
+ *   extraction_vendor?: string,
+ *   extraction_model?: string,
+ *   extraction_endpoint?: string,
  * }} data
  * @returns {Promise<KnowledgeStore>}
  */
@@ -308,7 +325,7 @@ export async function removeContent(ksId, libraryItemId) {
  * builder's "test query" affordance and by the KS detail panel.
  * @param {string} ksId
  * @param {{ queryText: string, topK?: number }} data
- * @returns {Promise<{ results: KSQueryResult[], query: string, top_k: number }>}
+ * @returns {Promise<{ results: KSQueryResult[], query: string, top_k: number, entities?: string[] | null }>}
  */
 export async function queryKnowledgeStore(ksId, data) {
 	if (!browser) throw new Error('Browser only.');

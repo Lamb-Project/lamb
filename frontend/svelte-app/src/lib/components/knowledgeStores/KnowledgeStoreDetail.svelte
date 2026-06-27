@@ -45,12 +45,15 @@
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 	import AddContentToKSModal from '$lib/components/knowledgeStores/AddContentToKSModal.svelte';
 	import PluginParamFields from '$lib/components/plugins/PluginParamFields.svelte';
+	import KnowledgeStoreGraphView from '$lib/components/knowledgeStores/KnowledgeStoreGraphView.svelte';
+	import { getGraphStatus } from '$lib/services/graphService';
 	import {
 		Button,
 		IconButton,
 		Badge,
 		Banner,
 		Card,
+		Collapsible,
 		FormField,
 		SkeletonCard
 	} from '$lib/components/ui';
@@ -75,6 +78,9 @@
 	let content = $state([]);
 	let loading = $state(true);
 	let error = $state('');
+
+	// KG-RAG / semantic graph state. Loaded lazily after the KS itself.
+	let graphStatus = $state(/** @type {any} */ (null));
 
 	// Inline-edit state for name + description (canonical pattern).
 	let editingName = $state(false);
@@ -167,6 +173,8 @@
 	/** @type {any[]} */
 	let queryResults = $state([]);
 	let queryError = $state('');
+	/** @type {string[] | null} */
+	let queryEntities = $state(null);
 
 	// Modals
 	let showAddContent = $state(false);
@@ -254,6 +262,13 @@
 			nameDraft = fresh?.name ?? '';
 			descriptionDraft = fresh?.description ?? '';
 			schedulePollIfNeeded();
+			// Best-effort graph status — KG-RAG is optional, so a 5xx here
+			// shouldn't break the detail view.
+			try {
+				graphStatus = await getGraphStatus();
+			} catch (_) {
+				graphStatus = { enabled: false };
+			}
 		} catch (/** @type {unknown} */ err) {
 			console.error('Error loading Knowledge Store:', err);
 			error = err instanceof Error ? err.message : 'Failed to load Knowledge Store';
@@ -470,12 +485,16 @@
 		querying = true;
 		queryError = '';
 		queryResults = [];
+		queryEntities = null;
 		try {
 			const data = await queryKnowledgeStore(ksId, {
 				queryText,
 				topK: queryTopK
 			});
 			queryResults = data?.results ?? [];
+			// Present only when the KS has graph_enabled and the backend
+			// routed through the KG-RAG plugin.
+			queryEntities = Array.isArray(data?.entities) ? data.entities : null;
 		} catch (/** @type {unknown} */ err) {
 			queryError = err instanceof Error ? err.message : 'Query failed';
 		} finally {
@@ -730,7 +749,26 @@
 						<Lock size={10} aria-hidden="true" />
 						{$_('knowledgeStores.vectorDb', { default: 'Vector DB' })}
 					</dt>
-					<dd class="text-text mt-0.5">{ks.vector_db_backend}</dd>
+					<dd class="text-text mt-0.5 flex flex-wrap items-center gap-1.5">
+						<span>{ks.vector_db_backend}</span>
+						{#if ks.graph_enabled}
+							<Badge
+								variant="brand"
+								title={$_('knowledgeStores.graphEnabledHint', {
+									default: 'Graph RAG was enabled at creation and is locked.'
+								})}
+							>
+								{$_('knowledgeStores.graphEnabledBadge', { default: 'Graph RAG' })}
+							</Badge>
+						{/if}
+					</dd>
+					{#if ks.graph_enabled && (ks.extraction?.vendor || ks.extraction?.model)}
+						<dd class="type-caption mt-0.5">
+							{$_('knowledgeStores.extractionSummary', { default: 'Extractor:' })}
+							{ks.extraction?.vendor || '—'}{#if ks.extraction?.model}
+								· {ks.extraction.model}{/if}
+						</dd>
+					{/if}
 				</div>
 			</dl>
 		</Card>
@@ -989,6 +1027,19 @@
 			{/if}
 		</Card>
 
+		<!--
+			Knowledge graph (KG-RAG). Shown only when this store was created with
+			graph_enabled=true AND the server reports the feature available.
+			Wrapped in a Collapsible so the heavy Sigma view only mounts (and
+			fetches its snapshot) when the user expands it. Graph RAG is locked
+			at creation; there is no retroactive migration path from this UI.
+		-->
+		{#if ks.graph_enabled && graphStatus?.enabled}
+			<Collapsible label={$_('knowledgeStores.graphSection', { default: 'Knowledge Graph' })}>
+				<KnowledgeStoreGraphView {ksId} graphEnabled={!!ks?.graph_enabled} />
+			</Collapsible>
+		{/if}
+
 		<!-- Test query card -->
 		<Card
 			title={$_('knowledgeStores.testQuery', { default: 'Test Query' })}
@@ -1034,6 +1085,29 @@
 
 				{#if queryError}
 					<Banner variant="danger" size="sm" description={queryError} />
+				{/if}
+
+				{#if queryEntities}
+					<div class="border-info-border bg-info-subtle space-y-2 rounded-md border p-3">
+						<div class="text-info-text type-label">
+							{$_('knowledgeStores.extractedEntities', {
+								default: 'Extracted entities (KG-RAG)'
+							})}
+						</div>
+						{#if queryEntities.length === 0}
+							<p class="type-body-muted text-xs">
+								{$_('knowledgeStores.extractedEntitiesEmpty', {
+									default: 'No named entities found in the question.'
+								})}
+							</p>
+						{:else}
+							<div class="flex flex-wrap gap-1.5">
+								{#each queryEntities as entity (entity)}
+									<Badge variant="info">{entity}</Badge>
+								{/each}
+							</div>
+						{/if}
+					</div>
 				{/if}
 
 				{#if queryResults.length > 0}

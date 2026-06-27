@@ -178,6 +178,57 @@ class VectorDBBackend(abc.ABC):
     ) -> list[QueryResult]:
         """Embed ``query_text`` and return the top ``top_k`` similar chunks."""
 
+    def get_chunks_by_id(
+        self,
+        *,
+        collection_id: str,
+        storage_path: str,
+        chunk_ids: list[str],
+        embedding_function: EmbeddingFunction,
+    ) -> list[QueryResult]:
+        """Fetch chunks by their backend-side ID without similarity scoring.
+
+        Used by KG-RAG to materialize chunks discovered through graph
+        traversal. The default implementation returns an empty list — a
+        backend that supports ID lookup (ChromaDB) overrides this.
+        Callers must treat an empty return as "lookup not supported" and
+        degrade gracefully.
+        """
+        return []
+
+    def get_chunks_by_source(
+        self,
+        *,
+        collection_id: str,
+        storage_path: str,
+        source_item_id: str,
+        embedding_function: EmbeddingFunction,
+    ) -> list[QueryResult]:
+        """Fetch every chunk produced from one source item.
+
+        Used by the ingestion-time graph indexer to grab the chunks it
+        just inserted (so it can run extraction with stable IDs). Default
+        returns an empty list — a backend that supports metadata-where
+        filters (ChromaDB) overrides this.
+        """
+        return []
+
+    def iter_all_chunks(
+        self,
+        *,
+        collection_id: str,
+        storage_path: str,
+        embedding_function: EmbeddingFunction,
+        batch_size: int = 500,
+    ):
+        """Yield every stored chunk in batches, for migration / re-indexing.
+
+        Default raises ``NotImplementedError`` — a backend that supports
+        cursor-style scrolling (ChromaDB's ``get`` with offset) overrides
+        this. The graph-migration route checks for support before calling.
+        """
+        raise NotImplementedError
+
     def get_parameters(self) -> list[PluginParameter]:
         """Return the backend-specific configuration schema (usually empty)."""
         return []
@@ -241,6 +292,58 @@ class EmbeddingFunction(abc.ABC):
 
         Named ``input`` (not ``texts``) for ChromaDB 0.6+ compatibility;
         ChromaDB inspects the parameter name.
+        """
+
+    def get_parameters(self) -> list[PluginParameter]:
+        """Return the parameter schema for this vendor (model, endpoint)."""
+        return []
+
+
+class LLMExtractionFunction(abc.ABC):
+    """Abstract base for chat-completion vendors used by KG-RAG extraction.
+
+    Extractors are constructed fresh per ingestion job because credentials
+    are request-scoped (same pattern as embeddings — ADR-4). Each
+    implementation wraps a vendor's chat-completion call and returns a
+    parsed JSON object that the concept extractor consumes.
+    """
+
+    name: str = "base"
+    description: str = "Base LLM extraction backend"
+
+    def __init__(
+        self,
+        *,
+        model: str,
+        api_key: str = "",
+        api_endpoint: str = "",
+        timeout_seconds: float = 60.0,
+    ) -> None:
+        self.model = model
+        self.api_key = api_key
+        self.api_endpoint = api_endpoint
+        self.timeout_seconds = timeout_seconds
+
+    @abc.abstractmethod
+    def chat_json(
+        self,
+        *,
+        system: str,
+        user: str,
+        fallback_model: str | None = None,
+    ) -> dict[str, Any]:
+        """Run a chat-completion with JSON output.
+
+        Args:
+            system: System prompt.
+            user: User message (already JSON-encoded by the caller).
+            fallback_model: Optional model to retry with if the primary
+                model rejects the JSON-mode request (some smaller / older
+                models don't support ``response_format=json_object``).
+
+        Returns:
+            Parsed dict from the model's JSON output, or an empty dict
+            shape on parse / API failure.
         """
 
     def get_parameters(self) -> list[PluginParameter]:
@@ -392,3 +495,33 @@ class EmbeddingRegistry(_BaseRegistry):
         if plugin_class is None:
             raise ValueError(f"Embedding vendor '{name}' is not registered.")
         return plugin_class(model=model, api_key=api_key, api_endpoint=api_endpoint)
+
+
+class LLMExtractionRegistry(_BaseRegistry):
+    category = "LLM_EXTRACTION"
+    _plugins: dict[str, type[LLMExtractionFunction]] = {}
+
+    @classmethod
+    def build(
+        cls,
+        name: str,
+        *,
+        model: str,
+        api_key: str = "",
+        api_endpoint: str = "",
+        timeout_seconds: float = 60.0,
+    ) -> LLMExtractionFunction:
+        """Construct an LLM extraction backend for ``name`` with credentials.
+
+        Raises:
+            ValueError: If the vendor is not registered.
+        """
+        plugin_class = cls._plugins.get(name)
+        if plugin_class is None:
+            raise ValueError(f"LLM extraction vendor '{name}' is not registered.")
+        return plugin_class(
+            model=model,
+            api_key=api_key,
+            api_endpoint=api_endpoint,
+            timeout_seconds=timeout_seconds,
+        )

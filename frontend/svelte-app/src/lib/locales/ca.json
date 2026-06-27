@@ -72,9 +72,6 @@
 		"connector": "Connector",
 		"llm": "LLM",
 		"ragProcessor": "Processador RAG",
-    "loadingConfig": "Carregant configuracio...",
-    "errorConfig": "Error en carregar configuracio:",
-    "initializingForm": "Inicialitzant formulari...",
 		"form": {
 			"advancedMode": "Mode Avançat",
 			"insert_placeholder": "Inserir marcador",
@@ -83,8 +80,8 @@
 			"name": {
 				"label": "Nom de l'Assistent",
 				"placeholder": "Introdueix un nom únic (màx 20 cars)",
-        "willBeSaved": "Es desarà com a:",
-        "hint": "Els caràcters especials i espais es convertiran en guions baixos"
+				"willBeSaved": "Es desarà com a:",
+				"hint": "Els caràcters especials i espais es convertiran en guions baixos"
 			},
 			"description": {
 				"label": "Descripció",
@@ -104,7 +101,7 @@
 			"promptTemplate": {
 				"label": "Plantilla de Prompt",
 				"help": "Aquest processador requereix una plantilla de prompt vàlida.",
-        "placeholder": "ex. Utilitza el {context} per respondre la pregunta: {user_input}"
+				"placeholder": "ex. Utilitza el {context} per respondre la pregunta: {user_input}"
 			},
 			"configSection": {
 				"title": "Configuració"
@@ -119,55 +116,9 @@
 				"label": "Model de Llenguatge (LLM)",
 				"noneAvailable": "No hi ha models disponibles per al connector seleccionat"
 			},
-      "vision": {
-        "label": "Habilitar Capacitat de Visió",
-        "description": "Permetre que aquest assistent processi imatges juntament amb missatges de text",
-        "imageToImageDescription": "Permetre que aquest assistent accepti imatges com a entrada per a generació d'imatge a imatge (edició, transferència d'estil, etc.)"
-      },
-      "imageGeneration": {
-        "label": "Habilitar Generació d'Imatges",
-        "requiredForModel": "Aquesta capacitat és necessària per al model seleccionat",
-        "requiredForModelPrefix": "Necessari per a aquest model - ",
-        "geminiDescription": "Permetre que aquest assistent generi imatges usant Google Gemini"
-      },
-      "exposeSources": {
-        "label": "Permet que els estudiants obrin les fonts citades",
-        "description": "Mostra als estudiants enllaços per obrir i descarregar els documents que aquest assistent cita a les seves respostes. Desactivat per defecte."
-      },
 			"ragProcessor": {
 				"label": "Processador RAG"
 			},
-      "rubric": {
-        "label": "Seleccionar Rubrica",
-        "loading": "Carregant rubriques...",
-        "error": "Error en carregar rubriques:",
-        "noneFound": "No hi ha rubriques disponibles.",
-        "createLink": "Crear una rubrica",
-        "search": {
-          "label": "Cercar rubriques",
-          "placeholder": "Cercar rubriques per titol o descripcio..."
-        },
-        "selected": "Seleccionada:",
-        "view": "Veure",
-        "table": {
-          "select": "Seleccionar",
-          "title": "Titol",
-          "description": "Descripcio",
-          "type": "Tipus",
-          "actions": "Accions"
-        },
-        "noMatches": "Cap rubrica coincideix amb la cerca.",
-        "mine": "Meva",
-        "public": "Publica",
-        "required": "Si us plau selecciona una rubrica",
-        "format": {
-          "label": "Format de Rubrica per a LLM",
-          "markdown": "Markdown (format taula)",
-          "json": "JSON (dades estructurades)",
-          "help": "Tria el format que millor funcioni amb el teu LLM seleccionat. Pots provar tots dos per veure quin produeix millors resultats."
-        },
-        "configLocation": "Veure opcions de rubrica sota la seccio de Plantilla de Prompt"
-      },
 			"import": {
 				"button": "Importar des de JSON",
 				"error": "Error d'Importació",
@@ -192,21 +143,9 @@
 				"loading": "Carregant fonts de coneixement...",
 				"error": "Error en carregar fonts de coneixement:",
 				"noneFound": "No s'han trobat fonts de coneixement accessibles.",
-        "myKB": "Les Meves Fonts de Coneixement",
-        "sharedKB": "Bases de Coneixement Compartides",
-        "shared": "Compartida per {shared_by}"
-			},
-			"knowledgeStores": {
-				"label": "Fonts de Coneixement",
-				"loading": "Carregant fonts de coneixement...",
-				"error": "Error en carregar fonts de coneixement:",
-				"noneFound": "No s'han trobat fonts de coneixement accessibles.",
-				"myKS": "Les meves Fonts de Coneixement",
-				"sharedKS": "Fonts de Coneixement compartides"
-			},
-			"documentRag": {
-				"label": "Document de Referència",
-				"description": "Adjunta un document de referència que estarà disponible en el context del sistema per a tots els missatges."
+				"myKB": "Les Meves Fonts de Coneixement",
+				"sharedKB": "Bases de Coneixement Compartides",
+				"shared": "Compartida per {shared_by}"
 			},
 			"singleFile": {
 				"label": "Seleccionar Arxiu",
@@ -223,6 +162,64 @@
 				"manageLibraries": "Gestionar biblioteques",
 				"itemLabel": "Document",
 				"loadingItems": "Carregant documents..."
+			},
+			"vision": {
+				"label": "Habilitar Capacitat de Visió",
+				"description": "Permetre que aquest assistent processi imatges juntament amb missatges de text",
+				"imageToImageDescription": "Permetre que aquest assistent accepti imatges com a entrada per a generació d'imatge a imatge (edició, transferència d'estil, etc.)"
+			},
+			"imageGeneration": {
+				"label": "Habilitar Generació d'Imatges",
+				"requiredForModel": "Aquesta capacitat és necessària per al model seleccionat",
+				"requiredForModelPrefix": "Necessari per a aquest model - ",
+				"geminiDescription": "Permetre que aquest assistent generi imatges usant Google Gemini"
+			},
+			"exposeSources": {
+				"label": "Permet que els estudiants obrin les fonts citades",
+				"description": "Mostra als estudiants enllaços per obrir i descarregar els documents que aquest assistent cita a les seves respostes. Desactivat per defecte."
+			},
+			"rubric": {
+				"label": "Seleccionar Rubrica",
+				"loading": "Carregant rubriques...",
+				"error": "Error en carregar rubriques:",
+				"noneFound": "No hi ha rubriques disponibles.",
+				"createLink": "Crear una rubrica",
+				"search": {
+					"label": "Cercar rubriques",
+					"placeholder": "Cercar rubriques per titol o descripcio..."
+				},
+				"selected": "Seleccionada:",
+				"view": "Veure",
+				"table": {
+					"select": "Seleccionar",
+					"title": "Titol",
+					"description": "Descripcio",
+					"type": "Tipus",
+					"actions": "Accions"
+				},
+				"noMatches": "Cap rubrica coincideix amb la cerca.",
+				"mine": "Meva",
+				"public": "Publica",
+				"required": "Si us plau selecciona una rubrica",
+				"format": {
+					"label": "Format de Rubrica per a LLM",
+					"markdown": "Markdown (format taula)",
+					"json": "JSON (dades estructurades)",
+					"help": "Tria el format que millor funcioni amb el teu LLM seleccionat. Pots provar tots dos per veure quin produeix millors resultats."
+				},
+				"configLocation": "Veure opcions de rubrica sota la seccio de Plantilla de Prompt"
+			},
+			"knowledgeStores": {
+				"label": "Fonts de Coneixement",
+				"loading": "Carregant fonts de coneixement...",
+				"error": "Error en carregar fonts de coneixement:",
+				"noneFound": "No s'han trobat fonts de coneixement accessibles.",
+				"myKS": "Les meves Fonts de Coneixement",
+				"sharedKS": "Fonts de Coneixement compartides"
+			},
+			"documentRag": {
+				"label": "Document de Referència",
+				"description": "Adjunta un document de referència que estarà disponible en el context del sistema per a tots els missatges."
 			}
 		},
 		"noDescription": "Sense descripció",
@@ -362,7 +359,10 @@
 		"assistant_not_found": "Assistent amb ID {id} no trobat.",
 		"error_fetching_assistant": "Error en obtenir els detalls de l'assistent",
 		"errorTitle": "Error:",
-		"notSet": "No establert"
+		"notSet": "No establert",
+		"loadingConfig": "Carregant configuracio...",
+		"errorConfig": "Error en carregar configuracio:",
+		"initializingForm": "Inicialitzant formulari..."
 	},
 	"help": {
 		"title": "Ajuda LAMB",
@@ -371,14 +371,11 @@
 		"close": "Tancar"
 	},
 	"common": {
-		"close": "Tancar",
-		"next": "Següent",
 		"loading": "Carregant...",
 		"error": "S'ha produït un error",
 		"success": "Èxit!",
 		"cancel": "Cancel·lar",
 		"save": "Desar",
-    "saveChanges": "Desar Canvis",
 		"edit": "Editar",
 		"delete": "Eliminar",
 		"confirm": "Confirmar",
@@ -394,7 +391,10 @@
 		"exporting": "Exportant...",
 		"retry": "Tornar a intentar",
 		"remove": "Treure",
-		"cannotBeUndone": "Aquesta acció no es pot desfer."
+		"cannotBeUndone": "Aquesta acció no es pot desfer.",
+		"close": "Tancar",
+		"next": "Següent",
+		"saveChanges": "Desar Canvis"
 	},
 	"list": {
 		"searchPlaceholder": "Cerca...",
@@ -1067,7 +1067,9 @@
 		"fileTooLarge": "El fitxer supera el límit de 500 MB.",
 		"importContent": "Importar URL / YouTube",
 		"importSuccess": "Importació iniciada.",
-		"addContent": "Afegir Contingut",
+		"addContent": {
+			"title": "Afegir contingut"
+		},
 		"export": "Exportar",
 		"itemDeleteSuccess": "Element eliminat.",
 		"detail": {
@@ -1107,9 +1109,6 @@
 		"empty": {
 			"title": "Encara no hi ha biblioteques",
 			"description": "Crea'n una per començar a importar contingut."
-		},
-		"addContent": {
-			"title": "Afegir contingut"
 		},
 		"capabilities": {
 			"imageLoadFailed": "No s'ha pogut carregar aquesta imatge. Potser s'ha eliminat."
@@ -1276,6 +1275,96 @@
 			"stepLibrary": "Biblioteca",
 			"stepReview": "Revisar"
 		},
+		"createModal": {
+			"extractionTitle": "Graph RAG: LLM d'extracció de conceptes",
+			"extractionHint": "El model que s'utilitza durant la ingesta per extreure entitats i relacions tipades de cada fragment. Bloquejat en crear-lo, igual que l'embedding.",
+			"extractionVendor": "Proveïdor d'extracció",
+			"extractionModel": "Model d'extracció",
+			"extractionEndpoint": "Endpoint d'extracció (opcional)",
+			"graphLabel": "Activa Graph RAG",
+			"graphRequiresChromadb": "Graph RAG requereix el backend vectorial chromadb (selecciona'l a Avançat).",
+			"graphHint": "Crea un graf de coneixement juntament amb l'índex vectorial. Els documents s'indexen amb un extractor LLM durant la ingesta; la recuperació combina la similitud vectorial amb el recorregut del graf. No es pot canviar després de la creació."
+		},
+		"graphSection": "Graf de coneixement",
+		"graphEnabledBadge": "Graph RAG",
+		"graphEnabledHint": "Graph RAG es va activar en crear-lo i està bloquejat.",
+		"extractionSummary": "Extractor:",
+		"extractedEntities": "Entitats extretes (KG-RAG)",
+		"extractedEntitiesEmpty": "No s'han trobat entitats amb nom a la pregunta.",
+		"graph": {
+			"viewFullGraph": "Veure el graf complet",
+			"viewFullGraphTitle": "Obre el graf complet en una vista interactiva",
+			"notEnabledTitle": "El Graph RAG no està activat en aquest Magatzem de Coneixement.",
+			"notEnabledTitleShort": "El Graph RAG no està activat en aquest Magatzem de Coneixement",
+			"notEnabledBody": "El Graph RAG es bloqueja en el moment de la creació juntament amb la fragmentació, l'embedding i la base de dades vectorial. Per fer servir el Graph RAG, crea un nou Magatzem de Coneixement amb el commutador <span class=\"font-medium\">Activar Graph RAG</span>.",
+			"retrievalPolicyHtml": "<span class=\"font-semibold\">Política de recuperació:</span> només els conceptes i les relacions que marquis com a <span class=\"rounded bg-green-100 px-1 py-0.5 font-medium text-green-800\">verified</span> s'utilitzen per millorar la recuperació del LLM. El LLM rep els <span class=\"font-medium\">fragments</span> recuperats com a context — el graf determina <em>quins</em> fragments es retornen (mitjançant l'expansió d'entitats de la pregunta + fusió RRF amb la línia base vectorial), però les tripletes concepte/relació no s'afegeixen al prompt. Aprova els elements en què confies perquè contribueixin a la recuperació.",
+			"refresh": "Actualitzar",
+			"loading": "Carregant…",
+			"loadingGraph": "Carregant el graf…",
+			"fullGraphLoading": "Carregant el graf (pot trigar una estona en magatzems de coneixement grans)…",
+			"conceptLabel": "Concepte",
+			"conceptPlaceholder": "fragment del nom del concepte",
+			"filenameLabel": "Nom del fitxer",
+			"filenamePlaceholder": "nom del fitxer d'origen",
+			"documentIdLabel": "ID del document",
+			"documentIdPlaceholder": "id del document del graf",
+			"concepts": "Conceptes",
+			"relationships": "Relacions",
+			"documents": "Documents",
+			"chunks": "Fragments",
+			"edges": "Arestes",
+			"verifiedCount": "{count} verificats · {pct}",
+			"verifiedRatio": "{count}/{total} verificats",
+			"filterAll": "Tots",
+			"filterUnverified": "No verificats",
+			"filterVerified": "Verificats",
+			"filterRejected": "Rebutjats",
+			"approveAll": "Aprovar-ho tot",
+			"rejectAll": "Rebutjar-ho tot",
+			"noConcepts": "Encara no hi ha nodes de concepte.",
+			"noConceptsFilter": "Cap concepte coincideix amb el filtre seleccionat.",
+			"noRelationships": "Encara no hi ha relacions.",
+			"noRelationshipsFilter": "Cap relació coincideix amb el filtre seleccionat.",
+			"state": {
+				"verified": "verificat",
+				"unverified": "no verificat",
+				"rejected": "rebutjat"
+			},
+			"save": "Desar",
+			"cancel": "Cancel·lar",
+			"verify": "Verificar",
+			"unverify": "Desverificar",
+			"edit": "Editar",
+			"prev": "← Anterior",
+			"next": "Següent →",
+			"pageInfo": "Pàgina {page} de {total} · {items} elements",
+			"bulkApproval": "Aprovació massiva",
+			"bulkRejection": "Rebuig massiu",
+			"confirmBulkConcepts": "{reason} de TOTS els conceptes d'aquest Magatzem de Coneixement. Voleu continuar?",
+			"confirmBulkRelationships": "{reason} de TOTES les relacions d'aquest Magatzem de Coneixement. Voleu continuar?",
+			"reasonSetState": "Estat establert a {state} des de la interfície del Magatzem de Coneixement",
+			"reasonRename": "Reanomenat des de la interfície del Magatzem de Coneixement",
+			"reasonEdit": "Editat des de la interfície del Magatzem de Coneixement",
+			"errorLoad": "No s'ha pogut carregar el graf",
+			"errorSetState": "No s'ha pogut establir l'estat {state}",
+			"errorRename": "Ha fallat el canvi de nom",
+			"errorEdit": "Ha fallat l'edició",
+			"title": "Graf de Coneixement",
+			"statsLine": "{nodes} conceptes · {edges} relacions",
+			"findConcept": "Cerca un concepte (Retorn per centrar)",
+			"find": "Cercar",
+			"close": "Tancar",
+			"legend": "Llegenda",
+			"legendApproved": "Aprovat",
+			"legendUnverified": "No verificat",
+			"legendRejected": "Rebutjat",
+			"legendRelatesTo": "aresta RELATES_TO",
+			"nodeType": "tipus: {type}",
+			"nodeEntity": "entitat: {entity}",
+			"nodeVerification": "verificació: {verification}",
+			"nodeFilename": "fitxer: {filename}",
+			"nodeChunks": "{count} fragments"
+		},
 		"addDescription": "Afegir descripció",
 		"chunkingParams": "Paràmetres de fragmentació",
 		"collapseDetail": "Amaga la configuració bloquejada",
@@ -1320,6 +1409,9 @@
 			"next": "Següent",
 			"back": "Enrere",
 			"skip": "Ometre",
+			"create": "Crear",
+			"cancel": "Cancel·lar",
+			"abort": "Avortar",
 			"useExisting": "Utilitzar un d'existent",
 			"createNew": "Crear-ne un de nou",
 			"advancedLabel": "Configuració avançada",
@@ -1334,18 +1426,69 @@
 				"body": "L'estratègia de fragmentació, el proveïdor/model d'embeddings i la base de dades vectorial queden bloquejats en crear l'Emmagatzematge de Coneixement. Per canviar-los, crea un nou Emmagatzematge.",
 				"paramsBody": "Els paràmetres de fragmentació es poden editar més tard, però els canvis només s'apliquen al contingut acabat d'indexar; els fragments existents conserven els paràmetres amb què es van crear originalment."
 			},
+			"editDefaults": "Editar valors per defecte",
+			"progress": "Pas {current} de {total}",
+			"step0": {
+				"title": "Tria una Biblioteca",
+				"description": "Utilitza una Biblioteca existent o crea'n una de nova.",
+				"newLibrary": "Crear una nova Biblioteca",
+				"existingLibrary": "Utilitzar una Biblioteca existent",
+				"pickLibrary": "Tria una Biblioteca"
+			},
+			"step1": {
+				"title": "Detalls de la Biblioteca",
+				"description": "Posa un nom a la teva Biblioteca i una descripció opcional.",
+				"nameLabel": "Nom de la Biblioteca",
+				"descriptionLabel": "Descripció (opcional)",
+				"sharedLabel": "Compartir amb l'organització"
+			},
+			"step2": {
+				"title": "Configuració d'importació de la Biblioteca",
+				"description": "Els valors per defecte funcionen per a la majoria de casos. Expandeix per personalitzar els plugins d'importació.",
+				"defaultPluginLabel": "Plugin d'importació per defecte"
+			},
+			"step3": {
+				"title": "Afegir contingut inicial",
+				"description": "Opcionalment, puja un o més fitxers ara. Sempre en podràs afegir més més tard.",
+				"uploadHint": "Arrossega els fitxers aquí o fes clic per examinar",
+				"uploaded": "pujat",
+				"processing": "processant",
+				"ready": "a punt",
+				"failed": "fallit"
+			},
+			"step4": {
+				"title": "Tria un Magatzem de Coneixement",
+				"description": "Utilitza un Magatzem de Coneixement existent o crea'n un de nou.",
+				"newKs": "Crear un nou Magatzem de Coneixement",
+				"existingKs": "Utilitzar un Magatzem de Coneixement existent",
+				"pickKs": "Tria un Magatzem de Coneixement"
+			},
+			"step5": {
+				"title": "Detalls del Magatzem de Coneixement",
+				"description": "Nom i descripció opcional per al Magatzem de Coneixement.",
+				"nameLabel": "Nom del Magatzem de Coneixement",
+				"descriptionLabel": "Descripció (opcional)",
+				"sharedLabel": "Compartir amb l'organització"
+			},
 			"step6": {
+				"title": "Knowledge Store configuration",
+				"description": "These choices control chunking and embedding. They are LOCKED after creation.",
 				"chunkingLabel": "Chunking strategy",
 				"vectorDbLabel": "Vector DB backend",
+				"embeddingVendorLabel": "Embedding vendor",
+				"embeddingModelLabel": "Embedding model",
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
 				"endpointLabel": "Embedding endpoint (optional)",
 				"noVendorConfigured": "La teva organització no té proveïdors d'embeddings configurats. Demana a un administrador que afegeixi una clau d'API a la configuració de l'organització.",
+				"graphLabel": "Activa el graf semàntic (Graph RAG)",
+				"graphHint": "Extreu conceptes i relacions dels fragments ingerits i els emmagatzema a Neo4j. Requereix KG_RAG_ENABLED=true al servidor de KB.",
 				"modelRequired": "L'API no ha retornat cap model per a aquest proveïdor; escriu un nom de model per continuar."
 			},
 			"step7": {
 				"title": "Tria elements per ingerir",
 				"description": "Tria quins elements de la biblioteca indexar al Magatzem de Coneixement.",
+				"allItems": "Tots els elements",
 				"heading": "Selecciona elements per indexar",
 				"newBadge": "NOU",
 				"noItems": "Aquesta biblioteca no té elements a punt. Pots ometre aquest pas i afegir contingut més tard."
@@ -1355,9 +1498,14 @@
 				"description": "Review your choices below. Click Create to proceed.",
 				"libraryHeading": "Library",
 				"ksHeading": "Knowledge Store",
+				"itemsHeading": "Items to ingest",
 				"itemsToIngest": "Elements a ingerir",
 				"submit": "Create",
+				"submitting": "Creating...",
 				"heading": "Review & create",
+				"ingestionHeading": "Ingestion",
+				"ingestionCount": "{n} item(s) will be ingested",
+				"libraryPlugin": "Import plugin: {plugin}",
 				"libraryFileCount": "{n} file(s) to upload",
 				"libraryUrlCount": "{n} URL/YouTube source(s) to import",
 				"progressLibrary": "Creating library...",
@@ -1373,18 +1521,26 @@
 				"submitAdd": "Afegir"
 			},
 			"step9": {
+				"title": "Tot llest",
 				"heading": "Tot a punt",
 				"description": "La teva Biblioteca i el Magatzem de Coneixement estan a punt. La ingesta s'executa en segon pla — pots veure el progrés a la pàgina del Magatzem de Coneixement.",
+				"openKs": "Obrir Magatzem de Coneixement",
 				"openLibrary": "Obrir Biblioteca",
 				"createAnother": "Crear-ne un altre",
 				"toast": "Magatzem de Coneixement creat.",
 				"openKS": "Obrir Magatzem de Coneixement"
 			},
+			"stepProgress": "Pas {n} de {total}",
 			"creating": "Creant...",
 			"draft": {
 				"banner": "Tens un esborrany sense acabar de {time}.",
 				"resume": "Reprendre",
-				"discard": "Descartar"
+				"discard": "Descartar",
+				"savePrompt": {
+					"title": "Desar com a esborrany?",
+					"body": "El teu progrés es guardarà fins que tanquis la sessió o la pestanya.",
+					"save": "Desar esborrany"
+				}
 			},
 			"libraryStep": {
 				"title": "Configuració de Biblioteca",
@@ -1402,6 +1558,7 @@
 				"advancedLabel": "Avançat: complement d'importació i paràmetres",
 				"noPlugins": "No hi ha complements d'importació disponibles.",
 				"pluginLabel": "Complement d'importació",
+				"pluginNote": "Els paràmetres per complement es poden personalitzar més tard des de la vista de detall de la biblioteca.",
 				"descriptionLabel": "Descripció",
 				"pluginParamsHint": "Els valors per defecte provenen del connector i funcionen per a la majoria de documents; canvia'ls només si cal.",
 				"pluginParamsLabel": "Paràmetres del connector"
@@ -1409,10 +1566,16 @@
 			"libraryContent": {
 				"title": "Contingut de Biblioteca",
 				"heading": "Contingut inicial",
+				"description": "Afegeix contingut a la teva nova Biblioteca ara (opcional). També pots ometre-ho i afegir contingut més tard.",
+				"sourceTypeFiles": "Fitxers",
+				"sourceTypeUrl": "URL",
+				"sourceTypeYouTube": "YouTube",
+				"pickLabel": "Seleccionar fitxers",
 				"invalidUrl": "Es requereix una URL HTTP(S) vàlida.",
 				"invalidYoutubeUrl": "Es requereix una URL de YouTube vàlida.",
 				"titleOptional": "Títol (opcional)",
 				"youtubeUrl": "URL de YouTube",
+				"ytLanguage": "Idioma de la transcripció",
 				"addUrl": "+ Afegir URL",
 				"addYouTube": "+ Afegir YouTube",
 				"queuedLabel": "Fonts a la cua",
@@ -1441,14 +1604,15 @@
 				"nameTooLong": "El nom ha de tenir menys de 100 caràcters",
 				"shareLabel": "Compartir amb la meva organització",
 				"shareHint": "Ho pots canviar més tard des de la vista de detall de l'Emmagatzematge de Coneixement.",
+				"advancedLabel": "Avançat: fragmentació, proveïdor/model d'embedding, vector DB",
+				"graphHeading": "Graph RAG",
 				"vectorIndexingLabel": "Indexació vectorial: fragmentació, proveïdor/model d'embeddings, base de dades vectorial",
 				"otherIndexingLabel": "Una altra estratègia d'indexació (properament)",
 				"otherIndexingHint": "En una versió futura es podran seleccionar aquí altres estratègies d'indexació (més enllà de la vectorial).",
 				"chunkingHeading": "Fragmentació",
 				"chunkingParamsHint": "Els valors per defecte funcionen per a la majoria de documents; ajusta'ls només si tens un motiu. Pots canviar-los més tard des de la vista de detall del Magatzem de Coneixement, però els canvis només s'apliquen al contingut indexat després de l'edició.",
 				"embeddingHeading": "Embedding",
-				"storageHeading": "Emmagatzematge",
-				"advancedLabel": "Avançat: fragmentació, proveïdor/model d'embedding, vector DB"
+				"storageHeading": "Emmagatzematge"
 			},
 			"adding": "Afegint...",
 			"titleAddContent": "Afegir contingut"

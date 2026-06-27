@@ -72,9 +72,6 @@
 		"connector": "Conector",
 		"llm": "LLM",
 		"ragProcessor": "Procesador RAG",
-    "loadingConfig": "Cargando configuracion...",
-    "errorConfig": "Error al cargar configuracion:",
-    "initializingForm": "Inicializando formulario...",
 		"form": {
 			"advancedMode": "Modo Avanzado",
 			"insert_placeholder": "Insertar marcador",
@@ -83,8 +80,8 @@
 			"name": {
 				"label": "Nombre del Asistente",
 				"placeholder": "Introduce un nombre único (máx 20 cars)",
-        "willBeSaved": "Se guardará como:",
-        "hint": "Los caracteres especiales y espacios se convertirán en guiones bajos"
+				"willBeSaved": "Se guardará como:",
+				"hint": "Los caracteres especiales y espacios se convertirán en guiones bajos"
 			},
 			"description": {
 				"label": "Descripción",
@@ -104,7 +101,7 @@
 			"promptTemplate": {
 				"label": "Plantilla de Prompt",
 				"help": "Este procesador requiere una plantilla de prompt válida.",
-        "placeholder": "ej. Usa el {context} para responder la pregunta: {user_input}"
+				"placeholder": "ej. Usa el {context} para responder la pregunta: {user_input}"
 			},
 			"configSection": {
 				"title": "Configuración"
@@ -119,55 +116,9 @@
 				"label": "Modelo de Lenguaje (LLM)",
 				"noneAvailable": "No hay modelos disponibles para el conector seleccionado"
 			},
-      "vision": {
-        "label": "Habilitar Capacidad de Visión",
-        "description": "Permitir que este asistente procese imágenes junto con mensajes de texto",
-        "imageToImageDescription": "Permitir que este asistente acepte imágenes como entrada para generación de imagen a imagen (edición, transferencia de estilo, etc.)"
-      },
-      "imageGeneration": {
-        "label": "Habilitar Generación de Imágenes",
-        "requiredForModel": "Esta capacidad es necesaria para el modelo seleccionado",
-        "requiredForModelPrefix": "Necesario para este modelo - ",
-        "geminiDescription": "Permitir que este asistente genere imágenes usando Google Gemini"
-      },
-      "exposeSources": {
-        "label": "Permitir que los estudiantes abran las fuentes citadas",
-        "description": "Muestra a los estudiantes enlaces para abrir y descargar los documentos que este asistente cita en sus respuestas. Desactivado por defecto."
-      },
 			"ragProcessor": {
 				"label": "Procesador RAG"
 			},
-      "rubric": {
-        "label": "Seleccionar Rubrica",
-        "loading": "Cargando rubricas...",
-        "error": "Error al cargar rubricas:",
-        "noneFound": "No hay rubricas disponibles.",
-        "createLink": "Crear una rubrica",
-        "search": {
-          "label": "Buscar rubricas",
-          "placeholder": "Buscar rubricas por titulo o descripcion..."
-        },
-        "selected": "Seleccionada:",
-        "view": "Ver",
-        "table": {
-          "select": "Seleccionar",
-          "title": "Titulo",
-          "description": "Descripcion",
-          "type": "Tipo",
-          "actions": "Acciones"
-        },
-        "noMatches": "Ninguna rubrica coincide con la busqueda.",
-        "mine": "Mia",
-        "public": "Publica",
-        "required": "Por favor selecciona una rubrica",
-        "format": {
-          "label": "Formato de Rubrica para LLM",
-          "markdown": "Markdown (formato tabla)",
-          "json": "JSON (datos estructurados)",
-          "help": "Elige el formato que mejor funcione con tu LLM seleccionado. Puedes probar ambos para ver cual produce mejores resultados."
-        },
-        "configLocation": "Ver opciones de rubrica debajo de la seccion de Plantilla de Prompt"
-      },
 			"import": {
 				"button": "Importar desde JSON",
 				"error": "Error de Importación",
@@ -192,21 +143,9 @@
 				"loading": "Cargando fuentes de conocimiento...",
 				"error": "Error al cargar fuentes de conocimiento:",
 				"noneFound": "No se encontraron fuentes de conocimiento accesibles.",
-        "myKB": "Mis Fuentes de Conocimiento",
-        "sharedKB": "Bases de Conocimiento Compartidas",
-        "shared": "Compartida por {shared_by}"
-			},
-			"knowledgeStores": {
-				"label": "Fuentes de Conocimiento",
-				"loading": "Cargando fuentes de conocimiento...",
-				"error": "Error al cargar fuentes de conocimiento:",
-				"noneFound": "No se encontraron fuentes de conocimiento accesibles.",
-				"myKS": "Mis Fuentes de Conocimiento",
-				"sharedKS": "Fuentes de Conocimiento compartidas"
-			},
-			"documentRag": {
-				"label": "Documento de Referencia",
-				"description": "Adjunta un documento de referencia que estará disponible en el contexto del sistema para todos los mensajes."
+				"myKB": "Mis Fuentes de Conocimiento",
+				"sharedKB": "Bases de Conocimiento Compartidas",
+				"shared": "Compartida por {shared_by}"
 			},
 			"singleFile": {
 				"label": "Seleccionar Archivo",
@@ -223,6 +162,64 @@
 				"manageLibraries": "Gestionar bibliotecas",
 				"itemLabel": "Documento",
 				"loadingItems": "Cargando documentos..."
+			},
+			"vision": {
+				"label": "Habilitar Capacidad de Visión",
+				"description": "Permitir que este asistente procese imágenes junto con mensajes de texto",
+				"imageToImageDescription": "Permitir que este asistente acepte imágenes como entrada para generación de imagen a imagen (edición, transferencia de estilo, etc.)"
+			},
+			"imageGeneration": {
+				"label": "Habilitar Generación de Imágenes",
+				"requiredForModel": "Esta capacidad es necesaria para el modelo seleccionado",
+				"requiredForModelPrefix": "Necesario para este modelo - ",
+				"geminiDescription": "Permitir que este asistente genere imágenes usando Google Gemini"
+			},
+			"exposeSources": {
+				"label": "Permitir que los estudiantes abran las fuentes citadas",
+				"description": "Muestra a los estudiantes enlaces para abrir y descargar los documentos que este asistente cita en sus respuestas. Desactivado por defecto."
+			},
+			"rubric": {
+				"label": "Seleccionar Rubrica",
+				"loading": "Cargando rubricas...",
+				"error": "Error al cargar rubricas:",
+				"noneFound": "No hay rubricas disponibles.",
+				"createLink": "Crear una rubrica",
+				"search": {
+					"label": "Buscar rubricas",
+					"placeholder": "Buscar rubricas por titulo o descripcion..."
+				},
+				"selected": "Seleccionada:",
+				"view": "Ver",
+				"table": {
+					"select": "Seleccionar",
+					"title": "Titulo",
+					"description": "Descripcion",
+					"type": "Tipo",
+					"actions": "Acciones"
+				},
+				"noMatches": "Ninguna rubrica coincide con la busqueda.",
+				"mine": "Mia",
+				"public": "Publica",
+				"required": "Por favor selecciona una rubrica",
+				"format": {
+					"label": "Formato de Rubrica para LLM",
+					"markdown": "Markdown (formato tabla)",
+					"json": "JSON (datos estructurados)",
+					"help": "Elige el formato que mejor funcione con tu LLM seleccionado. Puedes probar ambos para ver cual produce mejores resultados."
+				},
+				"configLocation": "Ver opciones de rubrica debajo de la seccion de Plantilla de Prompt"
+			},
+			"knowledgeStores": {
+				"label": "Fuentes de Conocimiento",
+				"loading": "Cargando fuentes de conocimiento...",
+				"error": "Error al cargar fuentes de conocimiento:",
+				"noneFound": "No se encontraron fuentes de conocimiento accesibles.",
+				"myKS": "Mis Fuentes de Conocimiento",
+				"sharedKS": "Fuentes de Conocimiento compartidas"
+			},
+			"documentRag": {
+				"label": "Documento de Referencia",
+				"description": "Adjunta un documento de referencia que estará disponible en el contexto del sistema para todos los mensajes."
 			}
 		},
 		"noDescription": "Sin descripción",
@@ -362,7 +359,10 @@
 		"loadingDetail": "Cargando detalles del asistente...",
 		"assistant_not_found": "Asistente con ID {id} no encontrado.",
 		"error_fetching_assistant": "Error al obtener los detalles del asistente",
-		"errorTitle": "Error:"
+		"errorTitle": "Error:",
+		"loadingConfig": "Cargando configuracion...",
+		"errorConfig": "Error al cargar configuracion:",
+		"initializingForm": "Inicializando formulario..."
 	},
 	"help": {
 		"title": "Ayuda LAMB",
@@ -371,14 +371,11 @@
 		"close": "Cerrar"
 	},
 	"common": {
-		"close": "Cerrar",
-		"next": "Siguiente",
 		"loading": "Cargando...",
 		"error": "Error",
 		"success": "Éxito",
 		"cancel": "Cancelar",
 		"save": "Guardar",
-    "saveChanges": "Guardar Cambios",
 		"edit": "Editar",
 		"delete": "Eliminar",
 		"confirm": "Confirmar",
@@ -394,7 +391,10 @@
 		"exporting": "Exportando...",
 		"retry": "Reintentar",
 		"remove": "Quitar",
-		"cannotBeUndone": "Esta acción no se puede deshacer."
+		"cannotBeUndone": "Esta acción no se puede deshacer.",
+		"close": "Cerrar",
+		"next": "Siguiente",
+		"saveChanges": "Guardar Cambios"
 	},
 	"list": {
 		"searchPlaceholder": "Buscar...",
@@ -1067,7 +1067,9 @@
 		"fileTooLarge": "El archivo supera el límite de 500 MB.",
 		"importContent": "Importar URL / YouTube",
 		"importSuccess": "Importación iniciada.",
-		"addContent": "Añadir Contenido",
+		"addContent": {
+			"title": "Añadir contenido"
+		},
 		"export": "Exportar",
 		"itemDeleteSuccess": "Elemento eliminado.",
 		"detail": {
@@ -1107,9 +1109,6 @@
 		"empty": {
 			"title": "Aún no hay bibliotecas",
 			"description": "Crea una para empezar a importar contenido."
-		},
-		"addContent": {
-			"title": "Añadir contenido"
 		},
 		"capabilities": {
 			"imageLoadFailed": "No se pudo cargar esta imagen. Es posible que se haya eliminado."
@@ -1276,6 +1275,96 @@
 			"stepLibrary": "Biblioteca",
 			"stepReview": "Revisar"
 		},
+		"createModal": {
+			"extractionTitle": "Graph RAG: LLM de extracción de conceptos",
+			"extractionHint": "El modelo que se usa durante la ingesta para extraer entidades y relaciones tipadas de cada fragmento. Bloqueado al crear, igual que el embedding.",
+			"extractionVendor": "Proveedor de extracción",
+			"extractionModel": "Modelo de extracción",
+			"extractionEndpoint": "Endpoint de extracción (opcional)",
+			"graphLabel": "Activar Graph RAG",
+			"graphRequiresChromadb": "Graph RAG requiere el backend vectorial chromadb (selecciónalo en Avanzado).",
+			"graphHint": "Crea un grafo de conocimiento junto al índice vectorial. Los documentos se indexan con un extractor LLM durante la ingesta; la recuperación combina la similitud vectorial con el recorrido del grafo. No se puede cambiar tras la creación."
+		},
+		"graphSection": "Grafo de conocimiento",
+		"graphEnabledBadge": "Graph RAG",
+		"graphEnabledHint": "Graph RAG se activó al crear y está bloqueado.",
+		"extractionSummary": "Extractor:",
+		"extractedEntities": "Entidades extraídas (KG-RAG)",
+		"extractedEntitiesEmpty": "No se encontraron entidades con nombre en la pregunta.",
+		"graph": {
+			"viewFullGraph": "Ver el grafo completo",
+			"viewFullGraphTitle": "Abre el grafo completo en una vista interactiva",
+			"notEnabledTitle": "Graph RAG no está activado en este Almacén de Conocimiento.",
+			"notEnabledTitleShort": "Graph RAG no está activado en este Almacén de Conocimiento",
+			"notEnabledBody": "Graph RAG se bloquea en el momento de la creación junto con la fragmentación, el embedding y la base de datos vectorial. Para usar Graph RAG, crea un nuevo Almacén de Conocimiento con el interruptor <span class=\"font-medium\">Activar Graph RAG</span>.",
+			"retrievalPolicyHtml": "<span class=\"font-semibold\">Política de recuperación:</span> solo los conceptos y las relaciones que marques como <span class=\"rounded bg-green-100 px-1 py-0.5 font-medium text-green-800\">verified</span> se utilizan para mejorar la recuperación del LLM. El LLM recibe los <span class=\"font-medium\">fragmentos</span> recuperados como contexto — el grafo determina <em>qué</em> fragmentos se devuelven (mediante la expansión de entidades de la pregunta + fusión RRF con la línea base vectorial), pero las tripletas concepto/relación no se añaden al prompt. Aprueba los elementos en los que confíes para que contribuyan a la recuperación.",
+			"refresh": "Actualizar",
+			"loading": "Cargando…",
+			"loadingGraph": "Cargando el grafo…",
+			"fullGraphLoading": "Cargando el grafo (puede tardar un momento en almacenes de conocimiento grandes)…",
+			"conceptLabel": "Concepto",
+			"conceptPlaceholder": "fragmento del nombre del concepto",
+			"filenameLabel": "Nombre del archivo",
+			"filenamePlaceholder": "nombre del archivo de origen",
+			"documentIdLabel": "ID del documento",
+			"documentIdPlaceholder": "id del documento del grafo",
+			"concepts": "Conceptos",
+			"relationships": "Relaciones",
+			"documents": "Documentos",
+			"chunks": "Fragmentos",
+			"edges": "Aristas",
+			"verifiedCount": "{count} verificados · {pct}",
+			"verifiedRatio": "{count}/{total} verificados",
+			"filterAll": "Todos",
+			"filterUnverified": "No verificados",
+			"filterVerified": "Verificados",
+			"filterRejected": "Rechazados",
+			"approveAll": "Aprobar todo",
+			"rejectAll": "Rechazar todo",
+			"noConcepts": "Todavía no hay nodos de concepto.",
+			"noConceptsFilter": "Ningún concepto coincide con el filtro seleccionado.",
+			"noRelationships": "Todavía no hay relaciones.",
+			"noRelationshipsFilter": "Ninguna relación coincide con el filtro seleccionado.",
+			"state": {
+				"verified": "verificado",
+				"unverified": "no verificado",
+				"rejected": "rechazado"
+			},
+			"save": "Guardar",
+			"cancel": "Cancelar",
+			"verify": "Verificar",
+			"unverify": "Desverificar",
+			"edit": "Editar",
+			"prev": "← Anterior",
+			"next": "Siguiente →",
+			"pageInfo": "Página {page} de {total} · {items} elementos",
+			"bulkApproval": "Aprobación masiva",
+			"bulkRejection": "Rechazo masivo",
+			"confirmBulkConcepts": "{reason} de TODOS los conceptos de este Almacén de Conocimiento. ¿Continuar?",
+			"confirmBulkRelationships": "{reason} de TODAS las relaciones de este Almacén de Conocimiento. ¿Continuar?",
+			"reasonSetState": "Estado establecido en {state} desde la interfaz del Almacén de Conocimiento",
+			"reasonRename": "Renombrado desde la interfaz del Almacén de Conocimiento",
+			"reasonEdit": "Editado desde la interfaz del Almacén de Conocimiento",
+			"errorLoad": "No se pudo cargar el grafo",
+			"errorSetState": "No se pudo establecer el estado {state}",
+			"errorRename": "Error al renombrar",
+			"errorEdit": "Error al editar",
+			"title": "Grafo de Conocimiento",
+			"statsLine": "{nodes} conceptos · {edges} relaciones",
+			"findConcept": "Busca un concepto (Intro para centrar)",
+			"find": "Buscar",
+			"close": "Cerrar",
+			"legend": "Leyenda",
+			"legendApproved": "Aprobado",
+			"legendUnverified": "No verificado",
+			"legendRejected": "Rechazado",
+			"legendRelatesTo": "arista RELATES_TO",
+			"nodeType": "tipo: {type}",
+			"nodeEntity": "entidad: {entity}",
+			"nodeVerification": "verificación: {verification}",
+			"nodeFilename": "archivo: {filename}",
+			"nodeChunks": "{count} fragmentos"
+		},
 		"addDescription": "Añadir descripción",
 		"chunkingParams": "Parámetros de fragmentación",
 		"collapseDetail": "Ocultar configuración bloqueada",
@@ -1320,6 +1409,9 @@
 			"next": "Siguiente",
 			"back": "Atrás",
 			"skip": "Omitir",
+			"create": "Crear",
+			"cancel": "Cancelar",
+			"abort": "Abortar",
 			"useExisting": "Usar uno existente",
 			"createNew": "Crear nuevo",
 			"advancedLabel": "Configuración avanzada",
@@ -1334,18 +1426,69 @@
 				"body": "La estrategia de fragmentación, el proveedor/modelo de embeddings y la base de datos vectorial quedan bloqueados al crear el Almacén de Conocimiento. Para cambiarlos, crea un nuevo Almacén.",
 				"paramsBody": "Los parámetros de fragmentación se pueden editar más tarde, pero los cambios solo se aplican al contenido recién indexado; los fragmentos existentes conservan los parámetros con los que se crearon originalmente."
 			},
+			"editDefaults": "Editar valores por defecto",
+			"progress": "Paso {current} de {total}",
+			"step0": {
+				"title": "Elige una Biblioteca",
+				"description": "Usa una Biblioteca existente o crea una nueva.",
+				"newLibrary": "Crear una nueva Biblioteca",
+				"existingLibrary": "Usar una Biblioteca existente",
+				"pickLibrary": "Elige una Biblioteca"
+			},
+			"step1": {
+				"title": "Detalles de la Biblioteca",
+				"description": "Dale un nombre a tu Biblioteca y una descripción opcional.",
+				"nameLabel": "Nombre de la Biblioteca",
+				"descriptionLabel": "Descripción (opcional)",
+				"sharedLabel": "Compartir con la organización"
+			},
+			"step2": {
+				"title": "Configuración de importación de la Biblioteca",
+				"description": "Los valores por defecto funcionan en la mayoría de los casos. Expande para personalizar los plugins de importación.",
+				"defaultPluginLabel": "Plugin de importación por defecto"
+			},
+			"step3": {
+				"title": "Añadir contenido inicial",
+				"description": "Opcionalmente, sube uno o varios archivos ahora. Siempre podrás añadir más más tarde.",
+				"uploadHint": "Arrastra archivos aquí o haz clic para examinar",
+				"uploaded": "subido",
+				"processing": "procesando",
+				"ready": "listo",
+				"failed": "fallido"
+			},
+			"step4": {
+				"title": "Elige un Almacén de Conocimiento",
+				"description": "Usa un Almacén de Conocimiento existente o crea uno nuevo.",
+				"newKs": "Crear un nuevo Almacén de Conocimiento",
+				"existingKs": "Usar un Almacén de Conocimiento existente",
+				"pickKs": "Elige un Almacén de Conocimiento"
+			},
+			"step5": {
+				"title": "Detalles del Almacén de Conocimiento",
+				"description": "Nombre y descripción opcional para el Almacén de Conocimiento.",
+				"nameLabel": "Nombre del Almacén de Conocimiento",
+				"descriptionLabel": "Descripción (opcional)",
+				"sharedLabel": "Compartir con la organización"
+			},
 			"step6": {
+				"title": "Knowledge Store configuration",
+				"description": "These choices control chunking and embedding. They are LOCKED after creation.",
 				"chunkingLabel": "Chunking strategy",
 				"vectorDbLabel": "Vector DB backend",
+				"embeddingVendorLabel": "Embedding vendor",
+				"embeddingModelLabel": "Embedding model",
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
 				"endpointLabel": "Embedding endpoint (optional)",
 				"noVendorConfigured": "Tu organización no tiene proveedores de embeddings configurados. Pide a un administrador que añada una clave de API en la configuración de la organización.",
+				"graphLabel": "Activar grafo semántico (Graph RAG)",
+				"graphHint": "Extrae conceptos y relaciones de los fragmentos ingeridos y los almacena en Neo4j. Requiere KG_RAG_ENABLED=true en el servidor de KB.",
 				"modelRequired": "La API no devolvió modelos para este proveedor; escribe un nombre de modelo para continuar."
 			},
 			"step7": {
 				"title": "Elige elementos para ingerir",
 				"description": "Elige qué elementos de la biblioteca indexar en el Almacén de Conocimiento.",
+				"allItems": "Todos los elementos",
 				"heading": "Selecciona elementos para indexar",
 				"newBadge": "NUEVO",
 				"noItems": "Esta biblioteca no tiene elementos listos. Puedes omitir este paso y añadir contenido más tarde."
@@ -1355,9 +1498,14 @@
 				"description": "Review your choices below. Click Create to proceed.",
 				"libraryHeading": "Library",
 				"ksHeading": "Knowledge Store",
+				"itemsHeading": "Items to ingest",
 				"itemsToIngest": "Elementos a ingerir",
 				"submit": "Create",
+				"submitting": "Creating...",
 				"heading": "Review & create",
+				"ingestionHeading": "Ingestion",
+				"ingestionCount": "{n} item(s) will be ingested",
+				"libraryPlugin": "Import plugin: {plugin}",
 				"libraryFileCount": "{n} file(s) to upload",
 				"libraryUrlCount": "{n} URL/YouTube source(s) to import",
 				"progressLibrary": "Creating library...",
@@ -1373,18 +1521,26 @@
 				"submitAdd": "Añadir"
 			},
 			"step9": {
+				"title": "Todo listo",
 				"heading": "¡Todo listo!",
 				"description": "Tu Biblioteca y Almacén de Conocimiento están listos. La ingesta se ejecuta en segundo plano — puedes ver el progreso en la página del Almacén de Conocimiento.",
+				"openKs": "Abrir Almacén de Conocimiento",
 				"openLibrary": "Abrir Biblioteca",
 				"createAnother": "Crear otro",
 				"toast": "Almacén de Conocimiento creado.",
 				"openKS": "Abrir Almacén de Conocimiento"
 			},
+			"stepProgress": "Paso {n} de {total}",
 			"creating": "Creando...",
 			"draft": {
 				"banner": "Tienes un borrador sin terminar de {time}.",
 				"resume": "Retomar",
-				"discard": "Descartar"
+				"discard": "Descartar",
+				"savePrompt": {
+					"title": "¿Guardar como borrador?",
+					"body": "Tu progreso se guardará hasta que cierres sesión o la pestaña.",
+					"save": "Guardar borrador"
+				}
 			},
 			"libraryStep": {
 				"title": "Configuración de Biblioteca",
@@ -1402,6 +1558,7 @@
 				"advancedLabel": "Avanzado: plugin de importación y parámetros",
 				"noPlugins": "No hay plugins de importación disponibles.",
 				"pluginLabel": "Plugin de importación",
+				"pluginNote": "Los parámetros por plugin se pueden personalizar más tarde desde la vista de detalle de la biblioteca.",
 				"descriptionLabel": "Descripción",
 				"pluginParamsHint": "Los valores por defecto provienen del plugin y funcionan para la mayoría de documentos; cámbialos solo si es necesario.",
 				"pluginParamsLabel": "Parámetros del plugin"
@@ -1409,10 +1566,16 @@
 			"libraryContent": {
 				"title": "Contenido de Biblioteca",
 				"heading": "Contenido inicial",
+				"description": "Añade contenido a tu nueva Biblioteca ahora (opcional). También puedes omitir esto y añadir contenido más tarde.",
+				"sourceTypeFiles": "Archivos",
+				"sourceTypeUrl": "URL",
+				"sourceTypeYouTube": "YouTube",
+				"pickLabel": "Seleccionar archivos",
 				"invalidUrl": "Se requiere una URL HTTP(S) válida.",
 				"invalidYoutubeUrl": "Se requiere una URL de YouTube válida.",
 				"titleOptional": "Título (opcional)",
 				"youtubeUrl": "URL de YouTube",
+				"ytLanguage": "Idioma de la transcripción",
 				"addUrl": "+ Añadir URL",
 				"addYouTube": "+ Añadir YouTube",
 				"queuedLabel": "Fuentes en cola",
@@ -1441,14 +1604,15 @@
 				"nameTooLong": "El nombre debe tener menos de 100 caracteres",
 				"shareLabel": "Compartir con mi organización",
 				"shareHint": "Puedes cambiarlo más tarde desde la vista de detalle del Almacén de Conocimiento.",
+				"advancedLabel": "Avanzado: fragmentación, proveedor/modelo de embedding, vector DB",
+				"graphHeading": "Graph RAG",
 				"vectorIndexingLabel": "Indexación vectorial: fragmentación, proveedor/modelo de embeddings, base de datos vectorial",
 				"otherIndexingLabel": "Otra estrategia de indexación (próximamente)",
 				"otherIndexingHint": "En una versión futura se podrán seleccionar aquí otras estrategias de indexación (más allá de la vectorial).",
 				"chunkingHeading": "Fragmentación",
 				"chunkingParamsHint": "Los valores por defecto funcionan para la mayoría de documentos; ajústalos solo si tienes un motivo. Puedes cambiarlos más tarde desde la vista de detalle del Almacén de Conocimiento, pero los cambios solo se aplican al contenido indexado después de la edición.",
 				"embeddingHeading": "Embedding",
-				"storageHeading": "Almacenamiento",
-				"advancedLabel": "Avanzado: fragmentación, proveedor/modelo de embedding, vector DB"
+				"storageHeading": "Almacenamiento"
 			},
 			"adding": "Añadiendo...",
 			"titleAddContent": "Añadir contenido"

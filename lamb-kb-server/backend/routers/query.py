@@ -41,6 +41,17 @@ async def query_collection(
     """
     results = query_service.query_collection(db, collection_id, body)
 
+    # When the collection has graph_enabled, query_service.query_collection
+    # routes through the KG-RAG plugin which attaches an identical
+    # ``kg_rag`` trace to every chunk's metadata. Surface its
+    # ``question_entities`` at the top level so callers don't need to dig
+    # through per-chunk metadata. ``None`` when the plugin didn't run.
+    entities: list[str] | None = None
+    if results:
+        trace = (results[0].metadata or {}).get("kg_rag") or {}
+        if "question_entities" in trace:
+            entities = list(trace.get("question_entities") or [])
+
     return QueryResponse(
         results=[
             QueryResultItem(
@@ -52,4 +63,5 @@ async def query_collection(
         ],
         query=body.query_text,
         top_k=body.top_k,
+        entities=entities,
     )

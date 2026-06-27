@@ -285,6 +285,97 @@ def execute_ingestion_job(
         total_chunks_added,
     )
 
+    _maybe_index_graph(
+        collection=collection,
+        docs_list=docs_list,
+        backend=backend,
+        embedding_function=embedding_function,
+        openai_api_key=credentials.get("kg_rag_openai_api_key", "")
+        or credentials.get("api_key", ""),
+    )
+
+
+def _maybe_index_graph(
+    *,
+    collection: Collection,
+    docs_list: list[dict],
+    backend,
+    embedding_function,
+    openai_api_key: str = "",
+) -> None:
+    """Run graph indexing for this batch if the collection opted in.
+
+    Failures here are logged and swallowed: vector ingestion already
+    committed, and we don't want a Neo4j hiccup to roll back successful
+    chunk insertions.
+
+    Pulls chunks back from the vector backend (via the public
+    ``get_chunks_by_source`` surface) so the graph indexer has stable
+    chunk IDs that match what's searchable. Backends that don't
+    implement that method silently return empty lists, which we treat as
+    "no chunks to index" and log a one-line warning.
+    """
+    if not getattr(collection, "graph_enabled", False):
+        return
+
+    import config as config_module  # noqa: PLC0415
+
+    kg_config = config_module.get_kg_rag_config()
+    if not kg_config.get("enabled") or not kg_config.get("index_on_ingest", True):
+        return
+
+    from services.graph_indexing import (  # noqa: PLC0415
+        index_chunks_for_collection,
+    )
+
+    source_ids = [doc["source_item_id"] for doc in docs_list]
+    backend_collection_id = collection.backend_collection_id or collection.id
+    for source_id in source_ids:
+        try:
+            fetched = backend.get_chunks_by_source(
+                collection_id=backend_collection_id,
+                storage_path=collection.storage_path,
+                source_item_id=source_id,
+                embedding_function=embedding_function,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Graph indexing: backend %s failed to fetch source %s: %s",
+                collection.vector_db_backend,
+                source_id,
+                exc,
+            )
+            continue
+
+        if not fetched:
+            logger.debug(
+                "Graph indexing: no chunks returned for source %s on backend %s; "
+                "skipping. (Most likely the backend does not support "
+                "get_chunks_by_source.)",
+                source_id,
+                collection.vector_db_backend,
+            )
+            continue
+
+        result = index_chunks_for_collection(
+            collection=collection,
+            ids=[
+                str(item.metadata.get("chunk_id") or item.metadata.get("document_id") or "")
+                for item in fetched
+            ],
+            texts=[item.text for item in fetched],
+            metadatas=[dict(item.metadata or {}) for item in fetched],
+            openai_api_key=openai_api_key,
+            filename=source_id,
+        )
+        if result.get("error"):
+            logger.warning(
+                "Graph indexing for source %s in collection %s reported: %s",
+                source_id,
+                collection.id,
+                result["error"],
+            )
+
 
 def delete_vectors(
     db: Session, collection_id: str, source_item_id: str
@@ -346,6 +437,8 @@ def delete_vectors(
         )
     db.commit()
 
+    _maybe_delete_graph_document(collection, source_item_id)
+
     logger.info(
         "Deleted %d vectors for source_item_id '%s' from collection %s",
         deleted_count,
@@ -353,6 +446,35 @@ def delete_vectors(
         collection_id,
     )
     return deleted_count
+
+
+def _maybe_delete_graph_document(collection: Collection, source_item_id: str) -> None:
+    """Remove graph data for a deleted source item if the collection has graph_enabled."""
+    if not getattr(collection, "graph_enabled", False):
+        return
+
+    import config as config_module  # noqa: PLC0415
+
+    if not config_module.get_kg_rag_config().get("enabled"):
+        return
+
+    from services.graph_store import get_graph_store  # noqa: PLC0415
+
+    org_id = str(collection.organization_id or "")
+    try:
+        get_graph_store().delete_document(collection.id, org_id, source_item_id)
+        logger.info(
+            "Graph data removed for source_item_id '%s' in collection %s",
+            source_item_id,
+            collection.id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Graph cleanup for source '%s' in collection %s failed: %s",
+            source_item_id,
+            collection.id,
+            exc,
+        )
 
 
 def cancel_job(db: Session, job_id: str) -> IngestionJob:

@@ -99,11 +99,83 @@ def init_db() -> None:
 
     event.listen(_engine, "connect", _enable_sqlite_wal)
 
+    # Bring the schema to head with Alembic, then apply the KG-RAG columns
+    # via the idempotent lightweight path. Those columns are declared on the
+    # model but are not yet part of the Alembic baseline, so we add them here
+    # for fresh DBs; the migration skips any column that already exists, so it
+    # is also safe on installations created by the historical create_all path.
     _run_migrations()
+    _run_lightweight_migrations(_engine)
 
     _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
 
     logger.info("Database initialized at %s", DB_PATH)
+
+
+def _run_lightweight_migrations(engine: Engine) -> None:
+    """Apply forward-compatible ALTER TABLEs that ``create_all`` cannot do.
+
+    ``Base.metadata.create_all`` only creates missing *tables*; it never
+    adds missing *columns* to existing tables. When this repo evolves the
+    schema with a new column on an already-populated DB, we apply the
+    change here so existing deployments don't crash on the next query.
+
+    Add new entries below as additive, idempotent ``ALTER TABLE ADD
+    COLUMN`` statements; never delete data or change types here — those
+    need a real migration tool.
+    """
+    additions = [
+        # (table, column, ddl-snippet)
+        (
+            "collections",
+            "graph_enabled",
+            "INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "collections",
+            "extraction_vendor",
+            "TEXT",
+        ),
+        (
+            "collections",
+            "extraction_model",
+            "TEXT",
+        ),
+        (
+            "collections",
+            "extraction_endpoint",
+            "TEXT",
+        ),
+    ]
+    # Use a direct sqlite3 connection rather than the SQLAlchemy engine.
+    # The engine's pool keeps the underlying connection around between
+    # calls (with WAL state intact), and that lingering state has been
+    # observed to interfere with fork-based tests that re-acquire the
+    # data-directory lock. A short-lived ``sqlite3.connect`` opened and
+    # closed entirely inside this function sidesteps that.
+    import sqlite3  # noqa: PLC0415
+
+    db_url = str(engine.url)
+    if not db_url.startswith("sqlite:///"):
+        return  # Only SQLite needs this hand-rolled path right now.
+    db_file = db_url[len("sqlite:///") :]
+    conn = sqlite3.connect(db_file)
+    try:
+        for table, column, ddl in additions:
+            cur = conn.execute(f"PRAGMA table_info({table})")
+            existing = {row[1] for row in cur.fetchall()}
+            if column in existing:
+                continue
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+            conn.commit()
+            logger.info(
+                "Schema migration applied: ALTER TABLE %s ADD COLUMN %s %s",
+                table,
+                column,
+                ddl,
+            )
+    finally:
+        conn.close()
 
 
 def get_session() -> Generator[Session, None, None]:
