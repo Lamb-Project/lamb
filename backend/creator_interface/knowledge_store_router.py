@@ -554,19 +554,34 @@ async def add_content(
     job_id = result.get("job_id")
     links = []
     for doc in documents:
+        item_id = doc["source_item_id"]
         link_id = _db.register_kb_content_link(
             knowledge_store_id=ks_id,
             library_id=body.library_id,
-            library_item_id=doc["source_item_id"],
+            library_item_id=item_id,
             organization_id=org_id,
             created_by_user_id=auth.user.get("id"),
             kb_job_id=job_id,
             status="processing",
         )
+        if not link_id:
+            # The INSERT hit the UNIQUE(ks, item) constraint, so a link already
+            # exists. Items in 'pending'/'processing'/'ready' were skipped above,
+            # so this is a previously 'failed' link being retried: re-point it at
+            # the new job instead of leaving it stuck on the stale 'failed' row.
+            _db.update_kb_content_link_status(
+                knowledge_store_id=ks_id,
+                library_item_id=item_id,
+                status="processing",
+                kb_job_id=job_id,
+                error_message="",
+            )
+            existing = _db.get_kb_content_link(ks_id, item_id)
+            link_id = existing.get("id") if existing else None
         if link_id:
             links.append({
                 "id": link_id,
-                "library_item_id": doc["source_item_id"],
+                "library_item_id": item_id,
                 "kb_job_id": job_id,
                 "status": "processing",
             })

@@ -288,8 +288,12 @@
 			}
 
 			// 2. Upload pending files.
-			/** @type {string[]} */
-			const newlyReadyIds = [];
+			// Maps each selection id (`pendingFile_{i}` / `pendingUrl_{i}`) to the
+			// resulting library item id, but only once the item reaches 'ready'.
+			// Keyed (not positional) so a partial upload failure can't desync the
+			// selection-to-item mapping in step 4.
+			/** @type {Record<string, string>} */
+			const readyItemIdBySelId = {};
 			const pending = wizardState.pendingFiles ?? [];
 			if (pending.length > 0 && libraryId) {
 				for (let i = 0; i < pending.length; i += 1) {
@@ -324,7 +328,7 @@
 						const finalStatus = await pollItem(libraryId, itemId);
 						finishStep(finalStatus === 'ready' ? 'done' : 'failed');
 						if (finalStatus === 'ready') {
-							newlyReadyIds.push(itemId);
+							readyItemIdBySelId[`pendingFile_${i}`] = itemId;
 						}
 					} catch (e) {
 						console.error(`Upload failed for ${f.name}`, e);
@@ -385,7 +389,7 @@
 						const finalStatus = await pollItem(libraryId, itemId);
 						finishStep(finalStatus === 'ready' ? 'done' : 'failed');
 						if (finalStatus === 'ready') {
-							newlyReadyIds.push(itemId);
+							readyItemIdBySelId[`pendingUrl_${i}`] = itemId;
 						}
 					} catch (e) {
 						console.error(`URL import failed for ${src.url}`, e);
@@ -431,22 +435,18 @@
 			let itemsToIngest = [];
 			{
 				const selectedIds = wizardState.selectedItemIds || [];
-				const pendingFiles = wizardState.pendingFiles ?? [];
 				for (const selId of selectedIds) {
-					const fileMatch = selId.match(/^pendingFile_(\d+)$/);
-					const urlMatch = selId.match(/^pendingUrl_(\d+)$/);
-					if (fileMatch) {
-						const idx = parseInt(fileMatch[1], 10);
-						if (idx < pendingFiles.length && idx < newlyReadyIds.length) {
-							itemsToIngest.push(newlyReadyIds[idx]);
-						}
-					} else if (urlMatch) {
-						const idx = parseInt(urlMatch[1], 10);
-						const urlOffset = pendingFiles.length;
-						if (urlOffset + idx < newlyReadyIds.length) {
-							itemsToIngest.push(newlyReadyIds[urlOffset + idx]);
+					const isPending = /^pending(File|Url)_\d+$/.test(selId);
+					if (isPending) {
+						// Pending upload/import: include only if it reached 'ready'.
+						// Look up by selection id so a partial failure can't shift
+						// the mapping onto the wrong item.
+						const readyId = readyItemIdBySelId[selId];
+						if (readyId) {
+							itemsToIngest.push(readyId);
 						}
 					} else {
+						// Already-existing library item: ingest as-is.
 						itemsToIngest.push(selId);
 					}
 				}
