@@ -273,7 +273,7 @@ def _assistant_exposes_sources(assistant: Any) -> bool:
     try:
         capabilities = json.loads(metadata_str).get("capabilities", {}) or {}
         return bool(capabilities.get("expose_sources", False))
-    except (json.JSONDecodeError, AttributeError):
+    except (json.JSONDecodeError, AttributeError, TypeError):
         return False
 
 

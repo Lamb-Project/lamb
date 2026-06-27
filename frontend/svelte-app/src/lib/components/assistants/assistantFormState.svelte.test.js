@@ -28,6 +28,7 @@ vi.mock('$lib/stores/assistantConfigStore', async () => {
 
 vi.mock('$lib/utils/ragProcessorHelpers.js', () => ({
 	isKbBasedRag: (p) => ['simple_rag', 'context_aware_rag', 'hierarchical_rag'].includes(p),
+	isKsBasedRag: (p) => ['query_rewriting_ks_rag', 'knowledge_store_rag'].includes(p),
 	isSingleFileRag: (p) => p === 'single_file_rag',
 	isRubricRag: (p) => p === 'rubric_rag',
 	normalizeRagProcessor: (p) => p || 'no_rag'
