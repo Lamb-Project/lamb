@@ -76,6 +76,25 @@ class TestSplitIntoPages:
         pages = _split_into_pages("Page 1\n\n---\n\n\n\n---\n\nPage 3", "pdf")
         assert len(pages) == 2
 
+    def test_blank_sections_do_not_create_page_number_gaps(self):
+        """Empty parts must not consume a page index.
+
+        ``"Page 1 / <blank> / Page 3"`` splits into three parts, but the blank
+        middle one is dropped. The two surviving pages must be numbered 1 and 2
+        (contiguous) rather than 1 and 3 — otherwise the on-disk
+        ``page_NNN.md`` filenames would have gaps.
+        """
+        pages = _split_into_pages("Page 1\n\n---\n\n\n\n---\n\nPage 3", "pdf")
+        assert [p.text for p in pages] == ["Page 1", "Page 3"]
+        assert [p.page_number for p in pages] == [1, 2]
+
+    def test_multiple_interior_blanks_stay_contiguous(self):
+        """Several blank sections still yield 1,2,3 with no gaps."""
+        content = "A\n\n---\n\n\n\n---\n\nB\n\n---\n\n\n\n---\n\nC"
+        pages = _split_into_pages(content, "pdf")
+        assert [p.text for p in pages] == ["A", "B", "C"]
+        assert [p.page_number for p in pages] == [1, 2, 3]
+
 
 # ---------------------------------------------------------------------------
 # _image_mime + _EXT_NORMALIZE

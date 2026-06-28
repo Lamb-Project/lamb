@@ -26,6 +26,36 @@ from typing import Any
 from unittest import mock
 
 # ---------------------------------------------------------------------------
+# DNS — url_import's SSRF guard resolves the target host via
+# ``socket.getaddrinfo`` before any fetch. Tests must never hit a real
+# resolver, so this fake returns a fixed, deterministic address.
+# ---------------------------------------------------------------------------
+
+
+def make_fake_getaddrinfo(ip: str = "93.184.216.34"):
+    """Build a ``socket.getaddrinfo`` replacement that always returns ``ip``.
+
+    ``93.184.216.34`` (the historical example.com address) is a public,
+    non-private address, so the SSRF guard treats it as allowed.
+    """
+    import socket as _socket
+
+    family = _socket.AF_INET6 if ":" in ip else _socket.AF_INET
+
+    def _fake_getaddrinfo(host: Any, port: Any, *args: Any, **kwargs: Any):
+        return [(family, _socket.SOCK_STREAM, 6, "", (ip, port or 0))]
+
+    return _fake_getaddrinfo
+
+
+@contextmanager
+def patch_dns(ip: str = "93.184.216.34"):
+    """Patch ``socket.getaddrinfo`` so host resolution returns ``ip`` offline."""
+    with mock.patch("socket.getaddrinfo", make_fake_getaddrinfo(ip)):
+        yield
+
+
+# ---------------------------------------------------------------------------
 # markitdown — used by markitdown_import, markitdown_plus_import, and the
 # url_import direct-fetch fallback. Call shape:
 #     md = MarkItDown(); result = md.convert(src); result.text_content

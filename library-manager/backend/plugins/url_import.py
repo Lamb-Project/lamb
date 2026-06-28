@@ -6,7 +6,9 @@ result to Markdown. When no key is configured, it falls back to a direct
 HTTP fetch + MarkItDown conversion of the single URL.
 """
 
+import ipaddress
 import logging
+import socket
 import time
 from typing import Any
 from urllib.parse import urlparse
@@ -71,12 +73,7 @@ class UrlImportPlugin(LibraryImportPlugin):
         if parsed.scheme not in ("http", "https"):
             raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
         hostname = parsed.hostname or ""
-        _blocked = {
-            "localhost", "127.0.0.1", "0.0.0.0", "::1",
-            "169.254.169.254", "metadata.google.internal",
-        }
-        if hostname.lower() in _blocked:
-            raise ValueError(f"URL host is not allowed: {hostname}")
+        _guard_ssrf(hostname)
 
         api_keys = api_keys or {}
         firecrawl_key = api_keys.get("firecrawl_key", "")
@@ -98,6 +95,7 @@ class UrlImportPlugin(LibraryImportPlugin):
     ) -> ImportResult:
         from firecrawl import FirecrawlApp  # noqa: PLC0415
 
+        _guard_ssrf(urlparse(url).hostname or "")
         api_url = api_keys.get("firecrawl_url", "https://api.firecrawl.dev")
         timeout_s = _safe_int(kwargs.get("timeout"), 300)
         self.report_progress(kwargs, 0, 3, f"Scraping {url} via Firecrawl...")
@@ -200,6 +198,7 @@ class UrlImportPlugin(LibraryImportPlugin):
                 "markitdown is not installed. Install it with: pip install 'markitdown[all]'"
             ) from exc
 
+        _guard_ssrf(urlparse(url).hostname or "")
         self.report_progress(kwargs, 0, 2, f"Fetching {url}...")
         t0 = time.monotonic()
         try:
@@ -283,6 +282,95 @@ class UrlImportPlugin(LibraryImportPlugin):
                 advanced=True,
             ),
         ]
+
+
+# Explicit hostname denylist kept in addition to IP-range classification, so
+# obviously-internal names are rejected even if DNS resolution is unavailable.
+_BLOCKED_HOSTNAMES = {
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0",
+    "::1",
+    "169.254.169.254",
+    "metadata.google.internal",
+}
+
+
+def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Return True if an IP belongs to a private/reserved/internal range.
+
+    Covers IPv4 private ranges (10/8, 172.16/12, 192.168/16), loopback
+    (127/8, ::1), link-local (169.254/16 incl. cloud metadata, fe80::/10),
+    ULA (fc00::/7), reserved (0.0.0.0/8 and others), and multicast. For
+    IPv4-mapped IPv6 addresses, the embedded IPv4 address is also checked.
+
+    Args:
+        ip: Parsed IP address.
+
+    Returns:
+        True if the address must be blocked.
+    """
+    if (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    ):
+        return True
+    # Unwrap IPv4-mapped/compat IPv6 (e.g. ::ffff:169.254.169.254) and recheck.
+    mapped = getattr(ip, "ipv4_mapped", None)
+    return mapped is not None and _is_blocked_ip(mapped)
+
+
+def _guard_ssrf(hostname: str) -> None:
+    """Reject hostnames that resolve to private/reserved/internal addresses.
+
+    Defends against SSRF by (1) rejecting an explicit denylist of internal
+    hostnames and (2) resolving the host to all of its IP addresses and
+    rejecting if ANY resolved address falls in a private/reserved range.
+
+    Args:
+        hostname: The target hostname (or literal IP) from the URL.
+
+    Raises:
+        ValueError: If the host is empty, denylisted, or resolves to a
+            private/reserved/internal address.
+    """
+    host = hostname.strip().lower()
+    if not host:
+        raise ValueError("URL host is missing")
+
+    if host in _BLOCKED_HOSTNAMES:
+        raise ValueError(f"URL host is not allowed: {hostname}")
+
+    # If the host is already a literal IP, classify it directly.
+    try:
+        literal_ip = ipaddress.ip_address(host)
+    except ValueError:
+        literal_ip = None
+    if literal_ip is not None:
+        if _is_blocked_ip(literal_ip):
+            raise ValueError(f"URL host resolves to a blocked address: {hostname}")
+        return
+
+    # Resolve the hostname to every address and block if any is internal.
+    try:
+        addrinfo = socket.getaddrinfo(host, None)
+    except OSError as exc:
+        raise ValueError(f"Could not resolve URL host: {hostname}") from exc
+
+    for family, _type, _proto, _canon, sockaddr in addrinfo:
+        ip_str = sockaddr[0]
+        try:
+            resolved = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+        if _is_blocked_ip(resolved):
+            raise ValueError(
+                f"URL host resolves to a blocked address: {hostname} ({ip_str})"
+            )
 
 
 def _safe_int(value: Any, default: int) -> int:

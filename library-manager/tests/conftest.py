@@ -85,6 +85,29 @@ def _setup_session():
     shutil.rmtree(_TEST_DIR, ignore_errors=True)
 
 
+@pytest.fixture(autouse=True)
+def _stub_dns(request):
+    """Resolve all hostnames to a fixed public IP so no test hits a resolver.
+
+    ``url_import``'s SSRF guard calls ``socket.getaddrinfo`` before fetching.
+    Without this, in-process unit/integration tests that import a public URL
+    (``example.com``, ``x.com``) would perform real DNS — flaky and offline-
+    hostile. A public address keeps the guard's allow-path exercised. Tests
+    that need a *different* resolution (e.g. a private IP, or a lookup
+    failure) install their own ``socket.getaddrinfo`` patch, which wins.
+
+    Skipped for e2e tests, whose work happens in a separate subprocess that
+    this in-process patch could not reach anyway.
+    """
+    if "/tests/e2e/" in str(request.node.fspath).replace(os.sep, "/"):
+        yield
+        return
+    from _fakes import patch_dns  # noqa: PLC0415
+
+    with patch_dns():
+        yield
+
+
 def pytest_collection_modifyitems(config, items):
     """Auto-tag each test with its tier marker based on its directory.
 

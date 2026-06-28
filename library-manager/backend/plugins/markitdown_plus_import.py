@@ -481,10 +481,12 @@ def _split_into_pages(content: str, file_ext: str) -> list[PageContent]:
         parts = pattern.split(content)
         if len(parts) > 1:
             pages = []
-            for i, text in enumerate(parts):
+            for text in parts:
                 stripped = text.strip()
                 if stripped:
-                    pages.append(PageContent(page_number=i + 1, text=stripped))
+                    # Number pages contiguously (1, 2, 3, ...) — empty parts
+                    # must not consume a page index or filenames would have gaps.
+                    pages.append(PageContent(page_number=len(pages) + 1, text=stripped))
             if len(pages) > 1:
                 return pages
 
