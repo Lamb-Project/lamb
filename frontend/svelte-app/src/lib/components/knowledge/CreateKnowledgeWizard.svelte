@@ -45,7 +45,8 @@
 	import StepReviewCreate from './wizard/Step8_ReviewCreate.svelte';
 	import StepDone from './wizard/Step9_Done.svelte';
 
-	import { Stepper, Banner, Button } from '$lib/components/ui';
+	import { Stepper, Banner, Button, IconButton } from '$lib/components/ui';
+	import { X } from '$lib/components/ui/icons.js';
 
 	const dispatch = createEventDispatcher();
 
@@ -425,7 +426,7 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="bg-surface shadow-modal border-border mx-4 mx-auto flex max-h-[92vh] w-full max-w-full flex-col rounded-xl border md:max-w-3xl"
+		class="bg-surface shadow-modal border-border mx-auto flex max-h-[92vh] w-full max-w-full flex-col rounded-xl border md:max-w-3xl"
 		onclick={stopPropagation}
 	>
 		<header class="border-border border-b px-6 py-4">
@@ -437,14 +438,13 @@
 						{$_('knowledge.wizard.title', { default: 'Create Knowledge' })}
 					{/if}
 				</h2>
-				<button
-					type="button"
+				<IconButton
+					icon={X}
+					variant="ghost"
+					size="sm"
 					onclick={close}
-					class="text-text-subtle hover:text-text rounded-md p-1 text-xl leading-none transition-colors"
-					aria-label={$_('common.close', { default: 'Close' })}
-				>
-					&times;
-				</button>
+					ariaLabel={$_('common.close', { default: 'Close' })}
+				/>
 			</div>
 
 			<!-- Draft banner -->

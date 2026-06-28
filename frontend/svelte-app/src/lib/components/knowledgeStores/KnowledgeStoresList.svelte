@@ -506,7 +506,8 @@
 			applyFiltersAndPagination();
 			toast.success(
 				$_('knowledgeStores.deleteSuccess', {
-					default: `Knowledge Store "${targetName}" deleted.`
+					default: `Knowledge Store "${targetName}" deleted.`,
+					values: { name: targetName }
 				})
 			);
 			loadStores(); // background revalidate
@@ -569,7 +570,8 @@
 	async function handleCreated(event) {
 		toast.success(
 			$_('knowledgeStores.createSuccess', {
-				default: `Knowledge Store "${event.detail.name}" created.`
+				default: `Knowledge Store "${event.detail.name}" created.`,
+				values: { name: event.detail.name }
 			})
 		);
 		await loadStores();

@@ -49,8 +49,8 @@
 	} from '$lib/services/knowledgeStoreService';
 	import PluginPickerModal from '$lib/components/libraries/PluginPickerModal.svelte';
 	import { _ } from '$lib/i18n';
-	import { Card, Banner, IconButton } from '$lib/components/ui';
-	import { Pencil, Loader2, CheckCircle2, AlertCircle } from '$lib/components/ui/icons.js';
+	import { Card, Banner, IconButton, Button } from '$lib/components/ui';
+	import { Pencil, Loader2, CheckCircle2, AlertCircle, RefreshCw } from '$lib/components/ui/icons.js';
 
 	/** @type {any[]} */
 	let plugins = $state([]);
@@ -513,13 +513,7 @@
 	});
 
 	/** Number of items the user has chosen to ingest (may be a subset). */
-	let summarySelectedCount = $derived.by(() => {
-		if (wizardState.libraryPath === 'new') {
-			const selectedIds = wizardState.selectedItemIds ?? [];
-			return selectedIds.length;
-		}
-		return (wizardState.selectedItemIds ?? []).length;
-	});
+	let summarySelectedCount = $derived((wizardState.selectedItemIds ?? []).length);
 
 	// Wizard step indices kept in sync with CreateKnowledgeWizard.
 	const STEP_LIBRARY_SETUP = 1;
@@ -549,13 +543,9 @@
 	{#if error}
 		<Banner variant="danger" description={error}>
 			{#snippet actions()}
-				<button
-					type="button"
-					onclick={handleCreate}
-					class="text-danger text-sm font-medium underline hover:no-underline"
-				>
+				<Button variant="secondary" iconLeftComponent={RefreshCw} onclick={handleCreate}>
 					{$_('knowledge.wizard.step8.retry', { default: 'Retry' })}
-				</button>
+				</Button>
 			{/snippet}
 		</Banner>
 	{/if}

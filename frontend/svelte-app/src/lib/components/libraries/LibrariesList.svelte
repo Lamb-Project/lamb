@@ -403,7 +403,8 @@
 	async function handleCreated(event) {
 		toast.success(
 			$_('libraries.createSuccess', {
-				default: `Library "${event.detail.name}" created.`
+				default: `Library "${event.detail.name}" created.`,
+				values: { name: event.detail.name }
 			})
 		);
 		await loadLibraries();
@@ -453,7 +454,12 @@
 			libraries = libraries.filter((l) => l.id !== targetId);
 			removeLibraryFromCache(orgId, targetId);
 			applyFiltersAndPagination();
-			toast.success($_('libraries.deleteSuccess', { default: `Library "${targetName}" deleted.` }));
+			toast.success(
+				$_('libraries.deleteSuccess', {
+					default: `Library "${targetName}" deleted.`,
+					values: { name: targetName }
+				})
+			);
 			loadLibraries(); // background revalidate
 		} catch (/** @type {unknown} */ err) {
 			deleteError = err instanceof Error ? err.message : 'Delete failed';
