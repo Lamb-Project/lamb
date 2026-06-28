@@ -84,7 +84,7 @@ function getFallbackCapabilities() {
 	const capabilities = {
 		prompt_processors: ['simple_augment'],
 		connectors: {},
-		rag_processors: ['no_rag', 'simple_rag', 'context_aware_rag', 'single_file_rag']
+		rag_processors: ['no_rag', 'simple_rag', 'context_aware_rag', 'hierarchical_rag', 'single_file_rag', 'query_rewriting_ks_rag', 'knowledge_store_rag', 'rubric_rag']
 	};
 	return capabilities;
 }
@@ -324,8 +324,7 @@ function createAssistantConfigStore() {
 					const key = localStorage.key(index);
 					if (
 						key &&
-						(key.startsWith(CAPABILITIES_CACHE_PREFIX) ||
-							key.startsWith(DEFAULTS_CACHE_PREFIX))
+						(key.startsWith(CAPABILITIES_CACHE_PREFIX) || key.startsWith(DEFAULTS_CACHE_PREFIX))
 					) {
 						keysToRemove.push(key);
 					}

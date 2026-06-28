@@ -14,41 +14,41 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 function getGitCommitHash() {
-  try {
-    const hash = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim();
-    return hash;
-  } catch (error) {
-    console.warn('Warning: Could not get git commit hash:', error.message);
-    return 'unknown';
-  }
+	try {
+		const hash = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim();
+		return hash;
+	} catch (error) {
+		console.warn('Warning: Could not get git commit hash:', error.message);
+		return 'unknown';
+	}
 }
 
 function getGitBranch() {
-  try {
-    const branch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
-    return branch;
-  } catch (error) {
-    console.warn('Warning: Could not get git branch:', error.message);
-    return 'unknown';
-  }
+	try {
+		const branch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
+		return branch;
+	} catch (error) {
+		console.warn('Warning: Could not get git branch:', error.message);
+		return 'unknown';
+	}
 }
 
 function getGitCommitDate() {
-  try {
-    const date = execSync('git log -1 --format=%cd --date=short', { encoding: 'utf-8' }).trim();
-    return date;
-  } catch (error) {
-    console.warn('Warning: Could not get git commit date:', error.message);
-    return 'unknown';
-  }
+	try {
+		const date = execSync('git log -1 --format=%cd --date=short', { encoding: 'utf-8' }).trim();
+		return date;
+	} catch (error) {
+		console.warn('Warning: Could not get git commit date:', error.message);
+		return 'unknown';
+	}
 }
 
 const version = {
-  version: '0.6',
-  commit: getGitCommitHash(),
-  branch: getGitBranch(),
-  commitDate: getGitCommitDate(),
-  buildDate: new Date().toISOString().split('T')[0]
+	version: '0.6',
+	commit: getGitCommitHash(),
+	branch: getGitBranch(),
+	commitDate: getGitCommitDate(),
+	buildDate: new Date().toISOString().split('T')[0]
 };
 
 const outputPath = join(__dirname, '../src/lib/version.js');

@@ -105,7 +105,7 @@ test.describe.serial("Knowledge Base Detail Modals", () => {
     await expect(modal).toBeVisible({ timeout: 2_000 });
     
     // Modal should contain delete-related text
-    await expect(modal.locator("h3")).toContainText(/delete/i);
+    await expect(modal.locator("h2")).toContainText(/delete/i);
     
     // Check for Cancel and Delete/Confirm buttons
     const cancelButton = modal.locator("button", { hasText: /cancel/i });

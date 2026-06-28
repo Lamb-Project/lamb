@@ -31,10 +31,10 @@ import { user } from './userStore';
 
 /** @type {AssistantsState} */
 const initialState = {
-  items: [],
-  loading: false,
-  error: null,
-  lastLoaded: null
+	items: [],
+	loading: false,
+	error: null,
+	lastLoaded: null
 };
 
 /**
@@ -43,90 +43,90 @@ const initialState = {
  * plus custom methods loadAssistants, reset, and destroy.
  */
 const createAssistantsStore = () => {
-  // Create the writable store with initial state and explicit type
-  const { subscribe, set, update } = writable(initialState);
+	// Create the writable store with initial state and explicit type
+	const { subscribe, set, update } = writable(initialState);
 
-  // Initialize user subscription to handle login/logout
-  /** @type {() => void | undefined} */
-  let unsubscribe;
-  if (browser) {
-    unsubscribe = user.subscribe(userData => {
-      if (!userData.isLoggedIn) {
-        // Clear assistants when user logs out
-        set(initialState); // Reset to initial state
-      }
-    });
-  }
+	// Initialize user subscription to handle login/logout
+	/** @type {() => void | undefined} */
+	let unsubscribe;
+	if (browser) {
+		unsubscribe = user.subscribe((userData) => {
+			if (!userData.isLoggedIn) {
+				// Clear assistants when user logs out
+				set(initialState); // Reset to initial state
+			}
+		});
+	}
 
-  return {
-    subscribe,
-    set,     // Expose set if needed directly
-    update,  // Expose update if needed directly
-    
-    /**
-     * Load assistants from the backend
-     * @returns {Promise<void>}
-     */
-    loadAssistants: async () => {
-      // Only run in browser
-      if (!browser) return;
-      
-      // Update store to loading state
-      update(state => ({
-        ...state,
-        loading: true,
-        error: null
-      }));
-      
-      try {
-        // Fetch fresh data from the backend
-        // getAssistants returns an object: { assistants: Assistant[], total_count: number }
-        const response = await getAssistants();
+	return {
+		subscribe,
+		set, // Expose set if needed directly
+		update, // Expose update if needed directly
 
-        // Defensive: an unexpected response shape used to leave the store
-        // with `items: undefined` and the next render iterating over a
-        // non-iterable. Always coerce to an array. (#352, H12)
-        const items = Array.isArray(response?.assistants) ? response.assistants : [];
+		/**
+		 * Load assistants from the backend
+		 * @returns {Promise<void>}
+		 */
+		loadAssistants: async () => {
+			// Only run in browser
+			if (!browser) return;
 
-        set({
-          items,
-          loading: false,
-          error: null,
-          lastLoaded: new Date()
-        });
+			// Update store to loading state
+			update((state) => ({
+				...state,
+				loading: true,
+				error: null
+			}));
 
-        console.log('Assistants store updated with fresh data:', items.length, 'items');
-      } catch (error) {
-        console.error('Error loading assistants:', error);
-        let message = 'Failed to load assistants';
-        if (error instanceof Error) {
-          message = error.message;
-        }
-        // Update store with error. Preserve any previously loaded items
-        // so a transient failure during a refresh doesn't blank the UI.
-        update(state => ({
-          ...state,
-          loading: false,
-          error: message
-        }));
-      }
-    },
-    
-    /**
-     * Reset the store to its initial state
-     */
-    reset: () => {
-      set(initialState); // Reset to initial state
-    },
-    
-    /**
-     * Clean up any subscriptions
-     */
-    destroy: () => {
-      if (unsubscribe) unsubscribe();
-    }
-  };
+			try {
+				// Fetch fresh data from the backend
+				// getAssistants returns an object: { assistants: Assistant[], total_count: number }
+				const response = await getAssistants();
+
+				// Defensive: an unexpected response shape used to leave the store
+				// with `items: undefined` and the next render iterating over a
+				// non-iterable. Always coerce to an array. (#352, H12)
+				const items = Array.isArray(response?.assistants) ? response.assistants : [];
+
+				set({
+					items,
+					loading: false,
+					error: null,
+					lastLoaded: new Date()
+				});
+
+				console.log('Assistants store updated with fresh data:', items.length, 'items');
+			} catch (error) {
+				console.error('Error loading assistants:', error);
+				let message = 'Failed to load assistants';
+				if (error instanceof Error) {
+					message = error.message;
+				}
+				// Update store with error. Preserve any previously loaded items
+				// so a transient failure during a refresh doesn't blank the UI.
+				update((state) => ({
+					...state,
+					loading: false,
+					error: message
+				}));
+			}
+		},
+
+		/**
+		 * Reset the store to its initial state
+		 */
+		reset: () => {
+			set(initialState); // Reset to initial state
+		},
+
+		/**
+		 * Clean up any subscriptions
+		 */
+		destroy: () => {
+			if (unsubscribe) unsubscribe();
+		}
+	};
 };
 
 // Create and export the store
-export const assistants = createAssistantsStore(); 
+export const assistants = createAssistantsStore();

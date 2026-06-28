@@ -6,10 +6,10 @@
 	import { get } from 'svelte/store';
 	import { createAssistant, updateAssistant } from '$lib/services/assistantService';
 	import { extractModelsFromConnectorData, selectModel } from './logic/assistantFormUtils.svelte.js';
-	import { isKbBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
+	import { isKbBasedRag, isKsBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
 	import { validateImportedAssistant } from './logic/importAssistantValidator.js';
 	import { createAssistantFormState, resetFormFieldsToDefaults, populateFormFields, revertToInitial, clearRagDependentState, handleFieldChange } from './logic/assistantFormState.svelte.js';
-	import { fetchKnowledgeBases, fetchRubricsList, fetchUserFiles } from './logic/assistantFormFetchers.js';
+	import { fetchKnowledgeBases, fetchRubricsList, fetchLibraries, fetchLibraryItems, fetchKnowledgeStores } from './logic/assistantFormFetchers.js';
 	import { validateSubmission, buildAssistantPayload } from './logic/assistantFormSubmit.js';
 	import AssistantFormHeader from './components/AssistantFormHeader.svelte';
 	import AssistantNameField from './components/AssistantNameField.svelte';
@@ -27,7 +27,9 @@
 	});
 
 	// --- Props ---
+	// --- Props ---
 	// Use $props for Svelte 5 runes mode
+
 	let {
 		assistant = null,
 		onFormSuccess = /** @type {(e: { assistantId: number }) => void} */ (() => {}),
@@ -52,9 +54,19 @@
 		await fetchKnowledgeBases(form);
 	}
 
-	async function doFetchUserFiles(force = false) {
+	async function doFetchKnowledgeStores() {
 		if (!isMounted) return;
-		await fetchUserFiles(form, { force, assistant });
+		await fetchKnowledgeStores(form);
+	}
+
+	async function doFetchLibraries(force = false) {
+		if (!isMounted) return;
+		await fetchLibraries(form, force);
+	}
+
+	async function doFetchLibraryItems(libraryId, force = false) {
+		if (!isMounted) return;
+		await fetchLibraryItems(form, libraryId, force);
 	}
 
 	async function doFetchRubricsList() {
@@ -145,6 +157,16 @@
 		}
 	});
 
+	// Effect to apply pending KS selections when list becomes available
+	$effect(() => {
+		if (form.pendingKSSelections && form.accessibleKnowledgeStores.length > 0) {
+			form.selectedKnowledgeStores = form.pendingKSSelections.filter((id) =>
+				form.accessibleKnowledgeStores.some((ks) => ks.id === id)
+			);
+			form.pendingKSSelections = null;
+		}
+	});
+
 	// Effect to fetch KBs/Files when RAG processor changes
 	$effect(() => {
 		if ((isKbBasedRag(form.selectedRagProcessor)) && form.configInitialized) {
@@ -154,10 +176,14 @@
 			} else {
 				// Already attempted or loading
 			}
+		} else if (isKsBasedRag(form.selectedRagProcessor) && form.configInitialized) {
+			if (!form.ksFetchAttempted && !form.loadingKnowledgeStores) {
+				doFetchKnowledgeStores();
+			}
 		} else if (isSingleFileRag(form.selectedRagProcessor) && form.configInitialized) {
-			// Fetch files when switching to single_file_rag
-			if (!form.filesFetchAttempted && !form.loadingFiles) {
-				doFetchUserFiles();
+			// Fetch libraries when switching to single_file_rag
+			if (!form.librariesFetchAttempted && !form.loadingLibraries) {
+				doFetchLibraries();
 			}
 		} else if (isRubricRag(form.selectedRagProcessor) && form.configInitialized) {
 			if (!form.rubricsFetchAttempted && !form.loadingRubrics) {
@@ -166,6 +192,29 @@
 		} else {
 			// Clear KB state AND reset attempted flag if RAG processor changes away
 			clearRagDependentState(form);
+		}
+	});
+
+	// Effect to fetch library items when selected library changes
+	$effect(() => {
+		if (isSingleFileRag(form.selectedRagProcessor) && form.selectedLibraryId && form.configInitialized) {
+			doFetchLibraryItems(form.selectedLibraryId);
+		}
+	});
+
+	// Effect to fetch libraries when document_rag is enabled (independent of RAG processor)
+	$effect(() => {
+		if (form.documentRagEnabled && form.configInitialized) {
+			if (!form.librariesFetchAttempted && !form.loadingLibraries) {
+				doFetchLibraries();
+			}
+		}
+	});
+
+	// Effect to fetch library items when selected library changes (for document_rag)
+	$effect(() => {
+		if (form.documentRagEnabled && form.selectedLibraryId && form.configInitialized) {
+			doFetchLibraryItems(form.selectedLibraryId);
 		}
 	});
 
@@ -190,6 +239,7 @@
 	 * // Add other expected fields from the createAssistant/updateAssistant response if known
 	 */
 
+	/**
 	/**
 	 * Handles form submission (Create or Update).
 	 * @param {Event} event - The form submission event.
@@ -316,7 +366,8 @@
 						// Populate RAG specific fields
 						// FIX FOR ISSUE #96: Apply Load-Then-Select pattern for imports too
 						if (isKbBasedRag(form.selectedRagProcessor)) {
-							form.selectedFilePath = ''; // Clear file path if switching to simple RAG, context_aware_rag, or hierarchical_rag
+							form.selectedLibraryId = '';
+							form.selectedItemId = '';
 							// Fetch KBs BEFORE setting selections
 							if (!form.kbFetchAttempted) {
 								await doFetchKnowledgeBases(); // ✅ WAIT for KBs to load
@@ -324,16 +375,13 @@
 							// NOW set selections when KB list is ready
 							form.selectedKnowledgeBases = parsedData.RAG_collections?.split(',').filter(Boolean) || [];
 						} else if (isSingleFileRag(form.selectedRagProcessor)) {
-							form.selectedKnowledgeBases = []; // Clear KBs if switching to single file RAG
-							// Fetch files BEFORE setting selection
-							if (!form.filesFetchAttempted) {
-								await doFetchUserFiles(); // ✅ WAIT for files to load
-							}
-							// NOW set selection when file list is ready
-							form.selectedFilePath = callbackData.file_path || '';
+							form.selectedKnowledgeBases = [];
+							form.selectedLibraryId = callbackData.library_id || '';
+							form.selectedItemId = callbackData.item_id || '';
 						} else { // No RAG
 							form.selectedKnowledgeBases = [];
-							form.selectedFilePath = '';
+							form.selectedLibraryId = '';
+							form.selectedItemId = '';
 						}
 							validationLog.push('✅ Form fields populated successfully.');
 							form.importError = ''; // Clear any previous error
@@ -447,19 +495,30 @@
 					bind:selectedRagProcessor={form.selectedRagProcessor}
 					bind:visionEnabled={form.visionEnabled}
 					bind:imageGenerationEnabled={form.imageGenerationEnabled}
+					bind:exposeSourcesEnabled={form.exposeSourcesEnabled}
 					bind:RAG_Top_k={form.RAG_Top_k}
 					ownedKnowledgeBases={form.ownedKnowledgeBases}
 					sharedKnowledgeBases={form.sharedKnowledgeBases}
 					bind:selectedKnowledgeBases={form.selectedKnowledgeBases}
 					loadingKnowledgeBases={form.loadingKnowledgeBases}
 					knowledgeBaseError={form.knowledgeBaseError}
-					userFiles={form.userFiles}
-					bind:selectedFilePath={form.selectedFilePath}
-					loadingFiles={form.loadingFiles}
-					fileError={form.fileError}
-					onFilesChanged={() => doFetchUserFiles(true)}
+					ownedKnowledgeStores={form.ownedKnowledgeStores}
+					sharedKnowledgeStores={form.sharedKnowledgeStores}
+					bind:selectedKnowledgeStores={form.selectedKnowledgeStores}
+					loadingKnowledgeStores={form.loadingKnowledgeStores}
+					knowledgeStoreError={form.knowledgeStoreError}
+					libraries={form.libraries}
+					bind:selectedLibraryId={form.selectedLibraryId}
+					loadingLibraries={form.loadingLibraries}
+					libraryError={form.libraryError}
+					libraryItems={form.libraryItems}
+					bind:selectedItemId={form.selectedItemId}
+					loadingItems={form.loadingItems}
+					itemsError={form.itemsError}
+					bind:documentRagEnabled={form.documentRagEnabled}
+					selectedFilePath={form.selectedFilePath}
 					onchange={() => handleFieldChange(form)}
-				/>
+					/>
 			</div>
 			</div>
 
@@ -473,6 +532,5 @@
 
 		</form>
 	{/if}
-
 
 </div>

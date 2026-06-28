@@ -97,11 +97,24 @@ LAMB_API_TOKEN=your-token uvicorn main:app --host 0.0.0.0 --port 9091 --reload
 
 ### Running tests
 
+The suite is organised into three tiers — **unit** (direct module calls),
+**integration** (in-process ASGI against the real DB + worker), and **e2e**
+(real HTTP to a `uvicorn` subprocess, plus a Docker smoke test). See
+`tests/README.md` for the full tier contract.
+
 ```bash
-pytest tests/ -v
+./scripts/run_tests.sh          # all tiers + the 95% line+branch coverage gate
+pytest tests/unit/ -q           # a single tier
+pytest -m "not slow" -q         # skip subprocess/Docker tests
+pytest tests/unit/ tests/integration/ --cov=backend --cov-branch \
+       --cov-report=term-missing --cov-fail-under=95
 ```
 
-Tests use an in-process ASGI client (httpx + FastAPI) with a temporary SQLite database. No external services are required — the YouTube test uses a live video with reliable subtitles, and the URL import test verifies the error path since Firecrawl is not available in the test environment.
+No external services are required. External SDKs (markitdown, Firecrawl,
+PyMuPDF, OpenAI) are mocked at their import boundary so the plugins' own logic
+still runs; YouTube transcripts use an offline cassette cache in
+`tests/.yt_cache/`. The e2e Docker test skips cleanly when no Docker daemon is
+available. Combined line+branch coverage of `backend/` is enforced at ≥95%.
 
 ### Docker
 
@@ -151,4 +164,12 @@ SQLite with WAL mode (`data/library-manager.db`). Tables:
 | `content_images` | Extracted images linked to content items |
 | `import_jobs` | Persistent job queue for async processing |
 
-Tables are created automatically on first startup via SQLAlchemy `create_all`.
+The schema is managed with Alembic. Migrations live in `backend/migrations/` and
+are run automatically up to `head` at startup (`init_db` → `_run_migrations`).
+Databases created before Alembic adoption (tables present, no `alembic_version`)
+are stamped to the baseline revision before upgrading, so existing data is
+preserved. To create a new migration after changing the models:
+
+```bash
+cd backend && alembic -c alembic.ini revision --autogenerate -m "describe change"
+```

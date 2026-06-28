@@ -7,11 +7,13 @@ LAMB frontend automatically displays version information including the git commi
 ## How It Works
 
 1. **Version Generation Script**: `scripts/generate-version.js`
+
    - Runs automatically before `npm run dev` and `npm run build`
    - Extracts git information (commit hash, branch, date)
    - Generates `src/lib/version.js` with version data
 
 2. **Version Display**:
+
    - **Footer**: Shows `v0.1 (eec3df3)` format
    - **Nav**: Shows `v0.1` badge
    - **Tooltip**: Hover over version for full details (version, commit, branch, build date)
@@ -40,6 +42,7 @@ node scripts/generate-version.js
 ```
 
 This is useful when:
+
 - Running in Docker containers without git
 - Need to refresh version info without rebuilding
 
@@ -48,6 +51,7 @@ This is useful when:
 Since Docker containers (node:20-alpine) don't have git installed:
 
 1. Generate version file on host machine before starting containers:
+
    ```bash
    cd /opt/lamb/frontend/svelte-app
    node scripts/generate-version.js
@@ -60,17 +64,18 @@ Since Docker containers (node:20-alpine) don't have git installed:
 
 ```javascript
 export const VERSION_INFO = {
-  "version": "0.1",           // Semantic version
-  "commit": "eec3df3",        // Short git commit hash
-  "branch": "dev",            // Current git branch
-  "commitDate": "2025-10-30", // Last commit date
-  "buildDate": "2025-10-30"   // Build/generation date
+	version: '0.1', // Semantic version
+	commit: 'eec3df3', // Short git commit hash
+	branch: 'dev', // Current git branch
+	commitDate: '2025-10-30', // Last commit date
+	buildDate: '2025-10-30' // Build/generation date
 };
 ```
 
 ## Fallback Behavior
 
 If git is not available (e.g., in Docker):
+
 - `commit`: "unknown"
 - `branch`: "unknown"
 - `commitDate`: "unknown"
@@ -81,10 +86,11 @@ If git is not available (e.g., in Docker):
 To update the displayed version number:
 
 1. Edit `scripts/generate-version.js`:
+
    ```javascript
    const version = {
-     version: '0.2',  // Change this
-     // ...
+   	version: '0.2' // Change this
+   	// ...
    };
    ```
 

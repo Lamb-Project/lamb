@@ -456,8 +456,9 @@ class OwiGroupManager:
             List[Dict]: List of users with their details
         """
         try:
-            # First verify the group exists
-            group = self.db.get_group_by_id(group_id)
+            # First verify the group exists (get_group_by_id is a method of this
+            # class, not of self.db / OwiDatabaseManager).
+            group = self.get_group_by_id(group_id)
             if not group:
                 return None
                

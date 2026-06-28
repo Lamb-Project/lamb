@@ -57,7 +57,7 @@ export async function createSession({ assistantId, skill, context } = {}) {
 	}
 	return apiJson('/aac/sessions', {
 		method: 'POST',
-		body: JSON.stringify(body),
+		body: JSON.stringify(body)
 	});
 }
 
@@ -70,7 +70,7 @@ export async function createSession({ assistantId, skill, context } = {}) {
 export async function sendMessage(sessionId, message) {
 	return apiJson(`/aac/sessions/${sessionId}/message`, {
 		method: 'POST',
-		body: JSON.stringify({ message }),
+		body: JSON.stringify({ message })
 	});
 }
 
@@ -93,14 +93,22 @@ export async function sendMessage(sessionId, message) {
  * @param {(status: Object) => void} [onStatus] - called for tool/status events
  * @param {AbortSignal} [signal] - abort signal to cancel the stream
  */
-export async function sendMessageStream(sessionId, message, onChunk, onDone, onError, onStatus, signal) {
+export async function sendMessageStream(
+	sessionId,
+	message,
+	onChunk,
+	onDone,
+	onError,
+	onStatus,
+	signal
+) {
 	let res;
 	try {
 		res = await apiFetch(`/aac/sessions/${sessionId}/message/stream`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ message }),
-			signal,
+			signal
 		});
 	} catch (e) {
 		// AbortError on unmount is expected; do not surface as an error.
@@ -126,7 +134,11 @@ export async function sendMessageStream(sessionId, message, onChunk, onDone, onE
 	try {
 		while (true) {
 			if (signal?.aborted) {
-				try { await reader.cancel(); } catch (_) { /* noop */ }
+				try {
+					await reader.cancel();
+				} catch (_) {
+					/* noop */
+				}
 				return;
 			}
 			const { done, value } = await reader.read();
@@ -146,7 +158,9 @@ export async function sendMessageStream(sessionId, message, onChunk, onDone, onE
 					else if (data.status && onStatus) onStatus(data);
 					if (data.done && onDone) onDone(data.stats || {});
 					if (data.error && onError) onError(data.error);
-				} catch (_) { /* ignore parse errors */ }
+				} catch (_) {
+					/* ignore parse errors */
+				}
 			}
 		}
 	} catch (e) {

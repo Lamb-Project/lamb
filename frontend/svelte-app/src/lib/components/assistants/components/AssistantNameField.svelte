@@ -25,7 +25,7 @@
 			name="name"
 			bind:value
 			disabled={true}
-			class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-gray-100 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm text-gray-900"
+			class="focus:ring-brand focus:border-brand mt-1 block w-full rounded-md border border-gray-300 bg-gray-100 px-3 py-2 text-gray-900 shadow-sm focus:outline-none sm:text-sm"
 			placeholder={$_('assistants.form.name.placeholder')}
 		/>
 	{:else}
@@ -35,17 +35,17 @@
 			name="name"
 			bind:value
 			disabled={false}
-			oninput={oninput}
-			class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900"
+			{oninput}
+			class="focus:ring-brand focus:border-brand mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:outline-none sm:text-sm"
 			placeholder={$_('assistants.form.name.placeholder')}
 		/>
 		{#if showSanitizationPreview}
-			<div class="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
+			<div class="mt-2 rounded-md border border-blue-200 bg-blue-50 p-2">
 				<p class="text-sm text-blue-800">
 					<span class="font-semibold"
 						>{$_('assistants.form.name.willBeSaved', { default: 'Will be saved as:' })}</span
 					>
-					<code class="ml-2 px-2 py-1 bg-blue-100 rounded text-blue-900 font-mono"
+					<code class="ml-2 rounded bg-blue-100 px-2 py-1 font-mono text-blue-900"
 						>{sanitizedNameInfo.sanitized}</code
 					>
 				</p>

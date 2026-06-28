@@ -822,6 +822,12 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
       }
     }
 
+    // Re-navigate to clear any lingering success banner/overlay from the first
+    // disable before acting on the second user (otherwise the overlay can
+    // intercept the next click).
+    await page.goto("admin?view=users");
+    await page.waitForLoadState("networkidle");
+
     // Disable second test user
     if (await searchBox.count()) {
       await searchBox.fill(sharingUser2Email);

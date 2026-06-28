@@ -766,6 +766,11 @@ async def generate_openai_chat_completion(request: Request):
     model = form_data.get('model')
     messages = form_data.get('messages', [])
     stream = form_data.get('stream', False)
+    # Opt-in eval flag: when true, the response carries the retrieved RAG
+    # context under `eval_metadata` (consumed by the evaluation framework).
+    # Captured here because the DummyFormData wrapper below only preserves
+    # model/messages/stream; absent by default so normal callers are unaffected.
+    include_eval_metadata = bool(form_data.get('include_eval_metadata', False))
 
     multimodal_logger.info("Final parsed data:")
     multimodal_logger.info(f"Model: {model}")
@@ -835,10 +840,14 @@ async def generate_openai_chat_completion(request: Request):
         request_data = form_data.model_dump()
         multimodal_logger.debug(f"Request data being sent: {json.dumps(request_data, indent=2)[:1000]}...")
 
+        # Pass the opt-in eval flag as an explicit arg, NOT inside request_data:
+        # the connector forwards request body fields to the provider SDK, so an
+        # unknown key in the body would break the upstream API call.
         response = await run_lamb_assistant(
             request=request_data,
             assistant=assistant_id,
-            headers=common_headers # Pass headers to the assistant runner
+            headers=common_headers, # Pass headers to the assistant runner
+            include_eval_metadata=include_eval_metadata
         )
 
         multimodal_logger.info(f"Assistant returned response, type: {type(response)}")

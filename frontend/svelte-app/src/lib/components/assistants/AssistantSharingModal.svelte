@@ -5,12 +5,7 @@
 	import { getLambApiUrl } from '$lib/config';
 
 	// Props
-	let { 
-		assistant = null,
-		token = '',
-		onClose = () => {},
-		onSaved = () => {}
-	} = $props();
+	let { assistant = null, token = '', onClose = () => {}, onSaved = () => {} } = $props();
 
 	// State - ALL must use $state()
 	let sharedUsers = $state([]);
@@ -26,16 +21,18 @@
 
 	// Computed - filtered lists
 	let filteredShared = $derived(
-		sharedUsers.filter(user => 
-			user.name.toLowerCase().includes(searchShared.toLowerCase()) ||
-			user.email.toLowerCase().includes(searchShared.toLowerCase())
+		sharedUsers.filter(
+			(user) =>
+				user.name.toLowerCase().includes(searchShared.toLowerCase()) ||
+				user.email.toLowerCase().includes(searchShared.toLowerCase())
 		)
 	);
 
 	let filteredAvailable = $derived(
-		availableUsers.filter(user => 
-			user.name.toLowerCase().includes(searchAvailable.toLowerCase()) ||
-			user.email.toLowerCase().includes(searchAvailable.toLowerCase())
+		availableUsers.filter(
+			(user) =>
+				user.name.toLowerCase().includes(searchAvailable.toLowerCase()) ||
+				user.email.toLowerCase().includes(searchAvailable.toLowerCase())
 		)
 	);
 
@@ -55,7 +52,7 @@
 	async function loadData() {
 		loading = true;
 		errorMessage = '';
-		
+
 		try {
 			// Load both lists in parallel
 			const [currentShares, orgUsers] = await Promise.all([
@@ -64,16 +61,15 @@
 			]);
 
 			// Split org users into shared and available (using email as identifier)
-			const sharedUserEmails = new Set(currentShares.map(s => s.user_email));
-			
+			const sharedUserEmails = new Set(currentShares.map((s) => s.user_email));
+
 			sharedUsers = orgUsers
-				.filter(u => sharedUserEmails.has(u.email))
-				.sort((a, b) => a.name.localeCompare(b.name));
-			
-			availableUsers = orgUsers
-				.filter(u => !sharedUserEmails.has(u.email))
+				.filter((u) => sharedUserEmails.has(u.email))
 				.sort((a, b) => a.name.localeCompare(b.name));
 
+			availableUsers = orgUsers
+				.filter((u) => !sharedUserEmails.has(u.email))
+				.sort((a, b) => a.name.localeCompare(b.name));
 		} catch (error) {
 			errorMessage = error.message || 'Failed to load users';
 		} finally {
@@ -86,7 +82,7 @@
 			getLambApiUrl(`/creator/lamb/assistant-sharing/shares/${assistant.id}`),
 			{
 				headers: {
-					'Authorization': `Bearer ${token}`
+					Authorization: `Bearer ${token}`
 				}
 			}
 		);
@@ -103,7 +99,7 @@
 			getLambApiUrl('/creator/lamb/assistant-sharing/organization-users'),
 			{
 				headers: {
-					'Authorization': `Bearer ${token}`
+					Authorization: `Bearer ${token}`
 				}
 			}
 		);
@@ -122,9 +118,9 @@
 	// Move selected available users to shared (using email as identifier)
 	function moveToShared() {
 		if (selectedAvailable.length === 0) return;
-		
-		const toMove = availableUsers.filter(u => selectedAvailable.includes(u.email));
-		availableUsers = availableUsers.filter(u => !selectedAvailable.includes(u.email));
+
+		const toMove = availableUsers.filter((u) => selectedAvailable.includes(u.email));
+		availableUsers = availableUsers.filter((u) => !selectedAvailable.includes(u.email));
 		sharedUsers = [...sharedUsers, ...toMove].sort((a, b) => a.name.localeCompare(b.name));
 		selectedAvailable = [];
 	}
@@ -132,9 +128,9 @@
 	// Move selected shared users to available (using email as identifier)
 	function moveToAvailable() {
 		if (selectedShared.length === 0) return;
-		
-		const toMove = sharedUsers.filter(u => selectedShared.includes(u.email));
-		sharedUsers = sharedUsers.filter(u => !selectedShared.includes(u.email));
+
+		const toMove = sharedUsers.filter((u) => selectedShared.includes(u.email));
+		sharedUsers = sharedUsers.filter((u) => !selectedShared.includes(u.email));
 		availableUsers = [...availableUsers, ...toMove].sort((a, b) => a.name.localeCompare(b.name));
 		selectedShared = [];
 	}
@@ -148,7 +144,9 @@
 
 	// Move ALL shared to available
 	function moveAllToAvailable() {
-		availableUsers = [...availableUsers, ...sharedUsers].sort((a, b) => a.name.localeCompare(b.name));
+		availableUsers = [...availableUsers, ...sharedUsers].sort((a, b) =>
+			a.name.localeCompare(b.name)
+		);
 		sharedUsers = [];
 		selectedShared = [];
 	}
@@ -160,14 +158,14 @@
 		successMessage = '';
 
 		try {
-			const userEmails = sharedUsers.map(u => u.email);
-			
+			const userEmails = sharedUsers.map((u) => u.email);
+
 			const response = await fetch(
 				getLambApiUrl(`/creator/lamb/assistant-sharing/shares/${assistant.id}`),
 				{
 					method: 'PUT',
 					headers: {
-						'Authorization': `Bearer ${token}`,
+						Authorization: `Bearer ${token}`,
 						'Content-Type': 'application/json'
 					},
 					body: JSON.stringify({ user_emails: userEmails })
@@ -180,13 +178,12 @@
 			}
 
 			successMessage = 'Sharing changes saved successfully!';
-			
+
 			// Notify parent and close after short delay
 			setTimeout(() => {
 				onSaved();
 				onClose();
 			}, 1000);
-
 		} catch (error) {
 			errorMessage = error.message || 'Failed to save changes';
 		} finally {
@@ -197,7 +194,7 @@
 	// Toggle checkbox selection (using email as identifier)
 	function toggleShared(userEmail) {
 		if (selectedShared.includes(userEmail)) {
-			selectedShared = selectedShared.filter(email => email !== userEmail);
+			selectedShared = selectedShared.filter((email) => email !== userEmail);
 		} else {
 			selectedShared = [...selectedShared, userEmail];
 		}
@@ -206,7 +203,7 @@
 
 	function toggleAvailable(userEmail) {
 		if (selectedAvailable.includes(userEmail)) {
-			selectedAvailable = selectedAvailable.filter(email => email !== userEmail);
+			selectedAvailable = selectedAvailable.filter((email) => email !== userEmail);
 		} else {
 			selectedAvailable = [...selectedAvailable, userEmail];
 		}
@@ -215,15 +212,15 @@
 </script>
 
 <!-- Modal Overlay -->
-<div 
-	class="modal-overlay" 
-	role="button" 
+<div
+	class="modal-overlay"
+	role="button"
 	tabindex="0"
 	onclick={onClose}
 	onkeydown={(e) => e.key === 'Escape' && onClose()}
 >
-	<div 
-		class="modal-container" 
+	<div
+		class="modal-container"
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
@@ -268,40 +265,40 @@
 				</div>
 
 				<!-- Middle: Move Buttons (Top to Bottom: <<, <, >, >>) -->
-			<div class="move-buttons">
-				<button
-					class="move-btn move-all-left"
-					onclick={moveAllToShared}
-					disabled={!canMoveAllRight}
-					title="Share with ALL users"
-				>
-					≪
-				</button>
-				<button
-					class="move-btn move-left"
-					onclick={moveToShared}
-					disabled={!canMoveRight}
-					title="Add selected to shared"
-				>
-					‹
-				</button>
-				<button
-					class="move-btn move-right"
-					onclick={moveToAvailable}
-					disabled={!canMoveLeft}
-					title="Unshare selected"
-				>
-					›
-				</button>
-				<button
-					class="move-btn move-all-right"
-					onclick={moveAllToAvailable}
-					disabled={!canMoveAllLeft}
-					title="Unshare ALL"
-				>
-					≫
-				</button>
-			</div>
+				<div class="move-buttons">
+					<button
+						class="move-btn move-all-left"
+						onclick={moveAllToShared}
+						disabled={!canMoveAllRight}
+						title="Share with ALL users"
+					>
+						≪
+					</button>
+					<button
+						class="move-btn move-left"
+						onclick={moveToShared}
+						disabled={!canMoveRight}
+						title="Add selected to shared"
+					>
+						‹
+					</button>
+					<button
+						class="move-btn move-right"
+						onclick={moveToAvailable}
+						disabled={!canMoveLeft}
+						title="Unshare selected"
+					>
+						›
+					</button>
+					<button
+						class="move-btn move-all-right"
+						onclick={moveAllToAvailable}
+						disabled={!canMoveAllLeft}
+						title="Unshare ALL"
+					>
+						≫
+					</button>
+				</div>
 
 				<!-- Right Panel: Available Users -->
 				<div class="user-panel">
@@ -335,16 +332,10 @@
 				{#if successMessage}
 					<div class="success-message">{successMessage}</div>
 				{/if}
-				
+
 				<div class="action-buttons">
-					<button class="btn-cancel" onclick={onClose} disabled={saving}>
-						Cancel
-					</button>
-					<button 
-						class="btn-save" 
-						onclick={saveChanges}
-						disabled={saving}
-					>
+					<button class="btn-cancel" onclick={onClose} disabled={saving}> Cancel </button>
+					<button class="btn-save" onclick={saveChanges} disabled={saving}>
 						{saving ? 'Saving...' : 'Save Changes'}
 					</button>
 				</div>
@@ -464,7 +455,7 @@
 		border-bottom: none;
 	}
 
-	.user-item input[type="checkbox"] {
+	.user-item input[type='checkbox'] {
 		margin-top: 0.25rem;
 		cursor: pointer;
 	}
@@ -572,7 +563,8 @@
 		gap: 0.75rem;
 	}
 
-	.btn-cancel, .btn-save {
+	.btn-cancel,
+	.btn-save {
 		padding: 0.5rem 1.5rem;
 		border-radius: 4px;
 		font-weight: 500;
@@ -600,7 +592,8 @@
 		background: #2563eb;
 	}
 
-	.btn-cancel:disabled, .btn-save:disabled {
+	.btn-cancel:disabled,
+	.btn-save:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
@@ -628,4 +621,3 @@
 		text-align: center;
 	}
 </style>
-

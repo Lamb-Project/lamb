@@ -107,13 +107,15 @@ def save_credentials(
     - Org admins (organization_role='owner'/'admin') are scoped to their own org.
     """
     _ensure_config_dir()
+    # Coerce None to "" — TOML cannot serialize None, and the server occasionally
+    # returns null for optional profile fields (organization_role, user_type, etc).
     data = {
-        "token": token,
-        "email": email,
-        "name": name,
-        "role": role,
-        "user_type": user_type,
-        "organization_role": organization_role,
+        "token": token or "",
+        "email": email or "",
+        "name": name or "",
+        "role": role or "",
+        "user_type": user_type or "",
+        "organization_role": organization_role or "",
     }
     try:
         CREDENTIALS_FILE.write_text(tomli_w.dumps(data), encoding="utf-8")

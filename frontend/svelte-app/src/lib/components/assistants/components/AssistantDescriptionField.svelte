@@ -86,11 +86,11 @@
 			id="assistant-description"
 			name="description"
 			bind:value
-			oninput={oninput}
+			{oninput}
 			rows="3"
 			disabled={false}
 			maxlength="500"
-			class="flex-1 block w-full px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900"
+			class="focus:ring-brand focus:border-brand block w-full flex-1 rounded-l-md border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:outline-none sm:text-sm"
 			placeholder={$_('assistants.form.description.placeholder', {
 				default: 'A brief summary of the assistant'
 			})}
@@ -99,7 +99,7 @@
 			type="button"
 			onclick={handleGenerateDescription}
 			disabled={generatingDescription}
-			class="relative -ml-px inline-flex items-center space-x-2 rounded-r-md border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
+			class="focus:ring-brand relative -ml-px inline-flex items-center space-x-2 rounded-r-md border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 		>
 			<span
 				>{generatingDescription

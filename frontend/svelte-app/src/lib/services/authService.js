@@ -13,42 +13,42 @@ import { apiFetch } from '$lib/services/apiClient';
  * @returns {Promise<any>} - Promise resolving to login result (adjust 'any' type if possible)
  */
 export async function login(email, password) {
-  try {
-    const formData = new FormData();
-    formData.append('email', email);
-    formData.append('password', password);
-    
-    const response = await fetch(getApiUrl('/login'), {
-      method: 'POST',
-      body: formData
-    });
-    
-    let data;
-    try {
-      const text = await response.text();
-      data = text ? JSON.parse(text) : {};
-    } catch (e) {
-      console.error('Failed to parse response:', e);
-      data = {};
-    }
-    
-    if (!response.ok) {
-      throw new Error(data?.error || 'Login failed'); // Safe access to error property
-    }
-    
-    return data;
-  } catch (error) {
-    console.error('Login error:', error);
-    let message = 'An error occurred during login';
-    if (error instanceof Error) {
-      message = error.message;
-    }
-    // Return a consistent error shape if possible
-    return {
-      success: false,
-      error: message
-    };
-  }
+	try {
+		const formData = new FormData();
+		formData.append('email', email);
+		formData.append('password', password);
+
+		const response = await fetch(getApiUrl('/login'), {
+			method: 'POST',
+			body: formData
+		});
+
+		let data;
+		try {
+			const text = await response.text();
+			data = text ? JSON.parse(text) : {};
+		} catch (e) {
+			console.error('Failed to parse response:', e);
+			data = {};
+		}
+
+		if (!response.ok) {
+			throw new Error(data?.error || 'Login failed'); // Safe access to error property
+		}
+
+		return data;
+	} catch (error) {
+		console.error('Login error:', error);
+		let message = 'An error occurred during login';
+		if (error instanceof Error) {
+			message = error.message;
+		}
+		// Return a consistent error shape if possible
+		return {
+			success: false,
+			error: message
+		};
+	}
 }
 
 /**
@@ -60,44 +60,44 @@ export async function login(email, password) {
  * @returns {Promise<any>} - Promise resolving to signup result (adjust 'any' type if possible)
  */
 export async function signup(name, email, password, secretKey) {
-  try {
-    const formData = new FormData();
-    formData.append('name', name);
-    formData.append('email', email);
-    formData.append('password', password);
-    formData.append('secret_key', secretKey);
-    
-    const response = await fetch(getApiUrl('/signup'), {
-      method: 'POST',
-      body: formData
-    });
-    
-    let data;
-    try {
-      const text = await response.text();
-      data = text ? JSON.parse(text) : {};
-    } catch (e) {
-      console.error('Failed to parse response:', e);
-      data = {};
-    }
-    
-    if (!response.ok) {
-      throw new Error(data?.error || 'Signup failed'); // Safe access to error property
-    }
-    
-    return data;
-  } catch (error) {
-    console.error('Signup error:', error);
-    let message = 'An error occurred during signup';
-    if (error instanceof Error) {
-      message = error.message;
-    }
-    // Return a consistent error shape if possible
-    return {
-      success: false,
-      error: message
-    };
-  }
+	try {
+		const formData = new FormData();
+		formData.append('name', name);
+		formData.append('email', email);
+		formData.append('password', password);
+		formData.append('secret_key', secretKey);
+
+		const response = await fetch(getApiUrl('/signup'), {
+			method: 'POST',
+			body: formData
+		});
+
+		let data;
+		try {
+			const text = await response.text();
+			data = text ? JSON.parse(text) : {};
+		} catch (e) {
+			console.error('Failed to parse response:', e);
+			data = {};
+		}
+
+		if (!response.ok) {
+			throw new Error(data?.error || 'Signup failed'); // Safe access to error property
+		}
+
+		return data;
+	} catch (error) {
+		console.error('Signup error:', error);
+		let message = 'An error occurred during signup';
+		if (error instanceof Error) {
+			message = error.message;
+		}
+		// Return a consistent error shape if possible
+		return {
+			success: false,
+			error: message
+		};
+	}
 }
 
 /**
@@ -113,37 +113,37 @@ export async function signup(name, email, password, secretKey) {
  * @returns {Promise<any>} - Promise resolving to user profile data
  */
 export async function fetchUserProfile(token) {
-  try {
-    const response = await apiFetch('/me', {
-      method: 'GET',
-      token,
-    });
+	try {
+		const response = await apiFetch('/me', {
+			method: 'GET',
+			token
+		});
 
-    let data;
-    try {
-      const text = await response.text();
-      data = text ? JSON.parse(text) : {};
-    } catch (e) {
-      console.error('Failed to parse profile response:', e);
-      data = {};
-    }
+		let data;
+		try {
+			const text = await response.text();
+			data = text ? JSON.parse(text) : {};
+		} catch (e) {
+			console.error('Failed to parse profile response:', e);
+			data = {};
+		}
 
-    if (!response.ok) {
-      throw new Error(data?.error || 'Failed to fetch user profile');
-    }
+		if (!response.ok) {
+			throw new Error(data?.error || 'Failed to fetch user profile');
+		}
 
-    return data;
-  } catch (error) {
-    console.error('Fetch user profile error:', error);
-    let message = 'An error occurred while fetching user profile';
-    if (error instanceof Error) {
-      message = error.message;
-    }
-    return {
-      success: false,
-      error: message
-    };
-  }
+		return data;
+	} catch (error) {
+		console.error('Fetch user profile error:', error);
+		let message = 'An error occurred while fetching user profile';
+		if (error instanceof Error) {
+			message = error.message;
+		}
+		return {
+			success: false,
+			error: message
+		};
+	}
 }
 
 /**
@@ -153,38 +153,38 @@ export async function fetchUserProfile(token) {
  * @returns {Promise<any>} - Promise resolving to help response (adjust 'any' type if possible)
  */
 export async function getHelp(question, token) {
-  try {
-    const response = await apiFetch('/lamb_helper_assistant', {
-      method: 'POST',
-      token,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question })
-    });
-    
-    let data;
-    try {
-      const text = await response.text();
-      data = text ? JSON.parse(text) : {};
-    } catch (e) {
-      console.error('Failed to parse response:', e);
-      data = {};
-    }
-    
-    if (!response.ok) {
-      throw new Error(data?.error || 'Help request failed'); // Safe access to error property
-    }
-    
-    return data;
-  } catch (error) {
-    console.error('Help request error:', error);
-    let message = 'An error occurred while getting help';
-    if (error instanceof Error) {
-      message = error.message;
-    }
-    // Return a consistent error shape if possible
-    return {
-      success: false,
-      error: message
-    };
-  }
-} 
+	try {
+		const response = await apiFetch('/lamb_helper_assistant', {
+			method: 'POST',
+			token,
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ question })
+		});
+
+		let data;
+		try {
+			const text = await response.text();
+			data = text ? JSON.parse(text) : {};
+		} catch (e) {
+			console.error('Failed to parse response:', e);
+			data = {};
+		}
+
+		if (!response.ok) {
+			throw new Error(data?.error || 'Help request failed'); // Safe access to error property
+		}
+
+		return data;
+	} catch (error) {
+		console.error('Help request error:', error);
+		let message = 'An error occurred while getting help';
+		if (error instanceof Error) {
+			message = error.message;
+		}
+		// Return a consistent error shape if possible
+		return {
+			success: false,
+			error: message
+		};
+	}
+}

@@ -1,18 +1,19 @@
 """Database connection management.
 
 Provides a single engine and session factory for the Library Manager's
-SQLite database. All tables are created on first call to ``init_db``.
+SQLite database. The schema is brought to ``head`` with Alembic on the first
+call to ``init_db`` (see ``_run_migrations``).
 """
 
 import logging
 from collections.abc import Generator
+from pathlib import Path
 
 from config import DB_PATH
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
-
-from database.models import Base
+from sqlalchemy.pool import NullPool
 
 logger = logging.getLogger(__name__)
 
@@ -59,19 +60,61 @@ def init_db() -> None:
             "Only one instance may run per data directory."
         ) from exc
 
+    # Use NullPool: every request opens its own SQLite connection, so we
+    # never reuse a connection that may still hold a stale read-snapshot
+    # from a previous transaction. SQLite is in-process and connection
+    # setup is microseconds, so the overhead is negligible — and it
+    # eliminates a class of intermittent "0 items returned" bugs that
+    # users saw on page reload, where the request happened to land on a
+    # pooled connection whose deferred-BEGIN snapshot predated recent
+    # commits from the import worker (which runs on its own sessions).
+    #
+    # We still enable WAL via the connect event so concurrent readers
+    # never block on the writer worker. ``check_same_thread=False`` is
+    # still required because FastAPI may dispatch a request on a thread
+    # different from the one that opened the connection (e.g., via
+    # ``run_in_executor``).
     _engine = create_engine(
         f"sqlite:///{DB_PATH}",
-        pool_pre_ping=True,
+        poolclass=NullPool,
         connect_args={"check_same_thread": False},
     )
 
     event.listen(_engine, "connect", _enable_sqlite_wal)
 
-    Base.metadata.create_all(bind=_engine)
+    _run_migrations()
 
     _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
 
     logger.info("Database initialized at %s", DB_PATH)
+
+
+def _run_migrations() -> None:
+    """Bring the database schema to ``head`` using Alembic.
+
+    Databases created by the historical ``create_all`` + ad-hoc-ALTER path
+    already have the tables but no ``alembic_version`` row. Those are stamped
+    to the baseline revision first so the baseline migration is not re-applied
+    on top of the existing schema; any later revisions then run normally.
+    """
+    from alembic import command  # noqa: PLC0415
+    from alembic.config import Config  # noqa: PLC0415
+    from alembic.script import ScriptDirectory  # noqa: PLC0415
+
+    backend_dir = Path(__file__).resolve().parents[1]
+    cfg = Config(str(backend_dir / "alembic.ini"))
+    cfg.set_main_option("script_location", str(backend_dir / "migrations"))
+
+    inspector = inspect(_engine)
+    has_schema = inspector.has_table("content_items")
+    has_version = inspector.has_table("alembic_version")
+    if has_schema and not has_version:
+        base_rev = ScriptDirectory.from_config(cfg).get_base()
+        command.stamp(cfg, base_rev)
+        logger.info("Stamped pre-Alembic database to baseline revision %s", base_rev)
+
+    command.upgrade(cfg, "head")
+    logger.info("Database schema migrated to head")
 
 
 def get_session() -> Generator[Session, None, None]:

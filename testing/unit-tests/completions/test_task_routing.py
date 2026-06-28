@@ -1,57 +1,47 @@
 """
 Unit tests for lightweight completion task routing.
+
+Open WebUI flags auxiliary requests (title/tags/query generation, etc.) via
+``request["metadata"]["task"]``; the router detects that field and routes such
+non-streaming requests through the small-fast model, skipping RAG/PPS.
 """
 
 import asyncio
 from unittest.mock import AsyncMock, patch
 
 from backend.lamb.completions.task_routing import (
-    is_title_generation_request,
+    is_task_request,
     maybe_route_non_streaming_task,
 )
 
 
-def test_is_title_generation_request_detects_openwebui_task_marker():
-    messages = [
-        {
-            "role": "user",
-            "content": "### Task:\nGenerate 1-3 broad tags and a short conversation title.",
-        }
-    ]
+def test_is_task_request_detects_owi_task_metadata():
+    request = {
+        "metadata": {"task": "title_generation"},
+        "messages": [{"role": "user", "content": "hi"}],
+    }
 
-    assert is_title_generation_request(messages) is True
+    assert is_task_request(request) is True
 
 
-def test_is_title_generation_request_detects_pattern_in_multimodal_message():
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": "Please suggest a conversation title and broad tags for this chat history.",
-                }
-            ],
-        }
-    ]
+def test_is_task_request_detects_tags_generation_task():
+    request = {"metadata": {"task": "tags_generation"}}
 
-    assert is_title_generation_request(messages) is True
+    assert is_task_request(request) is True
 
 
-def test_is_title_generation_request_ignores_normal_chat_message():
-    messages = [{"role": "user", "content": "Help me solve this algebra problem."}]
+def test_is_task_request_ignores_normal_chat_request():
+    request = {"messages": [{"role": "user", "content": "Help me solve this algebra problem."}]}
 
-    assert is_title_generation_request(messages) is False
+    assert is_task_request(request) is False
 
 
-def test_maybe_route_non_streaming_task_uses_small_fast_model_for_title_requests():
+def test_maybe_route_non_streaming_task_uses_small_fast_model_for_task_requests():
     request = {
         "stream": False,
+        "metadata": {"task": "title_generation"},
         "messages": [
-            {
-                "role": "user",
-                "content": "### Task:\nGenerate a title for this conversation.",
-            }
+            {"role": "user", "content": "Generate a title for this conversation."}
         ],
     }
     expected_response = {"id": "chatcmpl-1", "choices": []}
@@ -76,7 +66,26 @@ def test_maybe_route_non_streaming_task_uses_small_fast_model_for_title_requests
 def test_maybe_route_non_streaming_task_skips_streaming_requests():
     request = {
         "stream": True,
-        "messages": [{"role": "user", "content": "### Task:\nGenerate a title."}],
+        "metadata": {"task": "title_generation"},
+        "messages": [{"role": "user", "content": "Generate a title."}],
+    }
+
+    with patch(
+        "backend.lamb.completions.task_routing.invoke_small_fast_model",
+        new=AsyncMock(),
+    ) as mock_invoke:
+        result = asyncio.run(
+            maybe_route_non_streaming_task(request, "owner@example.com")
+        )
+
+    assert result is None
+    mock_invoke.assert_not_awaited()
+
+
+def test_maybe_route_non_streaming_task_skips_non_task_requests():
+    request = {
+        "stream": False,
+        "messages": [{"role": "user", "content": "A normal chat message."}],
     }
 
     with patch(

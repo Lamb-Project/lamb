@@ -23,13 +23,7 @@ vi.mock('$lib/stores/assistantConfigStore', async () => {
 					}
 				}
 			},
-			rag_processors: [
-				'simple_rag',
-				'no_rag',
-				'single_file_rag',
-				'rubric_rag',
-				'hierarchical_rag'
-			]
+			rag_processors: ['simple_rag', 'no_rag', 'single_file_rag', 'rubric_rag', 'hierarchical_rag']
 		},
 		configDefaults: {
 			config: {
@@ -84,6 +78,11 @@ vi.mock('$lib/services/rubricService', () => ({
 vi.mock('$lib/services/apiClient', () => ({
 	apiFetch: vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) }),
 	apiJson: vi.fn().mockResolvedValue([])
+}));
+
+vi.mock('$lib/services/libraryService', () => ({
+	getLibraries: vi.fn().mockResolvedValue([]),
+	getItems: vi.fn().mockResolvedValue({ items: [], total: 0 })
 }));
 
 vi.mock('$lib/stores/templateStore', async () => {

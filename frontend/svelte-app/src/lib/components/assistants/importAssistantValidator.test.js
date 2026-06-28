@@ -48,7 +48,7 @@ describe('modelExtractor edge cases', () => {
 		});
 		const result = validateImportedAssistant(json, caps, extractModelsFromConnectorData);
 		// null connector value is treated as invalid connector (not as retrieval failure)
-		expect(result.validationLog.some(log => log.includes('Invalid connector'))).toBe(true);
+		expect(result.validationLog.some((log) => log.includes('Invalid connector'))).toBe(true);
 	});
 
 	test('handles modelExtractor with empty models array', () => {

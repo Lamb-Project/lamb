@@ -8,8 +8,6 @@ import {
 	highlightPlaceholders
 } from './logic/assistantFormUtils.svelte.js';
 
-
-
 describe('selectModel', () => {
 	test('selects target LLM when available', () => {
 		const result = selectModel('gpt-4', ['gpt-3.5-turbo', 'gpt-4']);
@@ -55,7 +53,6 @@ describe('extractModelsFromConnectorData', () => {
 		expect(extractModelsFromConnectorData(null)).toEqual([]);
 	});
 });
-
 
 describe('highlightPlaceholders', () => {
 	test('highlights placeholders in text', () => {

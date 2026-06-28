@@ -126,5 +126,5 @@ export function getAuthToken() {
 		const token = localStorage.getItem('userToken');
 		if (token) return token;
 	}
-	return document.cookie.replace(/(?:(?:^|.*;\s*)token\s*=\s*([^;]*).*$)|^.*$/, "$1");
+	return document.cookie.replace(/(?:(?:^|.*;\s*)token\s*=\s*([^;]*).*$)|^.*$/, '$1');
 }

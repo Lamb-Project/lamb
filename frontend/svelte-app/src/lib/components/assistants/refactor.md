@@ -8,23 +8,23 @@ Documentation for refactoring the assistant form from a single monolithic compon
 
 ## Executive summary
 
-| Metric | Before (peak) | After |
-|--------|-----------------|-------|
-| `AssistantForm.svelte` | **~1,747 LOC** (single file) | **~478 LOC** (orchestrator) |
-| Pure logic modules | 0 (all inline) | 5 in [`logic/`](./logic/) |
-| UI subcomponents (form only) | 0 (inline markup) | 10 in [`components/`](./components/) |
-| Dedicated unit tests | minimal | 7 files + helpers |
+| Metric                       | Before (peak)                | After                                |
+| ---------------------------- | ---------------------------- | ------------------------------------ |
+| `AssistantForm.svelte`       | **~1,747 LOC** (single file) | **~478 LOC** (orchestrator)          |
+| Pure logic modules           | 0 (all inline)               | 5 in [`logic/`](./logic/)            |
+| UI subcomponents (form only) | 0 (inline markup)            | 10 in [`components/`](./components/) |
+| Dedicated unit tests         | minimal                      | 7 files + helpers                    |
 
 The goal was to apply **SRP** (Single Responsibility Principle) and support **Open/Closed** behaviour: extend features (new RAG type, new field) without growing another god-component.
 
 ### Design principles
 
-| Principle | How it shows up here |
-|-----------|----------------------|
-| **SRP** | Each module has one reason to change: state (`assistantFormState`), fetch (`assistantFormFetchers`), submit (`assistantFormSubmit`), import validation (`importAssistantValidator`), UI per section (`components/*`). |
-| **Open/Closed** | New fetchers or validation rules go into `.js` modules with tests; the orchestrator composes them without rewriting ~1,700 lines. |
-| **Presentation / logic split** | Root `.svelte` wires props and effects; `logic/` holds pure or near-pure functions testable with Vitest. |
-| **Composition** | `AssistantForm` delegates to child components via props and callbacks; it does not own their internal DOM. |
+| Principle                      | How it shows up here                                                                                                                                                                                                  |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SRP**                        | Each module has one reason to change: state (`assistantFormState`), fetch (`assistantFormFetchers`), submit (`assistantFormSubmit`), import validation (`importAssistantValidator`), UI per section (`components/*`). |
+| **Open/Closed**                | New fetchers or validation rules go into `.js` modules with tests; the orchestrator composes them without rewriting ~1,700 lines.                                                                                     |
+| **Presentation / logic split** | Root `.svelte` wires props and effects; `logic/` holds pure or near-pure functions testable with Vitest.                                                                                                              |
+| **Composition**                | `AssistantForm` delegates to child components via props and callbacks; it does not own their internal DOM.                                                                                                            |
 
 ---
 
@@ -72,54 +72,54 @@ graph LR
 
 ### Orchestrator
 
-| File | Role |
-|------|------|
+| File                                           | Role                                                                                                        |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | [AssistantForm.svelte](./AssistantForm.svelte) | Entry point: props, lifecycle effects, state coordination, `isMounted` fetch wrappers, submit, JSON import. |
 
 ### Logic — [`logic/`](./logic/)
 
-| File | Role |
-|------|------|
+| File                                                                 | Role                                                                                              |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | [assistantFormState.svelte.js](./logic/assistantFormState.svelte.js) | `createAssistantFormState()` factory; `reset` / `populate` / `revert` / `clearRagDependentState`. |
-| [assistantFormUtils.svelte.js](./logic/assistantFormUtils.svelte.js) | Pure helpers: models, RAG placeholders, connector metadata, placeholder highlighting. |
-| [assistantFormFetchers.js](./logic/assistantFormFetchers.js) | Fetch knowledge bases, rubrics, and user files. |
-| [assistantFormSubmit.js](./logic/assistantFormSubmit.js) | `validateSubmission` and `buildAssistantPayload` before API calls. |
-| [importAssistantValidator.js](./logic/importAssistantValidator.js) | Validate imported assistant JSON against `systemCapabilities`. |
+| [assistantFormUtils.svelte.js](./logic/assistantFormUtils.svelte.js) | Pure helpers: models, RAG placeholders, connector metadata, placeholder highlighting.             |
+| [assistantFormFetchers.js](./logic/assistantFormFetchers.js)         | Fetch knowledge bases, rubrics, and user files.                                                   |
+| [assistantFormSubmit.js](./logic/assistantFormSubmit.js)             | `validateSubmission` and `buildAssistantPayload` before API calls.                                |
+| [importAssistantValidator.js](./logic/importAssistantValidator.js)   | Validate imported assistant JSON against `systemCapabilities`.                                    |
 
 ### Presentation — [`components/`](./components/)
 
-| File | Role |
-|------|------|
-| [AssistantFormHeader.svelte](./components/AssistantFormHeader.svelte) | Create/edit title and JSON file import. |
-| [AssistantNameField.svelte](./components/AssistantNameField.svelte) | Name input and sanitization preview. |
-| [AssistantDescriptionField.svelte](./components/AssistantDescriptionField.svelte) | Description with optional AI generation. |
-| [AssistantPromptFields.svelte](./components/AssistantPromptFields.svelte) | System prompt, template, RAG placeholders, template modal. |
-| [ConfigurationPanel.svelte](./components/ConfigurationPanel.svelte) | Side panel: connector, LLM, RAG, vision/image toggles. |
-| [RagOptionsPanel.svelte](./components/RagOptionsPanel.svelte) | RAG-specific options (top-k, KB or file). |
-| [KnowledgeBaseSelector.svelte](./components/KnowledgeBaseSelector.svelte) | Multi-select owned/shared knowledge bases. |
-| [SingleFileSelector.svelte](./components/SingleFileSelector.svelte) | File list and upload for `single_file_rag`. |
-| [RubricSelector.svelte](./components/RubricSelector.svelte) | Rubric and format for `rubric_rag`. |
-| [FormActions.svelte](./components/FormActions.svelte) | Errors, success, cancel (edit), submit button. |
+| File                                                                              | Role                                                       |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| [AssistantFormHeader.svelte](./components/AssistantFormHeader.svelte)             | Create/edit title and JSON file import.                    |
+| [AssistantNameField.svelte](./components/AssistantNameField.svelte)               | Name input and sanitization preview.                       |
+| [AssistantDescriptionField.svelte](./components/AssistantDescriptionField.svelte) | Description with optional AI generation.                   |
+| [AssistantPromptFields.svelte](./components/AssistantPromptFields.svelte)         | System prompt, template, RAG placeholders, template modal. |
+| [ConfigurationPanel.svelte](./components/ConfigurationPanel.svelte)               | Side panel: connector, LLM, RAG, vision/image toggles.     |
+| [RagOptionsPanel.svelte](./components/RagOptionsPanel.svelte)                     | RAG-specific options (top-k, KB or file).                  |
+| [KnowledgeBaseSelector.svelte](./components/KnowledgeBaseSelector.svelte)         | Multi-select owned/shared knowledge bases.                 |
+| [SingleFileSelector.svelte](./components/SingleFileSelector.svelte)               | File list and upload for `single_file_rag`.                |
+| [RubricSelector.svelte](./components/RubricSelector.svelte)                       | Rubric and format for `rubric_rag`.                        |
+| [FormActions.svelte](./components/FormActions.svelte)                             | Errors, success, cancel (edit), submit button.             |
 
 ### Sharing (root level, not part of form refactor)
 
-| File | Role |
-|------|------|
-| [AssistantSharing.svelte](./AssistantSharing.svelte) | Org/LTI sharing UI (standalone; unused by routes today). |
-| [AssistantSharingModal.svelte](./AssistantSharingModal.svelte) | Dual-list sharing modal (used from routes). |
+| File                                                           | Role                                                     |
+| -------------------------------------------------------------- | -------------------------------------------------------- |
+| [AssistantSharing.svelte](./AssistantSharing.svelte)           | Org/LTI sharing UI (standalone; unused by routes today). |
+| [AssistantSharingModal.svelte](./AssistantSharingModal.svelte) | Dual-list sharing modal (used from routes).              |
 
 ### Tests (root of `assistants/`)
 
-| File | Covers |
-|------|--------|
-| [AssistantForm.svelte.test.js](./AssistantForm.svelte.test.js) | Component contract and integration (create/edit, fields, validation). |
-| [assistantFormState.svelte.test.js](./assistantFormState.svelte.test.js) | State factory, reset, populate, revert, `clearRagDependentState`. |
-| [assistantFormUtils.svelte.test.js](./assistantFormUtils.svelte.test.js) | `selectModel`, placeholders, model extraction. |
-| [assistantFormFetchers.test.js](./assistantFormFetchers.test.js) | KB/rubric/file fetch, guards, errors. |
-| [assistantFormSubmit.test.js](./assistantFormSubmit.test.js) | Validation and API payload building. |
-| [importAssistantValidator.test.js](./importAssistantValidator.test.js) | Import JSON validation (Vitest). |
-| [importAssistantValidator.spec.js](./importAssistantValidator.spec.js) | Same logic, alternate spec suite. |
-| [__tests__/helpers.js](./__tests__/helpers.js) | Store mocks and shared test utilities. |
+| File                                                                     | Covers                                                                |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| [AssistantForm.svelte.test.js](./AssistantForm.svelte.test.js)           | Component contract and integration (create/edit, fields, validation). |
+| [assistantFormState.svelte.test.js](./assistantFormState.svelte.test.js) | State factory, reset, populate, revert, `clearRagDependentState`.     |
+| [assistantFormUtils.svelte.test.js](./assistantFormUtils.svelte.test.js) | `selectModel`, placeholders, model extraction.                        |
+| [assistantFormFetchers.test.js](./assistantFormFetchers.test.js)         | KB/rubric/file fetch, guards, errors.                                 |
+| [assistantFormSubmit.test.js](./assistantFormSubmit.test.js)             | Validation and API payload building.                                  |
+| [importAssistantValidator.test.js](./importAssistantValidator.test.js)   | Import JSON validation (Vitest).                                      |
+| [importAssistantValidator.spec.js](./importAssistantValidator.spec.js)   | Same logic, alternate spec suite.                                     |
+| [**tests**/helpers.js](./__tests__/helpers.js)                           | Store mocks and shared test utilities.                                |
 
 ---
 
@@ -162,68 +162,68 @@ History for `frontend/svelte-app/src/lib/components/assistants/`. Grouped by pha
 
 ### Phase 3 — Folder layout (2026-05-18)
 
-| Date | Commit | Description |
-|------|--------|-------------|
-| 2026-05-19 | *(this commit)* | Relocate sharing components to assistants root; update `refactor.md` (sharing out of scope, form-only Data flow diagram). |
-| 2026-05-18 | `3e5ada8f` | Move form UI into `components/`, logic into `logic/`; tests stay at root; update route and test imports. |
-| 2026-05-18 | `e4e1d07f` | Extract `validateSubmission` / `buildAssistantPayload` → `assistantFormSubmit.js` + tests. |
-| 2026-05-18 | `50fb5855` | **Option C:** remove fetch callbacks from `assistantFormState`; triggers live in `AssistantForm`. |
-| 2026-05-18 | `1b38d6cb` | Extract KB/rubric/file fetchers → `assistantFormFetchers.js` + tests. |
-| 2026-05-18 | `f1724ff8` | Replace `onDestroy` with `$effect` cleanup (Svelte 5). |
-| 2026-05-18 | `bb1ada55` | Remove duplicate sanitization preview from `FormActions`. |
-| 2026-05-18 | `6f1e5b21` | Add keys to `{#each}` blocks (ConfigurationPanel, AssistantPromptFields, AssistantSharing). |
-| 2026-05-18 | `b8d34630` | **P0:** `get(store)` → `$assistantConfigStore` in `$derived.by`. |
+| Date       | Commit          | Description                                                                                                               |
+| ---------- | --------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 2026-05-19 | _(this commit)_ | Relocate sharing components to assistants root; update `refactor.md` (sharing out of scope, form-only Data flow diagram). |
+| 2026-05-18 | `3e5ada8f`      | Move form UI into `components/`, logic into `logic/`; tests stay at root; update route and test imports.                  |
+| 2026-05-18 | `e4e1d07f`      | Extract `validateSubmission` / `buildAssistantPayload` → `assistantFormSubmit.js` + tests.                                |
+| 2026-05-18 | `50fb5855`      | **Option C:** remove fetch callbacks from `assistantFormState`; triggers live in `AssistantForm`.                         |
+| 2026-05-18 | `1b38d6cb`      | Extract KB/rubric/file fetchers → `assistantFormFetchers.js` + tests.                                                     |
+| 2026-05-18 | `f1724ff8`      | Replace `onDestroy` with `$effect` cleanup (Svelte 5).                                                                    |
+| 2026-05-18 | `bb1ada55`      | Remove duplicate sanitization preview from `FormActions`.                                                                 |
+| 2026-05-18 | `6f1e5b21`      | Add keys to `{#each}` blocks (ConfigurationPanel, AssistantPromptFields, AssistantSharing).                               |
+| 2026-05-18 | `b8d34630`      | **P0:** `get(store)` → `$assistantConfigStore` in `$derived.by`.                                                          |
 
 ### Phase 2 — State extraction (2026-05-15)
 
-| Date | Commit | Description |
-|------|--------|-------------|
+| Date       | Commit     | Description                                                                                               |
+| ---------- | ---------- | --------------------------------------------------------------------------------------------------------- |
 | 2026-05-15 | `4cb27239` | **Phase 1 plan:** extract state to `assistantFormState.svelte.js` (#96); `AssistantForm` ~892 → ~635 LOC. |
 
 ### Phase 1b — Tech debt and fixes (2026-05-14)
 
-| Date | Commit | Description |
-|------|--------|-------------|
+| Date       | Commit     | Description                                                                                |
+| ---------- | ---------- | ------------------------------------------------------------------------------------------ |
 | 2026-05-14 | `969cd70b` | Fix file list fetch (`apiJson`, creator path); DescriptionField and single-file RAG fixes. |
-| 2026-05-14 | `691d4664` | Remove unused `createAsyncResource` factory and tests. |
-| 2026-05-14 | `5278bbf1` | Fix `oninput` in DescriptionField; `fileInputRef` null check. |
-| 2026-05-14 | `283effd7` | Misc utility, validator, and UX improvements. |
-| 2026-05-14 | `c4e3dee2` | Behavioral tests for edit mode and validation. |
-| 2026-05-14 | `8fa465d2` | Reset file input before click (re-select same file). |
-| 2026-05-14 | `a7626084` | Rename `onchange` → `oninput` on fields. |
-| 2026-05-14 | `d82938b8` | i18n for ConfigurationPanel and PromptFields. |
-| 2026-05-14 | `a92f6f8e` | Remove dead derived values, unused props, empty blocks. |
-| 2026-05-14 | `9d3295f8` | Co-locate `TemplateSelectModal` with AssistantPromptFields. |
-| 2026-05-14 | `7cca822b` | DescriptionField: `apiFetch` + inline errors instead of `alert`. |
-| 2026-05-14 | `445fa0ad` | `fetchUserFiles`: raw fetch → `apiFetch`. |
-| 2026-05-14 | `ea07bad2` | Fix stale `availableModels`, remove `bind:this` anti-patterns. |
-| 2026-05-14 | `ff4b949d` | Replace manual store subscribe with `$effect` auto-subscription. |
+| 2026-05-14 | `691d4664` | Remove unused `createAsyncResource` factory and tests.                                     |
+| 2026-05-14 | `5278bbf1` | Fix `oninput` in DescriptionField; `fileInputRef` null check.                              |
+| 2026-05-14 | `283effd7` | Misc utility, validator, and UX improvements.                                              |
+| 2026-05-14 | `c4e3dee2` | Behavioral tests for edit mode and validation.                                             |
+| 2026-05-14 | `8fa465d2` | Reset file input before click (re-select same file).                                       |
+| 2026-05-14 | `a7626084` | Rename `onchange` → `oninput` on fields.                                                   |
+| 2026-05-14 | `d82938b8` | i18n for ConfigurationPanel and PromptFields.                                              |
+| 2026-05-14 | `a92f6f8e` | Remove dead derived values, unused props, empty blocks.                                    |
+| 2026-05-14 | `9d3295f8` | Co-locate `TemplateSelectModal` with AssistantPromptFields.                                |
+| 2026-05-14 | `7cca822b` | DescriptionField: `apiFetch` + inline errors instead of `alert`.                           |
+| 2026-05-14 | `445fa0ad` | `fetchUserFiles`: raw fetch → `apiFetch`.                                                  |
+| 2026-05-14 | `ea07bad2` | Fix stale `availableModels`, remove `bind:this` anti-patterns.                             |
+| 2026-05-14 | `ff4b949d` | Replace manual store subscribe with `$effect` auto-subscription.                           |
 
 ### Phase 1a — Component extraction from monolith (2026-05-12)
 
-| Date | Commit | Description |
-|------|--------|-------------|
-| 2026-05-12 | `e71b1956` | svelte-check fixes in extracted components. |
-| 2026-05-12 | `7562236d` | Remove dead imports, unused state, `console.log`. |
-| 2026-05-12 | `a0cbc3f2` | DRY: `loadRagPlaceholders`, model selector helpers. |
-| 2026-05-12 | `f9a28e49` | Adopt `ragProcessorHelpers` for all inline RAG checks. |
-| 2026-05-12 | `c42615b5` | Fix double-escaped regex in RAG dropdown labels. |
-| 2026-05-12 | `81a18e11` | Restore `getAuthToken` shared utility. |
-| 2026-05-12 | `d96ed205` | Extract `importAssistantValidator` from `handleFileSelect`. |
-| 2026-05-12 | `da36c1d0` | Dead code cleanup; callback props (Task 3.1). |
-| 2026-05-12 | `8cd6672b` | Extract **FormActions**. |
-| 2026-05-12 | `09f740f7` | Extract **ConfigurationPanel**. |
-| 2026-05-12 | `03bad6b6` | Extract **RagOptionsPanel**. |
-| 2026-05-12 | `80b8e20f` | Extract **SingleFileSelector**. |
-| 2026-05-12 | `abb3fb0f` | Extract **KnowledgeBaseSelector**. |
-| 2026-05-12 | `fa497d21` | Extract **RubricSelector**. |
-| 2026-05-12 | `2b5d7e6f` | Extract **AssistantPromptFields**. |
-| 2026-05-12 | `b7cf8eb8` | Extract **AssistantDescriptionField**. |
-| 2026-05-12 | `c9c0ce47` | Extract **AssistantNameField**. |
-| 2026-05-12 | `78fc80cb` | Extract **AssistantFormHeader**. |
+| Date       | Commit     | Description                                                                     |
+| ---------- | ---------- | ------------------------------------------------------------------------------- |
+| 2026-05-12 | `e71b1956` | svelte-check fixes in extracted components.                                     |
+| 2026-05-12 | `7562236d` | Remove dead imports, unused state, `console.log`.                               |
+| 2026-05-12 | `a0cbc3f2` | DRY: `loadRagPlaceholders`, model selector helpers.                             |
+| 2026-05-12 | `f9a28e49` | Adopt `ragProcessorHelpers` for all inline RAG checks.                          |
+| 2026-05-12 | `c42615b5` | Fix double-escaped regex in RAG dropdown labels.                                |
+| 2026-05-12 | `81a18e11` | Restore `getAuthToken` shared utility.                                          |
+| 2026-05-12 | `d96ed205` | Extract `importAssistantValidator` from `handleFileSelect`.                     |
+| 2026-05-12 | `da36c1d0` | Dead code cleanup; callback props (Task 3.1).                                   |
+| 2026-05-12 | `8cd6672b` | Extract **FormActions**.                                                        |
+| 2026-05-12 | `09f740f7` | Extract **ConfigurationPanel**.                                                 |
+| 2026-05-12 | `03bad6b6` | Extract **RagOptionsPanel**.                                                    |
+| 2026-05-12 | `80b8e20f` | Extract **SingleFileSelector**.                                                 |
+| 2026-05-12 | `abb3fb0f` | Extract **KnowledgeBaseSelector**.                                              |
+| 2026-05-12 | `fa497d21` | Extract **RubricSelector**.                                                     |
+| 2026-05-12 | `2b5d7e6f` | Extract **AssistantPromptFields**.                                              |
+| 2026-05-12 | `b7cf8eb8` | Extract **AssistantDescriptionField**.                                          |
+| 2026-05-12 | `c9c0ce47` | Extract **AssistantNameField**.                                                 |
+| 2026-05-12 | `78fc80cb` | Extract **AssistantFormHeader**.                                                |
 | 2026-05-12 | `5fd62f09` | Async resource factory and shared form utilities (later removed in `691d4664`). |
-| 2026-05-12 | `ad209fb2` | Baseline contract tests before refactor. |
-| 2026-05-12 | `59c86667` | Shared test helpers and mocks. |
+| 2026-05-12 | `ad209fb2` | Baseline contract tests before refactor.                                        |
+| 2026-05-12 | `59c86667` | Shared test helpers and mocks.                                                  |
 
 ### `AssistantForm.svelte` size over time
 
@@ -338,14 +338,14 @@ graph TD
 
 ## How to extend safely
 
-| Need | Where to change |
-|------|-----------------|
-| New form field | `createAssistantFormState` + UI component + `buildAssistantPayload` + state/submit tests |
-| New RAG type with async data | `assistantFormFetchers.js` + RAG `$effect` in `AssistantForm` + selector in `components/` |
-| New save validation rule | `assistantFormSubmit.js` + `assistantFormSubmit.test.js` |
-| New import JSON rule | `importAssistantValidator.js` + validator tests |
-| Visual-only change | Specific file under `components/` |
-| Assistant sharing feature | Root-level `AssistantSharing*.svelte` + future service module; **not** form `logic/` until a dedicated sharing refactor |
+| Need                         | Where to change                                                                                                         |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| New form field               | `createAssistantFormState` + UI component + `buildAssistantPayload` + state/submit tests                                |
+| New RAG type with async data | `assistantFormFetchers.js` + RAG `$effect` in `AssistantForm` + selector in `components/`                               |
+| New save validation rule     | `assistantFormSubmit.js` + `assistantFormSubmit.test.js`                                                                |
+| New import JSON rule         | `importAssistantValidator.js` + validator tests                                                                         |
+| Visual-only change           | Specific file under `components/`                                                                                       |
+| Assistant sharing feature    | Root-level `AssistantSharing*.svelte` + future service module; **not** form `logic/` until a dedicated sharing refactor |
 
 ---
 
@@ -416,4 +416,4 @@ E2E tests assume a running stack (backend, frontend, etc.) as described in the p
 
 ---
 
-*Branch: `frontend-refactor`.*
+_Branch: `frontend-refactor`._

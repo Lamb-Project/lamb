@@ -20,7 +20,7 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="MIGRATIONS")
 
 # Increment this when adding a new migration method below.
-LATEST_VERSION = 25
+LATEST_VERSION = 26
 
 
 class MigrationRunner:
@@ -1055,3 +1055,82 @@ class MigrationRunner:
             f"CREATE INDEX IF NOT EXISTS "
             f"idx_{tp}audit_log_org_date "
             f"ON {tp}audit_log(organization_id, created_at)")
+
+    def _migration_26(self, cursor):
+        """Create knowledge_stores and kb_content_links tables.
+
+        These power the new KB Server (port 9092) integration. The existing
+        kb_registry table (stable KB Server) is untouched.
+        """
+        tp = self.db.table_prefix
+
+        logger.info("Creating knowledge store tables if not exist")
+
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {tp}knowledge_stores (
+                id TEXT PRIMARY KEY,
+                organization_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                owner_user_id INTEGER NOT NULL,
+                is_shared INTEGER DEFAULT 0,
+                chunking_strategy TEXT NOT NULL,
+                chunking_params TEXT,
+                embedding_vendor TEXT NOT NULL,
+                embedding_model TEXT NOT NULL,
+                embedding_endpoint TEXT,
+                vector_db_backend TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (organization_id)
+                    REFERENCES {tp}organizations(id) ON DELETE CASCADE,
+                FOREIGN KEY (owner_user_id)
+                    REFERENCES {tp}Creator_users(id),
+                UNIQUE(organization_id, name)
+            )
+        """)
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}knowledge_stores_owner "
+            f"ON {tp}knowledge_stores(owner_user_id)")
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}knowledge_stores_org_shared "
+            f"ON {tp}knowledge_stores(organization_id, is_shared)")
+
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {tp}kb_content_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                knowledge_store_id TEXT NOT NULL,
+                library_id TEXT NOT NULL,
+                library_item_id TEXT NOT NULL,
+                organization_id INTEGER NOT NULL,
+                kb_job_id TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                chunks_created INTEGER DEFAULT 0,
+                error_message TEXT,
+                created_by_user_id INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (knowledge_store_id)
+                    REFERENCES {tp}knowledge_stores(id) ON DELETE CASCADE,
+                FOREIGN KEY (organization_id)
+                    REFERENCES {tp}organizations(id) ON DELETE CASCADE,
+                FOREIGN KEY (created_by_user_id)
+                    REFERENCES {tp}Creator_users(id),
+                UNIQUE(knowledge_store_id, library_item_id)
+            )
+        """)
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}kb_content_links_ks "
+            f"ON {tp}kb_content_links(knowledge_store_id)")
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}kb_content_links_item "
+            f"ON {tp}kb_content_links(library_item_id)")
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}kb_content_links_status "
+            f"ON {tp}kb_content_links(status)")

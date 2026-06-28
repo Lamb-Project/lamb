@@ -497,8 +497,17 @@ test.describe.serial("Organization Without Admin & Role Promotion (issue #249)",
       await page.waitForTimeout(500);
     }
 
-    // Find the user row
+    // The promotion org (test 11) cascade-deletes its member users in the
+    // backend (LambDatabaseManager.delete_organization removes Creator_users
+    // for that org). If the user is already gone, this cleanup step is a no-op.
     const userRow = page.locator(`tr:has-text("${testUserEmail}")`);
+    if ((await userRow.count()) === 0) {
+      console.log(
+        `Cleanup: User "${testUserEmail}" was already removed by org-delete cascade — skipping disable.`,
+      );
+      return;
+    }
+
     await expect(userRow).toBeVisible({ timeout: 10_000 });
 
     // Click the disable button

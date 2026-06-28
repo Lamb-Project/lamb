@@ -79,9 +79,7 @@ export async function getAssistants(limit = 10, offset = 0) {
 	// Return the expected structure { assistants: [], total_count: 0 }
 	// Ensure defaults if API response is malformed
 	return {
-		assistants: Array.isArray(data?.assistants)
-			? data.assistants.map(normalizeAssistantData)
-			: [],
+		assistants: Array.isArray(data?.assistants) ? data.assistants.map(normalizeAssistantData) : [],
 		total_count: typeof data?.total_count === 'number' ? data.total_count : 0
 	};
 }
@@ -582,9 +580,7 @@ export async function getSharedAssistants() {
 		const data = await response.json();
 
 		return {
-			assistants: Array.isArray(data.assistants)
-				? data.assistants.map(normalizeAssistantData)
-				: [],
+			assistants: Array.isArray(data.assistants) ? data.assistants.map(normalizeAssistantData) : [],
 			count: data.count || 0
 		};
 	} catch (error) {

@@ -28,6 +28,7 @@ vi.mock('$lib/stores/assistantConfigStore', async () => {
 
 vi.mock('$lib/utils/ragProcessorHelpers.js', () => ({
 	isKbBasedRag: (p) => ['simple_rag', 'context_aware_rag', 'hierarchical_rag'].includes(p),
+	isKsBasedRag: (p) => ['query_rewriting_ks_rag', 'knowledge_store_rag'].includes(p),
 	isSingleFileRag: (p) => p === 'single_file_rag',
 	isRubricRag: (p) => p === 'rubric_rag',
 	normalizeRagProcessor: (p) => p || 'no_rag'
@@ -36,13 +37,24 @@ vi.mock('$lib/utils/ragProcessorHelpers.js', () => ({
 vi.mock('$lib/utils/assistantData', () => ({
 	getAssistantMetadataObject: (data) => {
 		if (typeof data.metadata === 'string') {
-			try { return JSON.parse(data.metadata); } catch { return {}; }
+			try {
+				return JSON.parse(data.metadata);
+			} catch {
+				return {};
+			}
 		}
 		return data.metadata || {};
 	}
 }));
 
-import { createAssistantFormState, handleFieldChange, resetFormFieldsToDefaults, populateFormFields, revertToInitial, clearRagDependentState } from './logic/assistantFormState.svelte.js';
+import {
+	createAssistantFormState,
+	handleFieldChange,
+	resetFormFieldsToDefaults,
+	populateFormFields,
+	revertToInitial,
+	clearRagDependentState
+} from './logic/assistantFormState.svelte.js';
 
 const getAvailableModels = () => ['gpt-4', 'gpt-3.5-turbo'];
 

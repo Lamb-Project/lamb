@@ -48,6 +48,6 @@ export function renderMarkdownWithMath(text) {
 	if (!browser) return html;
 	return DOMPurify.sanitize(html, {
 		USE_PROFILES: { html: true },
-		ADD_ATTR: ['class', 'style'], // KaTeX uses inline styles and classes for math rendering
+		ADD_ATTR: ['class', 'style'] // KaTeX uses inline styles and classes for math rendering
 	});
 }

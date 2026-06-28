@@ -21,6 +21,11 @@ async def verify_token(
 
     Uses ``hmac.compare_digest`` for timing-safe comparison to prevent
     timing attacks that could reveal the token character by character.
+    Operands are encoded to bytes first because ``hmac.compare_digest``
+    raises ``TypeError`` on ``str`` inputs containing non-ASCII characters;
+    comparing bytes keeps the comparison timing-safe while ensuring any
+    invalid token (including non-ASCII) is rejected with 401 rather than
+    crashing with a 500.
 
     Args:
         credentials: The Authorization header parsed by HTTPBearer.
@@ -31,7 +36,9 @@ async def verify_token(
     Raises:
         HTTPException: 401 if token is missing or invalid.
     """
-    if not hmac.compare_digest(credentials.credentials, LAMB_API_TOKEN):
+    if not hmac.compare_digest(
+        credentials.credentials.encode("utf-8"), LAMB_API_TOKEN.encode("utf-8")
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid service token.",

@@ -39,15 +39,20 @@ if (typeof window !== 'undefined') {
 			activeTabId.set(data.activeId || null);
 			showTabs.set(tabs.length > 0);
 		}
-	} catch (_) { /* ignore */ }
+	} catch (_) {
+		/* ignore */
+	}
 }
 
 function persist() {
 	if (typeof window === 'undefined') return;
-	sessionStorage.setItem('aac_tabs', JSON.stringify({
-		tabs: get(openTabs),
-		activeId: get(activeTabId),
-	}));
+	sessionStorage.setItem(
+		'aac_tabs',
+		JSON.stringify({
+			tabs: get(openTabs),
+			activeId: get(activeTabId)
+		})
+	);
 }
 
 /**
@@ -59,7 +64,7 @@ function persist() {
  */
 export function openTab(id, title, assistantId = null, skill = null) {
 	const current = get(openTabs);
-	if (current.find(t => t.id === id)) {
+	if (current.find((t) => t.id === id)) {
 		// Don't duplicate; just activate.
 		activeTabId.set(id);
 		showTabs.set(true);
@@ -77,7 +82,7 @@ export function openTab(id, title, assistantId = null, skill = null) {
  * @param {string} id
  */
 export function closeTab(id) {
-	const remaining = get(openTabs).filter(t => t.id !== id);
+	const remaining = get(openTabs).filter((t) => t.id !== id);
 	openTabs.set(remaining);
 	if (get(activeTabId) === id) {
 		activeTabId.set(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
@@ -135,12 +140,12 @@ export function isTabsVisible() {
 export function recordTabActivity(id) {
 	const AWAY_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 	const tabs = get(openTabs);
-	const tab = tabs.find(t => t.id === id);
+	const tab = tabs.find((t) => t.id === id);
 	if (!tab) return false;
-	const wasAway = (Date.now() - (tab.lastMessageAt || 0)) > AWAY_THRESHOLD_MS;
+	const wasAway = Date.now() - (tab.lastMessageAt || 0) > AWAY_THRESHOLD_MS;
 	// Replace the tab to trigger reactivity (mutating the existing object
 	// would not notify subscribers).
-	openTabs.set(tabs.map(t => t.id === id ? { ...t, lastMessageAt: Date.now() } : t));
+	openTabs.set(tabs.map((t) => (t.id === id ? { ...t, lastMessageAt: Date.now() } : t)));
 	persist();
 	return wasAway;
 }
