@@ -148,6 +148,24 @@ class TestCreateCollection:
         col = create_collection(db_session, _create_req(collection_id=cid))
         assert col.id == cid
 
+    @pytest.mark.parametrize(
+        "bad_id",
+        ["../../etc/passwd", "..", "a/b", "with space", "semi;colon"],
+    )
+    def test_path_traversal_collection_id_rejected_422(self, db_session, bad_id) -> None:
+        """A client-supplied collection id outside the allow-list is rejected
+        (422) BEFORE any path/dir is built — symmetric with organization_id."""
+        org = _org()
+        with pytest.raises(HTTPException) as exc:
+            create_collection(db_session, _create_req(org_id=org, collection_id=bad_id))
+        assert exc.value.status_code == 422
+        assert "collection id" in exc.value.detail
+        # No row was persisted for this org.
+        assert (
+            db_session.query(Collection).filter(Collection.organization_id == org).count()
+            == 0
+        )
+
     def test_backend_failure_cleans_up_storage_dir(self, db_session, monkeypatch) -> None:
         """If the vector backend's create_collection raises, the storage dir is removed."""
         from plugins.vector_db.chromadb_backend import ChromaDBBackend
@@ -686,6 +704,70 @@ class TestExecuteIngestionJob:
             assert job.chunks_created == 0
         finally:
             strategy_class.chunk = original_chunk_fn
+
+    def test_cancel_midrun_persists_counters_for_completed_docs(
+        self, db_session, monkeypatch
+    ) -> None:
+        """A cooperative cancel after the first document still updates the
+        collection counters for the documents already written to disk."""
+        from services.ingestion_service import JobCancelledError
+
+        docs = [
+            _doc("doc-0", "The quick brown fox jumps. " * 12),
+            _doc("doc-1", "Second document content here. " * 12),
+            _doc("doc-2", "Third document trailing text. " * 12),
+        ]
+        col, job = self._make_collection_with_job(db_session, docs)
+
+        # The loop calls db.refresh(job) at the top of each iteration. Flip the
+        # in-memory status to 'cancelled' on the 2nd refresh (start of the 2nd
+        # iteration) so exactly one document is fully processed beforehand.
+        real_refresh = db_session.refresh
+        state = {"n": 0}
+
+        def fake_refresh(obj, *args, **kwargs):
+            real_refresh(obj, *args, **kwargs)
+            if isinstance(obj, IngestionJob):
+                state["n"] += 1
+                if state["n"] == 2:
+                    obj.status = "cancelled"
+
+        monkeypatch.setattr(db_session, "refresh", fake_refresh)
+
+        credentials = {"api_key": "", "api_endpoint": ""}
+        with pytest.raises(JobCancelledError):
+            execute_ingestion_job(db_session, job, col, credentials)
+
+        monkeypatch.undo()
+        db_session.refresh(col)
+        db_session.refresh(job)
+
+        # Exactly one document completed before the cancel — counters reflect it.
+        assert job.documents_processed == 1
+        assert col.document_count == 1
+        assert col.chunk_count == job.chunks_created
+        assert col.chunk_count > 0
+
+    def test_cancel_before_first_doc_leaves_counters_zero(
+        self, db_session
+    ) -> None:
+        """Cancelling before any document is processed is a counter no-op."""
+        from services.ingestion_service import JobCancelledError
+
+        col, job = self._make_collection_with_job(
+            db_session, [_doc("doc-0"), _doc("doc-1")]
+        )
+        # Mark cancelled so the very first per-iteration check trips.
+        job.status = "cancelled"
+        db_session.commit()
+
+        credentials = {"api_key": "", "api_endpoint": ""}
+        with pytest.raises(JobCancelledError):
+            execute_ingestion_job(db_session, job, col, credentials)
+
+        db_session.refresh(col)
+        assert col.document_count == 0
+        assert col.chunk_count == 0
 
 
 # ---------------------------------------------------------------------------

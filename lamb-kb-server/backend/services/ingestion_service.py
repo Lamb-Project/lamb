@@ -34,6 +34,28 @@ class JobCancelledError(Exception):
     """
 
 
+def _bump_collection_counters(
+    db: Session, collection_id: str, docs_delta: int, chunks_delta: int
+) -> None:
+    """Atomically add deltas to a collection's document/chunk counters.
+
+    SQLite serializes the increment so concurrent ingestion jobs against the
+    same collection don't lose contributions. A no-op when both deltas are 0
+    (e.g. a job cancelled before any document completed).
+    """
+    if not docs_delta and not chunks_delta:
+        return
+    db.execute(
+        sa.update(Collection)
+        .where(Collection.id == collection_id)
+        .values(
+            document_count=Collection.document_count + docs_delta,
+            chunk_count=Collection.chunk_count + chunks_delta,
+        )
+    )
+    db.commit()
+
+
 def queue_add_content(
     db: Session, collection_id: str, req: AddContentRequest
 ) -> IngestionJob:
@@ -185,6 +207,7 @@ def execute_ingestion_job(
         )
 
     total_chunks_added = 0
+    docs_completed = 0
 
     for i, doc_dict in enumerate(docs_list):
         # Cooperative cancellation: commit any in-flight progress, then read
@@ -194,6 +217,13 @@ def execute_ingestion_job(
         db.commit()
         db.refresh(job)
         if job.status == "cancelled":
+            # Persist the collection counters for the documents already fully
+            # processed (their vectors are on disk) so the stored counts don't
+            # understate reality. A cancelled job is terminal and never
+            # retried, so these increments cannot be double-counted.
+            _bump_collection_counters(
+                db, collection.id, docs_completed, total_chunks_added
+            )
             raise JobCancelledError(
                 f"Job {job.id} cancelled after "
                 f"{job.documents_processed}/{len(docs_list)} documents"
@@ -254,6 +284,7 @@ def execute_ingestion_job(
         job.documents_processed += 1
         job.chunks_created += n_stored
         total_chunks_added += n_stored
+        docs_completed += 1
 
         # Commit progress every batch so partial progress is visible.
         if (i + 1) % _COMMIT_BATCH_SIZE == 0:
@@ -266,22 +297,14 @@ def execute_ingestion_job(
             n_stored,
         )
 
-    # Atomic counter update — SQLite serializes the increment so concurrent
-    # ingestion jobs against the same collection don't lose contributions.
-    db.execute(
-        sa.update(Collection)
-        .where(Collection.id == collection.id)
-        .values(
-            document_count=Collection.document_count + len(docs_list),
-            chunk_count=Collection.chunk_count + total_chunks_added,
-        )
-    )
-    db.commit()
+    # Atomic counter update for the documents completed in this run (all of
+    # them on the success path). docs_completed == len(docs_list) here.
+    _bump_collection_counters(db, collection.id, docs_completed, total_chunks_added)
 
     logger.info(
         "Job %s ingestion complete: %d documents, %d chunks added",
         job.id,
-        len(docs_list),
+        docs_completed,
         total_chunks_added,
     )
 

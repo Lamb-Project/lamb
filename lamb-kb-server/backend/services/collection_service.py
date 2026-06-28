@@ -121,11 +121,24 @@ def create_collection(db: Session, req: CreateCollectionRequest) -> Collection:
         )
 
     collection_id = req.id or uuid4().hex
+    # Both identifiers become filesystem path segments below. Validate them
+    # with the same allow-list BEFORE constructing any path or calling
+    # os.makedirs so a client-supplied id like "../../etc" cannot escape the
+    # per-org storage root (path traversal). A server-generated UUID always
+    # passes; only client-supplied req.id can be hostile.
     if not re.match(r"^[a-zA-Z0-9_-]+$", req.organization_id):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
                 "organization_id must contain only alphanumeric characters, "
+                "hyphens, and underscores."
+            ),
+        )
+    if not re.match(r"^[a-zA-Z0-9_-]+$", collection_id):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "collection id must contain only alphanumeric characters, "
                 "hyphens, and underscores."
             ),
         )

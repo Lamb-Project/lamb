@@ -447,6 +447,138 @@ def test_qdrant_delete_collection_exception_swallowed(tmp_storage: str, fake_emb
     broken_client.delete_collection.assert_called_once_with(collection_name=cid)
 
 
+# ---------------------------------------------------------------------------
+# 12. Known-dimension table avoids the live probe (no credentials available)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    ("vendor", "model", "expected_dim"),
+    [
+        ("openai", "text-embedding-3-small", 1536),
+        ("openai", "text-embedding-3-large", 3072),
+        ("openai", "text-embedding-ada-002", 1536),
+        ("local", "all-MiniLM-L6-v2", 384),
+    ],
+)
+def test_resolve_known_dimension_table(vendor, model, expected_dim) -> None:
+    """Known (vendor, model) pairs resolve to a dimension without any call."""
+    from plugins.vector_db.qdrant_backend import _resolve_known_dimension
+
+    ef = type("EF", (), {"name": vendor, "model": model})()
+    assert _resolve_known_dimension(ef) == expected_dim
+
+
+def test_resolve_known_dimension_unknown_returns_none() -> None:
+    """Unknown vendor/model — or missing attrs — return None (probe fallback)."""
+    from plugins.vector_db.qdrant_backend import _resolve_known_dimension
+
+    # Known vendor but unlisted model.
+    unknown_model = type("EF", (), {"name": "openai", "model": "mystery-1"})()
+    assert _resolve_known_dimension(unknown_model) is None
+    # Missing name/model attributes (e.g. a bare callable).
+    assert _resolve_known_dimension(lambda texts: texts) is None
+
+
+def test_qdrant_known_dimension_avoids_live_probe(tmp_storage: str, monkeypatch) -> None:
+    """For a known API vendor/model, create_collection sizes the collection from
+    the table and never invokes the (credential-less) embedding function."""
+    os.environ.pop("QDRANT_URL", None)
+    import plugins.vector_db.qdrant_backend as qmod
+
+    class ApiVendorNoKey:
+        """API vendor whose live call would fail without credentials."""
+
+        name = "openai"
+
+        def __init__(self, model: str) -> None:
+            self.model = model
+
+        def __call__(self, texts):  # pragma: no cover - must NOT be called
+            raise AssertionError("live probe must not run for a known vendor/model")
+
+    fake_client = MagicMock()
+    monkeypatch.setattr(qmod, "_make_client", lambda sp: fake_client)
+
+    be = QdrantBackend()
+    cid = _make_cid()
+    returned = be.create_collection(
+        collection_id=cid,
+        storage_path=tmp_storage,
+        embedding_function=ApiVendorNoKey("text-embedding-3-large"),
+    )
+    assert returned == cid
+    _, kwargs = fake_client.create_collection.call_args
+    assert kwargs["vectors_config"].size == 3072
+
+
+# ---------------------------------------------------------------------------
+# 13. Local client caching (file-lock contention fix)
+# ---------------------------------------------------------------------------
+
+def test_qdrant_client_cached_per_path(tmp_storage: str) -> None:
+    """_make_client returns the SAME cached client for the same storage path."""
+    os.environ.pop("QDRANT_URL", None)
+    import plugins.vector_db.qdrant_backend as qmod
+
+    c1 = qmod._make_client(tmp_storage)
+    c2 = qmod._make_client(tmp_storage)
+    assert c1 is c2
+    qmod._close_cached_client(tmp_storage)
+
+
+def test_qdrant_delete_collection_clears_cache(tmp_storage: str, fake_embedding) -> None:
+    """delete_collection evicts the cached client so the dir lock is released."""
+    os.environ.pop("QDRANT_URL", None)
+    import plugins.vector_db.qdrant_backend as qmod
+
+    be = QdrantBackend()
+    cid = _make_cid()
+    be.create_collection(
+        collection_id=cid,
+        storage_path=tmp_storage,
+        embedding_function=fake_embedding,
+    )
+    # Touch the backend so a client is cached.
+    be.add_chunks(
+        collection_id=cid,
+        storage_path=tmp_storage,
+        chunks=[Chunk(text="x", metadata={"source_item_id": "s", "chunk_index": 0})],
+        embedding_function=fake_embedding,
+    )
+    key = qmod._client_cache_key(tmp_storage)
+    assert key in qmod._clients
+
+    be.delete_collection(collection_id=cid, storage_path=tmp_storage)
+    assert key not in qmod._clients
+
+
+def test_qdrant_close_cached_client_remote_is_noop(tmp_storage: str, monkeypatch) -> None:
+    """In remote mode there is no per-path lock, so close is a no-op."""
+    import plugins.vector_db.qdrant_backend as qmod
+
+    monkeypatch.setattr(qmod.config, "QDRANT_URL", "http://remote-qdrant:6333")
+    # Must not raise and must not touch the (local) cache.
+    qmod._close_cached_client(tmp_storage)
+
+
+def test_qdrant_close_cached_client_swallows_close_error(
+    tmp_storage: str, monkeypatch
+) -> None:
+    """A failing client.close() is swallowed; the cache entry is still removed."""
+    import plugins.vector_db.qdrant_backend as qmod
+
+    monkeypatch.setattr(qmod.config, "QDRANT_URL", "")
+    key = qmod._client_cache_key(tmp_storage)
+    broken = MagicMock()
+    broken.close.side_effect = RuntimeError("close boom")
+    qmod._clients[key] = broken
+
+    qmod._close_cached_client(tmp_storage)
+
+    assert key not in qmod._clients
+    broken.close.assert_called_once()
+
+
 def test_qdrant_remote_mode_uses_url(monkeypatch, tmp_storage: str) -> None:
     """When QDRANT_URL is set, QdrantClient is constructed with url= not path=."""
     # Use monkeypatch.setattr only — it auto-restores after the test. Do NOT

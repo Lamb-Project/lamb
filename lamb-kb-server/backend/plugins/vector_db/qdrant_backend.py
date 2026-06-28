@@ -21,6 +21,7 @@ stored child text.
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -49,17 +50,98 @@ _BATCH_SIZE = 100
 # Internal payload key used to store the chunk's text alongside the vector
 _TEXT_KEY = "_text"
 
+# Known embedding dimensions for the project's allow-list of (vendor, model)
+# pairs. Used to size a Qdrant collection WITHOUT a live embedding call —
+# Qdrant requires the vector size up front, but at collection-creation time
+# no request-scoped API credentials are available (ADR-4). Probing an API
+# vendor (e.g. openai) with a dummy key would fail, so we resolve the
+# dimension from this table first and only fall back to a live probe for
+# vendors/models that need no credentials (local/ollama) or are unknown.
+_KNOWN_EMBEDDING_DIMENSIONS: dict[tuple[str, str], int] = {
+    ("openai", "text-embedding-3-small"): 1536,
+    ("openai", "text-embedding-3-large"): 3072,
+    ("openai", "text-embedding-ada-002"): 1536,
+    ("local", "all-MiniLM-L6-v2"): 384,
+}
+
+
+def _resolve_known_dimension(embedding_function: EmbeddingFunction) -> int | None:
+    """Return the known vector dimension for *embedding_function*, or None.
+
+    Looks up ``(vendor, model)`` in :data:`_KNOWN_EMBEDDING_DIMENSIONS`. The
+    vendor is the plugin's class-level ``name``; the model is the instance's
+    ``model`` attribute (set by ``EmbeddingFunction.__init__``). Returns None
+    when either is missing or the pair is not in the table, signalling the
+    caller to fall back to a live probe.
+    """
+    vendor = getattr(type(embedding_function), "name", None)
+    model = getattr(embedding_function, "model", None)
+    if not vendor or not model:
+        return None
+    return _KNOWN_EMBEDDING_DIMENSIONS.get((vendor, model))
+
+
+# Module-level client cache so embedded Qdrant's per-path file lock is held by
+# a single client per storage path. Without this, a fresh QdrantClient on every
+# add/query/delete raises "Storage folder ... already accessed" under
+# concurrency (mirrors the ChromaDB backend's cache). Remote clients are cached
+# per URL since they share one connection regardless of collection.
+_clients: dict[str, QdrantClient] = {}
+_clients_lock = threading.Lock()
+
+
+def _client_cache_key(storage_path: str) -> str:
+    """Cache key: by URL in remote mode, by storage path in local mode."""
+    if config.QDRANT_URL:
+        return f"remote::{config.QDRANT_URL}"
+    return f"local::{storage_path}"
+
 
 def _make_client(storage_path: str) -> QdrantClient:
-    """Create a Qdrant client in remote or local mode."""
+    """Return a cached Qdrant client (remote or local on-disk).
+
+    Thread-safe: at most one client is constructed per cache key even under
+    concurrent calls. The client is reused across add/query/delete so embedded
+    Qdrant's file lock is not re-acquired on every operation.
+    """
+    key = _client_cache_key(storage_path)
+    with _clients_lock:
+        client = _clients.get(key)
+        if client is None:
+            if config.QDRANT_URL:
+                logger.debug(
+                    "QdrantBackend: using remote client at %s", config.QDRANT_URL
+                )
+                client = QdrantClient(
+                    url=config.QDRANT_URL,
+                    api_key=config.QDRANT_API_KEY or None,
+                )
+            else:
+                logger.debug(
+                    "QdrantBackend: using local on-disk client at %s", storage_path
+                )
+                client = QdrantClient(path=storage_path)
+            _clients[key] = client
+        return client
+
+
+def _close_cached_client(storage_path: str) -> None:
+    """Drop and close the cached local client for *storage_path*.
+
+    Releases the embedded Qdrant file lock so the storage directory can be
+    removed. Remote clients are keyed by URL and shared, so they are left in
+    place (no per-path lock to release).
+    """
     if config.QDRANT_URL:
-        logger.debug("QdrantBackend: using remote client at %s", config.QDRANT_URL)
-        return QdrantClient(
-            url=config.QDRANT_URL,
-            api_key=config.QDRANT_API_KEY or None,
-        )
-    logger.debug("QdrantBackend: using local on-disk client at %s", storage_path)
-    return QdrantClient(path=storage_path)
+        return
+    key = _client_cache_key(storage_path)
+    with _clients_lock:
+        client = _clients.pop(key, None)
+    if client is not None:
+        try:
+            client.close()
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("QdrantBackend: error closing client for %s: %s", key, exc)
 
 
 def _ensure_marker_dir(storage_path: str) -> None:
@@ -92,9 +174,12 @@ class QdrantBackend(VectorDBBackend):
     ) -> str:
         """Create a Qdrant collection with cosine distance.
 
-        The embedding dimension is detected by embedding a single probe string.
-        This is necessary because Qdrant requires the vector size at collection
-        creation time while ChromaDB deduces it lazily.
+        Qdrant requires the vector size at collection-creation time (ChromaDB
+        deduces it lazily). Since request-scoped embedding credentials are not
+        available here (ADR-4), the dimension is resolved from a known
+        ``(vendor, model)`` table first; only when that lookup misses do we
+        fall back to a live probe (safe for credential-free vendors such as
+        local/ollama).
 
         Returns:
             ``collection_id`` (Qdrant uses name-based addressing).
@@ -102,9 +187,12 @@ class QdrantBackend(VectorDBBackend):
         _ensure_marker_dir(storage_path)
         client = _make_client(storage_path)
 
-        # Detect embedding dimension by probing
-        probe_vectors = embedding_function(["dimension probe"])
-        embedding_dim = len(probe_vectors[0])
+        # Resolve the embedding dimension without a live API call when possible.
+        embedding_dim = _resolve_known_dimension(embedding_function)
+        if embedding_dim is None:
+            # Fall back to a live probe (credential-free vendors / unknown models).
+            probe_vectors = embedding_function(["dimension probe"])
+            embedding_dim = len(probe_vectors[0])
 
         client.create_collection(
             collection_name=collection_id,
@@ -136,6 +224,8 @@ class QdrantBackend(VectorDBBackend):
                 exc,
             )
 
+        # Release the cached client's file lock before removing the directory.
+        _close_cached_client(storage_path)
         shutil.rmtree(storage_path, ignore_errors=True)
         logger.debug("Removed Qdrant storage directory: %s", storage_path)
 
@@ -275,8 +365,10 @@ class QdrantBackend(VectorDBBackend):
             chunk_text: str = payload.pop(_TEXT_KEY, "")
             # Parent-document retrieval: prefer parent_text if present
             text = payload.pop("parent_text", None) or chunk_text
-            # Normalise Qdrant cosine score from [-1,1] to [0,1]
-            score = (float(hit.score) + 1.0) / 2.0
+            # Normalise Qdrant cosine score from [-1,1] to [0,1]. Clamp to
+            # guard against tiny float overshoots (e.g. 1.0000000002 for an
+            # exact match), matching the ChromaDB backend's [0,1] contract.
+            score = max(0.0, min(1.0, (float(hit.score) + 1.0) / 2.0))
             results.append(QueryResult(text=text, score=score, metadata=payload))
 
         return results
