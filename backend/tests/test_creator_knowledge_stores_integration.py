@@ -338,6 +338,27 @@ def test_add_content_already_linked_is_idempotent(
     ks_db.register_kb_content_link.assert_not_called()
 
 
+def test_add_content_unconfigured_token_returns_503(
+    client, ks_db, ks_client, ks_library_client, async_return, async_raise
+):
+    """If the KS bearer token is unconfigured, ``add_content`` raises ValueError;
+    the router must surface a structured 503 rather than an opaque 500."""
+    _wire_add_content_happy(ks_db, ks_client, ks_library_client, async_return)
+    ks_client.add_content = async_raise(
+        ValueError("Knowledge Store token is not configured.")
+    )
+
+    response = client.post(
+        "/creator/knowledge-stores/ks-1/content",
+        json={"library_id": "lib-1", "item_ids": ["item-1"]},
+    )
+
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"]
+    # No link should be registered when ingestion never started.
+    ks_db.register_kb_content_link.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # GET /creator/knowledge-stores/{ks_id}/jobs/{job_id}
 # ---------------------------------------------------------------------------
@@ -405,6 +426,26 @@ def test_query_happy_path_returns_chunks(client, ks_db, ks_client, async_return)
     assert len(chunks) == 1
     assert "permalinks" in chunks[0]
     assert chunks[0]["permalinks"]["original"].startswith("/docs/")
+
+
+def test_query_unconfigured_token_returns_503(
+    client, ks_db, ks_client, async_raise
+):
+    """If the KS bearer token is unconfigured the client raises ValueError;
+    the router must surface a structured 503, not an opaque 500."""
+    ks_db.get_knowledge_store.return_value = _ks_row()
+    ks_client.resolve_embedding_api_key.return_value = "fake-key"
+    ks_client.query = async_raise(
+        ValueError("Knowledge Store token is not configured.")
+    )
+
+    response = client.post(
+        "/creator/knowledge-stores/ks-1/query",
+        json={"query_text": "what are mitochondria", "top_k": 3},
+    )
+
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"]
 
 
 # ---------------------------------------------------------------------------

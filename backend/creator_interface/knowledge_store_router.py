@@ -545,10 +545,19 @@ async def add_content(
             embedding_api_endpoint=ks_entry.get("embedding_endpoint") or "",
             creator_user=auth.user,
         )
-    except HTTPException as e:
+    except HTTPException:
+        raise
+    except ValueError as e:
+        # KnowledgeStoreClient._headers raises ValueError when the KS bearer
+        # token is unconfigured. Surface it as a clear 503 instead of a 500.
+        raise HTTPException(
+            status_code=503,
+            detail=f"Knowledge Store service is not configured: {e}",
+        )
+    except Exception as e:
         raise HTTPException(
             status_code=502,
-            detail=f"Knowledge Store ingestion failed: {e.detail}",
+            detail=f"Knowledge Store ingestion failed: {e}",
         )
 
     job_id = result.get("job_id")
@@ -769,14 +778,29 @@ async def query_knowledge_store(
         vendor=ks_entry["embedding_vendor"],
     )
 
-    return await _client.query(
-        knowledge_store_id=ks_id,
-        query_text=body.query_text,
-        top_k=body.top_k,
-        embedding_api_key=embedding_api_key,
-        embedding_api_endpoint=ks_entry.get("embedding_endpoint") or "",
-        creator_user=auth.user,
-    )
+    try:
+        return await _client.query(
+            knowledge_store_id=ks_id,
+            query_text=body.query_text,
+            top_k=body.top_k,
+            embedding_api_key=embedding_api_key,
+            embedding_api_endpoint=ks_entry.get("embedding_endpoint") or "",
+            creator_user=auth.user,
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        # KnowledgeStoreClient._headers raises ValueError when the KS bearer
+        # token is unconfigured. Surface it as a clear 503 instead of a 500.
+        raise HTTPException(
+            status_code=503,
+            detail=f"Knowledge Store service is not configured: {e}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Knowledge Store query failed: {e}",
+        )
 
 
 # ======================================================================

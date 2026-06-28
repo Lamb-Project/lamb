@@ -34,7 +34,7 @@ def serialize_assistant(assistant) -> Dict[str, Any]:
                 value = getattr(assistant, key)
                 json.dumps({key: value})
                 out[key] = value
-            except (TypeError, OverflowError, Exception):
+            except Exception:
                 out[key] = str(value)
     return out
 
