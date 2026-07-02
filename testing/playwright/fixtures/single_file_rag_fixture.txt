@@ -1,0 +1,16 @@
+LAMB Project Overview
+
+The LAMB (Learning Assistants Manager and Builder) platform allows educators to create
+AI-based learning assistants. The platform was founded in 2024 and has grown to support
+over 500 educational institutions worldwide.
+
+Key Features:
+- No-code assistant builder with drag-and-drop interface
+- Multi-model LLM support including GPT-4, Claude, and Llama
+- RAG (Retrieval-Augmented Generation) knowledge bases
+- Multi-tenant organizations with role-based access control
+
+The RAG_caching feature was introduced in version 2.1 to reduce token costs by up to 90%
+when using single_file_rag. The total number of registered users as of June 2026 is 12,847.
+
+The platform's mascot is a llama named "Lambda" who wears a graduation cap.
