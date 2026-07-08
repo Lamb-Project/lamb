@@ -29,6 +29,7 @@ from urllib.parse import urlparse
 
 import shutil
 import aiohttp
+import hashlib
 import os
 import importlib.util
 import time
@@ -50,6 +51,62 @@ from lamb.logging_config import get_logger
 # Set up centralized logging
 logger = get_logger(__name__, component="MAIN")
 multimodal_logger = get_logger('multimodal', component="MAIN")
+
+
+def _resolve_facade_identity(request: Request):
+    """Resolve the caller of the OpenAI-compatible facade from the bearer token.
+
+    Returns one of:
+      - {"kind": "system"}                          the shared system token
+      - {"kind": "creator", "user_id", "organization_id", "email"}
+                                                     a valid creator API key
+      - None                                         no / invalid credential
+
+    A creator key is valid only when: it exists, is active, is unexpired, and
+    its organization has the ``api_access`` feature flag enabled.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header.split("Bearer ", 1)[1].strip()
+    if not token:
+        return None
+    if token == API_KEY:
+        return {"kind": "system"}
+
+    key_hash = hashlib.sha256(token.encode()).hexdigest()
+    db = LambDatabaseManager()
+    row = db.get_api_key_by_hash(key_hash)
+    if not row or row.get("status") != "active":
+        return None
+    expires_at = row.get("expires_at")
+    if expires_at and int(time.time()) > int(expires_at):
+        return None
+
+    org = db.get_organization_by_id(row["organization_id"])
+    features = (org or {}).get("config", {}).get("features", {})
+    if not features.get("api_access"):
+        return None
+
+    creator = db.get_creator_user_by_id(row["creator_user_id"])
+    if not creator:
+        return None
+
+    db.touch_api_key(row["id"])
+    return {
+        "kind": "creator",
+        "user_id": row["creator_user_id"],
+        "organization_id": row["organization_id"],
+        "email": creator["user_email"],
+    }
+
+
+def _creator_published_assistant_ids(identity: dict) -> set:
+    """Set of assistant ids a creator key is allowed to see/use."""
+    db = LambDatabaseManager()
+    rows = db.get_published_assistants_for_org_user(
+        identity["organization_id"], identity["user_id"], identity["email"])
+    return {a["id"] for a in rows}
 
 # Lifespan context manager for startup and shutdown
 @asynccontextmanager
@@ -355,7 +412,16 @@ async def get_models(request: Request):
   
     # Only return published assistants (not deleted, not unpublished)
     assistants = helper_get_all_assistants(filter_deleted=True, filter_unpublished=True)
-    
+
+    # A creator API key scopes the list to that creator's own published
+    # assistants (owned + shared). The system token — and, for backward
+    # compatibility, an unauthenticated caller such as Open WebUI — get the
+    # full published list, unchanged.
+    identity = _resolve_facade_identity(request)
+    if identity and identity["kind"] == "creator":
+        allowed = _creator_published_assistant_ids(identity)
+        assistants = [a for a in assistants if a["id"] in allowed]
+
     # Prepare response body
     response_body = {
         "object": "list",
@@ -625,26 +691,14 @@ async def generate_openai_chat_completion(request: Request):
     ```
     """
 
-    try:
-        api_key = request.headers.get("Authorization")
-        if api_key and api_key.startswith("Bearer "):
-            api_key = api_key.split("Bearer ")[1].strip()
-            logger.debug(f"API Key received: {api_key[:4]}...{api_key[-4:]}")
-            if   api_key != API_KEY:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid API key",
-                )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="No API key provided in request headers",
-            )
-    except Exception as e:
-        logger.error(f"Authentication error: {e}")
+    # Auth: accept either the shared system token or a valid creator API key.
+    # A creator key additionally restricts which assistants may be called
+    # (enforced below, once the assistant id is resolved from the model).
+    facade_identity = _resolve_facade_identity(request)
+    if facade_identity is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Authorization header",
+            detail="Invalid or missing API key",
         )
 
     # Log request details for debugging multimodal issues
@@ -810,6 +864,15 @@ async def generate_openai_chat_completion(request: Request):
         assistant_id = helper_get_assistant_id(form_data.model)
         logger.info(f"Processing assistant: {assistant_id}")
 
+        # A creator API key may only call its own published assistants.
+        if facade_identity.get("kind") == "creator":
+            allowed = _creator_published_assistant_ids(facade_identity)
+            if int(assistant_id) not in allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="This API key is not authorized for the requested assistant.",
+                )
+
         # Define common headers
         request_id = f"req_{uuid.uuid4()}"
         processing_ms = str(random.randint(150, 450))
@@ -848,6 +911,10 @@ async def generate_openai_chat_completion(request: Request):
             multimodal_logger.debug(f"Response is dict with keys: {list(response.keys())}")
         return response
 
+    except HTTPException:
+        # Auth/authorization decisions (401/403) must reach the client as-is,
+        # not be reshaped into a 422 by the generic handler below.
+        raise
     except Exception as e:
         error_detail = {
             "error": str(e),

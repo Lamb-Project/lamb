@@ -20,7 +20,7 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="MIGRATIONS")
 
 # Increment this when adding a new migration method below.
-LATEST_VERSION = 25
+LATEST_VERSION = 26
 
 
 class MigrationRunner:
@@ -1055,3 +1055,36 @@ class MigrationRunner:
             f"CREATE INDEX IF NOT EXISTS "
             f"idx_{tp}audit_log_org_date "
             f"ON {tp}audit_log(organization_id, created_at)")
+
+    def _migration_26(self, cursor):
+        """Create api_keys table (per-creator keys for the OpenAI-compatible
+        facade). Stores only the SHA-256 hash of each key."""
+        if self._table_exists(cursor, 'api_keys'):
+            return
+        tp = self.db.table_prefix
+        logger.info("Creating api_keys table")
+        cursor.execute(f"""
+            CREATE TABLE {tp}api_keys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key_hash TEXT NOT NULL UNIQUE,
+                key_prefix TEXT NOT NULL,
+                creator_user_id INTEGER NOT NULL,
+                organization_id INTEGER NOT NULL,
+                label TEXT,
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK(status IN ('active', 'revoked')),
+                created_at INTEGER NOT NULL,
+                last_used_at INTEGER,
+                expires_at INTEGER,
+                FOREIGN KEY (creator_user_id)
+                    REFERENCES {tp}Creator_users(id) ON DELETE CASCADE,
+                FOREIGN KEY (organization_id)
+                    REFERENCES {tp}organizations(id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute(
+            f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{tp}api_keys_hash "
+            f"ON {tp}api_keys(key_hash)")
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{tp}api_keys_user "
+            f"ON {tp}api_keys(creator_user_id)")

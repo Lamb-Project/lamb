@@ -23,6 +23,7 @@ from .user_creator import UserCreatorManager
 from lamb.database_manager import LambDatabaseManager
 from lamb.owi_bridge.owi_users import OwiUserManager
 from .assistant_router import router as assistant_router
+from .api_keys_router import router as api_keys_router
 from .knowledges_router import router as knowledges_router
 from lamb.auth_context import AuthContext, get_auth_context, require_admin
 import json
@@ -111,6 +112,9 @@ async def stop_news_cache_refresh_loop():
 
 # Include the assistant router
 router.include_router(assistant_router, prefix="/assistant")
+
+# Include the creator API keys router
+router.include_router(api_keys_router, prefix="/api-keys")
 
 # Include the knowledges router
 router.include_router(knowledges_router, prefix="/knowledgebases")

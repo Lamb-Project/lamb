@@ -526,6 +526,34 @@ class LambDatabaseManager:
                 logger.info(
                     f"Table '{self.table_prefix}Creator_users' created successfully")
 
+                # Create the api_keys table (per-creator keys for the
+                # OpenAI-compatible facade). The plaintext key is never
+                # stored — only its SHA-256 hash. key_prefix is the first
+                # few visible chars, for display/identification.
+                logger.debug("Creating api_keys table")
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}api_keys (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        key_hash TEXT NOT NULL UNIQUE,
+                        key_prefix TEXT NOT NULL,
+                        creator_user_id INTEGER NOT NULL,
+                        organization_id INTEGER NOT NULL,
+                        label TEXT,
+                        status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'revoked')),
+                        created_at INTEGER NOT NULL,
+                        last_used_at INTEGER,
+                        expires_at INTEGER,
+                        FOREIGN KEY (creator_user_id) REFERENCES {self.table_prefix}Creator_users(id) ON DELETE CASCADE,
+                        FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE
+                    )
+                """)
+                cursor.execute(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{self.table_prefix}api_keys_hash ON {self.table_prefix}api_keys(key_hash)")
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}api_keys_user ON {self.table_prefix}api_keys(creator_user_id)")
+                logger.info(
+                    f"Table '{self.table_prefix}api_keys' created successfully")
+
                 # Create the collections table
                 logger.debug("Creating collections table")
                 cursor.execute(f"""
@@ -785,7 +813,10 @@ class LambDatabaseManager:
             "dev_mode": os.getenv("DEV_MODE", "false").lower() == "true",
             "mcp_enabled": True,  # Always enabled for system org
             "lti_publishing": True,
-            "rag_enabled": True
+            "rag_enabled": True,
+            # Per-creator API keys for the OpenAI-compatible facade. Default
+            # off — an org owner/admin turns it on explicitly.
+            "api_access": os.getenv("API_ACCESS_ENABLED", "false").lower() == "true"
         }
 
         # Add signup key if signup is enabled and key is available
@@ -8310,6 +8341,120 @@ class LambDatabaseManager:
         except sqlite3.Error as e:
             logger.error(f"Error getting published assistants for org user: {e}")
             return []
+        finally:
+            connection.close()
+
+    # ------------------------------------------------------------------ #
+    #  API keys — per-creator keys for the OpenAI-compatible facade       #
+    # ------------------------------------------------------------------ #
+
+    def create_api_key(self, key_hash: str, key_prefix: str,
+                       creator_user_id: int, organization_id: int,
+                       label: Optional[str] = None,
+                       expires_at: Optional[int] = None) -> Optional[int]:
+        """Store a new API key (hash only). Returns the new row id, or None."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}api_keys
+                        (key_hash, key_prefix, creator_user_id, organization_id,
+                         label, status, created_at, expires_at)
+                    VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+                """, (key_hash, key_prefix, creator_user_id, organization_id,
+                      label, now, expires_at))
+                return cursor.lastrowid
+        except sqlite3.Error as e:
+            logger.error(f"Error creating api key: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_api_key_by_hash(self, key_hash: str) -> Optional[Dict[str, Any]]:
+        """Look up an API key by its hash. Returns the full row (incl. status
+        and expiry) or None; callers must check status/expiry themselves."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT id, key_hash, key_prefix, creator_user_id, organization_id,
+                           label, status, created_at, last_used_at, expires_at
+                    FROM {self.table_prefix}api_keys
+                    WHERE key_hash = ?
+                """, (key_hash,))
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                cols = [c[0] for c in cursor.description]
+                return dict(zip(cols, row))
+        except sqlite3.Error as e:
+            logger.error(f"Error looking up api key: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def list_api_keys_for_user(self, creator_user_id: int) -> List[Dict[str, Any]]:
+        """List a user's API keys — metadata only, never the hash."""
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT id, key_prefix, label, status, created_at, last_used_at, expires_at
+                    FROM {self.table_prefix}api_keys
+                    WHERE creator_user_id = ?
+                    ORDER BY created_at DESC
+                """, (creator_user_id,))
+                cols = [c[0] for c in cursor.description]
+                return [dict(zip(cols, row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error(f"Error listing api keys: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def revoke_api_key(self, key_id: int, creator_user_id: int) -> bool:
+        """Revoke a key, scoped to its owner (so a user can't revoke another's)."""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}api_keys
+                    SET status = 'revoked'
+                    WHERE id = ? AND creator_user_id = ?
+                """, (key_id, creator_user_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error revoking api key: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def touch_api_key(self, key_id: int) -> None:
+        """Record last-used time. Best-effort; failures are non-fatal."""
+        connection = self.get_connection()
+        if not connection:
+            return
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}api_keys SET last_used_at = ? WHERE id = ?
+                """, (int(time.time()), key_id))
+        except sqlite3.Error as e:
+            logger.error(f"Error touching api key: {e}")
         finally:
             connection.close()
 
