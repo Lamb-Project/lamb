@@ -1,0 +1,299 @@
+import { describe, test, it, expect } from 'vitest';
+
+import { validateSubmission, buildAssistantPayload } from './logic/assistantFormSubmit.js';
+
+describe('validateSubmission', () => {
+	test('returns error when name is empty', () => {
+		const result = validateSubmission({
+			name: '',
+			selectedRagProcessor: 'no_rag',
+			selectedRubricId: '',
+			selectedPromptProcessor: 'simple_augment'
+		});
+		expect(result).toContain('Name');
+	});
+
+	test('returns error when rubric_rag selected without rubric', () => {
+		const result = validateSubmission({
+			name: 'test',
+			selectedRagProcessor: 'rubric_rag',
+			selectedRubricId: '',
+			selectedPromptProcessor: 'simple_augment'
+		});
+		expect(result).toContain('rubric');
+	});
+
+	test('returns error when RAG processor is incompatible with PPS', () => {
+		const result = validateSubmission({
+			name: 'test',
+			selectedRagProcessor: 'simple_rag',
+			selectedRubricId: '',
+			selectedPromptProcessor: 'kvcache_augment',
+			documentRagEnabled: false
+		});
+		expect(result).toContain('not compatible');
+	});
+
+	test('returns error when document RAG enabled without library/item', () => {
+		const result = validateSubmission({
+			name: 'test',
+			selectedRagProcessor: 'no_rag',
+			selectedRubricId: '',
+			selectedPromptProcessor: 'kvcache_augment',
+			documentRagEnabled: true,
+			selectedLibraryId: '',
+			selectedItemId: ''
+		});
+		expect(result).toContain('library and document');
+	});
+
+	test('returns error when document RAG enabled with unsupported PPS', () => {
+		const result = validateSubmission({
+			name: 'test',
+			selectedRagProcessor: 'no_rag',
+			selectedRubricId: '',
+			selectedPromptProcessor: 'simple_augment',
+			documentRagEnabled: true,
+			selectedLibraryId: 'lib-1',
+			selectedItemId: 'item-1'
+		});
+		expect(result).toContain('Reference Document');
+	});
+
+	test('returns null when valid', () => {
+		const result = validateSubmission({
+			name: 'test',
+			selectedRagProcessor: 'no_rag',
+			selectedRubricId: '',
+			selectedPromptProcessor: 'simple_augment',
+			documentRagEnabled: false
+		});
+		expect(result).toBeNull();
+	});
+});
+
+describe('buildAssistantPayload', () => {
+	test('builds payload with metadata', () => {
+		const form = {
+			name: ' test ',
+			description: 'desc',
+			system_prompt: 'sys',
+			prompt_template: 'tmpl',
+			RAG_Top_k: 3,
+			selectedPromptProcessor: 'default_processor',
+			selectedConnector: 'openai',
+			selectedLlm: 'gpt-4',
+			selectedRagProcessor: 'no_rag',
+			selectedLibraryId: '',
+			selectedItemId: '',
+			documentRagEnabled: false,
+			visionEnabled: false,
+			imageGenerationEnabled: false,
+			selectedKnowledgeBases: [],
+			selectedKnowledgeStores: [],
+			selectedRubricId: '',
+			rubricFormat: 'markdown'
+		};
+		const payload = buildAssistantPayload(form);
+		expect(payload.name).toBe('test');
+		const metadata = JSON.parse(payload.metadata);
+		expect(metadata.connector).toBe('openai');
+		expect(metadata.library_id).toBeUndefined();
+		expect(metadata.item_id).toBeUndefined();
+	});
+
+	test('includes rubric fields when rubric_rag is selected', () => {
+		const form = {
+			name: 'test',
+			description: '',
+			system_prompt: '',
+			prompt_template: '',
+			RAG_Top_k: 3,
+			selectedPromptProcessor: 'default',
+			selectedConnector: 'openai',
+			selectedLlm: 'gpt-4',
+			selectedRagProcessor: 'rubric_rag',
+			selectedLibraryId: '',
+			selectedItemId: '',
+			documentRagEnabled: false,
+			visionEnabled: false,
+			imageGenerationEnabled: false,
+			selectedKnowledgeBases: [],
+			selectedKnowledgeStores: [],
+			selectedRubricId: 'rubric-123',
+			rubricFormat: 'json'
+		};
+		const payload = buildAssistantPayload(form);
+		const metadata = JSON.parse(payload.metadata);
+		expect(metadata.rubric_id).toBe('rubric-123');
+		expect(metadata.rubric_format).toBe('json');
+	});
+
+	test('includes KB collections when kb-based RAG is selected', () => {
+		const form = {
+			name: 'test',
+			description: '',
+			system_prompt: '',
+			prompt_template: '',
+			RAG_Top_k: 5,
+			selectedPromptProcessor: 'default',
+			selectedConnector: 'openai',
+			selectedLlm: 'gpt-4',
+			selectedRagProcessor: 'simple_rag',
+			selectedLibraryId: '',
+			selectedItemId: '',
+			documentRagEnabled: false,
+			visionEnabled: true,
+			imageGenerationEnabled: false,
+			selectedKnowledgeBases: ['kb1', 'kb2'],
+			selectedKnowledgeStores: [],
+			selectedRubricId: '',
+			rubricFormat: 'markdown'
+		};
+		const payload = buildAssistantPayload(form);
+		expect(payload.RAG_collections).toBe('kb1,kb2');
+		expect(payload.RAG_Top_k).toBe(5);
+		const metadata = JSON.parse(payload.metadata);
+		expect(metadata.capabilities.vision).toBe(true);
+	});
+
+	test('legacy single_file_rag without documentRagEnabled does not include library refs', () => {
+		const form = {
+			name: 'test',
+			description: '',
+			system_prompt: '',
+			prompt_template: '',
+			RAG_Top_k: 3,
+			selectedPromptProcessor: 'simple_augment',
+			selectedConnector: 'openai',
+			selectedLlm: 'gpt-4o-mini',
+			selectedRagProcessor: 'single_file_rag',
+			selectedLibraryId: 'lib-123',
+			selectedItemId: 'item-456',
+			selectedFilePath: '',
+			documentRagEnabled: false,
+			visionEnabled: false,
+			imageGenerationEnabled: false,
+			selectedKnowledgeBases: [],
+			selectedKnowledgeStores: [],
+			selectedRubricId: '',
+			rubricFormat: 'markdown'
+		};
+		const payload = buildAssistantPayload(form);
+		const metadata = JSON.parse(payload.metadata);
+		expect(metadata.library_id).toBeUndefined();
+		expect(metadata.item_id).toBeUndefined();
+		expect(metadata.file_path).toBeUndefined();
+		expect(metadata.document_rag).toBeUndefined();
+	});
+
+	test('does not emit document_rag when PPS does not support it', () => {
+		const form = {
+			name: 'test',
+			description: '',
+			system_prompt: '',
+			prompt_template: '',
+			RAG_Top_k: 3,
+			selectedPromptProcessor: 'simple_augment',
+			selectedConnector: 'openai',
+			selectedLlm: 'gpt-4o-mini',
+			selectedRagProcessor: 'no_rag',
+			selectedLibraryId: 'lib-1',
+			selectedItemId: 'item-1',
+			documentRagEnabled: true,
+			visionEnabled: false,
+			imageGenerationEnabled: false,
+			selectedKnowledgeBases: [],
+			selectedKnowledgeStores: [],
+			selectedRubricId: '',
+			rubricFormat: 'markdown'
+		};
+		const payload = buildAssistantPayload(form);
+		const metadata = JSON.parse(payload.metadata);
+		expect(metadata.document_rag).toBeUndefined();
+		expect(metadata.library_id).toBeUndefined();
+	});
+});
+
+describe('buildAssistantPayload with document_rag', () => {
+	it('includes document_rag and library refs when documentRagEnabled with kvcache_augment', () => {
+		const form = {
+			name: 'Test',
+			description: '',
+			system_prompt: '',
+			prompt_template: '',
+			selectedPromptProcessor: 'kvcache_augment',
+			selectedConnector: 'openai',
+			selectedLlm: 'gpt-4o-mini',
+			selectedRagProcessor: 'no_rag',
+			documentRagEnabled: true,
+			selectedLibraryId: 'lib-1',
+			selectedItemId: 'item-1',
+			selectedFilePath: '',
+			visionEnabled: false,
+			imageGenerationEnabled: false,
+			RAG_Top_k: 3,
+			selectedKnowledgeBases: [],
+			selectedKnowledgeStores: []
+		};
+		const payload = buildAssistantPayload(form);
+		const metadata = JSON.parse(payload.metadata);
+		expect(metadata.document_rag).toBe('library_file_rag');
+		expect(metadata.library_id).toBe('lib-1');
+		expect(metadata.item_id).toBe('item-1');
+		expect(metadata.rag_processor).toBe('no_rag');
+	});
+
+	it('omits document_rag when documentRagEnabled is false', () => {
+		const form = {
+			name: 'Test',
+			description: '',
+			system_prompt: '',
+			prompt_template: '',
+			selectedPromptProcessor: 'kvcache_augment',
+			selectedConnector: 'openai',
+			selectedLlm: 'gpt-4o-mini',
+			selectedRagProcessor: 'query_rewriting_ks_rag',
+			documentRagEnabled: false,
+			selectedLibraryId: '',
+			selectedItemId: '',
+			selectedFilePath: '',
+			visionEnabled: false,
+			imageGenerationEnabled: false,
+			RAG_Top_k: 3,
+			selectedKnowledgeBases: [],
+			selectedKnowledgeStores: ['ks-1']
+		};
+		const payload = buildAssistantPayload(form);
+		const metadata = JSON.parse(payload.metadata);
+		expect(metadata.document_rag).toBeUndefined();
+		expect(metadata.library_id).toBeUndefined();
+	});
+
+	it('legacy single_file_rag with file_path preserves file_path', () => {
+		const form = {
+			name: 'Legacy Old',
+			description: '',
+			system_prompt: '',
+			prompt_template: '',
+			selectedPromptProcessor: 'simple_augment',
+			selectedConnector: 'openai',
+			selectedLlm: 'gpt-4o-mini',
+			selectedRagProcessor: 'single_file_rag',
+			documentRagEnabled: false,
+			selectedLibraryId: '',
+			selectedItemId: '',
+			selectedFilePath: 'docs/mi_documento.md',
+			visionEnabled: false,
+			imageGenerationEnabled: false,
+			RAG_Top_k: 3,
+			selectedKnowledgeBases: [],
+			selectedKnowledgeStores: []
+		};
+		const payload = buildAssistantPayload(form);
+		const metadata = JSON.parse(payload.metadata);
+		expect(metadata.rag_processor).toBe('single_file_rag');
+		expect(metadata.file_path).toBe('docs/mi_documento.md');
+		expect(metadata.document_rag).toBeUndefined();
+	});
+});

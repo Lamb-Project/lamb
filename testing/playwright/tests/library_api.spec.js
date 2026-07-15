@@ -245,6 +245,42 @@ test.describe.serial("Library Manager integration", () => {
     expect(res.type).toBe("application/zip");
   });
 
+  test("get item content as markdown", async ({ page }) => {
+    const res = await apiCall(
+      page,
+      "GET",
+      `/creator/libraries/${libraryId}/items/${itemId}/content`,
+    );
+
+    expect(res.status).toBe(200);
+    // The body is raw markdown — at minimum non-empty, contains some of the
+    // uploaded file's text. We uploaded a markdown notes file earlier so the
+    // payload should be a string with the original heading-like marker.
+    expect(typeof res.data).toBe("string");
+    expect(res.data.length).toBeGreaterThan(0);
+  });
+
+  test("get item content rejects html format with 422", async ({ page }) => {
+    const res = await apiCall(
+      page,
+      "GET",
+      `/creator/libraries/${libraryId}/items/${itemId}/content?format=html`,
+    );
+
+    expect(res.status).toBe(422);
+  });
+
+  test("get item content accepts text format", async ({ page }) => {
+    const res = await apiCall(
+      page,
+      "GET",
+      `/creator/libraries/${libraryId}/items/${itemId}/content?format=text`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(typeof res.data).toBe("string");
+  });
+
   test("delete item", async ({ page }) => {
     const res = await apiCall(
       page,

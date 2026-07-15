@@ -1,0 +1,47 @@
+fastapi==0.111.0
+uvicorn[standard]==0.31.1
+pydantic==2.11.0
+python-multipart==0.0.9
+python-socketio==5.11.2
+grpcio==1.64.1
+
+passlib==1.7.4
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.0
+
+PyJWT[crypto]==2.9.0
+
+requests==2.32.2
+aiohttp==3.9.5
+httpx==0.28.1
+
+# MCP (Model Context Protocol) libraries
+mcp==1.14.0
+
+# AI libraries
+openai==2.14.0
+anthropic==0.28.0
+google-genai==1.56.0
+vertexai==1.60.0
+
+# Database
+pymongo==4.7.3
+peewee==3.17.5
+SQLAlchemy==2.0.30
+boto3==1.34.131
+redis==5.0.7
+sqlmodel==0.0.18
+chromadb==0.5.0
+psycopg2-binary==2.9.9
+
+# Observability
+langfuse==2.48.0
+ddtrace==2.9.2
+langsmith>=0.1.0,<0.2
+
+# Document extraction (file_evaluation module)
+pypdf==5.1.0
+python-docx==1.1.2
+
+# migration script from v01 to v02
+python-dotenv==1.2.1

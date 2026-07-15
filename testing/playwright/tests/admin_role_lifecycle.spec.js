@@ -257,6 +257,7 @@ test.describe.serial("Admin Role Lifecycle (issue #245)", () => {
       name: /^disable$/i,
     });
     await expect(confirmButton).toBeVisible({ timeout: 5_000 });
+    page.on("dialog", (d) => d.accept());
     await confirmButton.click();
 
     // Wait for modal to close and status to change

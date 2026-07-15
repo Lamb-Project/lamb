@@ -706,6 +706,44 @@ async def create_organization_enhanced(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get(
+    "/organizations/search",
+    tags=["Organization Management"],
+    summary="Search organizations by name (Admin Only)",
+    dependencies=[Depends(security)],
+)
+async def search_organizations_endpoint(name: str, request: Request):
+    try:
+        await verify_admin_access(request)
+        if len(name) < 2:
+            return {"organizations": []}
+        orgs = db_manager.search_organizations(name)
+        return {"organizations": orgs}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error searching organizations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/cost-overview/summary",
+    tags=["Organization Management"],
+    summary="Organization-scoped cost summary (Admin Only)",
+    dependencies=[Depends(security)],
+)
+async def get_cost_summary_by_org(organization_id: int, request: Request):
+    try:
+        await verify_admin_access(request)
+        summary = db_manager.get_org_scoped_summary(organization_id)
+        return {"summary": summary}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching org summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # --- Organization Member Role Management (System Admin Only) ---
 
 class UpdateMemberRole(BaseModel):
@@ -4778,6 +4816,14 @@ async def get_cost_overview(request: Request):
         rows = db_manager.get_all_assistants_with_usage()
 
         result = []
+        total_cost = 0.0
+        total_tokens = 0
+        total_prompt = 0
+        total_completion = 0
+        total_cached_read = 0
+        total_cached_write = 0
+        quota_exceeded_count = 0
+
         for row in rows:
             # Parse quota fields from api_callback JSON
             raw_meta = row.get("api_callback") or "{}"
@@ -4808,6 +4854,8 @@ async def get_cost_overview(request: Request):
                 and cost_limit_usd is not None
                 and cost_usd >= cost_limit_usd
             )
+            if quota_exceeded:
+                quota_exceeded_count += 1
 
             # Determine model/provider from metadata connector config
             model_name = metadata.get("llm") or ""
@@ -4827,16 +4875,34 @@ async def get_cost_overview(request: Request):
             if not alert_thresholds and isinstance(quota_obj, dict):
                 alert_thresholds = quota_obj.get("alert_thresholds", [])
 
+            cached_read = row.get("cache_read_tokens", row.get("cached_prompt_tokens", 0))
+            cached_write = row.get("cache_write_tokens", 0)
+            non_cached = row.get("non_cached_prompt_tokens", 0)
+            prompt = row["prompt_tokens"]
+            cache_pct = round((cached_read / prompt * 100), 2) if prompt > 0 else 0.0
+
+            total_cost += cost_usd
+            total_tokens += row["total_tokens"]
+            total_prompt += prompt
+            total_completion += row["completion_tokens"]
+            total_cached_read += cached_read
+            total_cached_write += cached_write
+
             result.append({
                 "id": row["id"],
                 "name": row["name"],
                 "owner": row["owner"],
                 "organization_name": row["organization_name"],
+                "organization_id": row["organization_id"],
                 "model_name": model_name,
                 "provider": connector,
-                "prompt_tokens": row["prompt_tokens"],
+                "prompt_tokens": prompt,
                 "completion_tokens": row["completion_tokens"],
                 "total_tokens": row["total_tokens"],
+                "cache_read_tokens": cached_read,
+                "cache_write_tokens": cached_write,
+                "non_cached_prompt_tokens": non_cached,
+                "cache_hit_percentage": cache_pct,
                 "cost_usd": round(cost_usd, 6),
                 "quota_enabled": quota_enabled,
                 "cost_limit_usd": cost_limit_usd,
@@ -4844,12 +4910,139 @@ async def get_cost_overview(request: Request):
                 "quota_exceeded": quota_exceeded,
             })
 
-        return {"assistants": result, "count": len(result)}
+        summary = {
+            "total_cost_usd": round(total_cost, 6),
+            "total_tokens": total_tokens,
+            "prompt_tokens": total_prompt,
+            "completion_tokens": total_completion,
+            "cache_read_tokens": total_cached_read,
+            "cache_write_tokens": total_cached_write,
+            "assistant_count": len(result),
+            "quota_exceeded_count": quota_exceeded_count,
+        }
+
+        return {"summary": summary, "assistants": result, "count": len(result)}
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error fetching cost overview: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/assistant/{assistant_id}/usage-by-model",
+    tags=["Organization Management"],
+    summary="Per-model usage breakdown for an assistant (Admin Only)",
+    dependencies=[Depends(security)],
+)
+async def get_assistant_usage_by_model(assistant_id: int, request: Request):
+    try:
+        await verify_admin_access(request)
+        assistant = db_manager.get_assistant_by_id(assistant_id)
+        if not assistant:
+            raise HTTPException(status_code=404, detail="Assistant not found")
+
+        rows = db_manager.get_assistant_usage_by_model(assistant_id)
+        breakdown = []
+        for r in rows:
+            breakdown.append({
+                "provider": r["provider"],
+                "model_name": r["model_name"],
+                "prompt_tokens": r["prompt_tokens"],
+                "non_cached_prompt_tokens": r["non_cached_prompt_tokens"],
+                "cache_read_tokens": r["cache_read_tokens"],
+                "cache_write_tokens": r["cache_write_tokens"],
+                "completion_tokens": r["completion_tokens"],
+                "total_tokens": r["total_tokens"],
+                "cost_usd": r["cost_usd"],
+                "request_count": r["request_count"],
+                "pricing": r["pricing"],
+            })
+        return {"assistant_id": assistant_id, "breakdown": breakdown}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching usage by model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/organizations/search",
+    tags=["Organization Management"],
+    summary="Search organizations by name (Admin Only)",
+    dependencies=[Depends(security)],
+)
+async def search_organizations_endpoint(name: str, request: Request):
+    try:
+        await verify_admin_access(request)
+        if len(name) < 2:
+            return {"organizations": []}
+        orgs = db_manager.search_organizations(name)
+        return {"organizations": orgs}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error searching organizations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ModelPricingCreate(BaseModel):
+    provider: str
+    model_name: str
+    input_per_1m: float
+    cache_read_per_1m: Optional[float] = None
+    cache_write_per_1m: Optional[float] = None
+    output_per_1m: float
+    requires_explicit_cache: bool = False
+
+
+class ModelPricingUpdate(BaseModel):
+    provider: Optional[str] = None
+    model_name: Optional[str] = None
+    input_per_1m: Optional[float] = None
+    cache_read_per_1m: Optional[float] = None
+    cache_write_per_1m: Optional[float] = None
+    output_per_1m: Optional[float] = None
+    requires_explicit_cache: Optional[bool] = None
+
+
+@router.get("/model-pricing", tags=["Organization Management"], dependencies=[Depends(security)])
+async def list_model_pricing(request: Request):
+    await verify_admin_access(request)
+    pricing = db_manager.list_model_pricing()
+    return {"pricing": pricing}
+
+
+@router.post("/model-pricing", tags=["Organization Management"], dependencies=[Depends(security)])
+async def create_model_pricing(body: ModelPricingCreate, request: Request):
+    await verify_admin_access(request)
+    result = db_manager.create_model_pricing(
+        provider=body.provider, model_name=body.model_name,
+        input_per_1m=body.input_per_1m, cache_read_per_1m=body.cache_read_per_1m,
+        cache_write_per_1m=body.cache_write_per_1m, output_per_1m=body.output_per_1m,
+        requires_explicit_cache=body.requires_explicit_cache,
+    )
+    if not result:
+        raise HTTPException(status_code=400, detail="Failed to create pricing (duplicate?)")
+    return result
+
+
+@router.put("/model-pricing/{pricing_id}", tags=["Organization Management"], dependencies=[Depends(security)])
+async def update_model_pricing_endpoint(pricing_id: int, body: ModelPricingUpdate, request: Request):
+    await verify_admin_access(request)
+    result = db_manager.update_model_pricing(pricing_id, **body.model_dump(exclude_none=True))
+    if not result:
+        raise HTTPException(status_code=404, detail="Pricing row not found")
+    return result
+
+
+@router.delete("/model-pricing/{pricing_id}", tags=["Organization Management"], dependencies=[Depends(security)])
+async def delete_model_pricing_route(pricing_id: int, request: Request):
+    await verify_admin_access(request)
+    ok = db_manager.delete_model_pricing(pricing_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Pricing row not found")
+    return {"deleted": True}
 
 
 class QuotaUpdate(BaseModel):

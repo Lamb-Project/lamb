@@ -58,14 +58,7 @@ fi
 echo ""
 echo "🔍 Checking frontend configuration..."
 
-if [ ! -f "$PROJECT_ROOT/frontend/svelte-app/static/config.js" ]; then
-    echo "⚠️  Frontend config.js not found. Creating from sample..."
-    cp "$PROJECT_ROOT/frontend/svelte-app/static/config.js.sample" \
-       "$PROJECT_ROOT/frontend/svelte-app/static/config.js"
-    echo "✅ Created frontend/svelte-app/static/config.js"
-else
-    echo "✅ frontend config.js exists"
-fi
+echo "✅ Frontend config.js is injected at runtime by docker-entrypoint.py"
 
 # 5. Set LAMB_PROJECT_PATH
 echo ""

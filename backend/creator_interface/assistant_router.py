@@ -27,6 +27,7 @@ from datetime import datetime
 import config
 from utils.name_sanitizer import sanitize_assistant_name_with_prefix
 from lamb.logging_config import get_logger
+from creator_interface.metadata_validators import validate_update_plugin_metadata as _validate_metadata
 
 # Configuration
 # Use LAMB_BACKEND_HOST for internal server-to-server requests
@@ -160,7 +161,12 @@ openai_connector = OpenAIConnector()
 
 def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
     """
-    Get creator user from authentication token.
+    LEGACY: Get creator user from authentication token.
+    
+    IMPORTANT: This function does NOT check the `enabled` field.
+    New endpoints should use AuthContext (get_auth_context) instead,
+    which provides centralized validation including enabled status,
+    organization scoping, and role-based access control.
 
     Tries LAMB JWT first; falls back to OWI token validation for
     pre-migration tokens.
@@ -169,8 +175,14 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
         auth_header: The authorization header containing the token
 
     Returns:
-        Optional[Dict[str, Any]]: Creator user object if found and valid, None otherwise
-        Includes full organization data in 'organization' field for access control
+        Optional[Dict[str, Any]]: Creator user object if found and valid, None otherwise.
+        Includes full organization data in 'organization' field for access control.
+        Returns None for invalid tokens or non-existent users.
+        
+    Note:
+        This function is maintained for backward compatibility with a few
+        legacy endpoints. All new code should use the AuthContext pattern:
+        `auth: AuthContext = Depends(get_auth_context)`
     """
     try:
         if not auth_header:
@@ -234,6 +246,8 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
 
         return creator_user
 
+    except HTTPException:
+        raise  # Re-raise HTTPException (e.g. 403 for disabled accounts) without catching it
     except Exception as e:
         logger.error(f"Error getting creator user from token: {str(e)}")
         return None
@@ -316,61 +330,10 @@ def sanitize_filename(filename: str) -> str:
     return filename[:100] if filename else "assistant_export"
 
 
-REQUIRED_PLUGIN_METADATA_KEYS = (
-    "prompt_processor",
-    "connector",
-    "llm",
-    "rag_processor",
-)
-
-
 def validate_update_plugin_metadata(
     original_body: Dict[str, Any]
 ) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Validate assistant plugin metadata for updates.
-
-    Updates must provide complete plugin metadata so the backend never replaces a
-    valid stored configuration with partial or blank data.
-
-    Returns:
-        Tuple[Optional[str], Optional[str]]: (normalized_metadata_json, error_message)
-    """
-    raw_metadata = original_body.get("metadata", original_body.get("api_callback"))
-
-    if raw_metadata is None:
-        return None, (
-            "Assistant updates must include metadata with prompt_processor, "
-            "connector, llm, and rag_processor."
-        )
-
-    if isinstance(raw_metadata, dict):
-        metadata_dict = raw_metadata
-    elif isinstance(raw_metadata, str):
-        if not raw_metadata.strip():
-            return None, "Assistant metadata cannot be empty on update."
-        try:
-            parsed = json.loads(raw_metadata)
-        except json.JSONDecodeError as e:
-            return None, f"Assistant metadata must be valid JSON: {str(e)}"
-        if not isinstance(parsed, dict):
-            return None, "Assistant metadata must be a JSON object."
-        metadata_dict = parsed
-    else:
-        return None, "Assistant metadata must be a JSON string or object."
-
-    missing_keys = [
-        key for key in REQUIRED_PLUGIN_METADATA_KEYS
-        if not isinstance(metadata_dict.get(key), str) or not metadata_dict.get(key).strip()
-    ]
-    if missing_keys:
-        return None, (
-            "Assistant metadata is incomplete. Missing required plugin fields: "
-            + ", ".join(missing_keys)
-        )
-
-    normalized_metadata = json.dumps(metadata_dict)
-    return normalized_metadata, None
+    return _validate_metadata(original_body)
 
 
 def _ensure_metadata_defaults(metadata_raw) -> str:
@@ -379,21 +342,25 @@ def _ensure_metadata_defaults(metadata_raw) -> str:
     The completion pipeline requires a valid prompt_processor. If not set,
     the pipeline fails with 'Prompt processor default not found'.
     """
+    from lamb.assistant_default_pps import default_prompt_processor
+
+    fallback_pps = default_prompt_processor()
+
     if not metadata_raw:
-        return json.dumps({"prompt_processor": "simple_augment"})
+        return json.dumps({"prompt_processor": fallback_pps})
 
     if isinstance(metadata_raw, str):
         try:
             meta = json.loads(metadata_raw)
         except (json.JSONDecodeError, TypeError):
-            return json.dumps({"prompt_processor": "simple_augment"})
+            return json.dumps({"prompt_processor": fallback_pps})
     elif isinstance(metadata_raw, dict):
         meta = metadata_raw
     else:
-        return json.dumps({"prompt_processor": "simple_augment"})
+        return json.dumps({"prompt_processor": fallback_pps})
 
     if not meta.get("prompt_processor"):
-        meta["prompt_processor"] = "simple_augment"
+        meta["prompt_processor"] = fallback_pps
     if not meta.get("connector"):
         meta["connector"] = "openai"
 
@@ -590,6 +557,15 @@ async def create_assistant_directly(request: Request, auth: AuthContext = Depend
         )
         if error:
             raise HTTPException(status_code=400, detail=error)
+
+        normalized_metadata, metadata_error = validate_update_plugin_metadata(new_body)
+        if metadata_error:
+            logger.error(
+                f"Rejected create for assistant '{original_name}' due to invalid metadata: {metadata_error}"
+            )
+            raise HTTPException(status_code=400, detail=metadata_error)
+        new_body["metadata"] = normalized_metadata
+        new_body["api_callback"] = normalized_metadata
 
         # 6. Create Assistant in DB
         assistant_id = None

@@ -40,13 +40,20 @@ services:
     # This service only runs the build step and exits
   frontend-build:
     image: node:20-alpine
-    working_dir: ${LAMB_PROJECT_PATH}/frontend/svelte-app
+    working_dir: ${LAMB_PROJECT_PATH}/frontend
+    environment:
+      - CI=true
     volumes:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
     command: >
       sh -lc "apk add --no-cache git && \
       git config --global --add safe.directory ${LAMB_PROJECT_PATH} && \
-      npm install && npm run build"
+      corepack enable && \
+      corepack prepare pnpm@latest --activate && \
+      pnpm install --no-frozen-lockfile && \
+      test -f packages/module-chat/static/config.js || cp packages/module-chat/static/config.js.sample packages/module-chat/static/config.js && \
+      test -f packages/module-file-eval/static/config.js || cp packages/module-file-eval/static/config.js.sample packages/module-file-eval/static/config.js && \
+      pnpm --filter creator-app build && pnpm --filter module-chat build && pnpm --filter module-file-eval build"
     # This service only runs the build step and exits
   kb:
     image: python:3.11-slim
@@ -97,16 +104,18 @@ services:
       frontend-build:
         condition: service_completed_successfully
     command: >
-      sh -lc "python -m pip install --upgrade pip && \
-      pip install -r requirements.txt && \
+      sh -lc "      python -m pip install --upgrade pip && \
+      pip install -r requirements-base.txt && \
+      pip install -r requirements-ml.txt && \
       LOG_LEVEL=$$(echo \"$${GLOBAL_LOG_LEVEL:-WARNING}\" | tr '[:upper:]' '[:lower:]') && \
       uvicorn main:app --port $$PORT --host 0.0.0.0 --forwarded-allow-ips '*' --workers 4 --log-level $$LOG_LEVEL --no-access-log"
   frontend:
     image: node:20-alpine
-    working_dir: ${LAMB_PROJECT_PATH}/frontend/svelte-app
+    working_dir: ${LAMB_PROJECT_PATH}/frontend
     environment:
       - HOST=0.0.0.0
       - PROXY_TARGET=http://backend:9099
+      - CI=true
     volumes:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
     ports:
@@ -119,12 +128,14 @@ services:
     command: >
       sh -lc "apk add --no-cache git && \
       git config --global --add safe.directory ${LAMB_PROJECT_PATH} && \
-      test -f static/config.js || cp static/config.js.sample static/config.js; \
+      test -f packages/creator-app/static/config.js || cp packages/creator-app/static/config.js.sample packages/creator-app/static/config.js; \
       mkdir -p ${LAMB_PROJECT_PATH}/frontend/build/static/img && \
       mkdir -p ${LAMB_PROJECT_PATH}/frontend/build/static/md && \
       cp ${LAMB_PROJECT_PATH}/backend/static/img/lamb_icon.png ${LAMB_PROJECT_PATH}/frontend/build/static/img/ && \
       cp ${LAMB_PROJECT_PATH}/backend/static/md/lamb-news.md ${LAMB_PROJECT_PATH}/frontend/build/static/md/ && \
-      npm run dev -- --host 0.0.0.0"
+      corepack enable && \
+      corepack prepare pnpm@latest --activate && \
+      pnpm install && pnpm --filter creator-app dev -- --host 0.0.0.0"
 networks:
   default:
     name: lamb-${COMPOSE_PROJECT_NAME:-default}

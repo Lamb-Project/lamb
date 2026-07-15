@@ -96,6 +96,16 @@ async def read_simple_lti(request: Request):
 # REMOVED: /v1/OWI/users/direct-role-update endpoint (security risk - Dec 27, 2025)
 # Role management now handled through creator_interface with proper authentication
 
+# Activity module API routers (file_evaluation, etc.) — must live on this app because
+# the root server mounts this app at /lamb; routes registered only on the parent would
+# never match (the mount handles all /lamb/* first).
+from lamb.modules import discover_modules as _discover_activity_modules, get_all_modules as _get_activity_modules
+
+_discover_activity_modules()
+for _mod in _get_activity_modules():
+    for _router in _mod.get_routers():
+        app.include_router(_router, prefix=f"/v1/modules/{_mod.name}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=2222)

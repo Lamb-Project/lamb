@@ -1,0 +1,225 @@
+const browser = typeof window !== 'undefined';
+
+/**
+ * Auth service - handles user authentication
+ * Shared across all LAMB apps
+ */
+export const authService = {
+  /**
+   * Get the current auth token from localStorage.
+   * Reads from 'userToken' which is the authoritative source
+   * (managed by userStore, apiClient, and LTI bootstrap flow).
+   */
+  getToken: () => {
+    if (!browser) return null;
+    return localStorage.getItem('userToken');
+  },
+
+  /**
+   * Set the auth token in localStorage.
+   * **DEPRECATED:** Use userStore.setToken() instead.
+   * Kept for backwards compat, but writes to 'userToken' now.
+   */
+  setToken: (token) => {
+    if (!browser) return;
+    if (token) {
+      localStorage.setItem('userToken', token);
+    } else {
+      localStorage.removeItem('userToken');
+    }
+  },
+
+  /**
+   * Clear auth token on logout.
+   * **DEPRECATED:** Use userStore.logout() and clearCurrentSession() instead.
+   * Kept for backwards compat.
+   */
+  logout: () => {
+    if (browser) {
+      localStorage.removeItem('userToken');
+      localStorage.removeItem('user');
+    }
+  },
+
+  /**
+   * Get authorization headers for API requests.
+   * **DEPRECATED:** Use apiClient.apiFetch() or apiClient.apiJson() instead.
+   * Kept for backwards compat with modules that aren't using apiClient yet.
+   */
+  getAuthHeaders: () => {
+    const token = authService.getToken();
+    return token
+      ? { Authorization: `Bearer ${token}` }
+      : {};
+  },
+
+  /**
+   * Login with email and password
+   * @param {string} email - User email
+   * @param {string} password - User password
+   * @returns {Promise<{success: boolean, data?: object, error?: string}>}
+   */
+  login: async (email, password) => {
+    if (!browser) {
+      return { success: false, error: 'Not in browser environment' };
+    }
+
+    try {
+      const response = await fetch('/creator/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // Don't write token here — the caller (Login.svelte via
+        // replaceSessionWithLoginData) will invoke userStore.login(userData),
+        // which handles all token + metadata persistence. Writing here would
+        // be redundant and create a double-write inconsistency (#token-key-fix).
+        return { success: true, data: data.data };
+      } else {
+        return {
+          success: false,
+          error: data.error || 'Login failed'
+        };
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      return {
+        success: false,
+        error: error.message || 'Network error'
+      };
+    }
+  },
+
+  /**
+   * Fetch user profile using auth token
+   * @param {string} token - Auth token
+   * @returns {Promise<{success: boolean, data?: object, error?: string}>}
+   */
+  fetchUserProfile: async (token) => {
+    if (!browser) {
+      return { success: false, error: 'Not in browser environment' };
+    }
+
+    try {
+      const response = await fetch('/creator/me', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        return { success: true, data: data.data };
+      } else {
+        return {
+          success: false,
+          error: data.error || 'Failed to fetch profile'
+        };
+      }
+    } catch (error) {
+      console.error('Profile fetch error:', error);
+      return {
+        success: false,
+        error: error.message || 'Network error'
+      };
+    }
+  },
+  /**
+   * Handles user signup
+   * @param {string} name - User name
+   * @param {string} email - User email
+   * @param {string} password - User password
+   * @param {string} secretKey - Secret key for registration
+   * @returns {Promise<{success: boolean, data?: object, error?: string}>}
+   */
+  signup: async (name, email, password, secretKey) => {
+    if (!browser) {
+      return { success: false, error: 'Not in browser environment' };
+    }
+    try {
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('email', email);
+      formData.append('password', password);
+      formData.append('secret_key', secretKey);
+      const response = await fetch('/creator/signup', {
+        method: 'POST',
+        body: formData
+      });
+      let data;
+      try {
+        const text = await response.text();
+        data = text ? JSON.parse(text) : {};
+      } catch (e) {
+        console.error('Failed to parse response:', e);
+        data = {};
+      }
+      if (!response.ok) {
+        throw new Error(data?.error || 'Signup failed');
+      }
+      return data;
+    } catch (error) {
+      console.error('Signup error:', error);
+      let message = 'An error occurred during signup';
+      if (error instanceof Error) {
+        message = error.message;
+      }
+      return {
+        success: false,
+        error: message
+      };
+    }
+  },
+  /**
+   * Sends a help request to the LAMB assistant
+   * @param {string} question - User question
+   * @param {string} token - User authentication token
+   * @returns {Promise<{success: boolean, data?: object, error?: string}>}
+   */
+  getHelp: async (question, token) => {
+    if (!browser) {
+      return { success: false, error: 'Not in browser environment' };
+    }
+    try {
+      const response = await fetch('/creator/lamb_helper_assistant', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ question })
+      });
+      let data;
+      try {
+        const text = await response.text();
+        data = text ? JSON.parse(text) : {};
+      } catch (e) {
+        console.error('Failed to parse response:', e);
+        data = {};
+      }
+      if (!response.ok) {
+        throw new Error(data?.error || 'Help request failed');
+      }
+      return data;
+    } catch (error) {
+      console.error('Help request error:', error);
+      let message = 'An error occurred while getting help';
+      if (error instanceof Error) {
+        message = error.message;
+      }
+      return {
+        success: false,
+        error: message
+      };
+    }
+  }
+
+};

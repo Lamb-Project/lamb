@@ -137,3 +137,49 @@ class TestChatEndpoint:
         assert result.exit_code == 0
         call_args = mock_client.stream_post.call_args
         assert call_args.args[0] == "/creator/assistant/42/chat/completions"
+
+
+class TestChatIdPropagation:
+    """#337 lifecycle: confirm chat_id flows through into the request body
+    and the URL stays scoped to the chosen assistant."""
+
+    def test_chat_id_in_body_and_url(self, mock_token):
+        chunks = _make_sse_chunks("continued reply", chat_id="abc-123")
+        mock_client = MagicMock()
+        mock_client.stream_post.return_value = iter(chunks)
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+
+        with patch("lamb_cli.commands.chat.get_client", return_value=mock_client):
+            result = runner.invoke(
+                app,
+                ["chat", "7", "--message", "follow-up", "--chat-id", "abc-123"],
+            )
+
+        assert result.exit_code == 0
+        call_args = mock_client.stream_post.call_args
+        # URL targets the right assistant
+        assert call_args.args[0] == "/creator/assistant/7/chat/completions"
+        body = call_args.kwargs["json"]
+        # Body propagates chat_id and assistant
+        assert body["chat_id"] == "abc-123"
+        assert body["model"] == "lamb_assistant.7"
+
+    def test_no_chat_id_omits_field(self, mock_token):
+        chunks = _make_sse_chunks("fresh reply")
+        mock_client = MagicMock()
+        mock_client.stream_post.return_value = iter(chunks)
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+
+        with patch("lamb_cli.commands.chat.get_client", return_value=mock_client):
+            result = runner.invoke(app, ["chat", "7", "--message", "hello"])
+
+        assert result.exit_code == 0
+        body = mock_client.stream_post.call_args.kwargs["json"]
+        # When no --chat-id, the field is omitted (not sent as null)
+        assert "chat_id" not in body
+
+
+# Note: --bypass / show-sources test is intentionally skipped — the underlying
+# CLI does not yet emit "sources:" lines. Will be added in a follow-up PR.

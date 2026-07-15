@@ -1,5 +1,6 @@
 from .chats_router import router as chats_router
 from .library_router import router as library_router
+from .knowledge_store_router import router as knowledge_store_router
 from .analytics_router import router as analytics_router
 from .prompt_templates_router import router as prompt_templates_router
 from .evaluaitor_router import router as evaluaitor_router
@@ -140,6 +141,10 @@ router.include_router(aac_router)
 router.include_router(test_router)
 
 router.include_router(library_router, prefix="/libraries")
+
+# Include the Knowledge Store router (new KB Server, port 9092). Distinct
+# from the legacy /knowledgebases routes which serve the stable KB Server.
+router.include_router(knowledge_store_router, prefix="/knowledge-stores")
 
 # REMOVED: assistant_sharing_router - functionality moved to services, accessed via /creator/lamb/* proxy
 
@@ -950,7 +955,7 @@ async def update_user_password_admin(
             }
         )
 
-    # User is admin, proceed with updating the password
+    # User is admin and enabled, proceed with updating the password
     try:
         user_creator = UserCreatorManager()
         result = await user_creator.update_user_password(email, new_password)
@@ -2097,6 +2102,26 @@ async def get_current_user(request: Request, auth: AuthContext = Depends(get_aut
     except Exception as e:
         logger.error(f"Error getting current user: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/user/status",
+    tags=["User Management"],
+    summary="Get User Status (Polling)",
+    description="""Lightweight endpoint to verify the user's session is active.
+    Returns 200 OK if the user is authenticated and active.
+    Returns 403 or 401 if the user is disabled or token is invalid.
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "User is active"},
+        401: {"description": "Authentication invalid"},
+        403: {"description": "User is disabled or deleted"}
+    }
+)
+async def get_user_status(auth: AuthContext = Depends(get_auth_context)):
+    """Lightweight endpoint for frontend session polling"""
+    return {"status": "ok"}
 
 
 @router.get(

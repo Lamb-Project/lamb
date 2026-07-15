@@ -283,9 +283,9 @@ class TestAssistantUpdate:
 
     def test_update_metadata_merge(self, httpx_mock, mock_token):
         """Update --llm merges with existing metadata fetched from server."""
-        # First response: get current assistant (for metadata merge)
+        # GET for metadata merge, GET for name backfill, then PUT.
         httpx_mock.add_response(json=SAMPLE_ASSISTANT_WITH_METADATA)
-        # Second response: the PUT update
+        httpx_mock.add_response(json=SAMPLE_ASSISTANT_WITH_METADATA)
         httpx_mock.add_response(json={"assistant_id": "ast-1", "message": "Updated"})
         result = runner.invoke(
             app, ["assistant", "update", "ast-1", "--llm", "gpt-4o"]
@@ -300,6 +300,8 @@ class TestAssistantUpdate:
 
     def test_update_vision_flag(self, httpx_mock, mock_token):
         """Update --vision merges capability into existing metadata."""
+        # GET for metadata merge, GET for name backfill, then PUT.
+        httpx_mock.add_response(json=SAMPLE_ASSISTANT_WITH_METADATA)
         httpx_mock.add_response(json=SAMPLE_ASSISTANT_WITH_METADATA)
         httpx_mock.add_response(json={"assistant_id": "ast-1", "message": "Updated"})
         result = runner.invoke(
@@ -415,6 +417,145 @@ class TestBuildMetadata:
         assert md["rag_processor"] == "no_rag"
         assert md["capabilities"]["vision"] is True
         assert md["capabilities"]["image_generation"] is False
+
+
+class TestAssistantKnowledgeStoreFlag:
+    """#337 lifecycle verification: --knowledge-store / --ks ergonomic alias.
+
+    Maps repeated UUIDs into RAG_collections (comma-separated). Requires
+    --rag-processor knowledge_store_rag and is mutually exclusive with
+    --rag-collections.
+    """
+
+    def test_create_single_knowledge_store(self, httpx_mock, mock_token):
+        # rag_processor set without connector/llm — CLI fetches defaults first
+        httpx_mock.add_response(json=SAMPLE_DEFAULTS)
+        httpx_mock.add_response(
+            json={"assistant_id": "ast-ks", "name": "KS Bot", "description": "", "owner": "me", "publish_status": False}
+        )
+        result = runner.invoke(
+            app,
+            [
+                "assistant", "create", "KS Bot",
+                "--rag-processor", "knowledge_store_rag",
+                "--knowledge-store", "uuid-aaaa",
+            ],
+        )
+        assert result.exit_code == 0
+        create_req = httpx_mock.get_requests()[-1]
+        body = json.loads(create_req.content)
+        assert body["RAG_collections"] == "uuid-aaaa"
+
+    def test_create_multiple_knowledge_stores(self, httpx_mock, mock_token):
+        httpx_mock.add_response(json=SAMPLE_DEFAULTS)
+        httpx_mock.add_response(
+            json={"assistant_id": "ast-ks", "name": "KS Bot", "description": "", "owner": "me", "publish_status": False}
+        )
+        result = runner.invoke(
+            app,
+            [
+                "assistant", "create", "KS Bot",
+                "--rag-processor", "knowledge_store_rag",
+                "--knowledge-store", "uuid-aaaa",
+                "--knowledge-store", "uuid-bbbb",
+            ],
+        )
+        assert result.exit_code == 0
+        create_req = httpx_mock.get_requests()[-1]
+        body = json.loads(create_req.content)
+        assert body["RAG_collections"] == "uuid-aaaa,uuid-bbbb"
+
+    def test_create_ks_short_alias_works(self, httpx_mock, mock_token):
+        httpx_mock.add_response(json=SAMPLE_DEFAULTS)
+        httpx_mock.add_response(
+            json={"assistant_id": "ast-ks", "name": "KS Bot", "description": "", "owner": "me", "publish_status": False}
+        )
+        result = runner.invoke(
+            app,
+            [
+                "assistant", "create", "KS Bot",
+                "--rag-processor", "knowledge_store_rag",
+                "--ks", "uuid-aaaa",
+            ],
+        )
+        assert result.exit_code == 0
+        create_req = httpx_mock.get_requests()[-1]
+        body = json.loads(create_req.content)
+        assert body["RAG_collections"] == "uuid-aaaa"
+
+    def test_create_ks_with_wrong_rag_processor_errors(self, mock_token):
+        result = runner.invoke(
+            app,
+            [
+                "assistant", "create", "Bad",
+                "--rag-processor", "simple_rag",
+                "--knowledge-store", "uuid-aaaa",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "knowledge_store_rag" in result.output
+
+    def test_create_ks_and_rag_collections_conflict_errors(self, mock_token):
+        result = runner.invoke(
+            app,
+            [
+                "assistant", "create", "Conflict",
+                "--rag-processor", "knowledge_store_rag",
+                "--knowledge-store", "uuid-a",
+                "--rag-collections", "uuid-b",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "either" in result.output.lower() or "not both" in result.output.lower()
+
+    def test_create_ks_rag_default_prompt_template(self, httpx_mock, mock_token):
+        """When --rag-processor knowledge_store_rag is set without
+        --prompt-template, a sensible default is injected that includes
+        {context} and {user_input} placeholders."""
+        httpx_mock.add_response(json=SAMPLE_DEFAULTS)
+        httpx_mock.add_response(
+            json={"assistant_id": "ast-ks", "name": "Bot", "description": "", "owner": "me", "publish_status": False}
+        )
+        result = runner.invoke(
+            app,
+            [
+                "assistant", "create", "Bot",
+                "--rag-processor", "knowledge_store_rag",
+                "--knowledge-store", "uuid-aaaa",
+            ],
+        )
+        assert result.exit_code == 0
+        create_req = httpx_mock.get_requests()[-1]
+        body = json.loads(create_req.content)
+        tpl = body.get("prompt_template", "")
+        assert "{context}" in tpl
+        assert "{user_input}" in tpl
+
+    def test_update_with_knowledge_store_replaces_collections(
+        self, httpx_mock, mock_token
+    ):
+        # update fetches current metadata + name backfill, then PUT
+        # but with only --knowledge-store and --rag-processor, the metadata
+        # GET happens then name backfill GET, then PUT. Let's check actual flow:
+        # has_config_flags is True (rag_processor set), so:
+        # 1) GET current for metadata merge, 2) PUT (no name backfill since
+        # metadata GET already gave us 'name' indirectly? actually re-read…).
+        httpx_mock.add_response(json=SAMPLE_ASSISTANT_WITH_METADATA)
+        httpx_mock.add_response(json=SAMPLE_ASSISTANT_WITH_METADATA)
+        httpx_mock.add_response(json={"message": "Updated"})
+        result = runner.invoke(
+            app,
+            [
+                "assistant", "update", "ast-1",
+                "--rag-processor", "knowledge_store_rag",
+                "--knowledge-store", "uuid-1",
+                "--knowledge-store", "uuid-2",
+            ],
+        )
+        assert result.exit_code == 0
+        update_req = httpx_mock.get_requests()[-1]
+        body = json.loads(update_req.content)
+        assert body["RAG_collections"] == "uuid-1,uuid-2"
 
 
 class TestParseMetadata:

@@ -11,6 +11,7 @@ import json
 from lamb.logging_config import get_logger
 from lamb.auth_context import AuthContext, get_optional_auth_context
 from lamb.completions.task_routing import maybe_route_non_streaming_task
+from lamb.completions.plugin_config import parse_plugin_config, process_completion_request
 from utils.langsmith_config import traceable_llm_call, add_trace_metadata, is_tracing_enabled
 import traceback
 import asyncio
@@ -146,6 +147,10 @@ async def create_completion(
         llm = plugin_config["llm"]
         provider = _provider_for_connector(connector)
 
+        # Check if model requires explicit cache from model_pricing
+        pricing_info = db_manager.get_model_pricing_row(provider, llm) if provider else {}
+        requires_explicit_cache = pricing_info.get("requires_explicit_cache", False)
+
         # Quota pre-check (skipped for ollama — free LLMs)
         if connector != "ollama":
             _check_quota(assistant, assistant_details)
@@ -168,8 +173,10 @@ async def create_completion(
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
         logger.debug(f"Plugins loaded: {pps}, {connectors}, {rag_processors}")
         rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
+        document_context = await get_rag_context(request, rag_processors, plugin_config.get("document_rag", ""), assistant_details)
+        _require_document_context(plugin_config, document_context)
         logger.debug(f"RAG context: {rag_context}")
-        messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps)
+        messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps, document_context)
         logger.debug(f"Messages: {messages}")
         stream = request.get("stream", False)
         logger.debug(f"Stream mode: {stream}")
@@ -182,6 +189,7 @@ async def create_completion(
                 body=request,
                 llm=plugin_config["llm"],
                 assistant_owner=assistant_details.owner,
+                requires_explicit_cache=requires_explicit_cache,
             )
             logger.debug("Returning streaming response")
             if connector == "ollama":
@@ -217,7 +225,8 @@ async def create_completion(
                 stream=False, 
                 body=request, 
                 llm=llm, 
-                assistant_owner=assistant_details.owner
+                assistant_owner=assistant_details.owner,
+                requires_explicit_cache=requires_explicit_cache,
             )
             
             if connector != "ollama" and isinstance(result, dict) and result.get("usage") and provider:
@@ -303,41 +312,10 @@ def _check_quota(assistant_id: int, assistant_details) -> None:
             }
         )
 
-def parse_plugin_config(assistant_details) -> Dict[str, str]:
-    """
-    Parse the metadata field from the assistant record.
-    Expects a JSON string with keys: prompt_processor, connector, llm, rag_processor.
-    """
-    try:
-        # Handle empty string case by defaulting to an empty JSON object
-        if not assistant_details.metadata or assistant_details.metadata.strip() == '':
-            logger.warning(f"Empty metadata for assistant {assistant_details.id}, using default values")
-            callback = {}
-        else:
-            callback = json.loads(assistant_details.metadata)
-    except Exception as e:
-        logger.error(f"Failed to parse metadata for assistant {assistant_details.id}: {e}")
-        raise HTTPException(status_code=400, detail=f"Assistant metadata cannot be parsed: {e}")
-
-    # Set default values if keys are missing
-    defaults = {
-        "prompt_processor": "default",
-        "connector": "openai",
-        "llm": "gpt-4",
-        "rag_processor": ""
-    }
-    
-    # Apply defaults for missing keys
-    for key in defaults:
-        if key not in callback:
-            callback[key] = defaults[key]
-            logger.info(f"Using default {key}={defaults[key]} for assistant {assistant_details.id}")
-
-    return callback
-
 def load_and_validate_plugins(plugin_config: Dict[str, str]) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     """
     Load plugin modules and verify that the requested plugins exist.
+    Also validates COMPATIBLE_RAG declared by the prompt processor.
     """
     pps = load_plugins('pps')
     connectors = load_plugins('connectors')
@@ -352,6 +330,31 @@ def load_and_validate_plugins(plugin_config: Dict[str, str]) -> Tuple[Dict[str, 
     if plugin_config["rag_processor"] and plugin_config["rag_processor"] not in rag_processors:
         logger.error(f"RAG processor '{plugin_config['rag_processor']}' not found")
         raise HTTPException(status_code=400, detail=f"RAG processor '{plugin_config['rag_processor']}' not found")
+    if plugin_config.get("document_rag") and plugin_config["document_rag"] not in rag_processors:
+        logger.error(f"Document RAG processor '{plugin_config['document_rag']}' not found")
+        raise HTTPException(status_code=400, detail=f"Document RAG processor '{plugin_config['document_rag']}' not found")
+
+    pps_name = plugin_config["prompt_processor"]
+    pps_module = importlib.import_module(f"lamb.completions.pps.{pps_name}")
+    compatible_rag = getattr(pps_module, "COMPATIBLE_RAG", None)
+
+    if compatible_rag is not None:
+        if plugin_config["rag_processor"] and plugin_config["rag_processor"] not in compatible_rag:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"rag_processor '{plugin_config['rag_processor']}' not compatible with "
+                    f"prompt_processor '{pps_name}'. Compatible: {compatible_rag}"
+                ),
+            )
+        if plugin_config.get("document_rag") and plugin_config["document_rag"] not in compatible_rag:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"document_rag '{plugin_config['document_rag']}' not compatible with "
+                    f"prompt_processor '{pps_name}'. Compatible: {compatible_rag}"
+                ),
+            )
 
     return pps, connectors, rag_processors
 
@@ -378,14 +381,32 @@ async def get_rag_context(request: Dict[str, Any], rag_processors: Dict[str, Any
     logger.debug("No RAG processor requested")
     return None
 
-def process_completion_request(request: Dict[str, Any], assistant_details: Any, plugin_config: Dict[str, str], rag_context: Any, pps: Dict[str, Any]) -> Any:
-    """
-    Process the prompt using the specified prompt processor and return prepared messages.
-    """
-    logger.info("Processing completion request")
-    messages = pps[plugin_config["prompt_processor"]](request=request, assistant=assistant_details, rag_context=rag_context)
-    logger.debug(f"Processed messages: {messages}")
-    return messages
+
+def _require_document_context(plugin_config: Dict[str, str], document_context: Any) -> None:
+    """Fail the completion when document_rag is configured but loading failed."""
+    document_rag = plugin_config.get("document_rag", "")
+    if not document_rag:
+        return
+
+    if not document_context or not isinstance(document_context, dict):
+        raise HTTPException(
+            status_code=502,
+            detail="Reference document could not be loaded: no context returned",
+        )
+
+    if document_context.get("error"):
+        raise HTTPException(
+            status_code=502,
+            detail=f"Reference document could not be loaded: {document_context['error']}",
+        )
+
+    context_text = document_context.get("context", "")
+    if not context_text or not str(context_text).strip():
+        raise HTTPException(
+            status_code=502,
+            detail="Reference document could not be loaded: empty document content",
+        )
+
 
 def load_plugins(plugin_type: str) -> Dict[str, Any]:
     """
@@ -481,6 +502,10 @@ async def run_lamb_assistant(
         connector = plugin_config["connector"]
         provider = _provider_for_connector(connector)
 
+        # Check if model requires explicit cache from model_pricing
+        pricing_info = db_manager.get_model_pricing_row(provider, plugin_config.get("llm")) if provider else {}
+        requires_explicit_cache = pricing_info.get("requires_explicit_cache", False)
+
         task_response = await maybe_route_non_streaming_task(
             request=request,
             assistant_owner=assistant_details.owner,
@@ -494,7 +519,16 @@ async def run_lamb_assistant(
             )
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
         rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
-        messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps)
+        document_context = await get_rag_context(request, rag_processors, plugin_config.get("document_rag", ""), assistant_details)
+
+        if document_context and isinstance(document_context, dict):
+            _doc_timing = document_context.pop("_timing", None)
+            if _doc_timing:
+                final_headers["X-Doc-RAG-Time-Ms"] = str(_doc_timing.get("fetch_ms", 0))
+                final_headers["X-Doc-RAG-Cache"] = _doc_timing.get("cache", "unknown")
+
+        _require_document_context(plugin_config, document_context)
+        messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps, document_context)
         stream = request.get("stream", False)
         llm = plugin_config.get("llm") # Get LLM from config
 
@@ -510,7 +544,8 @@ async def run_lamb_assistant(
             stream=stream,
             body=request, # Pass the original request dict as body
             llm=llm,
-            assistant_owner=assistant_details.owner
+            assistant_owner=assistant_details.owner,
+            requires_explicit_cache=requires_explicit_cache,
         )
 
         if stream:

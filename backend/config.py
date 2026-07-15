@@ -84,6 +84,10 @@ LAMB_ENABLE_DEBUG = _env_bool('LAMB_ENABLE_DEBUG', False)
 LAMB_ENABLE_LIBRARIES = os.getenv(
     "LAMB_LIBRARY_SERVER_ENABLE", "ENABLE").upper().strip() != "DISABLE"
 
+# Document RAG cache
+DOCUMENT_RAG_CACHE_ENABLED = _env_bool('DOCUMENT_RAG_CACHE_ENABLED', True)
+DOCUMENT_RAG_CACHE_TTL_SECONDS = int(os.getenv('DOCUMENT_RAG_CACHE_TTL_SECONDS', '300'))
+
 # Database Configuration
 LAMB_DB_PATH = os.getenv('LAMB_DB_PATH', '/data/lamb')
 LAMB_DB_PREFIX = os.getenv('LAMB_DB_PREFIX', 'LAMB_')

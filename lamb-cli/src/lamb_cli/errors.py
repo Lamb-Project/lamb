@@ -18,9 +18,18 @@ class ApiError(LambCliError):
 
     exit_code = 2
 
-    def __init__(self, message: str, status_code: int | None = None):
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+        body: dict | None = None,
+    ):
         super().__init__(message)
         self.status_code = status_code
+        # Full parsed JSON body when available — lets command callbacks
+        # render structured error fields (e.g. FR-10 blocking_knowledge_stores)
+        # without re-parsing the response.
+        self.body = body or {}
 
 
 class NetworkError(LambCliError):

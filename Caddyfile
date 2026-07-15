@@ -32,6 +32,23 @@ lamb.yourdomain.com {
         redir https://owi.lamb.yourdomain.com{uri} 301
     }
 
+    handle /docs/* {
+        reverse_proxy backend:9099
+    }
+
+    # Module frontends (SPA fallback to module-specific index.html)
+    handle /m/chat/* {
+        root * /var/www/frontend
+        try_files {path} /m/chat/index.html
+        file_server
+    }
+
+    handle /m/file-eval/* {
+        root * /var/www/frontend
+        try_files {path} /m/file-eval/index.html
+        file_server
+    }
+
     handle {
         root * /var/www/frontend
         try_files {path} /index.html

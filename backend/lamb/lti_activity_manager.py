@@ -8,8 +8,6 @@ activity configuration, and student launch.
 
 import os
 import re
-import time
-import secrets
 import hmac
 import hashlib
 import base64
@@ -18,10 +16,8 @@ from typing import Optional, Dict, List, Any, Tuple
 
 from lamb.database_manager import LambDatabaseManager
 from lamb.owi_bridge.owi_users import OwiUserManager
-from lamb.owi_bridge.owi_group import OwiGroupManager
-from lamb.owi_bridge.owi_model import OWIModel
-from lamb.owi_bridge.owi_database import OwiDatabaseManager
 from lamb.logging_config import get_logger
+
 
 logger = get_logger(__name__, component="LTI_ACTIVITY")
 
@@ -32,7 +28,6 @@ class LtiActivityManager:
     def __init__(self):
         self.db_manager = LambDatabaseManager()
         self.owi_user_manager = OwiUserManager()
-        self.owi_group_manager = OwiGroupManager()
 
     # =========================================================================
     # Credential Resolution
@@ -211,63 +206,27 @@ class LtiActivityManager:
         context_title: str = None,
         activity_name: str = None,
         chat_visibility_enabled: bool = False,
+        activity_type: str = "chat",
     ) -> Optional[Dict[str, Any]]:
         """
-        Configure a new LTI activity:
-        1. Create OWI group for the activity
-        2. Add the group to each selected assistant model's access control
-        3. Store the activity and its assistant list in LAMB DB
+        Create the activity DB record and assistant links.
+        External resource setup (OWI groups, model permissions) is handled
+        by the module's on_activity_configured() hook.
         Returns the activity dict or None on failure.
         """
-        group_name = f"lti_activity_{resource_link_id}"
-
-        # Get an OWI admin user to own the group
-        # Use the instructor's OWI account
-        owi_user = self.owi_user_manager.get_user_by_email(configured_by_email)
-        if not owi_user:
-            logger.error(f"No OWI user found for {configured_by_email}")
-            return None
-
-        # Create OWI group
-        owi_group = self.owi_group_manager.create_group(
-            name=group_name,
-            user_id=owi_user['id'],
-            description=f"LTI Activity: {activity_name or resource_link_id}"
-        )
-        if not owi_group:
-            logger.error(f"Failed to create OWI group for activity {resource_link_id}")
-            return None
-
-        owi_group_id = owi_group['id']
-        logger.info(f"Created OWI group {owi_group_id} for activity {resource_link_id}")
-
-        # Add activity group to each selected assistant model's read access
-        owi_db = OwiDatabaseManager()
-        owi_model = OWIModel(owi_db)
-        for aid in assistant_ids:
-            model_id = f"lamb_assistant.{aid}"
-            success = owi_model.add_group_to_model(
-                model_id=model_id,
-                group_id=owi_group_id,
-                permission_type="read"
-            )
-            if success:
-                logger.info(f"Added activity group to model {model_id}")
-            else:
-                logger.warning(f"Failed to add activity group to model {model_id}")
-
-        # Store in LAMB DB
+        # Store in LAMB DB (owi fields empty — module fills them in)
         activity_id = self.db_manager.create_lti_activity(
             resource_link_id=resource_link_id,
             organization_id=organization_id,
-            owi_group_id=owi_group_id,
-            owi_group_name=group_name,
+            owi_group_id="",
+            owi_group_name="",
             configured_by_email=configured_by_email,
             configured_by_name=configured_by_name,
             context_id=context_id,
             context_title=context_title,
             activity_name=activity_name,
-            chat_visibility_enabled=chat_visibility_enabled
+            chat_visibility_enabled=chat_visibility_enabled,
+            activity_type=activity_type
         )
         if not activity_id:
             logger.error(f"Failed to create LTI activity record for {resource_link_id}")
@@ -282,43 +241,30 @@ class LtiActivityManager:
         self,
         activity: Dict[str, Any],
         new_assistant_ids: List[int]
-    ) -> bool:
+    ) -> Tuple[List[int], List[int]]:
         """
-        Reconfigure an existing activity's assistant selection.
-        Adds group to new models, removes from old ones.
+        Reconfigure activity's assistant selection (DB-only).
+        External resource updates (OWI model permissions) are handled
+        by the module's on_activity_reconfigured() hook.
+        Returns (added_ids, removed_ids).
         """
         activity_id = activity['id']
-        owi_group_id = activity['owi_group_id']
 
         current_assistants = self.db_manager.get_activity_assistants(activity_id)
         current_ids = {a['id'] for a in current_assistants}
         new_ids = set(new_assistant_ids)
 
-        to_add = new_ids - current_ids
-        to_remove = current_ids - new_ids
-
-        owi_db = OwiDatabaseManager()
-        owi_model = OWIModel(owi_db)
-
-        # Add group to new models
-        for aid in to_add:
-            owi_model.add_group_to_model(f"lamb_assistant.{aid}", owi_group_id, "read")
-
-        # Remove group from old models (check the result — it used to silently
-        # fail because remove_group_from_model was broken, #399)
-        for aid in to_remove:
-            ok = owi_model.remove_group_from_model(f"lamb_assistant.{aid}", owi_group_id, "read")
-            if not ok:
-                logger.warning(f"Failed to remove group {owi_group_id} from model lamb_assistant.{aid} (access may persist)")
+        to_add = list(new_ids - current_ids)
+        to_remove = list(current_ids - new_ids)
 
         # Update DB
         if to_remove:
-            self.db_manager.remove_assistants_from_activity(activity_id, list(to_remove))
+            self.db_manager.remove_assistants_from_activity(activity_id, to_remove)
         if to_add:
-            self.db_manager.add_assistants_to_activity(activity_id, list(to_add))
+            self.db_manager.add_assistants_to_activity(activity_id, to_add)
 
         self.db_manager.update_lti_activity(activity_id, status='active')
-        return True
+        return to_add, to_remove
 
     # =========================================================================
     # Student / User Launch
@@ -336,67 +282,30 @@ class LtiActivityManager:
         safe_rlid = self.sanitize_for_email(resource_link_id, max_length=60)
         return f"{safe_user}_{safe_rlid}@lamb-lti.local"
 
-    def handle_student_launch(
-        self,
-        activity: Dict[str, Any],
-        username: str,
-        display_name: str,
-        lms_user_id: str = None,
-    ) -> Optional[str]:
+    def determine_is_owner(self, activity: Dict[str, Any],
+                            lms_user_id: str, lms_email: str = None) -> bool:
         """
-        Handle a student (or instructor-as-user) launch into a configured activity.
-        1. Generate synthetic email
-        2. Get/create OWI user
-        3. Add to activity's OWI group
-        4. Record in lti_activity_users
-        5. Get auth token
-        Returns the OWI auth token or None on failure.
+        Check if the LMS user is the owner of the activity by resolving
+        their LMS identity to a Creator user and comparing with owner_email.
+        Fixes the pre-existing bug where lms_email != lti_creator email.
         """
-        email = self.generate_student_email(username, activity['resource_link_id'])
-        logger.info(f"Student launch: {email} for activity {activity['resource_link_id']}")
+        owner_email = activity.get('owner_email')
+        if not owner_email:
+            return False
 
-        # Get or create OWI user
-        owi_user = self.owi_user_manager.get_user_by_email(email)
-        if not owi_user:
-            logger.info(f"Creating new OWI user for {email}")
-            owi_user = self.owi_user_manager.create_user(
-                name=display_name,
-                email=email,
-                password=secrets.token_urlsafe(32),  # Random; header-trust signin, not this password (#411)
-                role="user"
-            )
-            if not owi_user:
-                logger.error(f"Failed to create OWI user for {email}")
-                return None
+        # Quick check: direct email match (works for regular password creators)
+        if lms_email and lms_email == owner_email:
+            return True
 
-        # Capture OWI user ID for dashboard chat queries
-        owi_user_id = owi_user.get('id', '') if owi_user else ''
-
-        # Add to activity's OWI group
-        add_result = self.owi_group_manager.add_user_to_group_by_email(
-            group_id=activity['owi_group_id'],
-            user_email=email
-        )
-        if add_result.get("status") == "error" and "already a member" not in add_result.get("error", "").lower():
-            logger.warning(f"Could not add {email} to group: {add_result.get('error')}")
-
-        # Record in LAMB DB (also updates access tracking)
-        self.db_manager.create_lti_activity_user(
-            activity_id=activity['id'],
-            user_email=email,
-            user_name=username,
-            user_display_name=display_name,
+        # Full resolution: find Creator users for this LMS identity
+        creator_users = self.db_manager.get_creator_users_by_lms_identity(
             lms_user_id=lms_user_id,
-            owi_user_id=owi_user_id
+            lms_email=lms_email
         )
-
-        # Get auth token
-        token = self.owi_user_manager.get_auth_token(email, display_name)
-        if not token:
-            logger.error(f"Failed to get auth token for {email}")
-            return None
-
-        return token
+        return any(
+            cu.get('user_email') == owner_email
+            for cu in (creator_users or [])
+        )
 
     # =========================================================================
     # URL helpers
@@ -411,15 +320,6 @@ class LtiActivityManager:
         return f"{proto}://{host}{prefix}{request.url.path}"
 
     @staticmethod
-    def get_owi_redirect_url(token: str) -> str:
-        """Build the OWI redirect URL with token."""
-        import config
-        owi_public = (os.getenv("OWI_PUBLIC_BASE_URL")
-                      or os.getenv("OWI_BASE_URL")
-                      or config.OWI_PUBLIC_BASE_URL)
-        return f"{owi_public}/api/v1/auths/complete?token={token}"
-
-    @staticmethod
     def get_public_base_url(request) -> str:
         """Get the public-facing base URL for LAMB."""
         public = os.getenv("LAMB_PUBLIC_BASE_URL")
@@ -430,52 +330,11 @@ class LtiActivityManager:
         prefix = request.headers.get("X-Forwarded-Prefix", "")
         return f"{proto}://{host}{prefix}"
 
+
+
     # =========================================================================
-    # Dashboard Data
+    # Dashboard Data (DB-only)
     # =========================================================================
-
-    def get_dashboard_stats(self, activity: Dict[str, Any]) -> Dict[str, Any]:
-        """Get summary statistics for the instructor dashboard."""
-        activity_id = activity['id']
-
-        # Student stats from LAMB DB
-        student_data = self.db_manager.get_activity_students(activity_id, page=1, per_page=1)
-        total_students = student_data['total']
-
-        # Active in last 7 days
-        seven_days_ago = int(time.time()) - (7 * 86400)
-        all_students = self.db_manager.get_activity_students(activity_id, page=1, per_page=10000)
-        active_7d = sum(1 for s in all_students['students']
-                        if s.get('last_access_at') and s['last_access_at'] >= seven_days_ago)
-
-        # Chat stats from OWI DB
-        assistants = self.db_manager.get_activity_assistants(activity_id)
-        owi_user_ids = self.db_manager.get_all_activity_user_owi_ids(activity_id)
-        total_chats = 0
-        total_messages = 0
-        assistant_stats = []
-
-        owi_db = OwiDatabaseManager()
-        for asst in assistants:
-            model_pattern = f'lamb_assistant.{asst["id"]}'
-            chats, msgs = self._count_chats_for_model(owi_db, model_pattern, owi_user_ids)
-            total_chats += chats
-            total_messages += msgs
-            assistant_stats.append({
-                "id": asst["id"],
-                "name": asst["name"],
-                "owner": asst.get("owner", ""),
-                "chat_count": chats,
-                "message_count": msgs,
-            })
-
-        return {
-            "total_students": total_students,
-            "total_chats": total_chats,
-            "total_messages": total_messages,
-            "active_last_7d": active_7d,
-            "assistants": assistant_stats,
-        }
 
     def get_dashboard_students(self, activity_id: int, page: int = 1,
                                 per_page: int = 20) -> Dict[str, Any]:
@@ -492,270 +351,4 @@ class LtiActivityManager:
             })
         return {"students": students, "total": data['total']}
 
-    def get_dashboard_chats(self, activity: Dict[str, Any],
-                             assistant_id: int = None,
-                             page: int = 1, per_page: int = 20) -> Dict[str, Any]:
-        """
-        Get anonymized chat list for the dashboard.
-        Only works if chat_visibility_enabled is true.
-        """
-        if not activity.get('chat_visibility_enabled'):
-            return {"chats": [], "total": 0, "error": "Chat visibility not enabled"}
-
-        activity_id = activity['id']
-        assistants = self.db_manager.get_activity_assistants(activity_id)
-        owi_user_ids = self.db_manager.get_all_activity_user_owi_ids(activity_id)
-        if not owi_user_ids:
-            return {"chats": [], "total": 0}
-
-        # Build student anonymization map (by created_at order)
-        name_map = self._build_name_map(activity_id)
-
-        # Build assistant name map
-        asst_map = {f'lamb_assistant.{a["id"]}': a["name"] for a in assistants}
-
-        # Filter to specific assistant if requested
-        if assistant_id:
-            target_models = [f'lamb_assistant.{assistant_id}']
-        else:
-            target_models = list(asst_map.keys())
-
-        owi_db = OwiDatabaseManager()
-        chats = self._query_activity_chats(owi_db, target_models, owi_user_ids,
-                                            page, per_page, name_map, asst_map)
-        total = self._count_activity_chats(owi_db, target_models, owi_user_ids)
-
-        return {"chats": chats, "total": total}
-
-    def get_dashboard_chat_detail(self, activity: Dict[str, Any],
-                                   chat_id: str) -> Optional[Dict[str, Any]]:
-        """Get a single chat's full transcript, anonymized."""
-        if not activity.get('chat_visibility_enabled'):
-            return None
-
-        activity_id = activity['id']
-        owi_user_ids = self.db_manager.get_all_activity_user_owi_ids(activity_id)
-        name_map = self._build_name_map(activity_id)
-        assistants = self.db_manager.get_activity_assistants(activity_id)
-        asst_map = {f'lamb_assistant.{a["id"]}': a["name"] for a in assistants}
-
-        owi_db = OwiDatabaseManager()
-        return self._query_chat_detail(owi_db, chat_id, owi_user_ids, name_map, asst_map)
-
-    # =========================================================================
-    # OWI Chat Query Helpers (private)
-    # =========================================================================
-
-    def _build_name_map(self, activity_id: int) -> Dict[str, str]:
-        """Build a map from owi_user_id to student's real name (from LMS)."""
-        all_data = self.db_manager.get_activity_students(activity_id, page=1, per_page=100000)
-        name_map = {}
-        for student in all_data['students']:
-            owi_uid = student.get('owi_user_id')
-            if owi_uid:
-                name_map[owi_uid] = student.get('user_display_name') or student.get('user_name') or '(unknown)'
-        return name_map
-
-    @staticmethod
-    def _count_chats_for_model(owi_db, model_pattern: str,
-                                owi_user_ids: List[str]) -> Tuple[int, int]:
-        """Count chats and messages for a model, filtered by user IDs."""
-        if not owi_user_ids:
-            return 0, 0
-        try:
-            placeholders = ",".join("?" for _ in owi_user_ids)
-            query = f"""
-                SELECT c.chat FROM chat c
-                WHERE json_extract(c.chat, '$.models') LIKE ?
-                AND c.user_id IN ({placeholders})
-            """
-            import json as json_mod
-            rows = owi_db.execute_query(query, (f'%{model_pattern}%', *owi_user_ids))
-            if not rows:
-                return 0, 0
-            chat_count = len(rows)
-            msg_count = 0
-            for row in rows:
-                try:
-                    chat_data = json_mod.loads(row[0]) if isinstance(row[0], str) else row[0]
-                    messages = chat_data.get('history', {}).get('messages', {})
-                    if isinstance(messages, dict):
-                        msg_count += len(messages)
-                    elif isinstance(messages, list):
-                        msg_count += len(messages)
-                except (json_mod.JSONDecodeError, AttributeError):
-                    pass
-            return chat_count, msg_count
-        except Exception as e:
-            logger.error(f"Error counting chats for model {model_pattern}: {e}")
-            return 0, 0
-
-    @staticmethod
-    def _count_activity_chats(owi_db, model_patterns: List[str],
-                               owi_user_ids: List[str]) -> int:
-        """Count total chats across models for activity users."""
-        if not owi_user_ids or not model_patterns:
-            return 0
-        try:
-            user_ph = ",".join("?" for _ in owi_user_ids)
-            model_conditions = " OR ".join(
-                "json_extract(c.chat, '$.models') LIKE ?" for _ in model_patterns
-            )
-            query = f"""
-                SELECT COUNT(*) FROM chat c
-                WHERE ({model_conditions})
-                AND c.user_id IN ({user_ph})
-            """
-            params = [f'%{m}%' for m in model_patterns] + list(owi_user_ids)
-            result = owi_db.execute_query(query, tuple(params), fetch_one=True)
-            return result[0] if result else 0
-        except Exception as e:
-            logger.error(f"Error counting activity chats: {e}")
-            return 0
-
-    @staticmethod
-    def _query_activity_chats(owi_db, model_patterns: List[str],
-                               owi_user_ids: List[str],
-                               page: int, per_page: int,
-                               name_map: Dict[str, str],
-                               asst_map: Dict[str, str]) -> List[Dict[str, Any]]:
-        """Query paginated chat list for dashboard."""
-        if not owi_user_ids or not model_patterns:
-            return []
-        try:
-            import json as json_mod
-            user_ph = ",".join("?" for _ in owi_user_ids)
-            model_conditions = " OR ".join(
-                "json_extract(c.chat, '$.models') LIKE ?" for _ in model_patterns
-            )
-            offset = (page - 1) * per_page
-            query = f"""
-                SELECT c.id, c.user_id, c.title, c.created_at, c.updated_at, c.chat
-                FROM chat c
-                WHERE ({model_conditions})
-                AND c.user_id IN ({user_ph})
-                ORDER BY c.updated_at DESC
-                LIMIT ? OFFSET ?
-            """
-            params = [f'%{m}%' for m in model_patterns] + list(owi_user_ids) + [per_page, offset]
-            rows = owi_db.execute_query(query, tuple(params))
-            if not rows:
-                return []
-
-            chats = []
-            for row in rows:
-                chat_id, user_id, title, created_at, updated_at, chat_json = row
-                student_name = name_map.get(user_id, "(unknown)")
-                # Count messages
-                msg_count = 0
-                assistant_name = "Unknown"
-                try:
-                    chat_data = json_mod.loads(chat_json) if isinstance(chat_json, str) else chat_json
-                    messages = chat_data.get('history', {}).get('messages', {})
-                    msg_count = len(messages) if isinstance(messages, (dict, list)) else 0
-                    models = chat_data.get('models', [])
-                    for m in models:
-                        if m in asst_map:
-                            assistant_name = asst_map[m]
-                            break
-                except (Exception,):
-                    pass
-
-                chats.append({
-                    "chat_id": chat_id,
-                    "student_name": student_name,
-                    "assistant_name": assistant_name,
-                    "title": title or "(untitled)",
-                    "message_count": msg_count,
-                    "created_at": created_at,
-                    "updated_at": updated_at,
-                })
-            return chats
-        except Exception as e:
-            logger.error(f"Error querying activity chats: {e}")
-            return []
-
-    @staticmethod
-    def _query_chat_detail(owi_db, chat_id: str,
-                            owi_user_ids: List[str],
-                            name_map: Dict[str, str],
-                            asst_map: Dict[str, str]) -> Optional[Dict[str, Any]]:
-        """Get full chat transcript, anonymized."""
-        if not owi_user_ids:
-            return None
-        try:
-            import json as json_mod
-            user_ph = ",".join("?" for _ in owi_user_ids)
-            query = f"""
-                SELECT c.id, c.user_id, c.title, c.created_at, c.updated_at, c.chat
-                FROM chat c
-                WHERE c.id = ? AND c.user_id IN ({user_ph})
-            """
-            row = owi_db.execute_query(query, (chat_id, *owi_user_ids), fetch_one=True)
-            if not row:
-                return None
-
-            chat_id_val, user_id, title, created_at, updated_at, chat_json = row
-            student_name = name_map.get(user_id, "(unknown)")
-            chat_data = json_mod.loads(chat_json) if isinstance(chat_json, str) else chat_json
-
-            # Extract messages in order
-            messages_raw = chat_data.get('history', {}).get('messages', {})
-            messages = []
-            if isinstance(messages_raw, dict):
-                # Sort by timestamp or order
-                sorted_msgs = sorted(messages_raw.values(),
-                                      key=lambda m: m.get('timestamp', 0))
-                for msg in sorted_msgs:
-                    role = msg.get('role', 'user')
-                    content = msg.get('content', '')
-                    messages.append({
-                        "role": role,
-                        "speaker": student_name if role == 'user' else _get_assistant_display(msg, asst_map),
-                        "content": content,
-                        "timestamp": msg.get('timestamp'),
-                    })
-            elif isinstance(messages_raw, list):
-                for msg in messages_raw:
-                    role = msg.get('role', 'user')
-                    content = msg.get('content', '')
-                    messages.append({
-                        "role": role,
-                        "speaker": student_name if role == 'user' else _get_assistant_display(msg, asst_map),
-                        "content": content,
-                        "timestamp": msg.get('timestamp'),
-                    })
-
-            # Determine assistant name from models
-            models = chat_data.get('models', [])
-            assistant_name = "Unknown"
-            for m in models:
-                if m in asst_map:
-                    assistant_name = asst_map[m]
-                    break
-
-            return {
-                "chat_id": chat_id_val,
-                "student_name": student_name,
-                "assistant_name": assistant_name,
-                "title": title or "(untitled)",
-                "message_count": len(messages),
-                "created_at": created_at,
-                "updated_at": updated_at,
-                "messages": messages,
-            }
-        except Exception as e:
-            logger.error(f"Error querying chat detail: {e}")
-            return None
-
-
-def _get_assistant_display(msg: dict, asst_map: Dict[str, str]) -> str:
-    """Get display name for an assistant message."""
-    model = msg.get('model', msg.get('modelId', ''))
-    if model in asst_map:
-        return asst_map[model]
-    # Try matching partial
-    for key, name in asst_map.items():
-        if key in model or model in key:
-            return name
-    return "Assistant"
+   

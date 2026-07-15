@@ -296,20 +296,28 @@ async def test_markitdown_plus_import(client: AsyncClient, library: dict):
     assert meta["import_plugin"] == "markitdown_plus_import"
     assert "permalinks" in meta
 
-    # Verify pages and images endpoints exist (may be empty for HTML).
+    # HTML imports don't produce pages or images on disk. The capability
+    # handler returns 404 (HandlerUnavailable) and the item's ``capabilities``
+    # list excludes both — that's the correct contract for the new tabs UI.
     resp = await client.get(
         f"/libraries/{lib_id}/items/{item_id}/content/pages",
         headers=AUTH_HEADERS,
     )
-    assert resp.status_code == 200
-    assert "count" in resp.json()
+    assert resp.status_code == 404
 
     resp = await client.get(
         f"/libraries/{lib_id}/items/{item_id}/content/images",
         headers=AUTH_HEADERS,
     )
-    assert resp.status_code == 200
-    assert "count" in resp.json()
+    assert resp.status_code == 404
+
+    caps = await client.get(
+        f"/libraries/{lib_id}/items/{item_id}/capabilities", headers=AUTH_HEADERS
+    )
+    assert caps.status_code == 200
+    cap_list = caps.json()["capabilities"]
+    assert "pages" not in cap_list
+    assert "images" not in cap_list
 
 
 # -----------------------------------------------------------------------

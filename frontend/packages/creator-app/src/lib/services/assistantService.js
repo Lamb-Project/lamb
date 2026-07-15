@@ -1,0 +1,437 @@
+import { getApiUrl, getConfig } from '$lib/config';
+import { browser } from '$app/environment';
+// Shared axios instance with global 401 handling (#352, M1/M2/M3).
+import { apiAxios as axios, apiJson, apiFetch } from '$lib/services/apiClient';
+import { isAxiosError } from 'axios';
+import { normalizeAssistantData } from '$lib/utils/assistantData';
+
+/**
+ * @typedef {Object} Assistant - Defines the structure of an assistant object from the API
+ * @property {number} id
+ * @property {string} name
+ * @property {string} [description]
+ */
+
+/**
+ * @typedef {Object} ApiAssistant - Defines the structure returned by getAssistantById API
+ * @property {number} id
+ * @property {string} name
+ * @property {string} [description]
+ * @property {string} [owner]
+ * @property {boolean} [published] - Note: API uses 'published', frontend store uses 'is_published'
+ * @property {string} [system_prompt]
+ * @property {string} [prompt_template]
+ * @property {string} [api_callback] - Deprecated, use metadata instead
+ * @property {string} [metadata] - JSON string containing plugin configuration
+ * @property {number} [RAG_Top_k]
+ * @property {string} [RAG_collections]
+ * @property {string} [group_id]
+ * @property {string} [group_name]
+ * @property {string} [oauth_consumer_name]
+ * @property {number} [published_at]
+ */
+
+/**
+ * Get assistants list for the logged-in user.
+ * @param {number} [limit=10] - Number of assistants per page.
+ * @param {number} [offset=0] - Offset for pagination.
+ * @returns {Promise<{assistants: import('../stores/assistantStore').Assistant[], total_count: number}>} Object with assistants list and total count.
+ * @throws {Error} If not authenticated or fetch fails
+ */
+export async function getAssistants(limit = 10, offset = 0) {
+	if (!browser) {
+		console.warn('getAssistants called outside browser context');
+		return { assistants: [], total_count: 0 }; // Return empty paginated structure
+	}
+
+	const urlParams = new URLSearchParams({
+		limit: limit.toString(),
+		offset: offset.toString()
+	});
+	// Token auto-attached by apiJson
+	const data = await apiJson(`/assistant/get_assistants?${urlParams}`, { method: 'GET' });
+
+	// Return the expected structure { assistants: [], total_count: 0 }
+	// Ensure defaults if API response is malformed
+	return {
+		assistants: Array.isArray(data?.assistants) ? data.assistants.map(normalizeAssistantData) : [],
+		total_count: typeof data?.total_count === 'number' ? data.total_count : 0
+	};
+}
+
+/**
+ * Get details for a specific assistant by ID.
+ * @param {number} assistantId - The ID of the assistant to fetch.
+ * @returns {Promise<ApiAssistant>} The assistant details.
+ * @throws {Error} If not authenticated or fetch fails.
+ */
+export async function getAssistantById(assistantId) {
+	if (!browser) {
+		throw new Error('getAssistantById called outside browser context');
+	}
+
+	// Token auto-attached by apiJson
+	const data = await apiJson(`/assistant/get_assistant/${assistantId}`, {
+		method: 'GET',
+		headers: {
+			'Cache-Control': 'no-cache, no-store, must-revalidate',
+			Pragma: 'no-cache'
+		},
+		cache: 'no-store'
+	});
+	return data;
+}
+
+/**
+ * Publish assistant by updating its status
+ * @param {string} assistantId
+ * @param {string} assistantName
+ * @param {string} groupName
+ * @param {string} oauthConsumerName
+ * @returns {Promise<any>}
+ */
+export async function publishAssistant(assistantId, assistantName, groupName, oauthConsumerName) {
+
+
+
+	const bodyData = {
+		name: assistantName,
+		group_name: groupName,
+		oauth_consumer_name: oauthConsumerName,
+		is_published: true
+	};
+
+	// Token auto-attached by apiJson
+	const data = await apiJson(`/assistant/update_assistant/${assistantId}`, {
+		method: 'PUT',
+		body: JSON.stringify(bodyData)
+	});
+
+	return data;
+}
+
+/**
+ * Unpublish assistant
+ * @param {string} assistantId
+ * @param {string} groupId
+ * @param {string} userEmail
+ * @returns {Promise<any>}
+ */
+export async function unpublishAssistant(assistantId, groupId, userEmail) {
+	// Use the correct publish status endpoint and method
+	// Token auto-attached by apiJson
+	const data = await apiJson(`/assistant/publish/${assistantId}`, {
+		method: 'PUT',
+		body: JSON.stringify({ publish_status: false })
+	});
+}
+
+/**
+ * Delete an assistant
+ * @param {string} id - The ID of the assistant to delete
+ * @returns {Promise<Object>} Response data
+ */
+export async function deleteAssistant(id) {
+	try {
+		const userEmail = localStorage.getItem('userEmail');
+		if (!userEmail) {
+			throw new Error('User email not found in localStorage');
+		}
+
+		// Correct endpoint based on likely pattern, confirm if needed
+		// Token auto-attached by apiFetch
+		const response = await apiFetch(
+			`/assistant/delete_assistant/${id}?owner=${encodeURIComponent(userEmail)}`,
+
+		// Token auto-attached by apiFetch
+			{
+			method: 'DELETE'
+		});
+
+		if (!response.ok) {
+			let errorData = { detail: `Error: ${response.status}` };
+			try {
+				errorData = await response.json();
+			} catch (e) {
+				/* Ignore parse error */
+			}
+
+			if (response.status === 403) {
+				throw new Error('You do not have permission to delete this assistant');
+			} else if (response.status === 404) {
+				throw new Error('Assistant not found');
+			} else {
+				throw new Error(errorData.detail || `Error: ${response.status}`);
+			}
+		}
+
+		// Check if response has content before parsing JSON
+		const text = await response.text();
+		return text ? JSON.parse(text) : {};
+	} catch (error) {
+		console.error('Error deleting assistant:', error);
+		// Rethrow the original error or a new one with more context
+		if (error instanceof Error) {
+			throw error;
+		} else {
+			throw new Error('An unknown error occurred during assistant deletion');
+		}
+	}
+}
+
+/**
+ * @typedef {Object} SystemCapabilities
+ * @property {string[]} [prompt_processors] - List of available prompt processors.
+ * @property {Object.<string, any>} [connectors] - Dictionary of available connectors/models.
+ * @property {string[]} [rag_processors] - List of available RAG processors.
+ */
+
+/**
+ * Get system capabilities (connectors, models, etc.)
+ * @returns {Promise<SystemCapabilities>} System capabilities
+ */
+export async function getSystemCapabilities() {
+	// Token auto-attached by apiJson
+	const data = await apiJson(`/system/capabilities`, {
+		method: 'GET'
+	});
+	return data;
+}
+
+/**
+ * Creates a new assistant.
+ * @param {object} assistantData - The data for the new assistant.
+ * @returns {Promise<{assistant_id: number, name: string, description?: string, owner: string, publish_status?: any}>} The created assistant data from the API.
+ * @throws {Error} If the request fails, including specific name conflict errors.
+ */
+export async function createAssistant(assistantData) {
+	if (!browser) {
+		throw new Error('Cannot create assistant in server environment');
+	}
+
+	const url = getApiUrl('/assistant/create_assistant');
+
+	try {
+		// Token is automatically attached by the apiAxios interceptor
+		const response = await axios.post(url, assistantData, {
+			headers: {
+				'Content-Type': 'application/json'
+			}
+		});
+
+		return response.data;
+	} catch (error) {
+		let errorMessage = 'Failed to create assistant.';
+
+		if (isAxiosError(error) && error.response) {
+			const errorData = /** @type {any} */ (error.response.data);
+
+			// Check for specific name conflict error detail
+			if (errorData?.detail?.includes('already exists for this owner')) {
+				const match = errorData.detail.match(/named '([^']+)' already exists/);
+				const existingName = match ? match[1] : 'this name';
+				errorMessage = `An assistant named '${existingName}' already exists. Please choose a different name.`;
+			} else {
+				// Use detail or message if available, otherwise status text
+				errorMessage =
+					errorData?.detail ||
+					errorData?.message ||
+					`Request failed with status ${error.response.status}`;
+			}
+		} else if (error instanceof Error) {
+			// Handle non-Axios errors (e.g., network errors)
+			errorMessage = error.message;
+		}
+
+		// Throw an error that the form can catch and display
+		throw new Error(errorMessage);
+	}
+}
+
+/**
+ * Download assistant data
+ * @param {string} assistantId
+ * @returns {Promise<void>}
+ * @throws {Error}
+ */
+export async function downloadAssistant(assistantId) {
+	// TODO: Confirm this endpoint exists and works as expected
+	// TODO: Confirm this endpoint exists and works as expected
+
+	try {
+		// Token auto-attached by apiFetch
+		const response = await apiFetch(`/assistant/download_assistant/${assistantId}`, {
+			method: 'GET'
+		});
+
+		if (!response.ok) {
+			let errorDetail = 'Failed to download assistant';
+			try {
+				const error = await response.json(); // Try to get JSON error detail
+				errorDetail = error?.detail || `HTTP error! status: ${response.status}`;
+			} catch (e) {
+				errorDetail = `HTTP error! status: ${response.status}`; // Fallback if no JSON body
+			}
+			throw new Error(errorDetail);
+		}
+
+		const blob = await response.blob();
+		const contentDisposition = response.headers.get('content-disposition');
+		let filename = `assistant_${assistantId}.json`; // Default filename
+		if (contentDisposition) {
+			const filenameMatch = contentDisposition.match(/filename="?(.+?)"?$/i);
+			if (filenameMatch && filenameMatch[1]) {
+				filename = filenameMatch[1];
+			}
+		}
+
+		// Create a link and trigger download
+		const link = document.createElement('a');
+		link.href = URL.createObjectURL(blob);
+		link.setAttribute('download', filename);
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+		URL.revokeObjectURL(link.href); // Clean up
+	} catch (error) {
+		console.error('Download error:', error);
+		if (error instanceof Error) {
+			throw error; // Re-throw specific error
+		} else {
+			throw new Error('An unknown error occurred during download.');
+		}
+	}
+}
+
+/**
+ * Update an existing assistant.
+ * @param {number} assistantId - The ID of the assistant to update.
+ * @param {Partial<Assistant>} assistantData - The data to update.
+ * @returns {Promise<ApiAssistant>} The updated assistant details.
+ * @throws {Error} If not authenticated or update fails.
+ */
+export async function updateAssistant(assistantId, assistantData) {
+	if (!browser) {
+		throw new Error('Cannot update assistant in server environment');
+	}
+
+	// Ensure assistantData only contains allowed fields for update
+	const allowedFields = [
+		'name',
+		'description',
+		'system_prompt',
+		'prompt_template',
+		'RAG_Top_k',
+		'RAG_collections',
+		'metadata'
+	];
+	const filteredData = Object.keys(assistantData)
+		.filter((key) => allowedFields.includes(key))
+		.reduce((obj, key) => {
+			/** @type {Partial<Assistant>} */
+			const typedObj = obj; // Cast obj to the correct type
+			// Only include non-null/non-undefined values, except for description which can be empty string
+			if (assistantData[key] !== null && assistantData[key] !== undefined) {
+				typedObj[key] = assistantData[key];
+			} else if (key === 'description') {
+				typedObj[key] = ''; // Allow empty description
+			}
+			return typedObj;
+		}, /** @type {Partial<Assistant>} */({}));
+
+
+
+	try {
+		// Token auto-attached by apiJson
+		const data = await apiJson(`/assistant/update_assistant/${assistantId}`, {
+			method: 'PUT',
+			body: JSON.stringify(filteredData)
+		});
+		return data;
+	} catch (error) {
+		console.error('Error updating assistant:', error);
+		let errorMessage = 'Failed to update assistant.';
+
+		if (error instanceof Error) {
+			errorMessage = error.message;
+		}
+
+		throw new Error(errorMessage);
+	}
+}
+
+/**
+ * Sets the publish status of an assistant.
+ * @param {number} assistantId - The ID of the assistant.
+ * @param {boolean} publishStatus - The desired publish status (true for publish, false for unpublish).
+ * @returns {Promise<ApiAssistant>} The full updated assistant details.
+ * @throws {Error} If not authenticated, API call fails, or required config is missing.
+ */
+export async function setAssistantPublishStatus(assistantId, publishStatus) {
+	if (!browser) {
+		throw new Error('Cannot change publish status in server environment');
+	}
+
+
+
+	try {
+		// Token auto-attached by apiFetch
+		const response = await apiFetch(`/assistant/publish/${assistantId}`, {
+			method: 'PUT',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ publish_status: publishStatus })
+		});
+
+		if (!response.ok) {
+			let errorDetail = `Failed to set publish status for assistant ${assistantId}`;
+			try {
+				const error = await response.json();
+				errorDetail = error?.detail || errorDetail;
+			} catch (e) {
+				/* Ignore if response is not JSON */
+			}
+			throw new Error(errorDetail);
+		}
+
+		return normalizeAssistantData(await response.json());
+	} catch (error) {
+		let errorMessage = 'Failed to set publish status.';
+
+		if (error instanceof Error) {
+			errorMessage = error.message;
+		}
+
+		throw new Error(errorMessage);
+	}
+}
+
+/**
+ * Get assistants shared with the current user
+ * @returns {Promise<{assistants: Assistant[], count: number}>} Object with shared assistants list and count
+ * @throws {Error} If not authenticated or fetch fails
+ */
+export async function getSharedAssistants() {
+	if (!browser) {
+		console.warn('getSharedAssistants called outside browser context');
+		return { assistants: [], count: 0 };
+	}
+
+	try {
+		const config = getConfig();
+		const baseUrl = config.api.lambServer || 'http://localhost:9099';
+		const apiUrl = `${baseUrl}/creator/lamb/assistant-sharing/shared-with-me`;
+
+		// Token auto-attached by apiJson
+		const data = await apiJson(apiUrl, { method: 'GET' });
+
+		return {
+			assistants: Array.isArray(data.assistants) ? data.assistants.map(normalizeAssistantData) : [],
+			count: data.count || 0
+		};
+	} catch (error) {
+		throw error;
+	}
+}
+

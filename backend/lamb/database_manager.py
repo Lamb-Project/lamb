@@ -38,6 +38,8 @@ class LambDatabaseManager:
     # LambDatabaseManager() per-request; running sync on every instantiation would
     # overwrite user-saved provider config (e.g. custom base_url/api_key) with .env defaults.
     _system_org_initialized = False
+    _optimizations_applied = False
+    _migrations_applied = False
 
     def __init__(self):
         try:
@@ -54,14 +56,14 @@ class LambDatabaseManager:
                 self.create_database_and_tables()
                 logger.info(f"Created database at: {self.db_path}")
 
-            # Configure database optimizations
-            self._configure_database_optimizations()
-            
-            # Run migrations via the version-tracked MigrationRunner.
-            # The schema_version table ensures each migration only runs once
-            # across all workers/processes — safe to call on every instantiation.
-            from .migrations import MigrationRunner
-            MigrationRunner(self).apply_all()
+            if not LambDatabaseManager._optimizations_applied:
+                self._configure_database_optimizations()
+                LambDatabaseManager._optimizations_applied = True
+
+            if not LambDatabaseManager._migrations_applied:
+                from .migrations import MigrationRunner
+                MigrationRunner(self).apply_all()
+                LambDatabaseManager._migrations_applied = True
 
             # Initialize system organization AFTER migrations so that
             # Creator_users columns (enabled, password_hash, role) exist.
@@ -565,7 +567,7 @@ class LambDatabaseManager:
                     f"Table '{self.table_prefix}config' created successfully")
 
             # Note: initialize_system_organization() is now called from __init__
-            # AFTER migrations (MigrationRunner.apply_all()) to ensure all columns exist.
+            # AFTER run_migrations() to ensure all columns exist.
         except sqlite3.Error as e:
             logger.error(f"Database error occurred: {e}")
 
@@ -697,6 +699,7 @@ class LambDatabaseManager:
                 f"ensure_system_admin: verified {config.OWI_ADMIN_EMAIL} has "
                 f"system role + org role = admin")
 
+
     def create_system_organization(self) -> Optional[int]:
         """Create the 'lamb' system organization from .env configuration"""
         import os
@@ -801,6 +804,8 @@ class LambDatabaseManager:
         import os
         from pathlib import Path
 
+        from lamb.assistant_default_pps import default_prompt_processor
+
         try:
             # Try multiple possible paths
             possible_paths = [
@@ -824,7 +829,7 @@ class LambDatabaseManager:
             return {
                 "connector": "openai",
                 "llm": "gpt-4o-mini",
-                "prompt_processor": "simple_augment",
+                "prompt_processor": default_prompt_processor(),
                 "rag_processor": "No RAG"
             }
         except Exception as e:
@@ -832,7 +837,7 @@ class LambDatabaseManager:
             return {
                 "connector": "openai",
                 "llm": "gpt-4o-mini",
-                "prompt_processor": "simple_augment",
+                "prompt_processor": default_prompt_processor(),
                 "rag_processor": "No RAG"
             }
 
@@ -3580,58 +3585,84 @@ class LambDatabaseManager:
     def log_token_usage(self, assistant_id: int, org_id: int, model_name: str, provider: str, usage_data: dict):
         """Write one row to usage_logs for a completed request.
 
-        usage_data should contain: prompt_tokens, completion_tokens, total_tokens.
+        Computes and freezes cost_usd at insert time using current model_pricing.
+        Stores three prompt token buckets (non_cached, cache_read, cache_write).
         Errors are caught and logged — never propagated to callers.
         """
         try:
-            prompt_tokens = usage_data.get('prompt_tokens', 0)
-            completion_tokens = usage_data.get('completion_tokens', 0)
-            total_tokens = usage_data.get('total_tokens', 0)
+            from .completions.token_repartition import extract_token_buckets
+            from .completions.cost_formula import compute_cost_usd
+
+            buckets = extract_token_buckets(usage_data)
+            prompt_tokens = buckets["prompt_tokens"]
+            completion_tokens = buckets["completion_tokens"]
+            total_tokens = prompt_tokens + completion_tokens
+
             now = int(time.time())
 
             conn = self.get_connection()
             if not conn:
                 return
             try:
+                pricing_row = None
                 with conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        f"""SELECT input_per_1m, cache_read_per_1m, cache_write_per_1m,
+                                   output_per_1m, requires_explicit_cache
+                            FROM {self.table_prefix}model_pricing
+                            WHERE provider = ? AND model_name = ?""",
+                        (provider, model_name),
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        pricing_row = {
+                            "input_per_1m": row[0],
+                            "cache_read_per_1m": row[1],
+                            "cache_write_per_1m": row[2],
+                            "output_per_1m": row[3],
+                            "requires_explicit_cache": bool(row[4]),
+                        }
+
+                    cost_usd = compute_cost_usd(pricing_row, buckets)
+
                     conn.execute(
                         f"""INSERT INTO {self.table_prefix}usage_logs
-                        (organization_id, assistant_id, usage_data, model_name, provider, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?)""",
-                    (org_id, assistant_id, json.dumps(usage_data), model_name, provider, now)
-                )
+                        (organization_id, assistant_id, usage_data, model_name, provider, cost_usd, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (org_id, assistant_id, json.dumps(usage_data), model_name, provider, cost_usd, now)
+                    )
 
-                conn.execute(
-                    f"""
-                    INSERT INTO {self.table_prefix}assistant_usage_totals 
-                    (assistant_id, prompt_tokens_total, completion_tokens_total, total_tokens_total, cost_usd_total, updated_at)
-                    VALUES (
-                        ?, 
-                        ?, 
-                        ?, 
-                        ?, 
-                        COALESCE((SELECT COALESCE(input_per_1m, 0) * ? / 1000000.0 + COALESCE(output_per_1m, 0) * ? / 1000000.0 
-                         FROM {self.table_prefix}model_pricing 
-                         WHERE provider = ? AND model_name = ?), 0.0),
-                        ?
+                    conn.execute(
+                        f"""
+                        INSERT INTO {self.table_prefix}assistant_usage_totals
+                        (assistant_id, prompt_tokens_total, completion_tokens_total, total_tokens_total,
+                         cache_read_tokens_total, cache_write_tokens_total,
+                         non_cached_prompt_tokens_total, cost_usd_total, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(assistant_id) DO UPDATE SET
+                            prompt_tokens_total = prompt_tokens_total + excluded.prompt_tokens_total,
+                            completion_tokens_total = completion_tokens_total + excluded.completion_tokens_total,
+                            total_tokens_total = total_tokens_total + excluded.total_tokens_total,
+                            cache_read_tokens_total = cache_read_tokens_total + excluded.cache_read_tokens_total,
+                            cache_write_tokens_total = cache_write_tokens_total + excluded.cache_write_tokens_total,
+                            non_cached_prompt_tokens_total = non_cached_prompt_tokens_total + excluded.non_cached_prompt_tokens_total,
+                            cost_usd_total = cost_usd_total + excluded.cost_usd_total,
+                            updated_at = excluded.updated_at
+                        """,
+                        (
+                            assistant_id,
+                            prompt_tokens,
+                            completion_tokens,
+                            total_tokens,
+                            buckets["cache_read"],
+                            buckets["cache_write"],
+                            buckets["non_cached"],
+                            cost_usd,
+                            now,
+                        )
                     )
-                    ON CONFLICT(assistant_id) DO UPDATE SET
-                        prompt_tokens_total = prompt_tokens_total + excluded.prompt_tokens_total,
-                        completion_tokens_total = completion_tokens_total + excluded.completion_tokens_total,
-                        total_tokens_total = total_tokens_total + excluded.total_tokens_total,
-                        cost_usd_total = cost_usd_total + COALESCE(excluded.cost_usd_total, 0),
-                        updated_at = excluded.updated_at
-                    """,
-                    (
-                        assistant_id, 
-                        prompt_tokens, 
-                        completion_tokens, 
-                        total_tokens, 
-                        prompt_tokens, completion_tokens, provider, model_name,
-                        now
-                    )
-                )
-                conn.commit()
+                    conn.commit()
             finally:
                 conn.close()
         except Exception as e:
@@ -3677,25 +3708,14 @@ class LambDatabaseManager:
             return True # Fail open to avoid blocking
 
     def get_assistant_cost_usd(self, assistant_id: int) -> float:
-        """Return the total estimated cost in USD for all logged requests for this assistant.
+        """Return the frozen total cost for this assistant from assistant_usage_totals.
 
-        Returns 0.0 when there is no pricing data or no usage logged.
-        Uses SQLite json_extract to pull token counts from the JSON blob.
+        Reads the pre-computed cost_usd_total — never recalculates from current pricing.
         """
         query = f"""
-            SELECT
-              COALESCE(SUM(
-                COALESCE(json_extract(ul.usage_data, '$.prompt_tokens'), 0)
-                  * COALESCE(mp.input_per_1m, 0) / 1000000.0
-                +
-                COALESCE(json_extract(ul.usage_data, '$.completion_tokens'), 0)
-                  * COALESCE(mp.output_per_1m, 0) / 1000000.0
-              ), 0.0)
-            FROM {self.table_prefix}usage_logs ul
-            LEFT JOIN {self.table_prefix}model_pricing mp
-                   ON ul.model_name = mp.model_name
-                  AND ul.provider   = mp.provider
-            WHERE ul.assistant_id = ?
+            SELECT COALESCE(cost_usd_total, 0.0)
+            FROM {self.table_prefix}assistant_usage_totals
+            WHERE assistant_id = ?
         """
         try:
             connection = self.get_connection()
@@ -3709,7 +3729,7 @@ class LambDatabaseManager:
             finally:
                 connection.close()
         except Exception as e:
-            logger.error(f"Error computing cost for assistant {assistant_id}: {e}")
+            logger.error(f"Error reading cost for assistant {assistant_id}: {e}")
             return 0.0
 
     def get_assistant_token_usage(self, assistant_id: int) -> dict:
@@ -3750,8 +3770,8 @@ class LambDatabaseManager:
     def get_all_assistants_with_usage(self) -> list:
         """Return all assistants with aggregate token usage and estimated cost (admin view).
 
-        Each row contains: id, name, owner, organization_name, api_callback,
-        prompt_tokens, completion_tokens, total_tokens, cost_usd.
+        Each row contains: id, name, owner, organization_name, organization_id, api_callback,
+        prompt_tokens, completion_tokens, total_tokens, cost_usd, cache_read_tokens, cache_write_tokens, non_cached_prompt_tokens.
         Quota fields are derived from api_callback in the calling layer.
         """
         query = f"""
@@ -3760,12 +3780,16 @@ class LambDatabaseManager:
                 a.name,
                 a.owner,
                 o.name  AS organization_name,
+                a.organization_id,
                 a.api_callback,
                 COALESCE(ut.prompt_tokens_total, 0) AS prompt_tokens,
                 COALESCE(ut.completion_tokens_total, 0) AS completion_tokens,
                 COALESCE(ut.total_tokens_total, 0) AS total_tokens,
                 COALESCE(ut.cost_usd_total, 0.0) AS cost_usd,
-                qa.thresholds_config
+                qa.thresholds_config,
+                COALESCE(ut.cache_read_tokens_total, ut.cached_prompt_tokens_total, 0) AS cache_read_tokens,
+                COALESCE(ut.cache_write_tokens_total, 0) AS cache_write_tokens,
+                COALESCE(ut.non_cached_prompt_tokens_total, 0) AS non_cached_prompt_tokens
             FROM {self.table_prefix}assistants a
             LEFT JOIN {self.table_prefix}organizations o   ON a.organization_id = o.id
             LEFT JOIN {self.table_prefix}assistant_usage_totals ut ON ut.assistant_id = a.id
@@ -3787,12 +3811,16 @@ class LambDatabaseManager:
                         "name": row[1],
                         "owner": row[2],
                         "organization_name": row[3] or "",
-                        "api_callback": row[4],
-                        "prompt_tokens": int(row[5] or 0),
-                        "completion_tokens": int(row[6] or 0),
-                        "total_tokens": int(row[7] or 0),
-                        "cost_usd": float(row[8] or 0.0),
-                        "thresholds_config": row[9]
+                        "organization_id": row[4],
+                        "api_callback": row[5],
+                        "prompt_tokens": int(row[6] or 0),
+                        "completion_tokens": int(row[7] or 0),
+                        "total_tokens": int(row[8] or 0),
+                        "cost_usd": float(row[9] or 0.0),
+                        "thresholds_config": row[10],
+                        "cache_read_tokens": int(row[11] or 0),
+                        "cache_write_tokens": int(row[12] or 0),
+                        "non_cached_prompt_tokens": int(row[13] or 0),
                     })
                 return results
             finally:
@@ -3800,6 +3828,308 @@ class LambDatabaseManager:
         except Exception as e:
             logger.error(f"Error fetching all assistants with usage: {e}")
             return []
+
+    def get_assistant_usage_by_model(self, assistant_id: int) -> list:
+        query = f"""
+            SELECT
+                ul.provider,
+                ul.model_name,
+                SUM(COALESCE(json_extract(ul.usage_data, '$.prompt_tokens'), 0)) AS prompt_tokens,
+                SUM(COALESCE(json_extract(ul.usage_data, '$.prompt_tokens_details.cached_tokens'), 0)) AS cache_read_tokens,
+                SUM(COALESCE(json_extract(ul.usage_data, '$.prompt_tokens_details.cache_creation_input_tokens'), 0)) AS cache_write_flat,
+                SUM(COALESCE(json_extract(ul.usage_data, '$.prompt_tokens_details.cache_creation.ephemeral_5m_input_tokens'), 0)) AS cache_write_nested,
+                SUM(COALESCE(json_extract(ul.usage_data, '$.completion_tokens'), 0)) AS completion_tokens,
+                SUM(COALESCE(ul.cost_usd, 0)) AS cost_usd,
+                COUNT(*) AS request_count,
+                mp.input_per_1m,
+                mp.cache_read_per_1m,
+                mp.cache_write_per_1m,
+                mp.output_per_1m,
+                mp.requires_explicit_cache
+            FROM {self.table_prefix}usage_logs ul
+            LEFT JOIN {self.table_prefix}model_pricing mp
+                ON mp.provider = ul.provider AND mp.model_name = ul.model_name
+            WHERE ul.assistant_id = ?
+            GROUP BY ul.provider, ul.model_name
+            ORDER BY request_count DESC
+        """
+        try:
+            conn = self.get_connection()
+            if not conn:
+                return []
+            try:
+                cursor = conn.cursor()
+                cursor.execute(query, (assistant_id,))
+                rows = cursor.fetchall()
+                results = []
+                for r in rows:
+                    prompt = int(r[2] or 0)
+                    cache_read = int(r[3] or 0)
+                    cache_write_flat = int(r[4] or 0)
+                    cache_write_nested = int(r[5] or 0)
+                    cache_write = cache_write_flat if cache_write_flat > 0 else cache_write_nested
+                    non_cached = max(0, prompt - cache_read - cache_write)
+                    completion = int(r[6] or 0)
+                    total = prompt + completion
+                    cost_usd = float(r[7] or 0)
+                    inp = float(r[9] or 0)
+                    cache_read_rate = r[10]
+                    cache_write_rate = r[11]
+                    out = float(r[12] or 0)
+                    req_explicit = bool(r[13]) if r[13] is not None else False
+                    results.append({
+                        "provider": r[0] or "",
+                        "model_name": r[1] or "",
+                        "prompt_tokens": prompt,
+                        "non_cached_prompt_tokens": non_cached,
+                        "cache_read_tokens": cache_read,
+                        "cache_write_tokens": cache_write,
+                        "completion_tokens": completion,
+                        "total_tokens": total,
+                        "cost_usd": round(cost_usd, 6),
+                        "request_count": int(r[8] or 0),
+                        "pricing": {
+                            "input_per_1m": inp,
+                            "cache_read_per_1m": float(cache_read_rate) if cache_read_rate is not None else None,
+                            "cache_write_per_1m": float(cache_write_rate) if cache_write_rate is not None else None,
+                            "output_per_1m": out,
+                            "requires_explicit_cache": req_explicit,
+                        },
+                    })
+                return results
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error fetching usage by model for assistant {assistant_id}: {e}")
+            return []
+
+    def search_organizations(self, name: str, limit: int = 20) -> list:
+        query = f"""
+            SELECT id, name, slug
+            FROM {self.table_prefix}organizations
+            WHERE LOWER(name) LIKE LOWER(?)
+            ORDER BY name
+            LIMIT ?
+        """
+        try:
+            conn = self.get_connection()
+            if not conn:
+                return []
+            try:
+                cursor = conn.cursor()
+                cursor.execute(query, (f"%{name}%", limit))
+                return [{"id": r[0], "name": r[1], "slug": r[2]} for r in cursor.fetchall()]
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error searching organizations: {e}")
+            return []
+
+    def get_org_scoped_summary(self, organization_id: int) -> dict:
+        query = f"""
+            SELECT
+                COALESCE(SUM(ut.cost_usd_total), 0.0),
+                COALESCE(SUM(ut.total_tokens_total), 0),
+                COALESCE(SUM(ut.prompt_tokens_total), 0),
+                COALESCE(SUM(ut.completion_tokens_total), 0),
+                COALESCE(SUM(ut.cache_read_tokens_total), 0),
+                COALESCE(SUM(ut.cache_write_tokens_total), 0),
+                COUNT(DISTINCT a.id)
+            FROM {self.table_prefix}assistants a
+            LEFT JOIN {self.table_prefix}assistant_usage_totals ut ON ut.assistant_id = a.id
+            WHERE a.organization_id = ?
+        """
+        try:
+            conn = self.get_connection()
+            if not conn:
+                return self._empty_summary()
+            try:
+                cursor = conn.cursor()
+                cursor.execute(query, (organization_id,))
+                r = cursor.fetchone()
+                return {
+                    "total_cost_usd": round(float(r[0] or 0), 6),
+                    "total_tokens": int(r[1] or 0),
+                    "prompt_tokens": int(r[2] or 0),
+                    "completion_tokens": int(r[3] or 0),
+                    "cache_read_tokens": int(r[4] or 0),
+                    "cache_write_tokens": int(r[5] or 0),
+                    "assistant_count": int(r[6] or 0),
+                    "quota_exceeded_count": 0,
+                }
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error computing org summary: {e}")
+            return self._empty_summary()
+
+    def _empty_summary(self) -> dict:
+        return {
+            "total_cost_usd": 0.0,
+            "total_tokens": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "assistant_count": 0,
+            "quota_exceeded_count": 0,
+        }
+
+    def get_model_pricing_row(self, provider: str, model_name: str) -> dict:
+        """Return pricing dict for (provider, model_name) or empty dict if not found."""
+        try:
+            conn = self.get_connection()
+            if not conn:
+                return {}
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    f"""SELECT input_per_1m, cache_read_per_1m, cache_write_per_1m,
+                               output_per_1m, requires_explicit_cache
+                        FROM {self.table_prefix}model_pricing
+                        WHERE provider = ? AND model_name = ?""",
+                    (provider, model_name),
+                )
+                r = cursor.fetchone()
+                if not r:
+                    return {}
+                return {
+                    "input_per_1m": r[0],
+                    "cache_read_per_1m": r[1],
+                    "cache_write_per_1m": r[2],
+                    "output_per_1m": r[3],
+                    "requires_explicit_cache": bool(r[4]) if r[4] is not None else False,
+                }
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error fetching model pricing for ({provider}, {model_name}): {e}")
+            return {}
+
+    def list_model_pricing(self) -> list:
+        query = f"""
+            SELECT id, provider, model_name, input_per_1m, cache_read_per_1m, cache_write_per_1m,
+                   output_per_1m, requires_explicit_cache, updated_at
+            FROM {self.table_prefix}model_pricing
+            ORDER BY provider, model_name
+        """
+        try:
+            conn = self.get_connection()
+            if not conn:
+                return []
+            try:
+                cursor = conn.cursor()
+                cursor.execute(query)
+                return [
+                    {
+                        "id": r[0], "provider": r[1], "model_name": r[2],
+                        "input_per_1m": float(r[3] or 0),
+                        "cache_read_per_1m": float(r[4]) if r[4] is not None else None,
+                        "cache_write_per_1m": float(r[5]) if r[5] is not None else None,
+                        "output_per_1m": float(r[6] or 0),
+                        "requires_explicit_cache": bool(r[7]) if r[7] is not None else False,
+                        "updated_at": r[8],
+                    }
+                    for r in cursor.fetchall()
+                ]
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error listing model pricing: {e}")
+            return []
+
+    def create_model_pricing(self, provider: str, model_name: str, input_per_1m: float,
+                              output_per_1m: float, cache_read_per_1m: float | None = None,
+                              cache_write_per_1m: float | None = None, requires_explicit_cache: bool = False,
+                              **kwargs) -> dict | None:
+        now = int(time.time())
+        try:
+            conn = self.get_connection()
+            if not conn:
+                return None
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    f"""INSERT INTO {self.table_prefix}model_pricing
+                        (provider, model_name, input_per_1m, cache_read_per_1m, cache_write_per_1m,
+                         output_per_1m, requires_explicit_cache, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (provider, model_name, input_per_1m, cache_read_per_1m, cache_write_per_1m,
+                     output_per_1m, int(requires_explicit_cache), now),
+                )
+                conn.commit()
+                new_id = cursor.lastrowid
+                return {
+                    "id": new_id, "provider": provider, "model_name": model_name,
+                    "input_per_1m": input_per_1m, "cache_read_per_1m": cache_read_per_1m,
+                    "cache_write_per_1m": cache_write_per_1m,
+                    "output_per_1m": output_per_1m,
+                    "requires_explicit_cache": requires_explicit_cache,
+                    "updated_at": now,
+                }
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error creating model pricing: {e}")
+            return None
+
+    def update_model_pricing(self, pricing_id: int, **fields) -> dict | None:
+        now = int(time.time())
+        allowed = {"provider", "model_name", "input_per_1m", "cache_read_per_1m", "cache_write_per_1m",
+                    "output_per_1m", "requires_explicit_cache"}
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return None
+        if "requires_explicit_cache" in updates:
+            updates["requires_explicit_cache"] = int(updates["requires_explicit_cache"])
+        sets = ", ".join(f"{k} = ?" for k in updates)
+        vals = list(updates.values()) + [now, pricing_id]
+        try:
+            conn = self.get_connection()
+            if not conn:
+                return None
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    f"UPDATE {self.table_prefix}model_pricing SET {sets}, updated_at = ? WHERE id = ?",
+                    vals,
+                )
+                conn.commit()
+                if cursor.rowcount == 0:
+                    return None
+                cursor.execute(
+                    f"SELECT id, provider, model_name, input_per_1m, cached_input_per_1m, output_per_1m, updated_at FROM {self.table_prefix}model_pricing WHERE id = ?",
+                    (pricing_id,),
+                )
+                r = cursor.fetchone()
+                return {
+                    "id": r[0], "provider": r[1], "model_name": r[2],
+                    "input_per_1m": float(r[3] or 0),
+                    "cached_input_per_1m": float(r[4]) if r[4] is not None else None,
+                    "output_per_1m": float(r[5] or 0),
+                    "updated_at": r[6],
+                }
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error updating model pricing: {e}")
+            return None
+
+    def delete_model_pricing(self, pricing_id: int) -> bool:
+        try:
+            conn = self.get_connection()
+            if not conn:
+                return False
+            try:
+                cursor = conn.cursor()
+                cursor.execute(f"DELETE FROM {self.table_prefix}model_pricing WHERE id = ?", (pricing_id,))
+                conn.commit()
+                return cursor.rowcount > 0
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error deleting model pricing: {e}")
+            return False
 
     def get_assistant_by_id(self, assistant_id: int) -> Optional[Assistant]:
         connection = self.get_connection()
@@ -5135,7 +5465,7 @@ class LambDatabaseManager:
             token (str): JWT token to verify
 
         Returns:
-            Optional[Dict]: User details if token is valid, None otherwise
+            Optional[Dict]: User details if token is valid and account is enabled, None otherwise
         """
         try:
             # Decode JWT token
@@ -5147,7 +5477,14 @@ class LambDatabaseManager:
                 return None
 
             # Get user details from database
-            return self.get_creator_user_by_email(user_email)
+            user = self.get_creator_user_by_email(user_email)
+
+            # Check if the user account is disabled
+            if user and not user.get('enabled', True):
+                logger.warning(f"Disabled user {user_email} attempted API access with valid JWT token")
+                return None
+
+            return user
 
         except jwt.InvalidTokenError:
             logger.error("Invalid JWT token")
@@ -6546,7 +6883,11 @@ class LambDatabaseManager:
             organization_id: Organization ID.
 
         Returns:
-            List of library dicts, owned first.
+            List of library dicts, owned first. Each entry includes an
+            ``item_count`` derived from a COUNT(*) on
+            ``{prefix}library_items`` (all statuses — pending, completed,
+            failed — so the listing reflects every import the user has
+            kicked off, matching what they see in the library detail view).
         """
         connection = self.get_connection()
         if not connection:
@@ -6555,7 +6896,11 @@ class LambDatabaseManager:
             with connection:
                 cursor = connection.cursor()
                 cursor.execute(f"""
-                    SELECT l.*, cu.user_name as owner_name, cu.user_email as owner_email
+                    SELECT l.*,
+                           cu.user_name as owner_name,
+                           cu.user_email as owner_email,
+                           (SELECT COUNT(*) FROM {self.table_prefix}library_items li
+                            WHERE li.library_id = l.id) as item_count
                     FROM {self.table_prefix}libraries l
                     LEFT JOIN {self.table_prefix}Creator_users cu ON l.owner_user_id = cu.id
                     WHERE l.organization_id = ?
@@ -6878,6 +7223,688 @@ class LambDatabaseManager:
         except sqlite3.Error as e:
             logger.error(f"Database error writing audit log: {e}")
             return None
+        finally:
+            connection.close()
+
+    # =====================================================================
+    # Knowledge Store Methods (new KB Server, port 9092)
+    # =====================================================================
+
+    def create_knowledge_store(self, knowledge_store_id: str, name: str,
+                               owner_user_id: int, organization_id: int,
+                               chunking_strategy: str, embedding_vendor: str,
+                               embedding_model: str, vector_db_backend: str,
+                               description: str = "",
+                               chunking_params: Dict[str, Any] = None,
+                               embedding_endpoint: str = None,
+                               status: str = "active") -> Optional[str]:
+        """Register a new knowledge store in LAMB's database.
+
+        Args:
+            knowledge_store_id: UUID generated by LAMB.
+            name: Display name (unique within organization).
+            owner_user_id: Creator user ID.
+            organization_id: Organization ID.
+            chunking_strategy: Locked at creation (e.g. 'simple', 'hierarchical').
+            embedding_vendor: Locked vendor (e.g. 'openai', 'ollama').
+            embedding_model: Locked model identifier.
+            vector_db_backend: Locked backend (e.g. 'chromadb', 'qdrant').
+            description: Optional description.
+            chunking_params: Strategy-specific parameters (locked).
+            embedding_endpoint: Optional override for vendor API URL (locked).
+            status: Initial status ('active' or 'provisional').
+
+        Returns:
+            The knowledge_store_id if successful, None on failure.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}knowledge_stores
+                    (id, organization_id, name, description, owner_user_id, is_shared,
+                     chunking_strategy, chunking_params,
+                     embedding_vendor, embedding_model, embedding_endpoint,
+                     vector_db_backend, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (knowledge_store_id, organization_id, name, description,
+                      owner_user_id, chunking_strategy,
+                      json.dumps(chunking_params or {}),
+                      embedding_vendor, embedding_model, embedding_endpoint,
+                      vector_db_backend, status, now, now))
+                logger.info(f"Created knowledge store '{name}' (ID: {knowledge_store_id}) for user {owner_user_id}")
+                return knowledge_store_id
+        except sqlite3.IntegrityError as e:
+            logger.error(f"Integrity error creating knowledge store: {e}")
+            return None
+        except sqlite3.Error as e:
+            logger.error(f"Database error creating knowledge store: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def update_knowledge_store_status(self, knowledge_store_id: str, status: str) -> bool:
+        """Update the status of a knowledge store (provisional -> active).
+
+        Args:
+            knowledge_store_id: KS UUID.
+            status: New status value.
+
+        Returns:
+            True if updated.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}knowledge_stores
+                    SET status = ?, updated_at = ?
+                    WHERE id = ?
+                """, (status, now, knowledge_store_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error updating knowledge store status: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def get_knowledge_store(self, knowledge_store_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a knowledge store by ID with owner info.
+
+        Args:
+            knowledge_store_id: KS UUID.
+
+        Returns:
+            Dict with KS fields and owner info, or None.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT ks.*, cu.user_name as owner_name, cu.user_email as owner_email
+                    FROM {self.table_prefix}knowledge_stores ks
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON ks.owner_user_id = cu.id
+                    WHERE ks.id = ?
+                """, (knowledge_store_id,))
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                columns = [desc[0] for desc in cursor.description]
+                result = dict(zip(columns, row))
+                if isinstance(result.get('is_shared'), int):
+                    result['is_shared'] = bool(result['is_shared'])
+                if result.get('chunking_params') and isinstance(result['chunking_params'], str):
+                    try:
+                        result['chunking_params'] = json.loads(result['chunking_params'])
+                    except Exception:
+                        result['chunking_params'] = {}
+                return result
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting knowledge store: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_accessible_knowledge_stores(self, user_id: int,
+                                        organization_id: int) -> List[Dict[str, Any]]:
+        """Get knowledge stores accessible to user (owned OR shared in org).
+
+        Args:
+            user_id: User ID.
+            organization_id: Organization ID.
+
+        Returns:
+            List of KS dicts, owned first.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT ks.*, cu.user_name as owner_name, cu.user_email as owner_email,
+                           (SELECT COUNT(*) FROM {self.table_prefix}kb_content_links kcl
+                            WHERE kcl.knowledge_store_id = ks.id) as content_count
+                    FROM {self.table_prefix}knowledge_stores ks
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON ks.owner_user_id = cu.id
+                    WHERE ks.organization_id = ?
+                    AND ks.status = 'active'
+                    AND (ks.owner_user_id = ? OR ks.is_shared = 1)
+                    ORDER BY ks.owner_user_id = ? DESC, ks.updated_at DESC
+                """, (organization_id, user_id, user_id))
+                columns = [desc[0] for desc in cursor.description]
+                results = []
+                for row in cursor.fetchall():
+                    d = dict(zip(columns, row))
+                    if isinstance(d.get('is_shared'), int):
+                        d['is_shared'] = bool(d['is_shared'])
+                    if d.get('chunking_params') and isinstance(d['chunking_params'], str):
+                        try:
+                            d['chunking_params'] = json.loads(d['chunking_params'])
+                        except Exception:
+                            d['chunking_params'] = {}
+                    results.append(d)
+                return results
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting accessible knowledge stores: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def user_can_access_knowledge_store(self, knowledge_store_id: str,
+                                        user_id: int) -> Tuple[bool, str]:
+        """Check if a user can access a knowledge store and return access level.
+
+        Args:
+            knowledge_store_id: KS UUID.
+            user_id: User ID.
+
+        Returns:
+            Tuple of (can_access, access_type) where access_type is
+            'owner', 'shared', or 'none'.
+        """
+        entry = self.get_knowledge_store(knowledge_store_id)
+        if not entry:
+            return (False, 'none')
+        if entry['owner_user_id'] == user_id:
+            return (True, 'owner')
+        user = self.get_creator_user_by_id(user_id)
+        if user and entry['is_shared'] and entry['organization_id'] == user.get('organization_id'):
+            return (True, 'shared')
+        return (False, 'none')
+
+    def toggle_knowledge_store_sharing(self, knowledge_store_id: str,
+                                       is_shared: bool) -> bool:
+        """Toggle the sharing state of a knowledge store.
+
+        Args:
+            knowledge_store_id: KS UUID.
+            is_shared: New sharing state.
+
+        Returns:
+            True if updated, False if not found.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}knowledge_stores
+                    SET is_shared = ?, updated_at = ?
+                    WHERE id = ?
+                """, (is_shared, now, knowledge_store_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error toggling knowledge store sharing: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def update_knowledge_store(self, knowledge_store_id: str,
+                               name: str = None,
+                               description: str = None,
+                               chunking_params: Optional[Dict[str, Any]] = None) -> bool:
+        """Update knowledge store name, description, and/or chunking_params.
+
+        Strategy/embedding/vector-DB are still locked at creation per ADR-3 —
+        only their *parameters* are mutable. Updated ``chunking_params`` apply
+        only to content ingested AFTER the change; existing chunks keep their
+        original parameters.
+
+        Args:
+            knowledge_store_id: KS UUID.
+            name: New name (or None to keep).
+            description: New description (or None to keep).
+            chunking_params: New chunking parameters (or None to keep).
+
+        Returns:
+            True if updated.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                sets = ["updated_at = ?"]
+                params = [now]
+                if name is not None:
+                    sets.append("name = ?")
+                    params.append(name)
+                if description is not None:
+                    sets.append("description = ?")
+                    params.append(description)
+                if chunking_params is not None:
+                    sets.append("chunking_params = ?")
+                    params.append(json.dumps(chunking_params))
+                params.append(knowledge_store_id)
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}knowledge_stores
+                    SET {', '.join(sets)}
+                    WHERE id = ?
+                """, params)
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error updating knowledge store: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def delete_knowledge_store(self, knowledge_store_id: str) -> bool:
+        """Delete a knowledge store (cascades to kb_content_links).
+
+        Args:
+            knowledge_store_id: KS UUID.
+
+        Returns:
+            True if deleted.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    f"DELETE FROM {self.table_prefix}knowledge_stores WHERE id = ?",
+                    (knowledge_store_id,),
+                )
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error deleting knowledge store: {e}")
+            return False
+        finally:
+            connection.close()
+
+    # ---------- kb_content_links ----------
+
+    def register_kb_content_link(self, knowledge_store_id: str, library_id: str,
+                                 library_item_id: str, organization_id: int,
+                                 created_by_user_id: int,
+                                 kb_job_id: str = None,
+                                 status: str = "pending") -> Optional[int]:
+        """Create a content-link row tracking a library item ingested into a KS.
+
+        Args:
+            knowledge_store_id: KS UUID.
+            library_id: Library UUID.
+            library_item_id: Library item UUID.
+            organization_id: Organization ID.
+            created_by_user_id: User who initiated the ingestion.
+            kb_job_id: Optional KB Server job UUID for status polling.
+            status: Initial status (default 'pending').
+
+        Returns:
+            The new row ID, or None on conflict / failure.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}kb_content_links
+                    (knowledge_store_id, library_id, library_item_id,
+                     organization_id, kb_job_id, status, chunks_created,
+                     created_by_user_id, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+                """, (knowledge_store_id, library_id, library_item_id,
+                      organization_id, kb_job_id, status,
+                      created_by_user_id, now, now))
+                return cursor.lastrowid
+        except sqlite3.IntegrityError as e:
+            logger.warning(f"kb_content_links integrity error (likely duplicate): {e}")
+            return None
+        except sqlite3.Error as e:
+            logger.error(f"Database error registering kb_content_link: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def update_kb_content_link_status(self, link_id: int = None,
+                                      knowledge_store_id: str = None,
+                                      library_item_id: str = None,
+                                      kb_job_id: str = None,
+                                      status: str = None,
+                                      chunks_created: int = None,
+                                      error_message: str = None) -> bool:
+        """Update a content link's status / job info.
+
+        Lookup by either ``link_id`` or the (``knowledge_store_id``,
+        ``library_item_id``) pair.
+
+        Args:
+            link_id: Row PK (preferred when known).
+            knowledge_store_id: KS UUID (paired with library_item_id).
+            library_item_id: Library item UUID (paired with knowledge_store_id).
+            kb_job_id: Optional new job UUID.
+            status: Optional new status.
+            chunks_created: Optional updated chunk count.
+            error_message: Optional error string.
+
+        Returns:
+            True if a row was updated.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                sets = ["updated_at = ?"]
+                params = [now]
+                if status is not None:
+                    sets.append("status = ?")
+                    params.append(status)
+                if kb_job_id is not None:
+                    sets.append("kb_job_id = ?")
+                    params.append(kb_job_id)
+                if chunks_created is not None:
+                    sets.append("chunks_created = ?")
+                    params.append(chunks_created)
+                if error_message is not None:
+                    sets.append("error_message = ?")
+                    params.append(error_message)
+                if link_id is not None:
+                    where = "id = ?"
+                    params.append(link_id)
+                elif knowledge_store_id is not None and library_item_id is not None:
+                    where = "knowledge_store_id = ? AND library_item_id = ?"
+                    params.extend([knowledge_store_id, library_item_id])
+                else:
+                    return False
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}kb_content_links
+                    SET {', '.join(sets)}
+                    WHERE {where}
+                """, params)
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error updating kb_content_link status: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def delete_kb_content_link(self, knowledge_store_id: str,
+                               library_item_id: str) -> bool:
+        """Delete a content link by (KS, library item) pair.
+
+        Args:
+            knowledge_store_id: KS UUID.
+            library_item_id: Library item UUID.
+
+        Returns:
+            True if a row was deleted.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}kb_content_links
+                    WHERE knowledge_store_id = ? AND library_item_id = ?
+                """, (knowledge_store_id, library_item_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error deleting kb_content_link: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def get_kb_content_links_for_ks(self, knowledge_store_id: str
+                                    ) -> List[Dict[str, Any]]:
+        """List all content links for a knowledge store, joined with item info.
+
+        For orphan links (library or item rows already deleted), fall back to
+        the audit log to recover the original library name and a sensible
+        item label from ``library.create`` / ``library.upload`` events. The
+        ``library_deleted`` / ``item_deleted`` flags let the UI annotate
+        recovered names so the user knows the source is gone.
+
+        Args:
+            knowledge_store_id: KS UUID.
+
+        Returns:
+            List of dicts with link + item + library fields, plus
+            ``library_deleted`` and ``item_deleted`` booleans.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT kcl.*,
+                           COALESCE(
+                               li.title,
+                               (SELECT COALESCE(
+                                           json_extract(al.details, '$.filename'),
+                                           json_extract(al.details, '$.video_url'),
+                                           json_extract(al.details, '$.url')
+                                       )
+                                  FROM {self.table_prefix}audit_log al
+                                 WHERE al.target_type = 'library_item'
+                                   AND al.target_id = kcl.library_item_id
+                                   AND al.action = 'library.upload'
+                                 ORDER BY al.created_at DESC LIMIT 1)
+                           ) as item_title,
+                           li.source_type as item_source_type,
+                           li.original_filename as item_filename,
+                           li.source_url as item_source_url,
+                           li.status as item_status,
+                           COALESCE(
+                               lib.name,
+                               (SELECT json_extract(al.details, '$.name')
+                                  FROM {self.table_prefix}audit_log al
+                                 WHERE al.target_type = 'library'
+                                   AND al.target_id = kcl.library_id
+                                   AND al.action = 'library.create'
+                                 ORDER BY al.created_at DESC LIMIT 1)
+                           ) as library_name,
+                           (lib.id IS NULL) as library_deleted,
+                           (li.id IS NULL) as item_deleted
+                    FROM {self.table_prefix}kb_content_links kcl
+                    LEFT JOIN {self.table_prefix}library_items li ON kcl.library_item_id = li.id
+                    LEFT JOIN {self.table_prefix}libraries lib ON kcl.library_id = lib.id
+                    WHERE kcl.knowledge_store_id = ?
+                    ORDER BY kcl.created_at DESC
+                """, (knowledge_store_id,))
+                columns = [desc[0] for desc in cursor.description]
+                rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+                # SQLite returns booleans as 0/1; normalize to Python bool
+                # so the JSON payload sent to the frontend is well-typed.
+                for r in rows:
+                    r["library_deleted"] = bool(r.get("library_deleted"))
+                    r["item_deleted"] = bool(r.get("item_deleted"))
+                return rows
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting kb_content_links for KS: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def get_kb_content_link(self, knowledge_store_id: str,
+                            library_item_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a single content link by (KS, library item)."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}kb_content_links
+                    WHERE knowledge_store_id = ? AND library_item_id = ?
+                """, (knowledge_store_id, library_item_id))
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                columns = [desc[0] for desc in cursor.description]
+                return dict(zip(columns, row))
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting kb_content_link: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_kb_content_links_for_item(self, library_item_id: str
+                                      ) -> List[Dict[str, Any]]:
+        """List all knowledge stores referencing a given library item.
+
+        Used by FR-10 enforcement: a library item cannot be deleted if any
+        active (non-failed) link exists.
+
+        Args:
+            library_item_id: Library item UUID.
+
+        Returns:
+            List of link rows with KS info attached.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT kcl.*, ks.name as knowledge_store_name
+                    FROM {self.table_prefix}kb_content_links kcl
+                    LEFT JOIN {self.table_prefix}knowledge_stores ks
+                        ON kcl.knowledge_store_id = ks.id
+                    WHERE kcl.library_item_id = ?
+                    ORDER BY ks.name ASC
+                """, (library_item_id,))
+                columns = [desc[0] for desc in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting kb_content_links for item: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def get_kb_content_links_for_library(self, library_id: str
+                                         ) -> List[Dict[str, Any]]:
+        """List all knowledge stores referencing any item in a library.
+
+        Used by FR-10 enforcement at the library level: a library cannot be
+        deleted while any of its items is still actively linked to a
+        Knowledge Store. Mirrors :meth:`get_kb_content_links_for_item` but
+        scoped to a whole library, with item title attached so the API can
+        report which items are blocking.
+
+        Args:
+            library_id: Library UUID.
+
+        Returns:
+            List of link rows with KS name and item title attached.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT kcl.*,
+                           ks.name as knowledge_store_name,
+                           li.title as item_title
+                    FROM {self.table_prefix}kb_content_links kcl
+                    LEFT JOIN {self.table_prefix}knowledge_stores ks
+                        ON kcl.knowledge_store_id = ks.id
+                    LEFT JOIN {self.table_prefix}library_items li
+                        ON kcl.library_item_id = li.id
+                    WHERE kcl.library_id = ?
+                """, (library_id,))
+                columns = [desc[0] for desc in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting kb_content_links for library: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def get_knowledge_stores_for_library(self, library_id: str
+                                         ) -> List[Dict[str, Any]]:
+        """List distinct Knowledge Stores that reference any item from a library.
+
+        Inverse of :meth:`get_kb_content_links_for_ks` — given a library, return
+        the KSs that hold at least one of its items, with per-KS counts of
+        ready / pending / failed links. The caller is expected to filter the
+        result by user visibility (owner / shared within the same org).
+
+        Args:
+            library_id: Library UUID.
+
+        Returns:
+            List of dicts shaped like the KS list rows used elsewhere
+            (``id``, ``name``, ``description``, ``chunking_strategy``,
+            ``embedding_vendor``, ``embedding_model``, ``vector_db_backend``,
+            ``is_shared``, ``organization_id``, ``owner_user_id``,
+            ``created_at``, ``updated_at``) plus three counts:
+            ``item_count`` (total links from this library), ``ready_count``
+            and ``failed_count``.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT ks.id, ks.name, ks.description,
+                           ks.chunking_strategy, ks.embedding_vendor,
+                           ks.embedding_model, ks.vector_db_backend,
+                           ks.is_shared, ks.organization_id, ks.owner_user_id,
+                           ks.created_at, ks.updated_at,
+                           COUNT(kcl.library_item_id) as item_count,
+                           SUM(CASE WHEN kcl.status = 'ready' THEN 1 ELSE 0 END) as ready_count,
+                           SUM(CASE WHEN kcl.status = 'failed' THEN 1 ELSE 0 END) as failed_count
+                    FROM {self.table_prefix}kb_content_links kcl
+                    JOIN {self.table_prefix}knowledge_stores ks
+                        ON kcl.knowledge_store_id = ks.id
+                    WHERE kcl.library_id = ?
+                      AND ks.status = 'active'
+                    GROUP BY ks.id
+                    ORDER BY ks.name ASC
+                """, (library_id,))
+                columns = [desc[0] for desc in cursor.description]
+                rows: List[Dict[str, Any]] = []
+                for raw in cursor.fetchall():
+                    d = dict(zip(columns, raw))
+                    if isinstance(d.get('is_shared'), int):
+                        d['is_shared'] = bool(d['is_shared'])
+                    for k in ('item_count', 'ready_count', 'failed_count'):
+                        if d.get(k) is None:
+                            d[k] = 0
+                        else:
+                            d[k] = int(d[k])
+                    rows.append(d)
+                return rows
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting knowledge stores for library: {e}")
+            return []
         finally:
             connection.close()
 
@@ -7871,7 +8898,8 @@ class LambDatabaseManager:
                             configured_by_email: str, configured_by_name: str = None,
                             context_id: str = None, context_title: str = None,
                             activity_name: str = None,
-                            chat_visibility_enabled: bool = False) -> Optional[int]:
+                            chat_visibility_enabled: bool = False,
+                            activity_type: str = 'chat') -> Optional[int]:
         """Create a new LTI activity. Returns the activity id."""
         connection = self.get_connection()
         if not connection:
@@ -7885,13 +8913,13 @@ class LambDatabaseManager:
                     (resource_link_id, organization_id, context_id, context_title, activity_name,
                      owi_group_id, owi_group_name, owner_email, owner_name,
                      configured_by_email, configured_by_name,
-                     chat_visibility_enabled, status, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                     chat_visibility_enabled, activity_type, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
                 """, (resource_link_id, organization_id, context_id, context_title,
                       activity_name, owi_group_id, owi_group_name,
                       configured_by_email, configured_by_name,
                       configured_by_email, configured_by_name,
-                      1 if chat_visibility_enabled else 0, now, now))
+                      1 if chat_visibility_enabled else 0, activity_type, now, now))
                 return cursor.lastrowid
         except sqlite3.Error as e:
             logger.error(f"Error creating LTI activity: {e}")
@@ -7922,7 +8950,7 @@ class LambDatabaseManager:
 
     def update_lti_activity(self, activity_id: int, **kwargs) -> bool:
         """Update an LTI activity. Pass fields to update as keyword arguments."""
-        allowed_fields = {'activity_name', 'status', 'context_title', 'chat_visibility_enabled', 'owner_email', 'owner_name'}
+        allowed_fields = {'activity_name', 'status', 'context_title', 'chat_visibility_enabled', 'owner_email', 'owner_name', 'owi_group_id', 'owi_group_name', 'lis_outcome_service_url'}
         updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
         if not updates:
             return False
@@ -8018,7 +9046,8 @@ class LambDatabaseManager:
     def create_lti_activity_user(self, activity_id: int, user_email: str,
                                   user_name: str = '', user_display_name: str = '',
                                   lms_user_id: str = None,
-                                  owi_user_id: str = None) -> Optional[int]:
+                                  owi_user_id: str = None,
+                                  is_instructor: bool = False) -> Optional[int]:
         """Create or get an LTI activity user record. Updates access tracking on each call. Returns the user record id."""
         connection = self.get_connection()
         if not connection:
@@ -8047,15 +9076,22 @@ class LambDatabaseManager:
                             SET owi_user_id = ?
                             WHERE id = ? AND (owi_user_id IS NULL OR owi_user_id = '')
                         """, (owi_user_id, existing[0]))
+                    # Promote to instructor if needed (never demote)
+                    if is_instructor:
+                        cursor.execute(f"""
+                            UPDATE {self.table_prefix}lti_activity_users
+                            SET is_instructor = 1
+                            WHERE id = ? AND is_instructor = 0
+                        """, (existing[0],))
                     return existing[0]
                 # Create
                 cursor.execute(f"""
                     INSERT INTO {self.table_prefix}lti_activity_users
                     (activity_id, user_email, user_name, user_display_name,
-                     lms_user_id, owi_user_id, last_access_at, access_count, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+                     lms_user_id, owi_user_id, is_instructor, last_access_at, access_count, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
                 """, (activity_id, user_email, user_name, user_display_name,
-                      lms_user_id, owi_user_id, now, now))
+                      lms_user_id, owi_user_id, 1 if is_instructor else 0, now, now))
                 return cursor.lastrowid
         except sqlite3.Error as e:
             logger.error(f"Error creating LTI activity user: {e}")
@@ -8255,6 +9291,24 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
+    @staticmethod
+    def assistant_has_rubric_for_eval(api_callback: Optional[str]) -> bool:
+        """Check if an assistant's metadata indicates it is ready for rubric-based evaluation.
+
+        Requires both ``rubric_id`` (non-empty) **and** ``rag_processor == "rubric_rag"``
+        so the completions pipeline will actually inject the rubric as context.
+        """
+        if not api_callback:
+            return False
+        try:
+            meta = json.loads(api_callback)
+        except (json.JSONDecodeError, TypeError):
+            return False
+        rubric_id = meta.get("rubric_id")
+        if not rubric_id or not str(rubric_id).strip():
+            return False
+        return meta.get("rag_processor") == "rubric_rag"
+
     def get_published_assistants_for_org_user(self, organization_id: int,
                                                creator_user_id: int,
                                                creator_user_email: str) -> List[Dict[str, Any]]:
@@ -8272,7 +9326,8 @@ class LambDatabaseManager:
                 cursor.execute(f"""
                     SELECT a.id, a.name, a.description, a.owner,
                            ap.oauth_consumer_name, ap.group_id, ap.group_name,
-                           'owned' as access_type
+                           'owned' as access_type,
+                           a.api_callback
                     FROM {self.table_prefix}assistants a
                     JOIN {self.table_prefix}assistant_publish ap ON a.id = ap.assistant_id
                     WHERE a.owner = ? AND a.organization_id = ?
@@ -8287,7 +9342,8 @@ class LambDatabaseManager:
                 cursor.execute(f"""
                     SELECT a.id, a.name, a.description, a.owner,
                            ap.oauth_consumer_name, ap.group_id, ap.group_name,
-                           'shared' as access_type
+                           'shared' as access_type,
+                           a.api_callback
                     FROM {self.table_prefix}assistant_shares s
                     JOIN {self.table_prefix}assistants a ON s.assistant_id = a.id
                     JOIN {self.table_prefix}assistant_publish ap ON a.id = ap.assistant_id
@@ -8299,11 +9355,14 @@ class LambDatabaseManager:
                 columns = [col[0] for col in cursor.description]
                 shared = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-                # Deduplicate (in case somehow both owned and shared)
+                # Deduplicate and add rubric_eval_ready flag (strip raw api_callback)
                 seen = set()
                 result = []
                 for a in owned + shared:
                     if a['id'] not in seen:
+                        a['rubric_eval_ready'] = self.assistant_has_rubric_for_eval(
+                            a.pop('api_callback', None)
+                        )
                         result.append(a)
                         seen.add(a['id'])
                 return result

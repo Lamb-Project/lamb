@@ -1,0 +1,106 @@
+¿Qué es la compresión JPEG y cómo funciona el algoritmo DCT en la transformación de imágenes?
+Explica las diferencias entre compresión con pérdida y sin pérdida en el estándar JPEG.
+¿Cuál es el papel de la tabla de cuantización en la compresión de imágenes JPEG?
+Describe cómo se aplica la transformada discreta del coseno (DCT) en bloques de 8x8 píxeles.
+¿Qué es el submuestreo de crominancia 4:2:0 y cómo afecta a la calidad de la imagen?
+Explica el concepto de codificación Huffman en el proceso de compresión JPEG.
+¿Cómo se calcula la relación de compresión en una imagen JPEG?
+¿Qué ventajas tiene usar JPEG frente a otros formatos como PNG o WebP?
+Describe cómo funciona la codificación aritmética en JPEG como alternativa a Huffman.
+¿Qué es el formato JPEG 2000 y en qué se diferencia del JPEG clásico?
+¿Cómo afecta el factor de calidad (quality factor) al tamaño final de un archivo JPEG?
+Explica el proceso de zigzag scanning en la codificación JPEG.
+¿Qué son los coeficientes AC y DC en la compresión JPEG y cómo se codifican?
+Describe cómo se reconstruye una imagen JPEG a partir de sus datos comprimidos.
+¿Qué es el artefacto de bloque (blocking artifact) en imágenes JPEG y cómo se produce?
+Explica el concepto de entropía en la compresión de imágenes digitales.
+¿Cómo se implementa la compresión progresiva en el formato JPEG?
+¿Qué es el espacio de color YCbCr y por qué se usa en JPEG?
+Describe el proceso de codificación Run-Length Encoding (RLE) aplicado a coeficientes JPEG.
+¿Cuáles son las limitaciones del formato JPEG para imágenes con texto o gráficos?
+¿Qué es el código deontológico del Colegio de Informáticos de Cataluña y cuál es su propósito?
+Explica los principios fundamentales de la deontología profesional en informática.
+¿Cuáles son las obligaciones éticas de un informático hacia la sociedad según el código deontológico?
+Describe cómo el código deontológico regula el uso responsable de la inteligencia artificial.
+¿Qué establece el código deontológico sobre la confidencialidad de los datos de los clientes?
+Explica la responsabilidad profesional del informático ante fallos en sistemas críticos.
+¿Cómo se aplica el principio de competencia profesional en el ejercicio de la informática?
+¿Qué dice el código deontológico sobre la propiedad intelectual del software?
+Describe las sanciones que puede imponer el Colegio por incumplimiento del código deontológico.
+¿Cuál es el papel del Colegio de Informáticos de Cataluña en la regulación de la profesión?
+¿Qué obligaciones tiene un informático respecto a la formación continua según el código?
+Explica cómo el código deontológico aborda la relación entre informáticos y empleadores.
+¿Qué establece el código sobre la publicidad y promoción de servicios informáticos?
+Describe el deber de informar al cliente sobre los riesgos de un sistema informático.
+¿Cómo se regula la competencia desleal entre profesionales de la informática?
+¿Qué dice el código deontológico sobre el uso de software pirata o sin licencia?
+Explica la responsabilidad del informático en la protección de datos personales.
+¿Cuáles son los derechos de los usuarios frente a un profesional informático según el código?
+Describe cómo el código deontológico aborda la obsolescencia programada en software.
+¿Qué establece el código sobre la colaboración entre profesionales informáticos?
+¿Cómo afecta la compresión JPEG al rendimiento de modelos de visión por computador?
+Explica por qué las imágenes comprimidas en JPEG pueden generar artefactos en redes neuronales.
+¿Qué impacto tiene la compresión JPEG en el almacenamiento de datasets para machine learning?
+Describe cómo se puede optimizar la calidad JPEG para minimizar la pérdida de información visual.
+¿Cuál es la relación entre la resolución de una imagen y el tamaño del archivo JPEG resultante?
+Explica cómo funciona la codificación de longitud de carrera en los coeficientes DCT de JPEG.
+¿Qué es la cuantización escalada y cómo se aplica en la compresión de imágenes?
+Describe el proceso de decodificación JPEG paso a paso desde los datos comprimidos.
+¿Cómo se comparan los algoritmos de compresión JPEG, JPEG-XL y AVIF en términos de eficiencia?
+¿Qué papel juega la psicovisualidad humana en el diseño del estándar JPEG?
+¿Qué derechos tiene un informático colegiado según el código deontológico de Cataluña?
+Explica cómo el código deontológico protege la independencia profesional del informático.
+¿Cuáles son las incompatibilidades que establece el código para ejercer la profesión?
+Describe el procedimiento de queja ante el Colegio por conducta antideontológica.
+¿Qué establece el código sobre la facturación y transparencia de precios en servicios informáticos?
+Explica la responsabilidad del informático ante la accesibilidad digital de sus desarrollos.
+¿Cómo se regula el teletrabajo y la prestación de servicios remotos en el código deontológico?
+¿Qué dice el código sobre la colaboración con administraciones públicas en proyectos tecnológicos?
+Describe las obligaciones del informático en materia de ciberseguridad según el código.
+¿Cuál es el papel del código deontológico en la regulación de la IA generativa?
+¿Qué establece el código sobre la creación de startups y emprendimiento tecnológico?
+Explica cómo el código deontológico aborda la brecha digital y la inclusión tecnológica.
+¿Qué obligaciones tiene un informático respecto al medio ambiente y la sostenibilidad digital?
+Describe cómo el código deontológico regula la subcontratación de servicios informáticos.
+¿Qué dice el código sobre la documentación técnica y su entrega al cliente?
+¿Cómo se relaciona la cuantización JPEG con la percepción visual humana del color?
+Explica por qué el formato JPEG no es adecuado para imágenes con transparencias.
+¿Qué es la compresión intra-frame y cómo se aplica en el estándar JPEG?
+Describe cómo se puede medir la calidad perceptual de una imagen comprimida en JPEG.
+¿Cuál es el impacto de la compresión JPEG en la velocidad de carga de páginas web?
+Explica cómo los artefactos de compresión afectan a la detección de objetos en imágenes.
+¿Qué técnicas existen para reducir el tamaño de archivos JPEG sin pérdida visible de calidad?
+Describe el proceso de optimización de imágenes JPEG para dispositivos móviles.
+¿Cómo se implementa la compresión JPEG en bibliotecas como libjpeg o MozJPEG?
+¿Qué es el chroma subsampling y por qué el ojo humano no lo percibe fácilmente?
+¿Qué establece el código deontológico sobre la veracidad de la información en informes técnicos?
+Explica cómo el código deontológico regula el uso de datos de usuarios para entrenamiento de IA.
+¿Cuáles son las responsabilidades del informático ante un incidente de seguridad informática?
+Describe cómo el código deontológico aborda la vigilancia tecnológica en el entorno laboral.
+¿Qué dice el código sobre la portabilidad de datos entre sistemas informáticos?
+Explica la obligación del informático de mantener la neutralidad tecnológica en sus recomendaciones.
+¿Cómo se regula la propiedad de los datos generados por sistemas de inteligencia artificial?
+¿Qué establece el código sobre la formación en ética tecnológica para nuevos profesionales?
+Describe las obligaciones del informático ante la detección de sesgos algorítmicos en sus sistemas.
+¿Cuál es el papel del código deontológico en la regulación del metaverso y entornos virtuales?
+¿Qué dice el código sobre la interoperabilidad entre sistemas de diferentes proveedores?
+Explica cómo el código deontológico protege a los usuarios de software defectuoso.
+¿Qué establece el código sobre la responsabilidad compartida en proyectos de equipo?
+¿Cómo se relaciona el factor de calidad JPEG con la tasa de bits por píxel de una imagen?
+Explica por qué la compresión JPEG es irreversible y qué información se pierde permanentemente.
+¿Qué es la matriz de cuantización luminancia y cómo se diferencia de la de crominancia?
+Describe cómo se puede reconstruir parcialmente una imagen JPEG dañada o corrupta.
+¿Cuál es la diferencia entre JPEG baseline y JPEG progressive en términos de decodificación?
+Explica cómo la compresión JPEG afecta al rendimiento de algoritmos de OCR en documentos escaneados.
+¿Qué técnicas de post-procesamiento existen para mejorar la calidad de imágenes JPEG comprimidas?
+Describe el impacto de la compresión JPEG en la latencia de transmisión de vídeo en tiempo real.
+¿Qué obligaciones tiene un informático respecto a la auditoría externa de sus sistemas?
+Explica cómo el código deontológico regula la publicación de investigaciones en informática.
+¿Cuáles son los deberes del informático hacia la comunidad profesional según el código de Cataluña?
+Describe el proceso de mediación del Colegio en conflictos entre profesionales y clientes.
+¿Qué establece el código sobre la actualización de sistemas legacy y su mantenimiento?
+¿Cómo se aborda en el código deontológico la responsabilidad ante decisiones automatizadas?
+¿Qué dice el código sobre la transparencia en el uso de algoritmos de recomendación?
+Explica la relación entre la ética profesional y la innovación tecnológica en el sector informático.
+¿Qué establece el código deontológico sobre la mentoría y formación de nuevos profesionales?
+Describe cómo el código deontológico de Cataluña se alinea con regulaciones europeas como el AI Act.
