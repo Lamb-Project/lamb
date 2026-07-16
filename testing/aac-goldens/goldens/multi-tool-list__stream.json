@@ -1,0 +1,214 @@
+{
+ "scenario": "multi-tool-list",
+ "mode": "stream",
+ "notes": "Auto-policy tool round (assistant.list).",
+ "session_id": "41b1f8f7-b994-4e0b-8170-ff056192a846",
+ "captured_at": "2026-07-16T08:39:48.574972+00:00",
+ "base": "http://localhost:9099",
+ "turns": [
+  {
+   "user": "Please list my assistants and tell me exactly how many I have.",
+   "result": {
+    "http_status": 200,
+    "elapsed_s": 13.13,
+    "frames": [
+     {
+      "status": "thinking"
+     },
+     {
+      "status": "tool",
+      "command": "Loading assistants"
+     },
+     {
+      "status": "tool_done",
+      "command": "Loading assistants",
+      "success": true
+     },
+     {
+      "status": "thinking"
+     },
+     {
+      "status": "responding"
+     },
+     {
+      "content": "You"
+     },
+     {
+      "content": " have"
+     },
+     {
+      "content": " **"
+     },
+     {
+      "content": "0"
+     },
+     {
+      "content": " assistants"
+     },
+     {
+      "content": "**"
+     },
+     {
+      "content": " —"
+     },
+     {
+      "content": " your"
+     },
+     {
+      "content": " workspace"
+     },
+     {
+      "content": " is"
+     },
+     {
+      "content": " empty"
+     },
+     {
+      "content": ".\n\n"
+     },
+     {
+      "content": "**"
+     },
+     {
+      "content": "Next"
+     },
+     {
+      "content": "?"
+     },
+     {
+      "content": "**\n"
+     },
+     {
+      "content": "1"
+     },
+     {
+      "content": "."
+     },
+     {
+      "content": " Create"
+     },
+     {
+      "content": " a"
+     },
+     {
+      "content": " new"
+     },
+     {
+      "content": " assistant"
+     },
+     {
+      "content": "\n"
+     },
+     {
+      "content": "2"
+     },
+     {
+      "content": "."
+     },
+     {
+      "content": " See"
+     },
+     {
+      "content": " shared"
+     },
+     {
+      "content": " assistants"
+     },
+     {
+      "content": "\n"
+     },
+     {
+      "content": "3"
+     },
+     {
+      "content": "."
+     },
+     {
+      "content": " Other"
+     },
+     {
+      "content": " —"
+     },
+     {
+      "content": " tell"
+     },
+     {
+      "content": " me"
+     },
+     {
+      "done": true,
+      "stats": {
+       "turns": 1,
+       "tool_calls": 1,
+       "tool_errors": 0,
+       "total_tool_time_ms": 24.8,
+       "model": "deepseek-v4-flash"
+      }
+     },
+     {
+      "_done_marker": true
+     }
+    ]
+   },
+   "envelope_after": {
+    "id": "41b1f8f7-b994-4e0b-8170-ff056192a846",
+    "assistant_id": null,
+    "user_email": "aac-goldens@test.local",
+    "organization_id": 1,
+    "status": "active",
+    "conversation": [
+     {
+      "role": "user",
+      "content": "Please list my assistants and tell me exactly how many I have."
+     },
+     {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+       {
+        "id": "AnXwXyrEMl0TKnXWvZxi0GZupSmDzWsQ",
+        "type": "function",
+        "function": {
+         "name": "execute_command",
+         "arguments": "{\"command\":\"lamb assistant list\"}"
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "AnXwXyrEMl0TKnXWvZxi0GZupSmDzWsQ",
+      "content": "{\"success\": true, \"data\": {\"assistants\": [], \"total_count\": 0}}"
+     },
+     {
+      "role": "assistant",
+      "content": "You have **0 assistants** — your workspace is empty.\n\n**Next?**\n1. Create a new assistant\n2. See shared assistants\n3. Other — tell me"
+     }
+    ],
+    "created_at": "2026-07-16T08:39:48.561656",
+    "updated_at": "2026-07-16T08:40:01.701355",
+    "title": "golden:multi-tool-list__stream",
+    "pending_action": null,
+    "skill_info": null,
+    "tool_audit": [
+     {
+      "ts": "2026-07-16T08:39:50.811064Z",
+      "command": "lamb assistant list",
+      "action_key": "assistant.list",
+      "intent": "Loading assistants",
+      "success": true,
+      "elapsed_ms": 24.8,
+      "artifacts": [
+       {
+        "type": "assistant",
+        "id": null,
+        "action": "read"
+       }
+      ],
+      "summary": "keys: assistants, total_count"
+     }
+    ]
+   }
+  }
+ ]
+}

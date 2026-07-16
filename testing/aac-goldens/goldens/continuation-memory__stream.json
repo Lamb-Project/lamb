@@ -1,0 +1,252 @@
+{
+ "scenario": "continuation-memory",
+ "mode": "stream",
+ "notes": "Session persistence across separate HTTP requests.",
+ "session_id": "1d684035-50c1-4e51-a7df-a2db2a0737eb",
+ "captured_at": "2026-07-16T08:49:14.269709+00:00",
+ "base": "http://localhost:9099",
+ "turns": [
+  {
+   "user": "Remember this number: 4242. Just confirm you have it.",
+   "result": {
+    "http_status": 200,
+    "elapsed_s": 8.45,
+    "frames": [
+     {
+      "status": "thinking"
+     },
+     {
+      "status": "responding"
+     },
+     {
+      "content": "Got"
+     },
+     {
+      "content": " it"
+     },
+     {
+      "content": " —"
+     },
+     {
+      "content": " "
+     },
+     {
+      "content": "4"
+     },
+     {
+      "content": "24"
+     },
+     {
+      "content": "2"
+     },
+     {
+      "content": " noted"
+     },
+     {
+      "content": "."
+     },
+     {
+      "content": " What"
+     },
+     {
+      "content": " can"
+     },
+     {
+      "content": " I"
+     },
+     {
+      "content": " help"
+     },
+     {
+      "content": " you"
+     },
+     {
+      "content": " with"
+     },
+     {
+      "content": "?\n\n"
+     },
+     {
+      "content": "**"
+     },
+     {
+      "content": "Next"
+     },
+     {
+      "content": "?"
+     },
+     {
+      "content": "**\n"
+     },
+     {
+      "content": "1"
+     },
+     {
+      "content": "."
+     },
+     {
+      "content": " Create"
+     },
+     {
+      "content": " a"
+     },
+     {
+      "content": " new"
+     },
+     {
+      "content": " assistant"
+     },
+     {
+      "content": "\n"
+     },
+     {
+      "content": "2"
+     },
+     {
+      "content": "."
+     },
+     {
+      "content": " Work"
+     },
+     {
+      "content": " with"
+     },
+     {
+      "content": " an"
+     },
+     {
+      "content": " existing"
+     },
+     {
+      "content": " assistant"
+     },
+     {
+      "content": "\n"
+     },
+     {
+      "content": "3"
+     },
+     {
+      "content": "."
+     },
+     {
+      "content": " Other"
+     },
+     {
+      "content": " —"
+     },
+     {
+      "content": " tell"
+     },
+     {
+      "content": " me"
+     },
+     {
+      "done": true,
+      "stats": {
+       "turns": 1,
+       "tool_calls": 0,
+       "tool_errors": 0,
+       "total_tool_time_ms": 0,
+       "model": "deepseek-v4-flash"
+      }
+     },
+     {
+      "_done_marker": true
+     }
+    ]
+   },
+   "envelope_after": {
+    "id": "1d684035-50c1-4e51-a7df-a2db2a0737eb",
+    "assistant_id": null,
+    "user_email": "aac-goldens@test.local",
+    "organization_id": 1,
+    "status": "active",
+    "conversation": [
+     {
+      "role": "user",
+      "content": "Remember this number: 4242. Just confirm you have it."
+     },
+     {
+      "role": "assistant",
+      "content": "Got it — 4242 noted. What can I help you with?\n\n**Next?**\n1. Create a new assistant\n2. Work with an existing assistant\n3. Other — tell me"
+     }
+    ],
+    "created_at": "2026-07-16T08:49:14.255903",
+    "updated_at": "2026-07-16T08:49:22.718483",
+    "title": "golden:continuation-memory__stream",
+    "pending_action": null,
+    "skill_info": null,
+    "tool_audit": []
+   }
+  },
+  {
+   "user": "What number did I ask you to remember? Answer with the number only.",
+   "result": {
+    "http_status": 200,
+    "elapsed_s": 8.61,
+    "frames": [
+     {
+      "status": "thinking"
+     },
+     {
+      "status": "responding"
+     },
+     {
+      "content": "4"
+     },
+     {
+      "content": "24"
+     },
+     {
+      "content": "2"
+     },
+     {
+      "done": true,
+      "stats": {
+       "turns": 2,
+       "tool_calls": 0,
+       "tool_errors": 0,
+       "total_tool_time_ms": 0,
+       "model": "deepseek-v4-flash"
+      }
+     },
+     {
+      "_done_marker": true
+     }
+    ]
+   },
+   "envelope_after": {
+    "id": "1d684035-50c1-4e51-a7df-a2db2a0737eb",
+    "assistant_id": null,
+    "user_email": "aac-goldens@test.local",
+    "organization_id": 1,
+    "status": "active",
+    "conversation": [
+     {
+      "role": "user",
+      "content": "Remember this number: 4242. Just confirm you have it."
+     },
+     {
+      "role": "assistant",
+      "content": "Got it — 4242 noted. What can I help you with?\n\n**Next?**\n1. Create a new assistant\n2. Work with an existing assistant\n3. Other — tell me"
+     },
+     {
+      "role": "user",
+      "content": "What number did I ask you to remember? Answer with the number only."
+     },
+     {
+      "role": "assistant",
+      "content": "4242"
+     }
+    ],
+    "created_at": "2026-07-16T08:49:14.255903",
+    "updated_at": "2026-07-16T08:49:31.347974",
+    "title": "golden:continuation-memory__stream",
+    "pending_action": null,
+    "skill_info": null,
+    "tool_audit": []
+   }
+  }
+ ]
+}

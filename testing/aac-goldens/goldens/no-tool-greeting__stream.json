@@ -1,0 +1,220 @@
+{
+ "scenario": "no-tool-greeting",
+ "mode": "stream",
+ "notes": "No-tool-call path. THE divergence-bug witness: on legacy code the plain endpoint returns the first LLM response, the stream endpoint discards it and makes a second streamed call.",
+ "session_id": "91972585-5224-4562-8258-2c82190cdb2d",
+ "captured_at": "2026-07-16T08:39:27.180988+00:00",
+ "base": "http://localhost:9099",
+ "turns": [
+  {
+   "user": "Hello! In one short sentence, what can you help me with?",
+   "result": {
+    "http_status": 200,
+    "elapsed_s": 13.08,
+    "frames": [
+     {
+      "status": "thinking"
+     },
+     {
+      "status": "responding"
+     },
+     {
+      "content": "Hi"
+     },
+     {
+      "content": "!"
+     },
+     {
+      "content": " I"
+     },
+     {
+      "content": "'m"
+     },
+     {
+      "content": " your"
+     },
+     {
+      "content": " L"
+     },
+     {
+      "content": "AMB"
+     },
+     {
+      "content": " platform"
+     },
+     {
+      "content": " helper"
+     },
+     {
+      "content": " —"
+     },
+     {
+      "content": " I"
+     },
+     {
+      "content": " can"
+     },
+     {
+      "content": " help"
+     },
+     {
+      "content": " you"
+     },
+     {
+      "content": " create"
+     },
+     {
+      "content": ","
+     },
+     {
+      "content": " configure"
+     },
+     {
+      "content": ","
+     },
+     {
+      "content": " test"
+     },
+     {
+      "content": ","
+     },
+     {
+      "content": " and"
+     },
+     {
+      "content": " refine"
+     },
+     {
+      "content": " AI"
+     },
+     {
+      "content": " learning"
+     },
+     {
+      "content": " assistants"
+     },
+     {
+      "content": " for"
+     },
+     {
+      "content": " your"
+     },
+     {
+      "content": " students"
+     },
+     {
+      "content": ".\n\n"
+     },
+     {
+      "content": "**"
+     },
+     {
+      "content": "Next"
+     },
+     {
+      "content": "?"
+     },
+     {
+      "content": "**\n"
+     },
+     {
+      "content": "1"
+     },
+     {
+      "content": "."
+     },
+     {
+      "content": " Create"
+     },
+     {
+      "content": " a"
+     },
+     {
+      "content": " new"
+     },
+     {
+      "content": " assistant"
+     },
+     {
+      "content": "\n"
+     },
+     {
+      "content": "2"
+     },
+     {
+      "content": "."
+     },
+     {
+      "content": " Improve"
+     },
+     {
+      "content": " an"
+     },
+     {
+      "content": " existing"
+     },
+     {
+      "content": " assistant"
+     },
+     {
+      "content": "\n"
+     },
+     {
+      "content": "3"
+     },
+     {
+      "content": "."
+     },
+     {
+      "content": " Other"
+     },
+     {
+      "content": " —"
+     },
+     {
+      "content": " tell"
+     },
+     {
+      "content": " me"
+     },
+     {
+      "done": true,
+      "stats": {
+       "turns": 1,
+       "tool_calls": 0,
+       "tool_errors": 0,
+       "total_tool_time_ms": 0,
+       "model": "deepseek-v4-flash"
+      }
+     },
+     {
+      "_done_marker": true
+     }
+    ]
+   },
+   "envelope_after": {
+    "id": "91972585-5224-4562-8258-2c82190cdb2d",
+    "assistant_id": null,
+    "user_email": "aac-goldens@test.local",
+    "organization_id": 1,
+    "status": "active",
+    "conversation": [
+     {
+      "role": "user",
+      "content": "Hello! In one short sentence, what can you help me with?"
+     },
+     {
+      "role": "assistant",
+      "content": "Hi! I'm your LAMB platform helper — I can help you create, configure, test, and refine AI learning assistants for your students.\n\n**Next?**\n1. Create a new assistant\n2. Improve an existing assistant\n3. Other — tell me"
+     }
+    ],
+    "created_at": "2026-07-16T08:39:27.167224",
+    "updated_at": "2026-07-16T08:39:40.249730",
+    "title": "golden:no-tool-greeting__stream",
+    "pending_action": null,
+    "skill_info": null,
+    "tool_audit": []
+   }
+  }
+ ]
+}
