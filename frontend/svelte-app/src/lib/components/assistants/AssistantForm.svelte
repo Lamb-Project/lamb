@@ -68,11 +68,17 @@
 		const assistantNullStatusChanged = (assistant === null && form.initialAssistantData !== null) || (assistant !== null && form.initialAssistantData === null);
 
 		// Check if the assistant data content has changed (not just ID)
-		const assistantDataChanged = assistant && form.initialAssistantData &&
-			(assistant.system_prompt !== form.initialAssistantData.system_prompt ||
+		// Use an explicit if guard so the minifier cannot break the short-circuit
+		// logic. A && B && (C || D || ...) can be rearranged by the bundler into
+		// (A && B && C) || D || ..., which crashes when assistant is null.
+		let assistantDataChanged = false;
+		if (assistant && form.initialAssistantData) {
+			assistantDataChanged =
+				assistant.system_prompt !== form.initialAssistantData.system_prompt ||
 				assistant.prompt_template !== form.initialAssistantData.prompt_template ||
 				assistant.name !== form.initialAssistantData.name ||
-				assistant.description !== form.initialAssistantData.description);
+				assistant.description !== form.initialAssistantData.description;
+		}
 
 		if (assistantIdChanged || assistantNullStatusChanged || assistantDataChanged) {
 			if (assistant) {
