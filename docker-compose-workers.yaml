@@ -76,6 +76,7 @@ services:
     image: python:3.12-slim
     working_dir: ${LAMB_PROJECT_PATH}/backend
     environment:
+      - AAC_LOOP=${AAC_LOOP:-legacy}
       - PORT=9099
       - PIP_DISABLE_PIP_VERSION_CHECK=1
       - PIP_CACHE_DIR=/root/.cache/pip

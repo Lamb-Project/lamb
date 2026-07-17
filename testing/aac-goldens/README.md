@@ -56,3 +56,22 @@ Expected evolution: when Phase 4 replaces the legacy status-dict frames with
 the versioned event protocol, the stream grammar WILL change — at that point
 the goldens are re-recorded behind the new protocol flag and the old
 recordings stay in git history as the legacy-contract record.
+
+## Baseline history + known nondeterminism
+
+**2026-07-16:** initial recording on the legacy loop.
+**2026-07-17:** re-recorded on the tau loop (`AAC_LOOP=tau`) after the Phase-3
+soak replay. The legacy recordings live in git history at `d4d37581`. Two
+intentional behavior changes vs legacy are part of this baseline: the
+approved pending action is recorded in the tool audit (legacy executed it
+unaudited), and `stats` carries a `usage` block (per-call token accounting —
+the no-tool recording pins `llm_calls: 1`, the legacy frontend paid two).
+
+Replay flags that recur even tau-vs-tau, all pure model nondeterminism (the
+skill-load case flips in opposite directions between the two recordings):
+an optional `assistant.get` verification after an approval, one tool round
+more or fewer in ask-flow turns, and the model re-fetching config/kb/rubric
+after `skill.load` although the startup data already contains them. The
+comparator deliberately stays sensitive to tool multisets — loosening it to
+sets would blind the oracle to duplicated-call regressions. Gate criterion:
+no NEW divergence classes beyond these documented ones.

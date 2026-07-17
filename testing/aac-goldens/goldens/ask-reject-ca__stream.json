@@ -2,15 +2,15 @@
  "scenario": "ask-reject-ca",
  "mode": "stream",
  "notes": "Ask-flow, reject path, Catalan.",
- "session_id": "e88fd742-cbc7-4009-963c-473570d4b09e",
- "captured_at": "2026-07-16T08:43:21.531083+00:00",
+ "session_id": "44de0bda-8b4d-426b-a22c-4e5d2ec48ac0",
+ "captured_at": "2026-07-17T07:41:50.015691+00:00",
  "base": "http://localhost:9099",
  "turns": [
   {
    "user": "Crea un assistent anomenat 'Golden Test CA' amb el system prompt 'Ets un assistent de prova.' Fes-ho ara, si us plau.",
    "result": {
     "http_status": 200,
-    "elapsed_s": 55.68,
+    "elapsed_s": 30.33,
     "frames": [
      {
       "status": "thinking"
@@ -29,6 +29,18 @@
      },
      {
       "status": "tool",
+      "command": "Renaming session"
+     },
+     {
+      "status": "tool_done",
+      "command": "Renaming session",
+      "success": true
+     },
+     {
+      "status": "thinking"
+     },
+     {
+      "status": "tool",
       "command": "Creating assistant"
      },
      {
@@ -37,226 +49,28 @@
       "success": true
      },
      {
+      "status": "thinking"
+     },
+     {
       "status": "responding"
      },
      {
-      "content": "Cre"
-     },
-     {
-      "content": "arem"
-     },
-     {
-      "content": " l"
-     },
-     {
-      "content": "'"
-     },
-     {
-      "content": "ass"
-     },
-     {
-      "content": "istent"
-     },
-     {
-      "content": " **"
-     },
-     {
-      "content": "Golden"
-     },
-     {
-      "content": " Test"
-     },
-     {
-      "content": " CA"
-     },
-     {
-      "content": "**"
-     },
-     {
-      "content": " amb"
-     },
-     {
-      "content": ":\n"
-     },
-     {
-      "content": "-"
-     },
-     {
-      "content": " **"
-     },
-     {
-      "content": "Model"
-     },
-     {
-      "content": ":**"
-     },
-     {
-      "content": " g"
-     },
-     {
-      "content": "pt"
-     },
-     {
-      "content": "-"
-     },
-     {
-      "content": "4"
-     },
-     {
-      "content": "o"
-     },
-     {
-      "content": "-mini"
-     },
-     {
-      "content": "\n"
-     },
-     {
-      "content": "-"
-     },
-     {
-      "content": " **"
-     },
-     {
-      "content": "System"
-     },
-     {
-      "content": " prompt"
-     },
-     {
-      "content": ":**"
-     },
-     {
-      "content": " \""
-     },
-     {
-      "content": "E"
-     },
-     {
-      "content": "ts"
-     },
-     {
-      "content": " un"
-     },
-     {
-      "content": " assist"
-     },
-     {
-      "content": "ent"
-     },
-     {
-      "content": " de"
-     },
-     {
-      "content": " prova"
-     },
-     {
-      "content": ".\"\n"
-     },
-     {
-      "content": "-"
-     },
-     {
-      "content": " **"
-     },
-     {
-      "content": "Sense"
-     },
-     {
-      "content": " base"
-     },
-     {
-      "content": " de"
-     },
-     {
-      "content": " cone"
-     },
-     {
-      "content": "ix"
-     },
-     {
-      "content": "ements"
-     },
-     {
-      "content": "**"
-     },
-     {
-      "content": " ("
-     },
-     {
-      "content": "no"
-     },
-     {
-      "content": " R"
-     },
-     {
-      "content": "AG"
-     },
-     {
-      "content": ")\n\n"
-     },
-     {
-      "content": "**"
-     },
-     {
-      "content": "Confirm"
-     },
-     {
-      "content": "ar"
-     },
-     {
-      "content": "?"
-     },
-     {
-      "content": " ("
-     },
-     {
-      "content": "s"
-     },
-     {
-      "content": ")"
-     },
-     {
-      "content": "í"
-     },
-     {
-      "content": " /"
-     },
-     {
-      "content": " ("
-     },
-     {
-      "content": "n"
-     },
-     {
-      "content": ")o"
-     },
-     {
-      "content": " /"
-     },
-     {
-      "content": " explica"
-     },
-     {
-      "content": "'m"
-     },
-     {
-      "content": " m"
-     },
-     {
-      "content": "és"
-     },
-     {
-      "content": "**"
+      "content": "Es crearà l'assistent **Golden Test CA** amb:\n- **Model:** gpt-4o-mini\n- **System prompt:** \"Ets un assistent de prova.\"\n- **Sense base de coneixement** (no RAG)\n\n**Confirmar? (s)í / (n)o / explica'm més**"
      },
      {
       "done": true,
       "stats": {
        "turns": 1,
-       "tool_calls": 1,
+       "tool_calls": 2,
        "tool_errors": 0,
-       "total_tool_time_ms": 24.7,
-       "model": "deepseek-v4-flash"
+       "total_tool_time_ms": 41.3,
+       "model": "deepseek-v4-flash",
+       "usage": {
+        "prompt_tokens": 26980,
+        "completion_tokens": 287,
+        "total_tokens": 27267,
+        "llm_calls": 4
+       }
       }
      },
      {
@@ -265,7 +79,7 @@
     ]
    },
    "envelope_after": {
-    "id": "e88fd742-cbc7-4009-963c-473570d4b09e",
+    "id": "44de0bda-8b4d-426b-a22c-4e5d2ec48ac0",
     "assistant_id": null,
     "user_email": "aac-goldens@test.local",
     "organization_id": 1,
@@ -277,64 +91,83 @@
      },
      {
       "role": "assistant",
-      "content": "",
+      "content": null,
       "tool_calls": [
        {
-        "id": "1ZCVJBebumPaKcTpNxpzFaZEzFb70nt5",
+        "id": "MfBRBEoP0M8G7G4VswKABAGBtAUmfRss",
         "type": "function",
         "function": {
          "name": "execute_command",
-         "arguments": "{\"command\":\"lamb assistant config\"}"
+         "arguments": "{\"command\": \"lamb assistant config\"}"
         }
        }
       ]
      },
      {
       "role": "tool",
-      "tool_call_id": "1ZCVJBebumPaKcTpNxpzFaZEzFb70nt5",
+      "tool_call_id": "MfBRBEoP0M8G7G4VswKABAGBtAUmfRss",
       "content": "{\"success\": true, \"data\": {\"lamb_helper_assistant\": \"lamb_assistant.1\", \"surfer_system_prompt\": \"You are a wise surfer dude and a helpful teaching assistant that uses Retrieval-Augmented Generation (RAG) to improve your answers.\", \"surfer_prompt_template\": \"You are a wise surfer dude and a helpful teaching assistant that uses Retrieval-Augmented Generation (RAG) to improve your answers.\\nThis is the user input: {user_input}---\\nThis is the context: {context}\\nNow answer the question:\", \"system_prompt\": \"Eres un asistente de aprendizaje que ayuda a los estudiantes a aprender sobre un tema especifico. Utiliza el contexto para responder las preguntas del usuario.\", \"prompt_template\": \"Eres un asistente de aprendizaje que ayuda a los estudiantes a aprender sobre un tema especifico. Utiliza el contexto para responder las preguntas del usuario.\\nEste es el contexto:\\n --- {context} --- \\n\\nAhora responde la pregunta del usuario: --- {user_input} --- \\n\", \"prompt_processor\": \"simple_augment\", \"connector\": \"openai\", \"llm\": \"\", \"rag_processor\": \"No RAG\", \"rag_placeholders\": [\"--- {context} --- \", \"--- {user_input} ---\"]}}"
      },
      {
       "role": "assistant",
-      "content": "",
+      "content": null,
       "tool_calls": [
        {
-        "id": "Ac0H5jwG3zFX5reBcNrDu8trAnzLhTI3",
+        "id": "UwzLT67gkAFjGMAm1cm075IDWZHnhWRv",
         "type": "function",
         "function": {
          "name": "execute_command",
-         "arguments": "{\"command\":\"lamb assistant create \\\"Golden Test CA\\\" --system-prompt \\\"Ets un assistent de prova.\\\" --llm gpt-4o-mini --connector openai --prompt-processor simple_augment --prompt-template \\\"{user_input}\\\"\"}"
+         "arguments": "{\"command\": \"lamb session rename \\\"Create: Golden Test CA\\\"\"}"
         }
        }
       ]
      },
      {
       "role": "tool",
-      "tool_call_id": "Ac0H5jwG3zFX5reBcNrDu8trAnzLhTI3",
-      "content": "{\"success\": true, \"awaiting_user_confirmation\": true, \"action\": \"assistant.create\", \"command\": \"lamb assistant create \\\"Golden Test CA\\\" --system-prompt \\\"Ets un assistent de prova.\\\" --llm gpt-4o-mini --connector openai --prompt-processor simple_augment --prompt-template \\\"{user_input}\\\"\", \"message\": \"This action needs user approval. Briefly describe what will change (1-2 lines). Then ask for confirmation IN THE USER'S LANGUAGE using a yes/no format. Do NOT use numbered options. Examples by language:\\n  English: **Approve? (y)es / (n)o / tell me more**\\n  Spanish: **Confirmar? (s)i / (n)o / cuéntame más**\\n  Catalan: **Confirmar? (s)í / (n)o / explica'm més**\\n  Basque: **Onartu? (b)ai / (e)z / gehiago kontatu**\\nUse the language you have been speaking in this conversation.\"}"
+      "tool_call_id": "UwzLT67gkAFjGMAm1cm075IDWZHnhWRv",
+      "content": "{\"success\": true, \"data\": {\"success\": true, \"title\": \"Create: Golden Test CA\"}}"
      },
      {
       "role": "assistant",
-      "content": "Crearem l'assistent **Golden Test CA** amb:\n- **Model:** gpt-4o-mini\n- **System prompt:** \"Ets un assistent de prova.\"\n- **Sense base de coneixements** (no RAG)\n\n**Confirmar? (s)í / (n)o / explica'm més**"
+      "content": null,
+      "tool_calls": [
+       {
+        "id": "zyRqXduW3bkOY0wunIWcHBI7o2evhT7X",
+        "type": "function",
+        "function": {
+         "name": "execute_command",
+         "arguments": "{\"command\": \"lamb assistant create \\\"Golden Test CA\\\" --system-prompt \\\"Ets un assistent de prova.\\\" --llm gpt-4o-mini --prompt-template \\\"{user_input}\\\" --connector openai --prompt-processor simple_augment\"}"
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "zyRqXduW3bkOY0wunIWcHBI7o2evhT7X",
+      "content": "{\"success\": true, \"awaiting_user_confirmation\": true, \"action\": \"assistant.create\", \"command\": \"lamb assistant create \\\"Golden Test CA\\\" --system-prompt \\\"Ets un assistent de prova.\\\" --llm gpt-4o-mini --prompt-template \\\"{user_input}\\\" --connector openai --prompt-processor simple_augment\", \"message\": \"This action needs user approval. Briefly describe what will change (1-2 lines). Then ask for confirmation IN THE USER'S LANGUAGE using a yes/no format. Do NOT use numbered options. Examples by language:\\n  English: **Approve? (y)es / (n)o / tell me more**\\n  Spanish: **Confirmar? (s)i / (n)o / cuéntame más**\\n  Catalan: **Confirmar? (s)í / (n)o / explica'm més**\\n  Basque: **Onartu? (b)ai / (e)z / gehiago kontatu**\\nUse the language you have been speaking in this conversation.\"}"
+     },
+     {
+      "role": "assistant",
+      "content": "Es crearà l'assistent **Golden Test CA** amb:\n- **Model:** gpt-4o-mini\n- **System prompt:** \"Ets un assistent de prova.\"\n- **Sense base de coneixement** (no RAG)\n\n**Confirmar? (s)í / (n)o / explica'm més**"
      }
     ],
-    "created_at": "2026-07-16T08:43:21.518072",
-    "updated_at": "2026-07-16T08:44:17.199119",
-    "title": "golden:ask-reject-ca__stream",
+    "created_at": "2026-07-17T07:41:50.003970",
+    "updated_at": "2026-07-17T07:42:20.334491",
+    "title": "Create: Golden Test CA",
     "pending_action": {
-     "command": "lamb assistant create \"Golden Test CA\" --system-prompt \"Ets un assistent de prova.\" --llm gpt-4o-mini --connector openai --prompt-processor simple_augment --prompt-template \"{user_input}\"",
+     "command": "lamb assistant create \"Golden Test CA\" --system-prompt \"Ets un assistent de prova.\" --llm gpt-4o-mini --prompt-template \"{user_input}\" --connector openai --prompt-processor simple_augment",
      "action_key": "assistant.create",
-     "tool_call_id": "Ac0H5jwG3zFX5reBcNrDu8trAnzLhTI3"
+     "tool_call_id": null
     },
     "skill_info": null,
     "tool_audit": [
      {
-      "ts": "2026-07-16T08:43:30.260235Z",
+      "ts": "2026-07-17T07:41:58.152720Z",
       "command": "lamb assistant config",
       "action_key": "assistant.config",
       "intent": "Checking available options",
       "success": true,
-      "elapsed_ms": 24.7,
+      "elapsed_ms": 14.2,
       "artifacts": [
        {
         "type": "assistant",
@@ -345,8 +178,24 @@
       "summary": "0 connectors, 0 models"
      },
      {
-      "ts": "2026-07-16T08:44:06.364718Z",
-      "command": "lamb assistant create \"Golden Test CA\" --system-prompt \"Ets un assistent de prova.\" --llm gpt-4o-mini --connector openai --prompt-processor simple_augment --prompt-template \"{user_input}\"",
+      "ts": "2026-07-17T07:42:03.667140Z",
+      "command": "lamb session rename \"Create: Golden Test CA\" --session 44de0bda-8b4d-426b-a22c-4e5d2ec48ac0",
+      "action_key": "session.rename",
+      "intent": "Renaming session",
+      "success": true,
+      "elapsed_ms": 27.1,
+      "artifacts": [
+       {
+        "type": "session",
+        "id": "\"Create:",
+        "action": "read"
+       }
+      ],
+      "summary": "keys: success, title"
+     },
+     {
+      "ts": "2026-07-17T07:42:09.134031Z",
+      "command": "lamb assistant create \"Golden Test CA\" --system-prompt \"Ets un assistent de prova.\" --llm gpt-4o-mini --prompt-template \"{user_input}\" --connector openai --prompt-processor simple_augment",
       "action_key": "assistant.create",
       "intent": "Creating assistant [awaiting confirmation]",
       "success": true,
@@ -367,7 +216,7 @@
    "user": "no",
    "result": {
     "http_status": 200,
-    "elapsed_s": 17.74,
+    "elapsed_s": 8.31,
     "frames": [
      {
       "status": "thinking"
@@ -376,133 +225,7 @@
       "status": "responding"
      },
      {
-      "content": "D"
-     },
-     {
-      "content": "'"
-     },
-     {
-      "content": "ac"
-     },
-     {
-      "content": "ord"
-     },
-     {
-      "content": ","
-     },
-     {
-      "content": " no"
-     },
-     {
-      "content": " crear"
-     },
-     {
-      "content": "é"
-     },
-     {
-      "content": " l"
-     },
-     {
-      "content": "'"
-     },
-     {
-      "content": "ass"
-     },
-     {
-      "content": "istent"
-     },
-     {
-      "content": ".\n\n"
-     },
-     {
-      "content": "**"
-     },
-     {
-      "content": "Next"
-     },
-     {
-      "content": "?"
-     },
-     {
-      "content": "**\n"
-     },
-     {
-      "content": "1"
-     },
-     {
-      "content": "."
-     },
-     {
-      "content": " Cre"
-     },
-     {
-      "content": "ar"
-     },
-     {
-      "content": " un"
-     },
-     {
-      "content": " assist"
-     },
-     {
-      "content": "ent"
-     },
-     {
-      "content": " difer"
-     },
-     {
-      "content": "ent"
-     },
-     {
-      "content": "\n"
-     },
-     {
-      "content": "2"
-     },
-     {
-      "content": "."
-     },
-     {
-      "content": " Ve"
-     },
-     {
-      "content": "ure"
-     },
-     {
-      "content": " els"
-     },
-     {
-      "content": " assist"
-     },
-     {
-      "content": "ents"
-     },
-     {
-      "content": " exist"
-     },
-     {
-      "content": "ents"
-     },
-     {
-      "content": "\n"
-     },
-     {
-      "content": "3"
-     },
-     {
-      "content": "."
-     },
-     {
-      "content": " Other"
-     },
-     {
-      "content": " —"
-     },
-     {
-      "content": " tell"
-     },
-     {
-      "content": " me"
+      "content": "D'acord, no crearé l'assistent.\n\n**Next?**\n1. Canviar algun paràmetre i tornar-ho a provar\n2. Veure els assistents existents\n3. Other — tell me"
      },
      {
       "done": true,
@@ -511,7 +234,13 @@
        "tool_calls": 0,
        "tool_errors": 0,
        "total_tool_time_ms": 0,
-       "model": "deepseek-v4-flash"
+       "model": "deepseek-v4-flash",
+       "usage": {
+        "prompt_tokens": 7151,
+        "completion_tokens": 74,
+        "total_tokens": 7225,
+        "llm_calls": 1
+       }
       }
      },
      {
@@ -520,7 +249,7 @@
     ]
    },
    "envelope_after": {
-    "id": "e88fd742-cbc7-4009-963c-473570d4b09e",
+    "id": "44de0bda-8b4d-426b-a22c-4e5d2ec48ac0",
     "assistant_id": null,
     "user_email": "aac-goldens@test.local",
     "organization_id": 1,
@@ -532,45 +261,64 @@
      },
      {
       "role": "assistant",
-      "content": "",
+      "content": null,
       "tool_calls": [
        {
-        "id": "1ZCVJBebumPaKcTpNxpzFaZEzFb70nt5",
+        "id": "MfBRBEoP0M8G7G4VswKABAGBtAUmfRss",
         "type": "function",
         "function": {
          "name": "execute_command",
-         "arguments": "{\"command\":\"lamb assistant config\"}"
+         "arguments": "{\"command\": \"lamb assistant config\"}"
         }
        }
       ]
      },
      {
       "role": "tool",
-      "tool_call_id": "1ZCVJBebumPaKcTpNxpzFaZEzFb70nt5",
+      "tool_call_id": "MfBRBEoP0M8G7G4VswKABAGBtAUmfRss",
       "content": "{\"success\": true, \"data\": {\"lamb_helper_assistant\": \"lamb_assistant.1\", \"surfer_system_prompt\": \"You are a wise surfer dude and a helpful teaching assistant that uses Retrieval-Augmented Generation (RAG) to improve your answers.\", \"surfer_prompt_template\": \"You are a wise surfer dude and a helpful teaching assistant that uses Retrieval-Augmented Generation (RAG) to improve your answers.\\nThis is the user input: {user_input}---\\nThis is the context: {context}\\nNow answer the question:\", \"system_prompt\": \"Eres un asistente de aprendizaje que ayuda a los estudiantes a aprender sobre un tema especifico. Utiliza el contexto para responder las preguntas del usuario.\", \"prompt_template\": \"Eres un asistente de aprendizaje que ayuda a los estudiantes a aprender sobre un tema especifico. Utiliza el contexto para responder las preguntas del usuario.\\nEste es el contexto:\\n --- {context} --- \\n\\nAhora responde la pregunta del usuario: --- {user_input} --- \\n\", \"prompt_processor\": \"simple_augment\", \"connector\": \"openai\", \"llm\": \"\", \"rag_processor\": \"No RAG\", \"rag_placeholders\": [\"--- {context} --- \", \"--- {user_input} ---\"]}}"
      },
      {
       "role": "assistant",
-      "content": "",
+      "content": null,
       "tool_calls": [
        {
-        "id": "Ac0H5jwG3zFX5reBcNrDu8trAnzLhTI3",
+        "id": "UwzLT67gkAFjGMAm1cm075IDWZHnhWRv",
         "type": "function",
         "function": {
          "name": "execute_command",
-         "arguments": "{\"command\":\"lamb assistant create \\\"Golden Test CA\\\" --system-prompt \\\"Ets un assistent de prova.\\\" --llm gpt-4o-mini --connector openai --prompt-processor simple_augment --prompt-template \\\"{user_input}\\\"\"}"
+         "arguments": "{\"command\": \"lamb session rename \\\"Create: Golden Test CA\\\"\"}"
         }
        }
       ]
      },
      {
       "role": "tool",
-      "tool_call_id": "Ac0H5jwG3zFX5reBcNrDu8trAnzLhTI3",
-      "content": "{\"success\": true, \"awaiting_user_confirmation\": true, \"action\": \"assistant.create\", \"command\": \"lamb assistant create \\\"Golden Test CA\\\" --system-prompt \\\"Ets un assistent de prova.\\\" --llm gpt-4o-mini --connector openai --prompt-processor simple_augment --prompt-template \\\"{user_input}\\\"\", \"message\": \"This action needs user approval. Briefly describe what will change (1-2 lines). Then ask for confirmation IN THE USER'S LANGUAGE using a yes/no format. Do NOT use numbered options. Examples by language:\\n  English: **Approve? (y)es / (n)o / tell me more**\\n  Spanish: **Confirmar? (s)i / (n)o / cuéntame más**\\n  Catalan: **Confirmar? (s)í / (n)o / explica'm més**\\n  Basque: **Onartu? (b)ai / (e)z / gehiago kontatu**\\nUse the language you have been speaking in this conversation.\"}"
+      "tool_call_id": "UwzLT67gkAFjGMAm1cm075IDWZHnhWRv",
+      "content": "{\"success\": true, \"data\": {\"success\": true, \"title\": \"Create: Golden Test CA\"}}"
      },
      {
       "role": "assistant",
-      "content": "Crearem l'assistent **Golden Test CA** amb:\n- **Model:** gpt-4o-mini\n- **System prompt:** \"Ets un assistent de prova.\"\n- **Sense base de coneixements** (no RAG)\n\n**Confirmar? (s)í / (n)o / explica'm més**"
+      "content": null,
+      "tool_calls": [
+       {
+        "id": "zyRqXduW3bkOY0wunIWcHBI7o2evhT7X",
+        "type": "function",
+        "function": {
+         "name": "execute_command",
+         "arguments": "{\"command\": \"lamb assistant create \\\"Golden Test CA\\\" --system-prompt \\\"Ets un assistent de prova.\\\" --llm gpt-4o-mini --prompt-template \\\"{user_input}\\\" --connector openai --prompt-processor simple_augment\"}"
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "zyRqXduW3bkOY0wunIWcHBI7o2evhT7X",
+      "content": "{\"success\": true, \"awaiting_user_confirmation\": true, \"action\": \"assistant.create\", \"command\": \"lamb assistant create \\\"Golden Test CA\\\" --system-prompt \\\"Ets un assistent de prova.\\\" --llm gpt-4o-mini --prompt-template \\\"{user_input}\\\" --connector openai --prompt-processor simple_augment\", \"message\": \"This action needs user approval. Briefly describe what will change (1-2 lines). Then ask for confirmation IN THE USER'S LANGUAGE using a yes/no format. Do NOT use numbered options. Examples by language:\\n  English: **Approve? (y)es / (n)o / tell me more**\\n  Spanish: **Confirmar? (s)i / (n)o / cuéntame más**\\n  Catalan: **Confirmar? (s)í / (n)o / explica'm més**\\n  Basque: **Onartu? (b)ai / (e)z / gehiago kontatu**\\nUse the language you have been speaking in this conversation.\"}"
+     },
+     {
+      "role": "assistant",
+      "content": "Es crearà l'assistent **Golden Test CA** amb:\n- **Model:** gpt-4o-mini\n- **System prompt:** \"Ets un assistent de prova.\"\n- **Sense base de coneixement** (no RAG)\n\n**Confirmar? (s)í / (n)o / explica'm més**"
      },
      {
       "role": "user",
@@ -582,22 +330,22 @@
      },
      {
       "role": "assistant",
-      "content": "D'acord, no crearé l'assistent.\n\n**Next?**\n1. Crear un assistent diferent\n2. Veure els assistents existents\n3. Other — tell me"
+      "content": "D'acord, no crearé l'assistent.\n\n**Next?**\n1. Canviar algun paràmetre i tornar-ho a provar\n2. Veure els assistents existents\n3. Other — tell me"
      }
     ],
-    "created_at": "2026-07-16T08:43:21.518072",
-    "updated_at": "2026-07-16T08:44:34.956309",
-    "title": "golden:ask-reject-ca__stream",
+    "created_at": "2026-07-17T07:41:50.003970",
+    "updated_at": "2026-07-17T07:42:28.655424",
+    "title": "Create: Golden Test CA",
     "pending_action": null,
     "skill_info": null,
     "tool_audit": [
      {
-      "ts": "2026-07-16T08:43:30.260235Z",
+      "ts": "2026-07-17T07:41:58.152720Z",
       "command": "lamb assistant config",
       "action_key": "assistant.config",
       "intent": "Checking available options",
       "success": true,
-      "elapsed_ms": 24.7,
+      "elapsed_ms": 14.2,
       "artifacts": [
        {
         "type": "assistant",
@@ -608,8 +356,24 @@
       "summary": "0 connectors, 0 models"
      },
      {
-      "ts": "2026-07-16T08:44:06.364718Z",
-      "command": "lamb assistant create \"Golden Test CA\" --system-prompt \"Ets un assistent de prova.\" --llm gpt-4o-mini --connector openai --prompt-processor simple_augment --prompt-template \"{user_input}\"",
+      "ts": "2026-07-17T07:42:03.667140Z",
+      "command": "lamb session rename \"Create: Golden Test CA\" --session 44de0bda-8b4d-426b-a22c-4e5d2ec48ac0",
+      "action_key": "session.rename",
+      "intent": "Renaming session",
+      "success": true,
+      "elapsed_ms": 27.1,
+      "artifacts": [
+       {
+        "type": "session",
+        "id": "\"Create:",
+        "action": "read"
+       }
+      ],
+      "summary": "keys: success, title"
+     },
+     {
+      "ts": "2026-07-17T07:42:09.134031Z",
+      "command": "lamb assistant create \"Golden Test CA\" --system-prompt \"Ets un assistent de prova.\" --llm gpt-4o-mini --prompt-template \"{user_input}\" --connector openai --prompt-processor simple_augment",
       "action_key": "assistant.create",
       "intent": "Creating assistant [awaiting confirmation]",
       "success": true,

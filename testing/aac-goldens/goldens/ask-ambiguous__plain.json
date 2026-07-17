@@ -2,28 +2,34 @@
  "scenario": "ask-ambiguous",
  "mode": "plain",
  "notes": "Ask-flow, ambiguous reply: pending action must survive the turn.",
- "session_id": "a2d27fea-4dc0-4222-b762-037cc039d10a",
- "captured_at": "2026-07-16T08:44:35.000607+00:00",
+ "session_id": "e70b2f63-4b00-486f-a6b6-dfeaf49c5c60",
+ "captured_at": "2026-07-17T07:42:28.692602+00:00",
  "base": "http://localhost:9099",
  "turns": [
   {
    "user": "Create an assistant called 'Golden Ambiguous' with the system prompt 'You are a test.' Do it now please.",
    "result": {
     "http_status": 200,
-    "elapsed_s": 29.45,
+    "elapsed_s": 21.26,
     "body": {
-     "response": "Creating **Golden Ambiguous** with:\n- **Model**: gpt-4o-mini\n- **System prompt**: \"You are a test.\"\n- **No knowledge base** (non-RAG)\n\n**Approve? (y)es / (n)o / tell me more**",
+     "response": "I'll create **Golden Ambiguous** with:\n- **System prompt:** \"You are a test.\"\n- **Model:** gpt-4o-mini\n- **No knowledge base** (simple assistant)\n\n**Approve? (y)es / (n)o / tell me more**",
      "stats": {
       "turns": 1,
-      "tool_calls": 2,
+      "tool_calls": 1,
       "tool_errors": 0,
-      "total_tool_time_ms": 45.1,
-      "model": "deepseek-v4-flash"
+      "total_tool_time_ms": 13.3,
+      "model": "deepseek-v4-flash",
+      "usage": {
+       "prompt_tokens": 20116,
+       "completion_tokens": 172,
+       "total_tokens": 20288,
+       "llm_calls": 3
+      }
      }
     }
    },
    "envelope_after": {
-    "id": "a2d27fea-4dc0-4222-b762-037cc039d10a",
+    "id": "e70b2f63-4b00-486f-a6b6-dfeaf49c5c60",
     "assistant_id": null,
     "user_email": "aac-goldens@test.local",
     "organization_id": 1,
@@ -35,77 +41,64 @@
      },
      {
       "role": "assistant",
-      "content": "Let me grab the config first so I pick the right model and connector.",
+      "content": null,
       "tool_calls": [
        {
-        "id": "5LjfCYic072xbewDCHmu2CrarBDifFT7",
+        "id": "GLaCYUqjUxauGL1uzpAsU6MSpozr5H0E",
         "type": "function",
         "function": {
          "name": "execute_command",
-         "arguments": "{\"command\":\"lamb assistant config\"}"
+         "arguments": "{\"command\": \"lamb assistant config\"}"
         }
        }
       ]
      },
      {
       "role": "tool",
-      "tool_call_id": "5LjfCYic072xbewDCHmu2CrarBDifFT7",
+      "tool_call_id": "GLaCYUqjUxauGL1uzpAsU6MSpozr5H0E",
       "content": "{\"success\": true, \"data\": {\"lamb_helper_assistant\": \"lamb_assistant.1\", \"surfer_system_prompt\": \"You are a wise surfer dude and a helpful teaching assistant that uses Retrieval-Augmented Generation (RAG) to improve your answers.\", \"surfer_prompt_template\": \"You are a wise surfer dude and a helpful teaching assistant that uses Retrieval-Augmented Generation (RAG) to improve your answers.\\nThis is the user input: {user_input}---\\nThis is the context: {context}\\nNow answer the question:\", \"system_prompt\": \"Eres un asistente de aprendizaje que ayuda a los estudiantes a aprender sobre un tema especifico. Utiliza el contexto para responder las preguntas del usuario.\", \"prompt_template\": \"Eres un asistente de aprendizaje que ayuda a los estudiantes a aprender sobre un tema especifico. Utiliza el contexto para responder las preguntas del usuario.\\nEste es el contexto:\\n --- {context} --- \\n\\nAhora responde la pregunta del usuario: --- {user_input} --- \\n\", \"prompt_processor\": \"simple_augment\", \"connector\": \"openai\", \"llm\": \"\", \"rag_processor\": \"No RAG\", \"rag_placeholders\": [\"--- {context} --- \", \"--- {user_input} ---\"]}}"
      },
      {
       "role": "assistant",
-      "content": "",
+      "content": null,
       "tool_calls": [
        {
-        "id": "XPNvw3wyFcEvEcjuzOBqDLPQ5K8OC77R",
+        "id": "gDvVJPrfa7g6zBSPTKUrUXasKw7YYWap",
         "type": "function",
         "function": {
          "name": "execute_command",
-         "arguments": "{\"command\":\"lamb assistant create \\\"Golden Ambiguous\\\" --system-prompt \\\"You are a test.\\\" --llm gpt-4o-mini --connector openai --prompt-processor simple_augment --prompt-template \\\"{user_input}\\\"\"}"
-        }
-       },
-       {
-        "id": "ElVpJIpEzMCCs0NdNoevy1U4WNJx9G24",
-        "type": "function",
-        "function": {
-         "name": "execute_command",
-         "arguments": "{\"command\":\"lamb session rename \\\"Create: Golden Ambiguous\\\"\"}"
+         "arguments": "{\"command\": \"lamb assistant create \\\"Golden Ambiguous\\\" --system-prompt \\\"You are a test.\\\" --llm gpt-4o-mini --connector openai --prompt-processor simple_augment --prompt-template \\\"{user_input}\\\"\"}"
         }
        }
       ]
      },
      {
       "role": "tool",
-      "tool_call_id": "XPNvw3wyFcEvEcjuzOBqDLPQ5K8OC77R",
+      "tool_call_id": "gDvVJPrfa7g6zBSPTKUrUXasKw7YYWap",
       "content": "{\"success\": true, \"awaiting_user_confirmation\": true, \"action\": \"assistant.create\", \"command\": \"lamb assistant create \\\"Golden Ambiguous\\\" --system-prompt \\\"You are a test.\\\" --llm gpt-4o-mini --connector openai --prompt-processor simple_augment --prompt-template \\\"{user_input}\\\"\", \"message\": \"This action needs user approval. Briefly describe what will change (1-2 lines). Then ask for confirmation IN THE USER'S LANGUAGE using a yes/no format. Do NOT use numbered options. Examples by language:\\n  English: **Approve? (y)es / (n)o / tell me more**\\n  Spanish: **Confirmar? (s)i / (n)o / cuéntame más**\\n  Catalan: **Confirmar? (s)í / (n)o / explica'm més**\\n  Basque: **Onartu? (b)ai / (e)z / gehiago kontatu**\\nUse the language you have been speaking in this conversation.\"}"
      },
      {
-      "role": "tool",
-      "tool_call_id": "ElVpJIpEzMCCs0NdNoevy1U4WNJx9G24",
-      "content": "{\"success\": true, \"data\": {\"success\": true, \"title\": \"Create: Golden Ambiguous\"}}"
-     },
-     {
       "role": "assistant",
-      "content": "Creating **Golden Ambiguous** with:\n- **Model**: gpt-4o-mini\n- **System prompt**: \"You are a test.\"\n- **No knowledge base** (non-RAG)\n\n**Approve? (y)es / (n)o / tell me more**"
+      "content": "I'll create **Golden Ambiguous** with:\n- **System prompt:** \"You are a test.\"\n- **Model:** gpt-4o-mini\n- **No knowledge base** (simple assistant)\n\n**Approve? (y)es / (n)o / tell me more**"
      }
     ],
-    "created_at": "2026-07-16T08:44:34.986754",
-    "updated_at": "2026-07-16T08:45:04.444626",
-    "title": "Create: Golden Ambiguous",
+    "created_at": "2026-07-17T07:42:28.680784",
+    "updated_at": "2026-07-17T07:42:49.944164",
+    "title": "golden:ask-ambiguous__plain",
     "pending_action": {
      "command": "lamb assistant create \"Golden Ambiguous\" --system-prompt \"You are a test.\" --llm gpt-4o-mini --connector openai --prompt-processor simple_augment --prompt-template \"{user_input}\"",
      "action_key": "assistant.create",
-     "tool_call_id": "XPNvw3wyFcEvEcjuzOBqDLPQ5K8OC77R"
+     "tool_call_id": null
     },
     "skill_info": null,
     "tool_audit": [
      {
-      "ts": "2026-07-16T08:44:40.823741Z",
+      "ts": "2026-07-17T07:42:32.695959Z",
       "command": "lamb assistant config",
       "action_key": "assistant.config",
       "intent": "Checking available options",
       "success": true,
-      "elapsed_ms": 16.3,
+      "elapsed_ms": 13.3,
       "artifacts": [
        {
         "type": "assistant",
@@ -116,7 +109,7 @@
       "summary": "0 connectors, 0 models"
      },
      {
-      "ts": "2026-07-16T08:44:50.667168Z",
+      "ts": "2026-07-17T07:42:40.861734Z",
       "command": "lamb assistant create \"Golden Ambiguous\" --system-prompt \"You are a test.\" --llm gpt-4o-mini --connector openai --prompt-processor simple_augment --prompt-template \"{user_input}\"",
       "action_key": "assistant.create",
       "intent": "Creating assistant [awaiting confirmation]",
@@ -130,22 +123,6 @@
        }
       ],
       "summary": ""
-     },
-     {
-      "ts": "2026-07-16T08:44:50.697156Z",
-      "command": "lamb session rename \"Create: Golden Ambiguous\" --session a2d27fea-4dc0-4222-b762-037cc039d10a",
-      "action_key": "session.rename",
-      "intent": "Renaming session",
-      "success": true,
-      "elapsed_ms": 28.8,
-      "artifacts": [
-       {
-        "type": "session",
-        "id": "\"Create:",
-        "action": "read"
-       }
-      ],
-      "summary": "keys: success, title"
      }
     ]
    }
@@ -154,20 +131,26 @@
    "user": "By the way, can you also read documentation topics?",
    "result": {
     "http_status": 200,
-    "elapsed_s": 17.54,
+    "elapsed_s": 12.89,
     "body": {
-     "response": "Yes! I can look up LAMB documentation on any topic — just tell me what you're curious about. I can browse the docs index and read specific sections.\n\nBut first — the assistant creation is still waiting on your approval. Want me to go ahead with it?\n\n**Approve? (y)es / (n)o / tell me more**\n\n**Next?**\n1. Yes, create it\n2. Browse docs index\n3. Other — tell me",
+     "response": "Yes! I can read LAMB docs on topics like assistants, knowledge bases, rubrics, publishing, and more. I just need the topic name.\n\nBut first — you still have a pending creation. Want me to go ahead and create **Golden Ambiguous**?\n\n**Approve? (y)es / (n)o / tell me more**",
      "stats": {
       "turns": 2,
       "tool_calls": 0,
       "tool_errors": 0,
       "total_tool_time_ms": 0,
-      "model": "deepseek-v4-flash"
+      "model": "deepseek-v4-flash",
+      "usage": {
+       "prompt_tokens": 7068,
+       "completion_tokens": 135,
+       "total_tokens": 7203,
+       "llm_calls": 1
+      }
      }
     }
    },
    "envelope_after": {
-    "id": "a2d27fea-4dc0-4222-b762-037cc039d10a",
+    "id": "e70b2f63-4b00-486f-a6b6-dfeaf49c5c60",
     "assistant_id": null,
     "user_email": "aac-goldens@test.local",
     "organization_id": 1,
@@ -179,58 +162,45 @@
      },
      {
       "role": "assistant",
-      "content": "Let me grab the config first so I pick the right model and connector.",
+      "content": null,
       "tool_calls": [
        {
-        "id": "5LjfCYic072xbewDCHmu2CrarBDifFT7",
+        "id": "GLaCYUqjUxauGL1uzpAsU6MSpozr5H0E",
         "type": "function",
         "function": {
          "name": "execute_command",
-         "arguments": "{\"command\":\"lamb assistant config\"}"
+         "arguments": "{\"command\": \"lamb assistant config\"}"
         }
        }
       ]
      },
      {
       "role": "tool",
-      "tool_call_id": "5LjfCYic072xbewDCHmu2CrarBDifFT7",
+      "tool_call_id": "GLaCYUqjUxauGL1uzpAsU6MSpozr5H0E",
       "content": "{\"success\": true, \"data\": {\"lamb_helper_assistant\": \"lamb_assistant.1\", \"surfer_system_prompt\": \"You are a wise surfer dude and a helpful teaching assistant that uses Retrieval-Augmented Generation (RAG) to improve your answers.\", \"surfer_prompt_template\": \"You are a wise surfer dude and a helpful teaching assistant that uses Retrieval-Augmented Generation (RAG) to improve your answers.\\nThis is the user input: {user_input}---\\nThis is the context: {context}\\nNow answer the question:\", \"system_prompt\": \"Eres un asistente de aprendizaje que ayuda a los estudiantes a aprender sobre un tema especifico. Utiliza el contexto para responder las preguntas del usuario.\", \"prompt_template\": \"Eres un asistente de aprendizaje que ayuda a los estudiantes a aprender sobre un tema especifico. Utiliza el contexto para responder las preguntas del usuario.\\nEste es el contexto:\\n --- {context} --- \\n\\nAhora responde la pregunta del usuario: --- {user_input} --- \\n\", \"prompt_processor\": \"simple_augment\", \"connector\": \"openai\", \"llm\": \"\", \"rag_processor\": \"No RAG\", \"rag_placeholders\": [\"--- {context} --- \", \"--- {user_input} ---\"]}}"
      },
      {
       "role": "assistant",
-      "content": "",
+      "content": null,
       "tool_calls": [
        {
-        "id": "XPNvw3wyFcEvEcjuzOBqDLPQ5K8OC77R",
+        "id": "gDvVJPrfa7g6zBSPTKUrUXasKw7YYWap",
         "type": "function",
         "function": {
          "name": "execute_command",
-         "arguments": "{\"command\":\"lamb assistant create \\\"Golden Ambiguous\\\" --system-prompt \\\"You are a test.\\\" --llm gpt-4o-mini --connector openai --prompt-processor simple_augment --prompt-template \\\"{user_input}\\\"\"}"
-        }
-       },
-       {
-        "id": "ElVpJIpEzMCCs0NdNoevy1U4WNJx9G24",
-        "type": "function",
-        "function": {
-         "name": "execute_command",
-         "arguments": "{\"command\":\"lamb session rename \\\"Create: Golden Ambiguous\\\"\"}"
+         "arguments": "{\"command\": \"lamb assistant create \\\"Golden Ambiguous\\\" --system-prompt \\\"You are a test.\\\" --llm gpt-4o-mini --connector openai --prompt-processor simple_augment --prompt-template \\\"{user_input}\\\"\"}"
         }
        }
       ]
      },
      {
       "role": "tool",
-      "tool_call_id": "XPNvw3wyFcEvEcjuzOBqDLPQ5K8OC77R",
+      "tool_call_id": "gDvVJPrfa7g6zBSPTKUrUXasKw7YYWap",
       "content": "{\"success\": true, \"awaiting_user_confirmation\": true, \"action\": \"assistant.create\", \"command\": \"lamb assistant create \\\"Golden Ambiguous\\\" --system-prompt \\\"You are a test.\\\" --llm gpt-4o-mini --connector openai --prompt-processor simple_augment --prompt-template \\\"{user_input}\\\"\", \"message\": \"This action needs user approval. Briefly describe what will change (1-2 lines). Then ask for confirmation IN THE USER'S LANGUAGE using a yes/no format. Do NOT use numbered options. Examples by language:\\n  English: **Approve? (y)es / (n)o / tell me more**\\n  Spanish: **Confirmar? (s)i / (n)o / cuéntame más**\\n  Catalan: **Confirmar? (s)í / (n)o / explica'm més**\\n  Basque: **Onartu? (b)ai / (e)z / gehiago kontatu**\\nUse the language you have been speaking in this conversation.\"}"
      },
      {
-      "role": "tool",
-      "tool_call_id": "ElVpJIpEzMCCs0NdNoevy1U4WNJx9G24",
-      "content": "{\"success\": true, \"data\": {\"success\": true, \"title\": \"Create: Golden Ambiguous\"}}"
-     },
-     {
       "role": "assistant",
-      "content": "Creating **Golden Ambiguous** with:\n- **Model**: gpt-4o-mini\n- **System prompt**: \"You are a test.\"\n- **No knowledge base** (non-RAG)\n\n**Approve? (y)es / (n)o / tell me more**"
+      "content": "I'll create **Golden Ambiguous** with:\n- **System prompt:** \"You are a test.\"\n- **Model:** gpt-4o-mini\n- **No knowledge base** (simple assistant)\n\n**Approve? (y)es / (n)o / tell me more**"
      },
      {
       "role": "user",
@@ -238,26 +208,26 @@
      },
      {
       "role": "assistant",
-      "content": "Yes! I can look up LAMB documentation on any topic — just tell me what you're curious about. I can browse the docs index and read specific sections.\n\nBut first — the assistant creation is still waiting on your approval. Want me to go ahead with it?\n\n**Approve? (y)es / (n)o / tell me more**\n\n**Next?**\n1. Yes, create it\n2. Browse docs index\n3. Other — tell me"
+      "content": "Yes! I can read LAMB docs on topics like assistants, knowledge bases, rubrics, publishing, and more. I just need the topic name.\n\nBut first — you still have a pending creation. Want me to go ahead and create **Golden Ambiguous**?\n\n**Approve? (y)es / (n)o / tell me more**"
      }
     ],
-    "created_at": "2026-07-16T08:44:34.986754",
-    "updated_at": "2026-07-16T08:45:21.999600",
-    "title": "Create: Golden Ambiguous",
+    "created_at": "2026-07-17T07:42:28.680784",
+    "updated_at": "2026-07-17T07:43:02.853302",
+    "title": "golden:ask-ambiguous__plain",
     "pending_action": {
      "command": "lamb assistant create \"Golden Ambiguous\" --system-prompt \"You are a test.\" --llm gpt-4o-mini --connector openai --prompt-processor simple_augment --prompt-template \"{user_input}\"",
      "action_key": "assistant.create",
-     "tool_call_id": "XPNvw3wyFcEvEcjuzOBqDLPQ5K8OC77R"
+     "tool_call_id": null
     },
     "skill_info": null,
     "tool_audit": [
      {
-      "ts": "2026-07-16T08:44:40.823741Z",
+      "ts": "2026-07-17T07:42:32.695959Z",
       "command": "lamb assistant config",
       "action_key": "assistant.config",
       "intent": "Checking available options",
       "success": true,
-      "elapsed_ms": 16.3,
+      "elapsed_ms": 13.3,
       "artifacts": [
        {
         "type": "assistant",
@@ -268,7 +238,7 @@
       "summary": "0 connectors, 0 models"
      },
      {
-      "ts": "2026-07-16T08:44:50.667168Z",
+      "ts": "2026-07-17T07:42:40.861734Z",
       "command": "lamb assistant create \"Golden Ambiguous\" --system-prompt \"You are a test.\" --llm gpt-4o-mini --connector openai --prompt-processor simple_augment --prompt-template \"{user_input}\"",
       "action_key": "assistant.create",
       "intent": "Creating assistant [awaiting confirmation]",
@@ -282,22 +252,6 @@
        }
       ],
       "summary": ""
-     },
-     {
-      "ts": "2026-07-16T08:44:50.697156Z",
-      "command": "lamb session rename \"Create: Golden Ambiguous\" --session a2d27fea-4dc0-4222-b762-037cc039d10a",
-      "action_key": "session.rename",
-      "intent": "Renaming session",
-      "success": true,
-      "elapsed_ms": 28.8,
-      "artifacts": [
-       {
-        "type": "session",
-        "id": "\"Create:",
-        "action": "read"
-       }
-      ],
-      "summary": "keys: success, title"
      }
     ]
    }
