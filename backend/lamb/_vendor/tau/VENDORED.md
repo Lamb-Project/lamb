@@ -34,8 +34,10 @@ sessions live in LAMB's own database) and `tau_coding/` (the terminal app).
      upstream drops it; the Responses API reports it on the terminal event)
      and emit it on the response-end event. Two tolerant extraction helpers.
    - `tau_ai/__init__.py`: `TokenUsage` re-exported.
-   - Not yet propagated to `tau_agent` loop events — planned for the AAC loop
-     swap (Phase 3), where a subscriber feeds LAMB's `log_token_usage`.
+   - Propagated to loop consumers (Phase 3): `tau_agent/events.py` adds
+     `usage: TokenUsage | None` on `MessageEndEvent` (late import + rebuild,
+     avoiding an import-order change) and `tau_agent/loop.py` forwards it
+     from `ProviderResponseEndEvent`.
    - Offered upstream: intended as a PR to huggingface/tau once proven in the
      multiai connector (plan decision M-6).
 

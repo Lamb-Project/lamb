@@ -99,7 +99,8 @@ async def run_agent_loop(
             elif isinstance(provider_event, ProviderResponseEndEvent):
                 assistant_message = provider_event.message
                 messages.append(assistant_message)
-                yield MessageEndEvent(message=assistant_message)
+                # LAMB addition: forward provider usage to loop consumers
+                yield MessageEndEvent(message=assistant_message, usage=provider_event.usage)
             elif isinstance(provider_event, ProviderErrorEvent):
                 saw_provider_error = True
                 yield ErrorEvent(

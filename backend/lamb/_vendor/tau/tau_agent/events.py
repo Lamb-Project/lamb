@@ -84,6 +84,9 @@ class MessageEndEvent(BaseModel):
 
     type: Literal["message_end"] = "message_end"
     message: AgentMessage
+    # LAMB addition: token usage for the provider call that produced this
+    # message, when the adapter reported it (see tau_ai TokenUsage).
+    usage: "TokenUsage | None" = None
 
 
 class ToolExecutionStartEvent(BaseModel):
@@ -134,3 +137,8 @@ type AgentEvent = (
     | ToolExecutionEndEvent
     | ErrorEvent
 )
+
+
+# LAMB addition: imported late; resolves the forward reference above.
+from lamb._vendor.tau.tau_ai.events import TokenUsage  # noqa: E402
+MessageEndEvent.model_rebuild()

@@ -21,7 +21,7 @@ from lamb.aac.session_manager import AACSessionManager
 from lamb.aac.session_logger import SessionLogger
 from lamb.aac.skill_loader import load_skill, list_skills
 from lamb.aac.liteshell.shell import LiteShell
-from lamb.aac.agent.loop import AgentLoop
+from lamb.aac.agent import AgentLoop, create_agent_loop
 from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="AAC")
@@ -380,7 +380,7 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
     )
     slog.log_session_start(assistant_id=session.get("assistant_id"), model=model)
 
-    agent = AgentLoop(
+    agent = create_agent_loop(
         shell=shell,
         llm_client=llm_client,
         model=model,
@@ -464,7 +464,7 @@ async def _build_agent_with_skill(
     from lamb.aac.agent.loop import DEFAULT_SYSTEM_PROMPT
     system_prompt = DEFAULT_SYSTEM_PROMPT + "\n\n# Active Skill\n" + skill["prompt"]
 
-    agent = AgentLoop(
+    agent = create_agent_loop(
         shell=shell,
         llm_client=llm_client,
         model=model,
