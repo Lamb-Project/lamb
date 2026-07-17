@@ -1,5 +1,8 @@
 const { test, expect } = require("@playwright/test");
 const path = require("path");
+const {
+  submitKnowledgeBaseCreation,
+} = require("./utils/knowledge_base");
 require("dotenv").config({ path: path.join(__dirname, ".env"), quiet: true });
 
 const LOGIN_EMAIL = process.env.LOGIN_EMAIL || "admin@owi.com";
@@ -58,7 +61,7 @@ test.describe.serial("Knowledge Base Detail Modals", () => {
     const submitButton = dialog.getByRole("button", {
       name: /create knowledge base/i,
     });
-    await submitButton.click();
+    await submitKnowledgeBaseCreation(page, submitButton);
 
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
     await expect(page.getByText(kbName)).toBeVisible({ timeout: 5_000 });

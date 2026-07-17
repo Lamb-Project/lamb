@@ -12,20 +12,33 @@ module.exports = async (config) => {
 
   fs.mkdirSync(authDir, { recursive: true });
 
-  // If a prior state exists, reuse it. This keeps local dev fast.
-  if (fs.existsSync(statePath) && !process.env.FORCE_RELOGIN) {
-    return;
-  }
-
   const browser = await chromium.launch({ headless: !!process.env.CI });
-  const context = await browser.newContext();
+  const canReuseState = fs.existsSync(statePath) && !process.env.FORCE_RELOGIN;
+  const context = await browser.newContext(
+    canReuseState ? { storageState: statePath } : {}
+  );
   const page = await context.newPage();
 
   await page.goto(baseURL);
   await page.waitForLoadState('domcontentloaded');
 
   // If already authenticated in some environments, just persist storage.
-  const existingToken = await page.evaluate(() => localStorage.getItem('userToken'));
+  let existingToken = await page.evaluate(() => localStorage.getItem('userToken'));
+
+  // A stored token can outlive the server-side session or signing key. Verify
+  // it before reusing the state so tests do not silently land on the login page.
+  if (existingToken) {
+    const meUrl = new URL('/creator/me', baseURL).toString();
+    const validationResponse = await page.request.get(meUrl, {
+      headers: { Authorization: `Bearer ${existingToken}` }
+    });
+
+    if (!validationResponse.ok()) {
+      await page.evaluate(() => localStorage.removeItem('userToken'));
+      existingToken = null;
+    }
+  }
+
   if (!existingToken) {
     // Wait for the email input to exist in the DOM.
     await page.waitForSelector('#email', { timeout: 30_000 });
