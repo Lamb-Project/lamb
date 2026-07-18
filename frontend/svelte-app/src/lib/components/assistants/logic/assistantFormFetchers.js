@@ -7,7 +7,7 @@
 import { getUserKnowledgeBases, getSharedKnowledgeBases } from '$lib/services/knowledgeBaseService';
 import { fetchAccessibleRubrics } from '$lib/services/rubricService';
 import { apiJson } from '$lib/services/apiClient';
-import { isKbBasedRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
+import { isKbBasedRag, isRubricRag, isGrepRag } from '$lib/utils/ragProcessorHelpers.js';
 import { getAssistantMetadataObject } from '$lib/utils/assistantData';
 
 /**
@@ -16,7 +16,7 @@ import { getAssistantMetadataObject } from '$lib/utils/assistantData';
  */
 export async function fetchKnowledgeBases(form) {
 	if (form.loadingKnowledgeBases || form.kbFetchAttempted) return;
-	if (!isKbBasedRag(form.selectedRagProcessor)) return;
+	if (!isKbBasedRag(form.selectedRagProcessor) && !isGrepRag(form.selectedRagProcessor)) return;
 
 	form.loadingKnowledgeBases = true;
 	form.knowledgeBaseError = '';

@@ -353,6 +353,31 @@
         "error": "Errorea fitxategiak kargatzean:",
         "noneFound": "Ez da fitxategirik aurkitu. Mesedez igo fitxategi bat.",
         "required": "Mesedez hautatu fitxategi bat"
+      },
+      "grepRag": {
+        "sectionTitle": "Grep RAG Konfigurazioa",
+        "mode": {
+          "label": "Modua",
+          "description": "Grepek embedding-etan oinarritutako RAGarekin nola elkarreragiten duen",
+          "hybrid": "Hibridoa (grep + RAG paraleloan)",
+          "primary": "Nagusia (grep lehenik, RAG ordezko gisa)"
+        },
+        "fallbackRag": {
+          "label": "Ordezko RAG",
+          "description": "Embedding RAG osagarri edo ordezko gisa"
+        },
+        "maxTries": {
+          "label": "Gehienezko Saiakerak",
+          "description": "Bilaketa iterazioen gehienezko kopurua (1-10)"
+        },
+        "contextLines": {
+          "label": "Testuinguru Lerroak",
+          "description": "Bat-etortze bakoitzaren aurretik/ondoren testuinguru lerroak (1-10)"
+        },
+        "maxTotalChars": {
+          "label": "Gehienezko Karaktereak",
+          "description": "LLM-ra bidalitako grep emaitzen gehienezko karaktereak (1000-32000)"
+        }
       }
     }
   },

@@ -4,7 +4,7 @@
  * Extracted from AssistantForm.svelte to enable isolated testing.
  */
 
-import { isKbBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
+import { isKbBasedRag, isSingleFileRag, isRubricRag, isGrepRag } from '$lib/utils/ragProcessorHelpers.js';
 
 /**
  * Validates form data before submission.
@@ -42,13 +42,21 @@ export function buildAssistantPayload(form) {
 		metadataObj.rubric_format = form.rubricFormat;
 	}
 
+	if (isGrepRag(form.selectedRagProcessor)) {
+		metadataObj.grep_mode = form.grepMode;
+		metadataObj.grep_fallback_rag = form.grepFallbackRag;
+		metadataObj.grep_max_tries = form.grepMaxTries;
+		metadataObj.grep_context_lines = form.grepContextLines;
+		metadataObj.grep_max_total_chars = form.grepMaxTotalChars;
+	}
+
 	return {
 		name: form.name.trim(),
 		description: form.description,
 		system_prompt: form.system_prompt,
 		prompt_template: form.prompt_template,
 		RAG_Top_k: Number(form.RAG_Top_k) || 3,
-		RAG_collections: isKbBasedRag(form.selectedRagProcessor) ? form.selectedKnowledgeBases.join(',') : '',
+		RAG_collections: (isKbBasedRag(form.selectedRagProcessor) || isGrepRag(form.selectedRagProcessor)) ? form.selectedKnowledgeBases.join(',') : '',
 		metadata: JSON.stringify(metadataObj),
 		pre_retrieval_endpoint: '',
 		post_retrieval_endpoint: '',

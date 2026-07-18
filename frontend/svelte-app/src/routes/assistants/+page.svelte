@@ -700,8 +700,8 @@
         const callbackData = getAssistantMetadataObject(selectedAssistantData);
         ragProcessor = callbackData.rag_processor || '';
 
-		if (ragProcessor !== 'simple_rag') {
-			console.log('Skipping KB fetch for detail view (not simple_rag)');
+		if (ragProcessor !== 'simple_rag' && ragProcessor !== 'grep_rag') {
+			console.log('Skipping KB fetch for detail view (not simple_rag or grep_rag)');
             accessibleKnowledgeBases = []; // Clear if not needed
             knowledgeBaseError = '';
             kbFetchTriggered = true; // Mark as checked for this load
@@ -1383,8 +1383,8 @@
                                                 </div>
                                             {/if}
 
-                                            <!-- Knowledge Bases (if simple_rag) -->
-                                            {#if apiCallback.rag_processor === 'simple_rag'}
+                                            <!-- Knowledge Bases (if simple_rag or grep_rag) -->
+                                            {#if apiCallback.rag_processor === 'simple_rag' || apiCallback.rag_processor === 'grep_rag'}
                                                 <div>
                                                     <div class="font-medium text-gray-700 mb-1">{$_('assistants.form.knowledgeBases.label', { default: 'Knowledge Bases' })}</div>
                                                     {#if loadingKnowledgeBases}
@@ -1418,6 +1418,35 @@
                                                     <div class="font-medium text-gray-700 mb-1">{$_('assistants.form.singleFile.selectedLabel', { default: 'Selected File' })}</div>
                                                     <div class="bg-white border border-gray-200 p-2 rounded break-all">
                                                         {apiCallback.file_path || (currentLocale ? $_('common.notSpecified', { default: 'Not specified' }) : 'Not specified')}
+                                                    </div>
+                                                </div>
+                                            {/if}
+
+                                            <!-- Grep RAG Configuration (if grep_rag) -->
+                                            {#if apiCallback.rag_processor === 'grep_rag'}
+                                                <div class="space-y-2 p-3 bg-gray-50 border border-gray-200 rounded-md">
+                                                    <h5 class="text-sm font-semibold text-gray-700">
+                                                        {$_('assistants.form.grepRag.sectionTitle', { default: 'Grep RAG Configuration' })}
+                                                    </h5>
+                                                    <div>
+                                                        <span class="text-xs text-gray-500">{$_('assistants.form.grepRag.mode.label', { default: 'Mode' })}: </span>
+                                                        <span class="text-sm font-medium">{apiCallback.grep_mode === 'primary' ? $_('assistants.form.grepRag.mode.primary', { default: 'Primary' }) : $_('assistants.form.grepRag.mode.hybrid', { default: 'Hybrid' })}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span class="text-xs text-gray-500">{$_('assistants.form.grepRag.fallbackRag.label', { default: 'Fallback RAG' })}: </span>
+                                                        <span class="text-sm font-medium">{apiCallback.grep_fallback_rag || 'simple_rag'}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span class="text-xs text-gray-500">{$_('assistants.form.grepRag.maxTries.label', { default: 'Max Tries' })}: </span>
+                                                        <span class="text-sm font-medium">{apiCallback.grep_max_tries ?? 5}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span class="text-xs text-gray-500">{$_('assistants.form.grepRag.contextLines.label', { default: 'Context Lines' })}: </span>
+                                                        <span class="text-sm font-medium">{apiCallback.grep_context_lines ?? 3}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span class="text-xs text-gray-500">{$_('assistants.form.grepRag.maxTotalChars.label', { default: 'Max Result Chars' })}: </span>
+                                                        <span class="text-sm font-medium">{apiCallback.grep_max_total_chars ?? 8000}</span>
                                                     </div>
                                                 </div>
                                             {/if}

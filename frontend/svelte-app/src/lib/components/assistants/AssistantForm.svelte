@@ -6,7 +6,7 @@
 	import { get } from 'svelte/store';
 	import { createAssistant, updateAssistant } from '$lib/services/assistantService';
 	import { extractModelsFromConnectorData, selectModel } from './logic/assistantFormUtils.svelte.js';
-	import { isKbBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
+	import { isKbBasedRag, isSingleFileRag, isRubricRag, isGrepRag } from '$lib/utils/ragProcessorHelpers.js';
 	import { validateImportedAssistant } from './logic/importAssistantValidator.js';
 	import { createAssistantFormState, resetFormFieldsToDefaults, populateFormFields, revertToInitial, clearRagDependentState, handleFieldChange } from './logic/assistantFormState.svelte.js';
 	import { fetchKnowledgeBases, fetchRubricsList, fetchUserFiles } from './logic/assistantFormFetchers.js';
@@ -169,6 +169,11 @@
 			if (!form.rubricsFetchAttempted && !form.loadingRubrics) {
 				tick().then(doFetchRubricsList);
 			}
+		} else if (isGrepRag(form.selectedRagProcessor) && form.configInitialized) {
+			// Grep RAG searches across KB documents — fetch KBs
+			if (!form.kbFetchAttempted && !form.loadingKnowledgeBases) {
+				doFetchKnowledgeBases();
+			}
 		} else {
 			// Clear KB state AND reset attempted flag if RAG processor changes away
 			clearRagDependentState(form);
@@ -321,14 +326,22 @@
 
 						// Populate RAG specific fields
 						// FIX FOR ISSUE #96: Apply Load-Then-Select pattern for imports too
-						if (isKbBasedRag(form.selectedRagProcessor)) {
-							form.selectedFilePath = ''; // Clear file path if switching to simple RAG, context_aware_rag, or hierarchical_rag
+						if (isKbBasedRag(form.selectedRagProcessor) || isGrepRag(form.selectedRagProcessor)) {
+							form.selectedFilePath = ''; // Clear file path if switching to simple RAG, context_aware_rag, hierarchical_rag, or grep_rag
 							// Fetch KBs BEFORE setting selections
 							if (!form.kbFetchAttempted) {
 								await doFetchKnowledgeBases(); // ✅ WAIT for KBs to load
 							}
 							// NOW set selections when KB list is ready
 							form.selectedKnowledgeBases = parsedData.RAG_collections?.split(',').filter(Boolean) || [];
+							// Populate Grep RAG fields if applicable
+							if (isGrepRag(form.selectedRagProcessor)) {
+								form.grepMode = callbackData.grep_mode || 'hybrid';
+								form.grepFallbackRag = callbackData.grep_fallback_rag || 'simple_rag';
+								form.grepMaxTries = callbackData.grep_max_tries ?? 5;
+								form.grepContextLines = callbackData.grep_context_lines ?? 3;
+								form.grepMaxTotalChars = callbackData.grep_max_total_chars ?? 8000;
+							}
 						} else if (isSingleFileRag(form.selectedRagProcessor)) {
 							form.selectedKnowledgeBases = []; // Clear KBs if switching to single file RAG
 							// Fetch files BEFORE setting selection
@@ -465,6 +478,11 @@
 					fileError={form.fileError}
 					onFilesChanged={() => doFetchUserFiles(true)}
 					onchange={() => handleFieldChange(form)}
+					bind:grepMode={form.grepMode}
+					bind:grepFallbackRag={form.grepFallbackRag}
+					bind:grepMaxTries={form.grepMaxTries}
+					bind:grepContextLines={form.grepContextLines}
+					bind:grepMaxTotalChars={form.grepMaxTotalChars}
 				/>
 			</div>
 			</div>

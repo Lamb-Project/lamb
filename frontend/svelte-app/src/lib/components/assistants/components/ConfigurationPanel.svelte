@@ -33,7 +33,13 @@
 		loadingFiles = false,
 		fileError = '',
 		onFilesChanged,
-		onchange
+		onchange,
+		// Grep RAG fields
+		grepMode = $bindable('hybrid'),
+		grepFallbackRag = $bindable('simple_rag'),
+		grepMaxTries = $bindable(5),
+		grepContextLines = $bindable(3),
+		grepMaxTotalChars = $bindable(8000)
 	} = $props();
 
 	let currentConnectorMetadata = $derived.by(() => {
@@ -208,6 +214,12 @@
 			fileError={fileError}
 			{formState}
 			{onFilesChanged}
+			{ragProcessors}
+			bind:grepMode
+			bind:grepFallbackRag
+			bind:grepMaxTries
+			bind:grepContextLines
+			bind:grepMaxTotalChars
 		/>
 	{/if}
 </fieldset>

@@ -16,7 +16,7 @@
 
 import { get } from 'svelte/store';
 import { assistantConfigStore } from '$lib/stores/assistantConfigStore';
-import { isKbBasedRag, isSingleFileRag, isRubricRag, normalizeRagProcessor } from '$lib/utils/ragProcessorHelpers.js';
+import { isKbBasedRag, isSingleFileRag, isRubricRag, isGrepRag, normalizeRagProcessor } from '$lib/utils/ragProcessorHelpers.js';
 import { loadRagPlaceholders, selectModel } from './assistantFormUtils.svelte.js';
 import { getAssistantMetadataObject } from '$lib/utils/assistantData';
 
@@ -83,6 +83,18 @@ export function createAssistantFormState() {
 		loadingRubrics: false,
 		rubricError: '',
 		rubricsFetchAttempted: false,
+
+		// --- Grep RAG state ---
+		/** @type {'hybrid' | 'primary'} */
+		grepMode: 'hybrid',
+		/** @type {string} */
+		grepFallbackRag: 'simple_rag',
+		/** @type {number} */
+		grepMaxTries: 5,
+		/** @type {number} */
+		grepContextLines: 3,
+		/** @type {number} */
+		grepMaxTotalChars: 8000,
 
 		// --- UI / loading state ---
 		formError: '',
@@ -187,6 +199,15 @@ export function populateFormFields(form, data, getAvailableModels, preserveDescr
 			}
 		}
 
+		// Grep RAG fields
+		if (isGrepRag(form.selectedRagProcessor)) {
+			form.grepMode = metadata?.grep_mode || 'hybrid';
+			form.grepFallbackRag = metadata?.grep_fallback_rag || 'simple_rag';
+			form.grepMaxTries = metadata?.grep_max_tries ?? 5;
+			form.grepContextLines = metadata?.grep_context_lines ?? 3;
+			form.grepMaxTotalChars = metadata?.grep_max_total_chars ?? 8000;
+		}
+
 		// Vision capability
 		try {
 			form.visionEnabled = metadata?.capabilities?.vision || false;
@@ -234,5 +255,13 @@ export function clearRagDependentState(form) {
 	if (!isRubricRag(form.selectedRagProcessor) && (form.selectedRubricId || form.accessibleRubrics.length > 0)) {
 		form.selectedRubricId = '';
 		form.rubricFormat = 'markdown';
+	}
+
+	if (!isGrepRag(form.selectedRagProcessor)) {
+		form.grepMode = 'hybrid';
+		form.grepFallbackRag = 'simple_rag';
+		form.grepMaxTries = 5;
+		form.grepContextLines = 3;
+		form.grepMaxTotalChars = 8000;
 	}
 }

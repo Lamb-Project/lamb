@@ -203,6 +203,31 @@
         "error": "Error al cargar archivos:",
         "noneFound": "No se encontraron archivos. Por favor sube un archivo.",
         "required": "Por favor selecciona un archivo"
+      },
+      "grepRag": {
+        "sectionTitle": "Configuración de Grep RAG",
+        "mode": {
+          "label": "Modo",
+          "description": "Cómo interactúa grep con el RAG basado en embeddings",
+          "hybrid": "Híbrido (grep + RAG en paralelo)",
+          "primary": "Principal (grep primero, RAG como respaldo)"
+        },
+        "fallbackRag": {
+          "label": "RAG de Respaldo",
+          "description": "RAG de embeddings para complementar o como respaldo"
+        },
+        "maxTries": {
+          "label": "Intentos Máximos",
+          "description": "Número máximo de iteraciones de búsqueda (1-10)"
+        },
+        "contextLines": {
+          "label": "Líneas de Contexto",
+          "description": "Líneas de contexto antes/después de cada coincidencia (1-10)"
+        },
+        "maxTotalChars": {
+          "label": "Caracteres Máximos",
+          "description": "Máximo total de caracteres de resultados enviados al LLM (1000-32000)"
+        }
       }
     },
     "noDescription": "Sin descripción",

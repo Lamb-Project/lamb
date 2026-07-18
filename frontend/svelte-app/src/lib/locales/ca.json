@@ -203,6 +203,31 @@
         "error": "Error en carregar arxius:",
         "noneFound": "No s'han trobat arxius. Si us plau puja un arxiu.",
         "required": "Si us plau selecciona un arxiu"
+      },
+      "grepRag": {
+        "sectionTitle": "Configuració de Grep RAG",
+        "mode": {
+          "label": "Mode",
+          "description": "Com interactua grep amb el RAG basat en embeddings",
+          "hybrid": "Híbrid (grep + RAG en paral·lel)",
+          "primary": "Principal (grep primer, RAG com a respatller)"
+        },
+        "fallbackRag": {
+          "label": "RAG de Respatller",
+          "description": "RAG d'embeddings per complementar o com a respatller"
+        },
+        "maxTries": {
+          "label": "Intents Màxims",
+          "description": "Nombre màxim d'iteracions de cerca (1-10)"
+        },
+        "contextLines": {
+          "label": "Línies de Context",
+          "description": "Línies de context abans/després de cada coincidència (1-10)"
+        },
+        "maxTotalChars": {
+          "label": "Caràcters Màxims",
+          "description": "Màxim total de caràcters de resultats enviats al LLM (1000-32000)"
+        }
       }
     },
     "noDescription": "Sense descripció",
