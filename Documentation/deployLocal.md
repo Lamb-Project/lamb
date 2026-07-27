@@ -3,7 +3,6 @@
 This document is designed to be fed to an AI coding agent (like GitHub Copilot) that will autonomously deploy LAMB NEXT locally for development or testing purposes.
 
 **Assumptions:**
-
 - Docker and Docker Compose (V2) are installed on the local machine.
 - Git is installed and the agent has access to the LAMB source repository.
 - No DNS, TLS certificates, or cloud infrastructure are needed — everything runs on `localhost`.
@@ -21,14 +20,12 @@ Before touching any files, the agent MUST collect these from the user using the 
 If the user already has a `.env` file (at `<install-location>/.env` or in the current workspace), the agent MUST read it and extract all values. Use these as **pre-filled defaults** for the questions in sections 0.2–0.5. This dramatically reduces the number of questions — if the `.env` is complete, the user may only need to confirm a handful of values.
 
 **Priority order for defaults:**
-
 1. Existing `.env` at the install location (highest priority)
 2. `backend/.env` or `backend/.env.example` in the repo
 3. `lamb-kb-server-stable/backend/.env.example` (for embeddings vars)
 4. Built-in defaults documented in sections 0.2–0.5 below (lowest priority)
 
 **What to extract from the existing `.env`:**
-
 - `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_MODELS`
 - `EMBEDDINGS_VENDOR`, `EMBEDDINGS_MODEL`, `EMBEDDINGS_APIKEY`, `EMBEDDINGS_ENDPOINT`
 - `LAMB_BEARER_TOKEN`, `SIGNUP_SECRET_KEY`, `SIGNUP_ENABLED`, `DEV_MODE`
@@ -38,61 +35,62 @@ If the user already has a `.env` file (at `<install-location>/.env` or in the cu
 - `OLLAMA_BASE_URL` (if using Ollama)
 - Any other configured variables
 
-> **Insight:** If a fully pre-filled `.env` already exists (all required vars present), the agent can skip directly to Phase 1 after a quick confirmation with the user. The user can also place a pre-filled `.env` in the clone target directory _before_ the agent runs, ensuring a near-silent deployment.
+> **Insight:** If a fully pre-filled `.env` already exists (all required vars present), the agent can skip directly to Phase 1 after a quick confirmation with the user. The user can also place a pre-filled `.env` in the clone target directory *before* the agent runs, ensuring a near-silent deployment.
 
-> **🔍 AI Agent Note:** `.env` files (if they exist at all) are **gitignored** — glob-based file search will miss them. Use `list_dir` on the repo root, `backend/`, and `lamb-kb-server-stable/backend/` instead, or use `includeIgnoredFiles: true`. Read any `.env` found (priority: `<root>/.env` > `backend/.env` > `lamb-kb-server-stable/backend/.env` > `.env.example` files). ALWAYS ask for an _initial confirmation_ from the user before attempting to read the .env.
+
+> **🔍 AI Agent Note:** `.env` files (if they exist at all) are **gitignored** — glob-based file search will miss them. Use `list_dir` on the repo root, `backend/`, and `lamb-kb-server-stable/backend/` instead, or use `includeIgnoredFiles: true`. Read any `.env` found (priority: `<root>/.env` > `backend/.env` > `lamb-kb-server-stable/backend/.env` > `.env.example` files). ALWAYS ask for an *initial confirmation* from the user before attempting to read the .env. 
 
 ### 0.1 — Operating System & Shell
 
-| Question         | Purpose                                                   | Options / Notes                                              |
-| ---------------- | --------------------------------------------------------- | ------------------------------------------------------------ |
-| Operating system | Determines install path, shell commands, and Docker setup | `Linux` or `Windows`                                         |
-| Windows shell    | (Only if Windows) Which shell to use for all commands     | `PowerShell` (native) or `WSL` (Windows Subsystem for Linux) |
+| Question | Purpose | Options / Notes |
+|----------|---------|-----------------|
+| Operating system | Determines install path, shell commands, and Docker setup | `Linux` or `Windows` |
+| Windows shell | (Only if Windows) Which shell to use for all commands | `PowerShell` (native) or `WSL` (Windows Subsystem for Linux) |
 
 > **Insight:** WSL behaves like Linux for all shell commands (bash, `sudo`, heredocs, etc.). If the user chooses WSL, treat the environment as Linux throughout this guide. PowerShell requires different syntax for many operations (see Phase 1–3 for platform-specific commands).
 
 ### 0.2 — Workspace Setup
 
-| Question         | Purpose                                                               | Options / Notes                                                                                                                                       |
-| ---------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Install location | Where to clone the repo                                               | **Linux / WSL:** `/opt/lamb` — **Windows PowerShell:** `C:\lamb`                                                                                      |
-| Git branch       | Which branch to use                                                   | Default: `main`                                                                                                                                       |
-| Existing data?   | Does the user have data from a previous LAMB installation to migrate? | `yes` or `no`. If yes, the agent must ask for the **old project path** (where the old LAMB install lives — database, OpenWebUI data, KB server data). |
+| Question | Purpose | Options / Notes |
+|----------|---------|-----------------|
+| Install location | Where to clone the repo | **Linux / WSL:** `/opt/lamb` — **Windows PowerShell:** `C:\lamb` |
+| Git branch | Which branch to use | Default: `main` |
+| Existing data? | Does the user have data from a previous LAMB installation to migrate? | `yes` or `no`. If yes, the agent must ask for the **old project path** (where the old LAMB install lives — database, OpenWebUI data, KB server data). |
 
 ### 0.3 — API Keys & Model Configuration
 
-| Question            | Purpose                                  | Default / Fallback                                                     |
-| ------------------- | ---------------------------------------- | ---------------------------------------------------------------------- |
-| OpenAI API key      | `OPENAI_API_KEY` and `EMBEDDINGS_APIKEY` | Required unless using Ollama for everything                            |
-| OpenAI base URL     | `OPENAI_BASE_URL`                        | `https://api.openai.com/v1`                                            |
-| OpenAI model        | `OPENAI_MODEL`                           | `gpt-4o-mini`                                                          |
-| OpenAI model list   | `OPENAI_MODELS`                          | `gpt-4o-mini,gpt-4o`                                                   |
-| Embeddings vendor   | `EMBEDDINGS_VENDOR`                      | `openai` or `ollama` (local, no API key needed)                        |
-| Embeddings model    | `EMBEDDINGS_MODEL`                       | `text-embedding-3-large` (OpenAI) or `nomic-embed-text` (Ollama)       |
-| Embeddings endpoint | `EMBEDDINGS_ENDPOINT`                    | `https://api.openai.com/v1` (OpenAI) or `http://ollama:11434` (Ollama) |
-| Embeddings API key  | `EMBEDDINGS_APIKEY`                      | Same as `OPENAI_API_KEY` for OpenAI; leave empty for Ollama            |
+| Question | Purpose | Default / Fallback |
+|----------|---------|---------------------|
+| OpenAI API key | `OPENAI_API_KEY` and `EMBEDDINGS_APIKEY` | Required unless using Ollama for everything |
+| OpenAI base URL | `OPENAI_BASE_URL` | `https://api.openai.com/v1` |
+| OpenAI model | `OPENAI_MODEL` | `gpt-4o-mini` |
+| OpenAI model list | `OPENAI_MODELS` | `gpt-4o-mini,gpt-4o` |
+| Embeddings vendor | `EMBEDDINGS_VENDOR` | `openai` or `ollama` (local, no API key needed) |
+| Embeddings model | `EMBEDDINGS_MODEL` | `text-embedding-3-large` (OpenAI) or `nomic-embed-text` (Ollama) |
+| Embeddings endpoint | `EMBEDDINGS_ENDPOINT` | `https://api.openai.com/v1` (OpenAI) or `http://ollama:11434` (Ollama) |
+| Embeddings API key | `EMBEDDINGS_APIKEY` | Same as `OPENAI_API_KEY` for OpenAI; leave empty for Ollama |
 
 > **IMPORTANT:** If the user has an existing `backend/.env` file or `.env.example`, extract keys from those files as defaults to pre-fill the questions.
 
 ### 0.4 — Feature Toggles & Secrets
 
-| Question                      | Purpose                               | Default                                                            |
-| ----------------------------- | ------------------------------------- | ------------------------------------------------------------------ |
-| Enable signup?                | `SIGNUP_ENABLED`                      | `true`                                                             |
-| Enable dev mode?              | `DEV_MODE`                            | `true` (for local dev)                                             |
-| Enable Ollama?                | Adds `--profile ollama` to compose    | `false` — ask the user if they want local LLM inference via Ollama |
-| Signup secret key             | `SIGNUP_SECRET_KEY`                   | Auto-generate a random string                                      |
-| LAMB bearer token             | `LAMB_BEARER_TOKEN`                   | Auto-generate a random string                                      |
-| OWI admin name/email/password | Bootstrap admin account for OpenWebUI | e.g., `Admin` / `admin@localhost.local` / auto-generated password  |
+| Question | Purpose | Default |
+|----------|---------|---------|
+| Enable signup? | `SIGNUP_ENABLED` | `true` |
+| Enable dev mode? | `DEV_MODE` | `true` (for local dev) |
+| Enable Ollama? | Adds `--profile ollama` to compose | `false` — ask the user if they want local LLM inference via Ollama |
+| Signup secret key | `SIGNUP_SECRET_KEY` | Auto-generate a random string |
+| LAMB bearer token | `LAMB_BEARER_TOKEN` | Auto-generate a random string |
+| OWI admin name/email/password | Bootstrap admin account for OpenWebUI | e.g., `Admin` / `admin@localhost.local` / auto-generated password |
 
 ### 0.5 — Port Configuration
 
-| Question       | Purpose                     | Default |
-| -------------- | --------------------------- | ------- |
-| LAMB port      | Backend API port            | `9099`  |
-| KB port        | Knowledge base server port  | `9090`  |
-| OpenWebUI port | Chat interface port         | `8080`  |
-| Ollama port    | Local LLM port (if enabled) | `11434` |
+| Question | Purpose | Default |
+|----------|---------|---------|
+| LAMB port | Backend API port | `9099` |
+| KB port | Knowledge base server port | `9090` |
+| OpenWebUI port | Chat interface port | `8080` |
+| Ollama port | Local LLM port (if enabled) | `11434` |
 
 > **Insight:** The defaults work for most users. Only ask about port overrides if the user mentions port conflicts.
 
@@ -112,7 +110,6 @@ docker compose version
 Expected: Docker 29+ and Docker Compose V2 (the plugin, invoked as `docker compose`).
 
 If Docker is not installed, tell the user to install it:
-
 - **Windows/Mac:** [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - **Linux:** `curl -fsSL https://get.docker.com | sh`
 
@@ -173,36 +170,36 @@ The `.env` file lives in the repo root (same directory as `docker-compose.next.y
 
 These MUST be set. The compose file uses `${VAR?error message}` syntax.
 
-| Variable             | Local Default               | Notes                                          |
-| -------------------- | --------------------------- | ---------------------------------------------- |
-| `LAMB_WEB_HOST`      | `http://localhost:9099`     | The URL where the LAMB frontend is accessed    |
-| `LAMB_BACKEND_HOST`  | `http://lamb:9099`          | Internal Docker service name — NOT `localhost` |
-| `LAMB_BEARER_TOKEN`  | Auto-generated              | Strong random string                           |
-| `LAMB_DB_PATH`       | `/data/lamb`                | Path INSIDE the container                      |
-| `OWI_BASE_URL`       | `http://openwebui:8080`     | Internal Docker service name                   |
-| `OWI_PATH`           | `/data/openwebui`           | Path INSIDE the container                      |
-| `OPENAI_BASE_URL`    | `https://api.openai.com/v1` | Or user's custom endpoint                      |
-| `OPENAI_MODEL`       | `gpt-4o-mini`               | Or user's custom model                         |
-| `SIGNUP_SECRET_KEY`  | Auto-generated              | Strong random string                           |
-| `OWI_ADMIN_NAME`     | `Admin`                     | OpenWebUI bootstrap admin                      |
-| `OWI_ADMIN_EMAIL`    | `admin@localhost.local`     | OpenWebUI bootstrap admin                      |
-| `OWI_ADMIN_PASSWORD` | Auto-generated              | Strong password                                |
-| `LAMB_LIBRARY_TOKEN` | Auto-generated              | Strong random string for library-manager auth  |
+| Variable | Local Default | Notes |
+|----------|--------------|-------|
+| `LAMB_WEB_HOST` | `http://localhost:9099` | The URL where the LAMB frontend is accessed |
+| `LAMB_BACKEND_HOST` | `http://lamb:9099` | Internal Docker service name — NOT `localhost` |
+| `LAMB_BEARER_TOKEN` | Auto-generated | Strong random string |
+| `LAMB_DB_PATH` | `/data/lamb` | Path INSIDE the container |
+| `OWI_BASE_URL` | `http://openwebui:8080` | Internal Docker service name |
+| `OWI_PATH` | `/data/openwebui` | Path INSIDE the container |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Or user's custom endpoint |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Or user's custom model |
+| `SIGNUP_SECRET_KEY` | Auto-generated | Strong random string |
+| `OWI_ADMIN_NAME` | `Admin` | OpenWebUI bootstrap admin |
+| `OWI_ADMIN_EMAIL` | `admin@localhost.local` | OpenWebUI bootstrap admin |
+| `OWI_ADMIN_PASSWORD` | Auto-generated | Strong password |
+| `LAMB_LIBRARY_TOKEN` | Auto-generated | Strong random string for library-manager auth |
 
 ### 3.2 — Browser-Facing URLs
 
-| Variable              | Local Default           | Notes                                                                                                                                                                                                   |
-| --------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Variable | Local Default | Notes |
+|----------|--------------|-------|
 | `OWI_PUBLIC_BASE_URL` | `http://localhost:8080` | Browser-facing OpenWebUI URL. REQUIRED — without it, LAMB generates login redirects using the internal Docker hostname (`openwebui:8080`) that browsers cannot resolve. Must be set even for local dev. |
 
 ### 3.3 — KB Embeddings Variables
 
-| Variable              | Local Default (Ollama) | Local Default (OpenAI)      |
-| --------------------- | ---------------------- | --------------------------- |
-| `EMBEDDINGS_VENDOR`   | `ollama`               | `openai`                    |
-| `EMBEDDINGS_MODEL`    | `nomic-embed-text`     | `text-embedding-3-large`    |
-| `EMBEDDINGS_APIKEY`   | (empty)                | Same as `OPENAI_API_KEY`    |
-| `EMBEDDINGS_ENDPOINT` | `http://ollama:11434`  | `https://api.openai.com/v1` |
+| Variable | Local Default (Ollama) | Local Default (OpenAI) |
+|----------|------------------------|-------------------------|
+| `EMBEDDINGS_VENDOR` | `ollama` | `openai` |
+| `EMBEDDINGS_MODEL` | `nomic-embed-text` | `text-embedding-3-large` |
+| `EMBEDDINGS_APIKEY` | (empty) | Same as `OPENAI_API_KEY` |
+| `EMBEDDINGS_ENDPOINT` | `http://ollama:11434` | `https://api.openai.com/v1` |
 
 > **Insight:** If the user is NOT running Ollama, they MUST use OpenAI for embeddings. The KB server requires a working embeddings provider.
 
@@ -290,17 +287,16 @@ The old LAMB stack stored data in host directories. The new stack uses **named D
 ### 3.5.1 — What the agent needs
 
 From Phase 0.2, the agent should have:
-
 - **`<old-project-path>`** — the directory where the old LAMB installation lives (e.g., `/opt/lamb-old` or `C:\lamb-old`)
 - **`<install-location>`** — the new install directory (from Phase 0.2)
 
 The expected data locations inside the old project:
 
-| Data           | Old location (relative to old project path)              | New volume                       |
-| -------------- | -------------------------------------------------------- | -------------------------------- |
-| LAMB database  | `<old-project-path>/lamb_v4.db`                          | `lamb-data` (file: `lamb_v4.db`) |
-| OpenWebUI data | `<old-project-path>/open-webui/backend/data/`            | `openwebui-data`                 |
-| KB server data | `<old-project-path>/lamb-kb-server-stable/backend/data/` | `kb-data`                        |
+| Data | Old location (relative to old project path) | New volume |
+|------|---------------------------------------------|------------|
+| LAMB database | `<old-project-path>/lamb_v4.db` | `lamb-data` (file: `lamb_v4.db`) |
+| OpenWebUI data | `<old-project-path>/open-webui/backend/data/` | `openwebui-data` |
+| KB server data | `<old-project-path>/lamb-kb-server-stable/backend/data/` | `kb-data` |
 
 ### 3.5.2 — Run the migration
 
@@ -362,14 +358,13 @@ docker compose -f docker-compose.next.yaml -f docker-compose.next.gpu.yaml --pro
 ```
 
 **What the GPU override does:**
-
 - Passes `USE_CUDA=true` to the OpenWebUI Dockerfile build, which installs CUDA-enabled PyTorch instead of CPU-only PyTorch
 - Adds `deploy.resources.reservations.devices` with `driver: nvidia, count: all, capabilities: [gpu]` to `openwebui` and `ollama` services
 
 **Optional env vars:**
 
-| Variable       | Default | Notes                                                                                                                                                       |
-| -------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Variable | Default | Notes |
+|----------|---------|-------|
 | `OWI_CUDA_VER` | `cu124` | PyTorch CUDA version index (e.g., `cu124` for CUDA 12.4, `cu130` for CUDA 13.0). CUDA drivers are backward-compatible, so `cu124` works on CUDA 13.x hosts. |
 
 > **Insight:** Do NOT use the GPU override on Mac or non-CUDA hosts — it will fail because the `nvidia` device driver isn't available. The main `docker-compose.next.yaml` defaults to CPU-only and is safe for all platforms.
@@ -377,7 +372,6 @@ docker compose -f docker-compose.next.yaml -f docker-compose.next.gpu.yaml --pro
 ### 4.4 — Windows-Specific Notes
 
 On Windows with Docker Desktop:
-
 - Ensure the WSL2 backend is running.
 - `host.docker.internal` is available for services that need to reach the host (macOS/Windows only — does NOT work on Linux; use Docker service names instead).
 - Volume mounts work with WSL2 paths. If the repo is on a Windows drive (e.g., `C:\`), use the Docker Desktop file sharing settings to allow that drive.
@@ -395,12 +389,12 @@ docker compose -f docker-compose.next.yaml ps
 
 All services should show `Up` and `healthy`:
 
-| Container          | Expected Status                     |
-| ------------------ | ----------------------------------- |
-| `lamb-lamb-1`      | Up (healthy)                        |
-| `lamb-kb-1`        | Up (healthy)                        |
-| `lamb-openwebui-1` | Up (healthy)                        |
-| `lamb-ollama-1`    | Up (only if Ollama profile enabled) |
+| Container | Expected Status |
+|-----------|----------------|
+| `lamb-lamb-1` | Up (healthy) |
+| `lamb-kb-1` | Up (healthy) |
+| `lamb-openwebui-1` | Up (healthy) |
+| `lamb-ollama-1` | Up (only if Ollama profile enabled) |
 
 ### 5.2 — Check Logs
 
@@ -409,7 +403,6 @@ docker compose -f docker-compose.next.yaml logs -f --tail=50
 ```
 
 Look for:
-
 - Lamb: `Uvicorn running on http://0.0.0.0:9099`
 - OpenWebUI: `Uvicorn running on http://0.0.0.0:8080`
 - KB: `Uvicorn running on http://0.0.0.0:9090`
@@ -418,12 +411,12 @@ Look for:
 
 Open these URLs in a browser:
 
-| Service                | URL                          | What You Should See         |
-| ---------------------- | ---------------------------- | --------------------------- |
-| LAMB Creator Interface | `http://localhost:9099`      | LAMB sign-in / creator page |
-| OpenWebUI Chat         | `http://localhost:8080`      | OpenWebUI sign-in page      |
-| KB Server API          | `http://localhost:9090/docs` | FastAPI Swagger docs        |
-| LAMB API Docs          | `http://localhost:9099/docs` | FastAPI Swagger docs        |
+| Service | URL | What You Should See |
+|---------|-----|---------------------|
+| LAMB Creator Interface | `http://localhost:9099` | LAMB sign-in / creator page |
+| OpenWebUI Chat | `http://localhost:8080` | OpenWebUI sign-in page |
+| KB Server API | `http://localhost:9090/docs` | FastAPI Swagger docs |
+| LAMB API Docs | `http://localhost:9099/docs` | FastAPI Swagger docs |
 
 ### 5.4 — Verify Health Endpoints
 
@@ -467,55 +460,46 @@ docker exec lamb-ollama-1 ollama pull llama3.2
 ## Phase 6: Day-to-Day Operations (Cheatsheet)
 
 ### Stop the stack
-
 ```bash
 cd <install-location> && docker compose -f docker-compose.next.yaml down
 ```
 
 ### Start the stack
-
 ```bash
 cd <install-location> && docker compose -f docker-compose.next.yaml up -d
 ```
 
 ### Update images and restart
-
 ```bash
 cd <install-location> && docker compose -f docker-compose.next.yaml pull && docker compose -f docker-compose.next.yaml up -d
 ```
 
 ### View logs for a specific service
-
 ```bash
 cd <install-location> && docker compose -f docker-compose.next.yaml logs -f lamb
 ```
 
 ### Restart a single service
-
 ```bash
 cd <install-location> && docker compose -f docker-compose.next.yaml restart lamb
 ```
 
 ### Rebuild after code changes (when using local build)
-
 ```bash
 cd <install-location> && docker compose -f docker-compose.next.yaml up -d --build
 ```
 
 ### Rebuild with GPU support (CUDA hosts only)
-
 ```bash
 cd <install-location> && docker compose -f docker-compose.next.yaml -f docker-compose.next.gpu.yaml up -d --build
 ```
 
 ### Reset all data (WARNING: deletes all databases and uploaded files)
-
 ```bash
 cd <install-location> && docker compose -f docker-compose.next.yaml down -v
 ```
 
 ### Access a service shell
-
 ```bash
 docker exec -it lamb-lamb-1 bash
 docker exec -it lamb-kb-1 bash
@@ -527,19 +511,16 @@ docker exec -it lamb-openwebui-1 bash
 ## Phase 7: Tear Down
 
 ### Stop and remove containers, networks
-
 ```bash
 cd <install-location> && docker compose -f docker-compose.next.yaml down
 ```
 
 ### Also remove volumes (deletes ALL data)
-
 ```bash
 cd <install-location> && docker compose -f docker-compose.next.yaml down -v
 ```
 
 ### Remove images to free disk space
-
 ```bash
 docker rmi ghcr.io/lamb-project/lamb:latest
 docker rmi ghcr.io/lamb-project/lamb-kb:latest
@@ -548,7 +529,6 @@ docker rmi ollama/ollama:latest  # if Ollama was used
 ```
 
 ### Remove the repo
-
 ```bash
 sudo rm -rf <install-location>
 ```
@@ -616,27 +596,24 @@ WEBUI_SECRET_KEY=
 
 ## Appendix B: Architecture Reference (Local)
 
-| Service             | Internal Port | Local URL                | Docker Image                            |
-| ------------------- | ------------- | ------------------------ | --------------------------------------- |
-| `lamb`              | 9099          | `http://localhost:9099`  | `ghcr.io/lamb-project/lamb:latest`      |
-| `kb`                | 9090          | `http://localhost:9090`  | `ghcr.io/lamb-project/lamb-kb:latest`   |
-| `openwebui`         | 8080          | `http://localhost:8080`  | `ghcr.io/lamb-project/openwebui:latest` |
-| `ollama` (optional) | 11434         | `http://localhost:11434` | `ollama/ollama:latest`                  |
+| Service | Internal Port | Local URL | Docker Image |
+|---------|--------------|-----------|--------------|
+| `lamb` | 9099 | `http://localhost:9099` | `ghcr.io/lamb-project/lamb:latest` |
+| `kb` | 9090 | `http://localhost:9090` | `ghcr.io/lamb-project/lamb-kb:latest` |
+| `openwebui` | 8080 | `http://localhost:8080` | `ghcr.io/lamb-project/openwebui:latest` |
+| `ollama` (optional) | 11434 | `http://localhost:11434` | `ollama/ollama:latest` |
 
 **Service dependencies:**
-
 - `lamb` depends on `kb` (service_started) and `openwebui` (service_healthy)
 - `kb` is independent
 - `openwebui` is independent
 - `ollama` is independent (used by `kb` for embeddings and by `lamb` for chat if configured)
 
 **Docker compose files:**
-
 - `docker-compose.next.yaml` — Main stack (CPU-only by default, safe for all platforms)
 - `docker-compose.next.gpu.yaml` — GPU override (CUDA hosts only; enables CUDA PyTorch build + `--gpus=all` for `openwebui` and `ollama`)
 
 **Docker volumes:**
-
 - `lamb-data` — LAMB database and uploads
 - `kb-data` — KB server database and vector store
 - `kb-static` — KB server static files

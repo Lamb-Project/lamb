@@ -5,11 +5,10 @@
   
   **Create AI assistants for education integrated in your Learning Management System**
 
-[![Website](https://img.shields.io/badge/Website-lamb--project.org-blue)](http://www.lamb-project.org)
-[![License](https://img.shields.io/badge/license-GPL%20v3-blue.svg)](LICENSE)
-[![Safe AI in Education](https://img.shields.io/badge/Safe_AI_Education-Manifesto-green)](https://manifesto.safeaieducation.org)
-[![GitHub](https://img.shields.io/badge/GitHub-Lamb--Project-black)](https://github.com/Lamb-Project/lamb)
-
+  [![Website](https://img.shields.io/badge/Website-lamb--project.org-blue)](http://www.lamb-project.org)
+  [![License](https://img.shields.io/badge/license-GPL%20v3-blue.svg)](LICENSE)
+  [![Safe AI in Education](https://img.shields.io/badge/Safe_AI_Education-Manifesto-green)](https://manifesto.safeaieducation.org)
+  [![GitHub](https://img.shields.io/badge/GitHub-Lamb--Project-black)](https://github.com/Lamb-Project/lamb)
 </div>
 
 ## 📋 Project Description
@@ -21,13 +20,10 @@ Developed by Marc Alier and Juanan Pereira, professors and researchers at the Un
 ## 🎯 Key Features
 
 ### 🎓 **Specialized Subject Tutors**
-
 Design assistants that stay grounded on your chosen subject area, ensuring responses are always educationally appropriate and contextually relevant.
 
 ### 📚 **Intelligent Knowledge Ingestion**
-
 Upload educational materials (PDF, Word, Markdown) and LAMB automatically processes them with:
-
 - Flexible data model that preserves context and relationships
 - Semantic embeddings optimized for educational search
 - Custom metadata support for each document
@@ -35,35 +31,31 @@ Upload educational materials (PDF, Word, Markdown) and LAMB automatically proces
 - RAG (Retrieval Augmented Generation) integration
 
 ### 🔒 **Privacy-First Architecture**
-
 - The students will access the Learning Assitants as Learning Activities within the LMS Course
 - No user information is shared with AI model providers
 - Can run on open source and open weights models running on your compute
 - Secure, self-hosted solution
 
 ### 🔌 **LTI Integration**
-
 Seamlessly integrate with Moodle and other Learning Management Systems through LTI (Learning Tools Interoperability) standard - publish your assistant as an external tool with just a few clicks.
 
 ### 🤖 **Multi-Model Support**
-
 - Works with OpenAI API compatible models
 - Ollama inetgration
 - One-click model switching
 - Model-agnostic architecture
 
 ### 🔍 **Advanced Testing & Debugging**
-
 - Debug mode showing complete prompts
 - Citation tracking with source references
 
-### 🌍 **Multilingual Interface**
 
-Built-in support for Basque, Catalan, Spanish, and English, with easy extensibility for additional languages.
+### 🌍 **Multilingual Interface**
+Built-in support for Basque, Catalan, Spanish, and English, with easy extensibility for additional languages.  
 
 ### 💾 **Portability & Versioning**
-
 - Export/import assistants in JSON format
+
 
 ## 👥 Target Audience
 
@@ -81,7 +73,7 @@ LAMB features a modular, extensible architecture:
 - **Backend**: FastAPI-based server handling assistant management, LTI integration, and model orchestration
 - **Frontend**: Modern Svelte 5 application providing intuitive UI for assistant creation and management
 - **Knowledge Base Server**: Dedicated service for document ingestion and vector search
-- **Integration Layer**: Bridges with Open WebUI for model management https://github.com/open-webui/open-webui
+- **Integration Layer**: Bridges with Open WebUI for model management  https://github.com/open-webui/open-webui
 
 ## 🚀 Installation
 
@@ -101,7 +93,6 @@ For development or custom deployments:
 ### Quick Overview
 
 LAMB requires four main services:
-
 1. **Open WebUI Server** (port 8080) - Model management interface
 2. **LAMB Knowledge Base Server** (port 9090) - Document processing and vector search
 3. **LAMB Backend Server** (port 9099) - Core API and business logic
@@ -110,16 +101,13 @@ LAMB requires four main services:
 ## 📖 Documentation
 
 ### 📚 For End Users
-
 Visit our [official website](http://www.lamb-project.org) for:
-
 - **User guides and tutorials**
 - **Feature documentation**
 - **Educational resources**
 - **Community support**
 
 ### 📖 Developer Documentation
-
 Comprehensive documentation is available in the [`/Documentation`](Documentation/) directory:
 
 - [Documentation Index](Documentation/DOCUMENTATION_INDEX.md) — start here
@@ -170,7 +158,6 @@ See [LICENSE](LICENSE) for full details.
 If you use LAMB in your research, please cite our work:
 
 **LAMB: An open-source software framework to create artificial intelligence assistants deployed and integrated into learning management systems**
-
 - **Authors**: Marc Alier, Juanan Pereira, Francisco José García-Peñalvo, Maria Jose Casañ, Jose Cabré
 - **Journal**: Computer Standards & Interfaces
 - **Volume**: 92
@@ -198,46 +185,44 @@ author = {Marc Alier and Juanan Pereira and Francisco Jos{\'e} Garc{\'i}a-Pe{\~n
 We acknowledge the valuable contributions and research collaboration from the authors and researchers who have worked on LAMB:
 
 #### Project Leaders
-
 - **Juanan Pereira** (Universidad del País Vasco, UPV/EHU) - Co-Lead & Principal Researcher
 - **Marc Alier** (Universitat Politècnica de Catalunya, UPC) - Co-Lead & Principal Researcher
 
 #### Senior Researchers & Academic Collaborators
-
 - **Francisco José García-Peñalvo** - Advisor and Senior Researcher
 - **Maria Jose Casañ** (Universitat Politècnica de Catalunya, UPC) - Research Contributor & Developer
 - **Ariadna Maria LLorens** (Universitat Politècnica de Catalunya, UPC) - Research Contributor
-- **Jose Cabré** (Universitat Politècnica de Catalunya, UPC) - Research Contributor
+- **Jose Cabré** (Universitat Politècnica de Catalunya, UPC) - Research Contributor 
 - **David Lopez Alvarez** (Universitat Politècnica de Catalunya, UPC) - Research Contributor
+  
 
 ## 🙏 Acknowledgments
 
 ### Academic & Institutional Partners
-
 - **Universidad del País Vasco (UPV/EHU)** - Research institution and development partner
 - **Universitat Politècnica de Catalunya (UPC)** - Research institution and development partner
   - **Barcelona School of Informatics** (https://fib.upc.edu)
   - **Institut de Ciències de l'Educació - ICE** (https://ice.upc.edu)
   - **Department of Service and Information System Engineering. ESSI** (http://essi.upc.edu)
-- **Universidad de Salamanca** - Grial Research Group
+- **Universidad de Salamanca** - Grial Research Group 
 
 ### Open Source Dependencies
+- **Open WebUI Project** - (https://github.com/open-webui/) Advanced chatbot web interface integration, and a lot of design descisions borrowed from the openwebui pipelines project. 
+- **TSugi Project** (https://www.tsugi.org) Used in early Lamb implementations for LTI provider support. Many thanks to Dr. Chuck (Charles Severance) for his support and inspiration. 
 
-- **Open WebUI Project** - (https://github.com/open-webui/) Advanced chatbot web interface integration, and a lot of design descisions borrowed from the openwebui pipelines project.
-- **TSugi Project** (https://www.tsugi.org) Used in early Lamb implementations for LTI provider support. Many thanks to Dr. Chuck (Charles Severance) for his support and inspiration.
 
 ### Research & Educational Community
-
-- **TEEM Conference** - (https://teemconference.eu) The TEEM conference has a vibrant community of researchers working on multidisciplinary fields connected to technology and education. The LAMB project was born on a coffe break conversation after the "Managing Generative AI in educational settings", we lost control of it :-) .
+- **TEEM Conference** - (https://teemconference.eu) The TEEM conference has a vibrant community of researchers working on multidisciplinary fields connected to technology and education. The LAMB project was born on a coffe break conversation after the "Managing Generative AI in educational settings", we lost control of it :-) .   
 - **Teaching Community** - Early adopters and beta testers:
-  - https://tknika.eus/en/ Basque VET Applied Research Centre
+  - https://tknika.eus/en/ Basque VET Applied Research Centre 
 - **All Contributors** - For their dedication to improving education through technology
 
 ### Funding projects directly or indirectly contributing to the project
 
-- Universitat Politecnica de Cataluya. Galaxia d'Aprenentatge projecte PROPER, Factulat d'Informatica de Barcelona (2024-2025).
-- Departament de Recerca i Universitats de la Generalitat de Catalunya through the 2021 SGR 01412 research groups award (2021-2025).
+- Universitat Politecnica de Cataluya. Galaxia d'Aprenentatge projecte PROPER, Factulat d'Informatica de Barcelona (2024-2025). 
+- Departament de Recerca i Universitats de la Generalitat de Catalunya through the 2021 SGR 01412 research groups award (2021-2025). 
 - Universidad del País Vasco/Euskal Herriko Unibertsitatea through the contract GIU21/037 under the program “Convocatoria para la Concesión de Ayudas a los Grupos de Investigación en la Universidad del País Vasco/Euskal Herriko Unibertsitatea (2021)
+
 
 ## 🛡️ Safe AI in Education Manifesto
 
@@ -272,8 +257,7 @@ The Safe AI in Education Manifesto outlines 7 core principles for responsible AI
 As signatories to the manifesto, LAMB's core team members are committed to advancing ethical AI in education. LAMB represents a practical implementation of manifesto principles in action.
 
 ## 📧 Contact
-
-- **Project Leads**: Marc Alier (UPC), Juanan Pereira (UPV/EHU)
+- **Project Leads**: Marc Alier (UPC), Juanan Pereira (UPV/EHU) 
 - **Research**: Academic collaborations and research partnerships
 - **GitHub**: [https://github.com/Lamb-Project/lamb](https://github.com/Lamb-Project/lamb)
 - **Issues**: [GitHub Issues](https://github.com/Lamb-Project/lamb/issues)
@@ -282,3 +266,4 @@ As signatories to the manifesto, LAMB's core team members are committed to advan
 ---
 
 **LAMB** - Empowering educators to create intelligent, privacy-respecting AI assistants for enhanced learning experiences.
+

@@ -9,20 +9,17 @@ LAMB (Learning Assistants Manager and Builder) is an open-source platform for ed
 ## Development Commands
 
 ### Starting the full stack (Docker Compose)
-
 ```bash
 # Requires a .env in the repo root — see Documentation/deployLocal.md
 docker compose -f docker-compose.next.yaml up -d                 # all services
 docker compose -f docker-compose.next.yaml --profile ollama up -d  # include Ollama
 docker compose -f docker-compose.next.yaml up -d --build lamb    # just the backend (rebuild)
 ```
-
 For GPU hosts, layer the override: `-f docker-compose.next.yaml -f docker-compose.next.gpu.yaml`.
 For production (Caddy reverse proxy + TLS): `-f docker-compose.next.yaml -f docker-compose.next.prod.yaml`.
 `docker-compose.firecrawl.yaml` is a standalone optional Firecrawl stack for the KB server.
 
 ### Running services individually (without Docker)
-
 ```bash
 # Backend (FastAPI on port 9099)
 cd backend && PORT=9099 uvicorn main:app --port 9099 --host 0.0.0.0 --forwarded-allow-ips '*' --reload
@@ -39,7 +36,6 @@ cd backend && LAMB_API_TOKEN=your-token uvicorn main:app --host 0.0.0.0 --port 9
 ```
 
 ### Frontend (from `frontend/svelte-app/`)
-
 ```bash
 npm run build        # production build
 npm run check        # svelte-kit sync + svelte-check (type checking)
@@ -49,7 +45,6 @@ npm run test:unit    # vitest
 ```
 
 ### Playwright E2E tests (from `testing/playwright/`)
-
 ```bash
 # Copy .env.sample to .env and configure first
 npm test                                            # all tests
@@ -59,18 +54,15 @@ npm run test:headed                                 # visible browser
 npm run test:ui                                     # interactive UI mode
 npm run report                                      # view HTML report
 ```
-
 Playwright config: 90s timeout per test, 10s assertion timeout, parallel disabled, global-setup handles auth via `.auth/state.json`.
 
 ### KB Server tests (from `lamb-kb-server-stable/backend/tests/`)
-
 ```bash
 pytest                         # runs e2e/ test directory
 pytest -m "not slow"           # skip slow tests
 ```
 
 ### Library Manager tests (from `library-manager/`)
-
 ```bash
 # Setup (first time only)
 python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[all,dev]"
@@ -80,11 +72,9 @@ pytest tests/ -v               # all 52 tests
 pytest tests/ --cov=backend    # with coverage report
 ruff check backend/ tests/ --select E,F,W,I,UP,SIM --target-version py311  # lint
 ```
-
 Tests use an in-process ASGI client (no server needed). YouTube transcript test uses a cached response in `tests/.yt_cache/` to avoid rate limits.
 
 ### Applying backend env changes in Docker
-
 ```bash
 docker compose -f docker-compose.next.yaml up -d lamb   # recreate container (restart is NOT sufficient for .env changes)
 ```
@@ -96,7 +86,6 @@ The backend (FastAPI) auto-generates an OpenAPI spec at `http://localhost:9099/o
 ## Architecture
 
 ### Dual API Layer
-
 The backend runs a single FastAPI process (port 9099) with two API layers:
 
 - **Creator Interface** (`/creator`) — user-facing API with auth, validation, file uploads. Acts as a proxy/enhancer to LAMB Core. Code in `backend/creator_interface/`.
@@ -105,19 +94,16 @@ The backend runs a single FastAPI process (port 9099) with two API layers:
 Frontend requests hit `/creator`, which delegates to `/lamb/v1` internally.
 
 ### Services (ports)
-
-| Service               | Port | Purpose                                                                      |
-| --------------------- | ---- | ---------------------------------------------------------------------------- |
-| Frontend (Svelte dev) | 5173 | SvelteKit dev server, proxies `/creator` and `/lamb` to backend              |
-| Backend (FastAPI)     | 9099 | Main API server, also serves built frontend SPA in production                |
-| Open WebUI            | 8080 | Chat interface for end-users, user session management                        |
-| KB Server             | 9090 | Knowledge base document ingestion, embedding, vector search                  |
-| Library Manager       | 9091 | Document repository — imports files into structured markdown with permalinks |
+| Service | Port | Purpose |
+|---------|------|---------|
+| Frontend (Svelte dev) | 5173 | SvelteKit dev server, proxies `/creator` and `/lamb` to backend |
+| Backend (FastAPI) | 9099 | Main API server, also serves built frontend SPA in production |
+| Open WebUI | 8080 | Chat interface for end-users, user session management |
+| KB Server | 9090 | Knowledge base document ingestion, embedding, vector search |
+| Library Manager | 9091 | Document repository — imports files into structured markdown with permalinks |
 
 ### Completion Pipeline (plugin system)
-
 Completions flow through a plugin pipeline in `backend/lamb/completions/`:
-
 - **Connectors** (`connectors/`) — LLM providers: `openai.py`, `ollama.py`, `bypass.py`
 - **RAG processors** (`rag/`) — `simple_rag.py`, `context_aware_rag.py`, `rubric_rag.py`, `single_file_rag.py`, `no_rag.py`
 - **Prompt processors** (`pps/`) — message augmentation before LLM call
@@ -125,7 +111,6 @@ Completions flow through a plugin pipeline in `backend/lamb/completions/`:
 Plugin hooks: `before_completion` → `run_completion` → `after_completion`
 
 ### Multi-Tenancy
-
 Organizations are the tenant boundary. Each org isolates users, assistants, KBs, and config. Roles: `owner`, `admin`, `member`. User types: `creator` (builds assistants) vs `end_user` (chat only, redirected to Open WebUI).
 
 ### Library Manager (`library-manager/`)
@@ -135,7 +120,6 @@ A separate microservice (FastAPI, port 9091) that serves as a **document reposit
 **Terminology:** Libraries **IMPORT** content (document repository). Knowledge Bases **INGEST** content (chunking + embedding). These terms are used consistently throughout the codebase and must not be confused.
 
 **Key decisions:**
-
 - LAMB is the only caller. Single bearer token auth, no user-level ACL (LAMB handles that).
 - Imports are processed asynchronously via a persistent SQLite-backed job queue with semaphore-controlled concurrency.
 - API keys are sent per-request and held in memory only — never persisted to disk.
@@ -147,14 +131,12 @@ A separate microservice (FastAPI, port 9091) that serves as a **document reposit
 **LAMB integration:** Creator Interface endpoints (`/creator/libraries/...`) validate ACL and proxy to the Library Manager. The `lamb-cli` commands (`lamb library ...`) are in `lamb-cli/src/lamb_cli/commands/library.py`. Svelte frontend at `/libraries` route with components in `frontend/svelte-app/src/lib/components/libraries/`.
 
 ### Database
-
 - **LAMB DB** — SQLite with WAL mode (`lamb_v4.db` at `LAMB_DB_PATH`). Schema managed in `backend/lamb/database_manager.py`.
 - **Open WebUI DB** — `open-webui/backend/data/webui.db`. For historical reasons, Open WebUI is still the authentication provider — LAMB delegates user auth and session management to OWI. This is a known coupling targeted for refactoring (see GitHub issues).
 - **ChromaDB** — vector store for KB embeddings, collections scoped per org+user.
 - **Library Manager DB** — SQLite with WAL mode (`library-manager/data/library-manager.db`). Schema in `library-manager/backend/database/models.py`. Managed by SQLAlchemy `create_all` (no Alembic migrations yet).
 
 ### Frontend
-
 Svelte 5 + SvelteKit + Vite + TailwindCSS 4. JavaScript with JSDoc (not TypeScript). I18n via `svelte-i18n` with locales in `frontend/svelte-app/src/lib/locales/` (en, es, ca, eu). API services in `frontend/svelte-app/src/lib/services/`. Reactive state in `frontend/svelte-app/src/lib/stores/`.
 
 ## Code Style
@@ -182,8 +164,9 @@ Note: `library-manager/` is NOT vendored — it is developed in-tree as part of 
 
 Dev version lives in `frontend/svelte-app/scripts/generate-version.js`. Run `node frontend/svelte-app/scripts/generate-version.js` to regenerate `src/lib/version.js`. Only commit the generator script change, not the generated file.
 
-## Git commits
+## Git commits 
 
-- DO NOT include authoriship information in commits (No Co-authored-By, signed-off-by , or similar)
-- Commit messages should be concise and descriptive without aditional metadata.
-- Include the Issue ID in commit messages like #{issue number}
+* DO NOT include authoriship information in commits (No Co-authored-By, signed-off-by , or similar)
+* Commit messages should be concise and descriptive without aditional metadata.
+* Include the Issue ID in commit messages like #{issue number} 
+ 
