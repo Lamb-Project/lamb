@@ -316,7 +316,7 @@ Follow the step-by-step guide in **`Documentation/slop-docs/migrating-to-lamb-ne
 **Stop the old stack first.** If the old LAMB containers are still running with bind-mounts to these data directories, the copy may produce inconsistent results. Ask the user to run this from the old project directory before migrating:
 
 ```bash
-docker compose -f docker-compose.yaml down
+docker compose down
 ```
 
 ---

@@ -58,11 +58,9 @@ This index helps you find exactly what you need in the LAMB documentation. Start
 ```
 Documentation/
 ├── DOCUMENTATION_INDEX.md      ← YOU ARE HERE
-├── README.md                   ← Docs landing page
 ├── lamb_architecture_v2.md     ← Single canonical architecture reference
 │
 ├── installationguide.md        ← Installation instructions
-├── deployment.md               ← General deployment guide
 ├── deployLocal.md              ← Local Docker deployment
 ├── deployNext.md               ← Hetzner autonomous deployment
 ├── deployment.apache.md        ← Apache reverse proxy config

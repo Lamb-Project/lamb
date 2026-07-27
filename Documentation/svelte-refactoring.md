@@ -183,23 +183,23 @@ This methodology ensures safe, verified refactoring by requiring comprehensive t
 
 The application runs in Docker containers. For testing and refactoring, ensure the following services are running:
 
-#### Docker Services (from `docker-compose.yaml`)
+#### Docker Services (from `docker-compose.next.yaml`)
 
 | Service | Port | Description |
 |---------|------|-------------|
-| `frontend` | **5173** | Development frontend (Vite dev server with hot reload) |
-| `backend` | **9099** | LAMB backend API (FastAPI) |
+| `frontend` | **5173** | Development frontend (Vite dev server with hot reload) — run manually, see below |
+| `lamb` | **9099** | LAMB backend API (FastAPI) |
 | `openwebui` | 8080 | Open WebUI service |
 | `kb` | 9090 | Knowledge Base server |
 
 #### Starting the Development Environment
 
 ```bash
-# From repository root
-docker-compose up -d
+# From repository root — backend services
+docker compose -f docker-compose.next.yaml up -d
 
-# Or start specific services
-docker-compose up -d frontend backend kb
+# Frontend dev server (Vite, hot reload) — in a separate terminal
+cd frontend/svelte-app && npm run dev
 ```
 
 #### URLs for Testing
@@ -268,7 +268,7 @@ Before starting any refactoring work, verify the environment is working:
 
 ```bash
 # 1. Check Docker containers are running
-docker-compose ps
+docker compose -f docker-compose.next.yaml ps
 
 # 2. Check frontend is accessible
 curl -I http://localhost:5173

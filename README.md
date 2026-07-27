@@ -81,7 +81,8 @@ LAMB features a modular, extensible architecture:
 
 For the easiest setup experience, we recommend using Docker Compose to run all LAMB services:
 
-📘 **[Docker Installation Guide](Documentation/deployment.md)** - One-command deployment with all services configured
+📘 **[Local Docker Deployment Guide](Documentation/deployLocal.md)** - One-command local deployment with all services configured
+📘 **[Production Deployment Guide](Documentation/deployNext.md)** - Autonomous deployment to a cloud server
 
 ### Alternative: Manual Installation
 
@@ -112,7 +113,8 @@ Comprehensive documentation is available in the [`/Documentation`](Documentation
 - [Documentation Index](Documentation/DOCUMENTATION_INDEX.md) — start here
 - [Architecture Reference](Documentation/lamb_architecture_v2.md)
 - [Installation Guide](Documentation/installationguide.md)
-- [Deployment Guide](Documentation/deployment.md)
+- [Local Deployment Guide](Documentation/deployLocal.md)
+- [Production Deployment Guide](Documentation/deployNext.md)
 
 ## 🗂️ Project Structure
 
@@ -126,7 +128,7 @@ lamb/
 │   └── svelte-app/      # Main web application
 ├── lamb-kb-server/       # Knowledge base server
 ├── Documentation/        # Project documentation
-└── docker-compose.yaml   # Container orchestration
+└── docker-compose.next.yaml  # Container orchestration (+ .gpu / .prod overrides)
 ```
 
 ## 🤝 Contributing
