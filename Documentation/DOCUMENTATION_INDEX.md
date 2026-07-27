@@ -10,46 +10,46 @@ This index helps you find exactly what you need in the LAMB documentation. Start
 
 ### Understand the System
 
-| Goal | Document | Section |
-|------|----------|---------|
-| Get a high-level overview | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §1 System Overview |
-| Understand the dual API design | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §3 Dual API Architecture |
-| Learn about multi-tenancy | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §7 Organizations |
-| Understand the completion pipeline | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §6 Completion Pipeline |
+| Goal                               | Document                                             | Section                  |
+| ---------------------------------- | ---------------------------------------------------- | ------------------------ |
+| Get a high-level overview          | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §1 System Overview       |
+| Understand the dual API design     | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §3 Dual API Architecture |
+| Learn about multi-tenancy          | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §7 Organizations         |
+| Understand the completion pipeline | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §6 Completion Pipeline   |
 
 ### Set Up Development Environment
 
-| Goal | Document | Section |
-|------|----------|---------|
-| Quick start with Docker | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §10 Development |
-| Configure environment variables | [../backend/ENVIRONMENT_VARIABLES.md](../backend/ENVIRONMENT_VARIABLES.md) | Full doc |
-| Deploy to production | [deployment.apache.md](./deployment.apache.md) | Full doc |
+| Goal                            | Document                                                                   | Section         |
+| ------------------------------- | -------------------------------------------------------------------------- | --------------- |
+| Quick start with Docker         | [lamb_architecture_v2.md](./lamb_architecture_v2.md)                       | §10 Development |
+| Configure environment variables | [../backend/ENVIRONMENT_VARIABLES.md](../backend/ENVIRONMENT_VARIABLES.md) | Full doc        |
+| Deploy to production            | [deployment.apache.md](./deployment.apache.md)                             | Full doc        |
 
 ### Work with the Backend
 
-| Goal | Document | Section |
-|------|----------|---------|
-| Add a new API endpoint | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §3 Dual API Architecture |
-| Create a custom plugin | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §6.4 Plugin System |
-| Understand database schema | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §4 Data Architecture |
-| Work with authentication | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §5 Authentication |
-| Configure logging | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §11 Logging |
+| Goal                       | Document                                             | Section                  |
+| -------------------------- | ---------------------------------------------------- | ------------------------ |
+| Add a new API endpoint     | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §3 Dual API Architecture |
+| Create a custom plugin     | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §6.4 Plugin System       |
+| Understand database schema | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §4 Data Architecture     |
+| Work with authentication   | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §5 Authentication        |
+| Configure logging          | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §11 Logging              |
 
 ### Work with the Frontend
 
-| Goal | Document | Section |
-|------|----------|---------|
+| Goal                          | Document                                             | Section                  |
+| ----------------------------- | ---------------------------------------------------- | ------------------------ |
 | Understand frontend structure | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §9 Frontend Architecture |
-| Handle form state (Svelte 5) | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §9.3 UX Patterns |
-| Avoid async race conditions | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §9.3 UX Patterns |
+| Handle form state (Svelte 5)  | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §9.3 UX Patterns         |
+| Avoid async race conditions   | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §9.3 UX Patterns         |
 
 ### Implement Features
 
-| Goal | Document | Section |
-|------|----------|---------|
-| Add Knowledge Base support | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §8.1 Knowledge Base |
-| Implement LTI integration | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §8.2 LTI Integration |
-| Add assistant sharing | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §8.3 Assistant Sharing |
+| Goal                       | Document                                             | Section                |
+| -------------------------- | ---------------------------------------------------- | ---------------------- |
+| Add Knowledge Base support | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §8.1 Knowledge Base    |
+| Implement LTI integration  | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §8.2 LTI Integration   |
+| Add assistant sharing      | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §8.3 Assistant Sharing |
 
 ---
 
@@ -170,42 +170,47 @@ frontend/svelte-app/
 
 ### Databases
 
-| Database | Location | Purpose |
-|----------|----------|---------|
-| LAMB DB | `$LAMB_DB_PATH/lamb_v4.db` | Assistants, users, orgs |
-| OWI DB | `$OWI_DATA_PATH/webui.db` | Chat history, mirror users, groups, models |
-| ChromaDB | `$OWI_DATA_PATH/vector_db/` | KB vectors |
+| Database | Location                    | Purpose                                    |
+| -------- | --------------------------- | ------------------------------------------ |
+| LAMB DB  | `$LAMB_DB_PATH/lamb_v4.db`  | Assistants, users, orgs                    |
+| OWI DB   | `$OWI_DATA_PATH/webui.db`   | Chat history, mirror users, groups, models |
+| ChromaDB | `$OWI_DATA_PATH/vector_db/` | KB vectors                                 |
 
 ---
 
 ## 🔑 Key Concepts Quick Reference
 
 ### Dual API Architecture
+
 ```
 Browser → Creator Interface API (/creator) → LAMB Core API (/lamb/v1) → Database
 ```
+
 - **Creator Interface**: User-facing, handles auth, file uploads, validation
 - **LAMB Core**: Business logic, database operations, completions
 
 ### Plugin Types
-| Type | Purpose | Location |
-|------|---------|----------|
-| Prompt Processor | Transform messages | `lamb/completions/pps/` |
-| Connector | Call LLM providers | `lamb/completions/connectors/` |
-| RAG Processor | Retrieve KB context | `lamb/completions/rag/` |
+
+| Type             | Purpose             | Location                       |
+| ---------------- | ------------------- | ------------------------------ |
+| Prompt Processor | Transform messages  | `lamb/completions/pps/`        |
+| Connector        | Call LLM providers  | `lamb/completions/connectors/` |
+| RAG Processor    | Retrieve KB context | `lamb/completions/rag/`        |
 
 ### User Types
-| Type | Access |
-|------|--------|
-| `creator` | Full creator interface access |
+
+| Type       | Access                        |
+| ---------- | ----------------------------- |
+| `creator`  | Full creator interface access |
 | `end_user` | Redirected to Open WebUI only |
 
 ### Organization Roles
-| Role | Permissions |
-|------|-------------|
-| `owner` | Full control |
-| `admin` | Manage settings and members |
-| `member` | Create assistants |
+
+| Role     | Permissions                 |
+| -------- | --------------------------- |
+| `owner`  | Full control                |
+| `admin`  | Manage settings and members |
+| `member` | Create assistants           |
 
 ---
 
@@ -218,6 +223,7 @@ Browser → Creator Interface API (/creator) → LAMB Core API (/lamb/v1) → Da
    - Internal/core → `lamb/*.py`
 
 2. **Add endpoint:**
+
    ```python
    @router.get("/my-endpoint")
    async def my_endpoint(request: Request):
@@ -254,41 +260,46 @@ Browser → Creator Interface API (/creator) → LAMB Core API (/lamb/v1) → Da
 ## 📊 API Endpoint Quick Reference
 
 ### Authentication
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| POST | `/creator/login` | User login |
-| POST | `/creator/signup` | User signup |
-| GET | `/creator/user/current` | Get current user |
+
+| Method | Endpoint                | Purpose          |
+| ------ | ----------------------- | ---------------- |
+| POST   | `/creator/login`        | User login       |
+| POST   | `/creator/signup`       | User signup      |
+| GET    | `/creator/user/current` | Get current user |
 
 ### Assistants
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| GET | `/creator/assistant/list` | List user's assistants |
-| POST | `/creator/assistant/create` | Create assistant |
-| GET | `/creator/assistant/{id}` | Get assistant |
-| PUT | `/creator/assistant/update` | Update assistant |
-| DELETE | `/creator/assistant/delete/{id}` | Delete assistant |
+
+| Method | Endpoint                         | Purpose                |
+| ------ | -------------------------------- | ---------------------- |
+| GET    | `/creator/assistant/list`        | List user's assistants |
+| POST   | `/creator/assistant/create`      | Create assistant       |
+| GET    | `/creator/assistant/{id}`        | Get assistant          |
+| PUT    | `/creator/assistant/update`      | Update assistant       |
+| DELETE | `/creator/assistant/delete/{id}` | Delete assistant       |
 
 ### Knowledge Bases
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| GET | `/creator/knowledgebases/user` | List user's KBs |
-| POST | `/creator/knowledgebases/create` | Create KB |
-| POST | `/creator/knowledgebases/{id}/upload` | Upload document |
-| GET | `/creator/knowledgebases/{id}/query` | Query KB |
+
+| Method | Endpoint                              | Purpose         |
+| ------ | ------------------------------------- | --------------- |
+| GET    | `/creator/knowledgebases/user`        | List user's KBs |
+| POST   | `/creator/knowledgebases/create`      | Create KB       |
+| POST   | `/creator/knowledgebases/{id}/upload` | Upload document |
+| GET    | `/creator/knowledgebases/{id}/query`  | Query KB        |
 
 ### Completions (OpenAI-compatible)
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| GET | `/v1/models` | List available assistants |
-| POST | `/v1/chat/completions` | Generate completion |
+
+| Method | Endpoint               | Purpose                   |
+| ------ | ---------------------- | ------------------------- |
+| GET    | `/v1/models`           | List available assistants |
+| POST   | `/v1/chat/completions` | Generate completion       |
 
 ### Admin
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| GET | `/creator/admin/users` | List users |
-| POST | `/creator/admin/users/create` | Create user |
-| PUT | `/creator/admin/users/{id}/status` | Enable/disable user |
+
+| Method | Endpoint                           | Purpose             |
+| ------ | ---------------------------------- | ------------------- |
+| GET    | `/creator/admin/users`             | List users          |
+| POST   | `/creator/admin/users/create`      | Create user         |
+| PUT    | `/creator/admin/users/{id}/status` | Enable/disable user |
 
 ---
 
@@ -302,13 +313,12 @@ Browser → Creator Interface API (/creator) → LAMB Core API (/lamb/v1) → Da
 
 ## 📝 Document Versions
 
-| Document | Purpose | When to Use |
-|----------|---------|-------------|
-| `lamb_architecture_v2.md` | **Primary reference** | Start here for any task |
-| `lamb_architecture.md` | Full detailed reference | Deep implementation details |
-| `lamb_architecture_small.md` | Legacy condensed | Deprecated, use v2 |
+| Document                     | Purpose                 | When to Use                 |
+| ---------------------------- | ----------------------- | --------------------------- |
+| `lamb_architecture_v2.md`    | **Primary reference**   | Start here for any task     |
+| `lamb_architecture.md`       | Full detailed reference | Deep implementation details |
+| `lamb_architecture_small.md` | Legacy condensed        | Deprecated, use v2          |
 
 ---
 
-*Last Updated: February 13, 2026*
-
+_Last Updated: February 13, 2026_
