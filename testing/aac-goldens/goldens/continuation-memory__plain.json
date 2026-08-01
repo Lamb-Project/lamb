@@ -1,0 +1,110 @@
+{
+ "scenario": "continuation-memory",
+ "mode": "plain",
+ "notes": "Session persistence across separate HTTP requests.",
+ "session_id": "0369a791-9dc4-4d76-a0b9-388534a5a675",
+ "captured_at": "2026-07-17T07:45:48.002529+00:00",
+ "base": "http://localhost:9099",
+ "turns": [
+  {
+   "user": "Remember this number: 4242. Just confirm you have it.",
+   "result": {
+    "http_status": 200,
+    "elapsed_s": 5.01,
+    "body": {
+     "response": "Got it — 4242 remembered.\n\n**Next?**\n1. Create a new assistant\n2. Work with an existing assistant\n3. Other — tell me",
+     "stats": {
+      "turns": 1,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "total_tool_time_ms": 0,
+      "model": "deepseek-v4-flash",
+      "usage": {
+       "prompt_tokens": 6405,
+       "completion_tokens": 56,
+       "total_tokens": 6461,
+       "llm_calls": 1
+      }
+     }
+    }
+   },
+   "envelope_after": {
+    "id": "0369a791-9dc4-4d76-a0b9-388534a5a675",
+    "assistant_id": null,
+    "user_email": "aac-goldens@test.local",
+    "organization_id": 1,
+    "status": "active",
+    "conversation": [
+     {
+      "role": "user",
+      "content": "Remember this number: 4242. Just confirm you have it."
+     },
+     {
+      "role": "assistant",
+      "content": "Got it — 4242 remembered.\n\n**Next?**\n1. Create a new assistant\n2. Work with an existing assistant\n3. Other — tell me"
+     }
+    ],
+    "created_at": "2026-07-17T07:45:47.990543",
+    "updated_at": "2026-07-17T07:45:53.006768",
+    "title": "golden:continuation-memory__plain",
+    "pending_action": null,
+    "skill_info": null,
+    "tool_audit": []
+   }
+  },
+  {
+   "user": "What number did I ask you to remember? Answer with the number only.",
+   "result": {
+    "http_status": 200,
+    "elapsed_s": 5.35,
+    "body": {
+     "response": "4242\n\n**Next?**\n1. Create a new assistant\n2. Work with an existing assistant\n3. Other — tell me",
+     "stats": {
+      "turns": 2,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "total_tool_time_ms": 0,
+      "model": "deepseek-v4-flash",
+      "usage": {
+       "prompt_tokens": 6458,
+       "completion_tokens": 44,
+       "total_tokens": 6502,
+       "llm_calls": 1
+      }
+     }
+    }
+   },
+   "envelope_after": {
+    "id": "0369a791-9dc4-4d76-a0b9-388534a5a675",
+    "assistant_id": null,
+    "user_email": "aac-goldens@test.local",
+    "organization_id": 1,
+    "status": "active",
+    "conversation": [
+     {
+      "role": "user",
+      "content": "Remember this number: 4242. Just confirm you have it."
+     },
+     {
+      "role": "assistant",
+      "content": "Got it — 4242 remembered.\n\n**Next?**\n1. Create a new assistant\n2. Work with an existing assistant\n3. Other — tell me"
+     },
+     {
+      "role": "user",
+      "content": "What number did I ask you to remember? Answer with the number only."
+     },
+     {
+      "role": "assistant",
+      "content": "4242\n\n**Next?**\n1. Create a new assistant\n2. Work with an existing assistant\n3. Other — tell me"
+     }
+    ],
+    "created_at": "2026-07-17T07:45:47.990543",
+    "updated_at": "2026-07-17T07:45:58.369188",
+    "title": "golden:continuation-memory__plain",
+    "pending_action": null,
+    "skill_info": null,
+    "tool_audit": []
+   }
+  }
+ ]
+}
