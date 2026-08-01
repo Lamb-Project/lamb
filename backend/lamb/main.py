@@ -18,7 +18,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from .simple_lti.simple_lti_main import router as simple_lti_router
 from .completions.main import router as completions_router
-from .mcp_router import router as mcp_router  # MCP protocol - KEEP (used by frontend for external MCP clients)
 from .lti_router import router as lti_router  # Unified LTI activity endpoint
 
 logging.basicConfig(level=logging.WARNING)
@@ -83,7 +82,6 @@ app.include_router(lti_creator_router, prefix="/v1/lti_creator")  # LTI creator 
 app.include_router(lti_router, prefix="/v1/lti")  # Unified LTI activity endpoint
 app.include_router(simple_lti_router)
 app.include_router(completions_router, prefix="/v1/completions")
-app.include_router(mcp_router, prefix="/v1/mcp")  # MCP protocol - KEEP (used by frontend)
 
 @app.get("/v1/lti_users")
 async def read_lti_users(request: Request):
