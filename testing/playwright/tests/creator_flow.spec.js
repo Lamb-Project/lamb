@@ -1,5 +1,8 @@
 const { test, expect } = require("@playwright/test");
 const path = require("path");
+const {
+  submitKnowledgeBaseCreation,
+} = require("./utils/knowledge_base");
 // Load .env explicitly and silence tips/logging via quiet: true
 require("dotenv").config({ path: path.join(__dirname, ".env"), quiet: true });
 
@@ -28,7 +31,7 @@ test.describe.serial("Creator flow (KB + ingest + query)", () => {
       name: /create knowledge base/i,
     });
     await expect(submitButton).toBeVisible({ timeout: 5_000 });
-    await submitButton.click();
+    await submitKnowledgeBaseCreation(page, submitButton);
 
     // Wait for dialog to close and KB to appear in list
     await expect(dialog).not.toBeVisible({ timeout: 10_000 });
