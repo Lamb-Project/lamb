@@ -1,0 +1,119 @@
+[project]
+name = "lamb-kb-server"
+version = "1.0.0"
+description = "LAMB Knowledge Base Server — chunking, embedding, and vector storage microservice"
+requires-python = ">=3.11"
+dependencies = [
+    # Web framework
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.0.0",
+
+    # Database
+    "sqlalchemy>=2.0.30",
+
+    # File upload handling (multipart bodies)
+    "python-multipart>=0.0.9",
+
+    # HTTP client (shared helper usage)
+    "requests>=2.31.0",
+
+    # Default vector backend (ChromaDB) — always included.
+    "chromadb>=0.6.3",
+
+    # Chunking — aligned with lamb-kb-server-stable defaults.
+    "langchain-text-splitters>=0.3.0,<0.4.0",
+]
+
+[project.optional-dependencies]
+# Optional vector backend.
+qdrant = [
+    "qdrant-client>=1.9.0",
+]
+
+# Optional local embeddings (sentence-transformers-backed).
+local = [
+    "sentence-transformers>=2.2.2",
+]
+
+# OpenAI SDK is pulled in as a transitive dep of chromadb for the built-in
+# OpenAIEmbeddingFunction, but we pin it explicitly in the ``openai`` extra
+# for clarity.
+openai = [
+    "openai>=1.0.0",
+]
+
+all = [
+    "lamb-kb-server[qdrant,local,openai]",
+]
+
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "httpx>=0.27.0",
+    "ruff>=0.4.0",
+    "vcrpy>=6.0",
+    "mutmut>=2.4",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+# B008: function call in default argument — standard FastAPI idiom (Depends()).
+# B904: raise from — optional-dep guards deliberately re-raise without chaining.
+# B905: zip strict — prefer concise zip() over strict=False noise everywhere.
+ignore = ["B008", "B904", "B905"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "unit: tier 1 — direct module tests, no HTTP",
+    "integration: tier 2 — ASGI in-process, real DB + worker",
+    "e2e: tier 3 — real HTTP, docker stack, optional cassettes",
+    "slow: takes more than ~5s",
+    "needs_docker: requires Docker socket",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["backend"]
+branch = true
+omit = ["backend/__init__.py", "*/tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
+[tool.mutmut]
+# mutmut>=3 auto-discovery couldn't link mutants to our class-based tests.
+# scripts/manual_mutation_test*.sh do the actual mutation testing.
+# Config retained for future tooling that may handle our layout.
+paths_to_mutate = [
+    "backend/services/ingestion_service.py",
+    "backend/tasks/worker.py",
+]
+tests_dir = [
+    "tests/unit/test_services.py",
+    "tests/integration/test_worker.py",
+    "tests/integration/test_content_pipeline.py",
+]
+pytest_add_cli_args = ["-q", "--no-header", "-x", "-m", "not slow"]
