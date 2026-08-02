@@ -212,7 +212,10 @@ class SignupErrorResponse(BaseModel):
 
 class UserResponse(BaseModel):
     id: int
-    email: EmailStr
+    # Plain str, not EmailStr: response models must be able to serialise every
+    # address the write path accepted. EmailStr rejects reserved TLDs (.test,
+    # .local), which turned a stored address into an unhandled 500 (#460).
+    email: str
     name: str
     role: str
     user_config: dict
@@ -298,7 +301,7 @@ class RoleUpdateResponse(BaseModel):
 
 class CurrentUserResponse(BaseModel):
     id: int
-    email: EmailStr
+    email: str  # see UserResponse.email — #460
     name: str
 
 

@@ -1,0 +1,118 @@
+{
+ "scenario": "multi-tool-list",
+ "mode": "stream",
+ "notes": "Auto-policy tool round (assistant.list).",
+ "session_id": "aaa5ca39-211b-4a5b-a053-9cbf431d574b",
+ "captured_at": "2026-07-17T07:39:05.906746+00:00",
+ "base": "http://localhost:9099",
+ "turns": [
+  {
+   "user": "Please list my assistants and tell me exactly how many I have.",
+   "result": {
+    "http_status": 200,
+    "elapsed_s": 28.47,
+    "frames": [
+     {
+      "status": "thinking"
+     },
+     {
+      "status": "tool",
+      "command": "Loading assistants"
+     },
+     {
+      "status": "tool_done",
+      "command": "Loading assistants",
+      "success": true
+     },
+     {
+      "status": "thinking"
+     },
+     {
+      "status": "responding"
+     },
+     {
+      "content": "You have **4 assistants**:\n\n<<<CANVAS title=\"Your Assistants\">>>\n| ID | Name | Model | Published |\n|----|------|-------|-----------|\n| 210 | 280_golden_test_es_4 | gpt-4o-mini | No |\n| 209 | 280_golden_test_es_3 | gpt-4o-mini | No |\n| 208 | 280_golden_test_es_2 | gpt-4o-mini | No |\n| 207 | 280_golden_test_es | gpt-4o-mini | No |\n<<<END_CANVAS>>>\n\nAll four use **gpt-4o-mini**, are unpublished, and have a Spanish system prompt (\"Eres un asistente de prueba\").\n\n**Next?**\n1. Inspect one in detail\n2. Create a new assistant\n3. Other — tell me"
+     },
+     {
+      "done": true,
+      "stats": {
+       "turns": 1,
+       "tool_calls": 1,
+       "tool_errors": 0,
+       "total_tool_time_ms": 27.6,
+       "model": "deepseek-v4-flash",
+       "usage": {
+        "prompt_tokens": 13799,
+        "completion_tokens": 224,
+        "total_tokens": 14023,
+        "llm_calls": 2
+       }
+      }
+     },
+     {
+      "_done_marker": true
+     }
+    ]
+   },
+   "envelope_after": {
+    "id": "aaa5ca39-211b-4a5b-a053-9cbf431d574b",
+    "assistant_id": null,
+    "user_email": "aac-goldens@test.local",
+    "organization_id": 1,
+    "status": "active",
+    "conversation": [
+     {
+      "role": "user",
+      "content": "Please list my assistants and tell me exactly how many I have."
+     },
+     {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+       {
+        "id": "8HzZlflrexUHHAexYJkPSEDBtU1yfvlE",
+        "type": "function",
+        "function": {
+         "name": "execute_command",
+         "arguments": "{\"command\": \"lamb assistant list\"}"
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "8HzZlflrexUHHAexYJkPSEDBtU1yfvlE",
+      "content": "{\"success\": true, \"data\": {\"assistants\": [{\"id\": 210, \"name\": \"280_golden_test_es_4\", \"description\": \"\", \"owner\": \"aac-goldens@test.local\", \"organization_id\": null, \"api_callback\": \"{\\\"llm\\\": \\\"gpt-4o-mini\\\", \\\"connector\\\": \\\"openai\\\", \\\"prompt_processor\\\": \\\"simple_augment\\\"}\", \"metadata\": \"{\\\"llm\\\": \\\"gpt-4o-mini\\\", \\\"connector\\\": \\\"openai\\\", \\\"prompt_processor\\\": \\\"simple_augment\\\"}\", \"system_prompt\": \"Eres un asistente de prueba.\", \"prompt_template\": \"{user_input}\", \"RAG_Top_k\": 3, \"RAG_collections\": \"\", \"group_id\": \"c5f14b0e-3d7d-45e3-9a39-38043d0d9ce7\", \"group_name\": \"assistant_210\", \"oauth_consumer_name\": null, \"published_at\": 1784273464, \"published\": false, \"created_at\": 1784273464, \"updated_at\": 1784273464, \"access_level\": null, \"is_owner\": null}, {\"id\": 209, \"name\": \"280_golden_test_es_3\", \"description\": \"\", \"owner\": \"aac-goldens@test.local\", \"organization_id\": null, \"api_callback\": \"{\\\"llm\\\": \\\"gpt-4o-mini\\\", \\\"connector\\\": \\\"openai\\\", \\\"prompt_processor\\\": \\\"simple_augment\\\"}\", \"metadata\": \"{\\\"llm\\\": \\\"gpt-4o-mini\\\", \\\"connector\\\": \\\"openai\\\", \\\"prompt_processor\\\": \\\"simple_augment\\\"}\", \"system_prompt\": \"Eres un asistente de prueba.\", \"prompt_template\": \"{user_input}\", \"RAG_Top_k\": 3, \"RAG_collections\": \"\", \"group_id\": \"14c4d62c-e0e5-4acf-bafd-2a7cbcf67b6f\", \"group_name\": \"assistant_209\", \"oauth_consumer_name\": null, \"published_at\": 1784273389, \"published\": false, \"created_at\": 1784273389, \"updated_at\": 1784273389, \"access_level\": null, \"is_owner\": null}, {\"id\": 208, \"name\": \"280_golden_test_es_2\", \"description\": \"\", \"owner\": \"aac-goldens@test.local\", \"organization_id\": null, \"api_callback\": \"{\\\"llm\\\": \\\"gpt-4o-mini\\\", \\\"connector\\\": \\\"openai\\\", \\\"prompt_processor\\\": \\\"simple_augment\\\"}\", \"metadata\": \"{\\\"llm\\\": \\\"gpt-4o-mini\\\", \\\"connector\\\": \\\"openai\\\", \\\"prompt_processor\\\": \\\"simple_augment\\\"}\", \"system_prompt\": \"Eres un asistente de prueba.\", \"prompt_template\": \"{user_input}\", \"RAG_Top_k\": 3, \"RAG_collections\": \"\", \"group_id\": \"69648ab1-4625-4d07-a197-3564d17b4643\", \"group_name\": \"assistant_208\", \"oauth_consumer_name\": null, \"published_at\": 1784191298, \"published\": false, \"created_at\": 1784191298, \"updated_at\": 1784191298, \"access_level\": null, \"is_owner\": null}, {\"id\": 207, \"name\": \"280_golden_test_es\", \"description\": \"\", \"owner\": \"aac-goldens@test.local\", \"organization_id\": null, \"api_callback\": \"{\\\"llm\\\": \\\"gpt-4o-mini\\\", \\\"connector\\\": \\\"openai\\\", \\\"prompt_processor\\\": \\\"simple_augment\\\"}\", \"metadata\": \"{\\\"llm\\\": \\\"gpt-4o-mini\\\", \\\"connector\\\": \\\"openai\\\", \\\"prompt_processor\\\": \\\"simple_augment\\\"}\", \"system_prompt\": \"Eres un asistente de prueba.\", \"prompt_template\": \"{user_input}\", \"RAG_Top_k\": 3, \"RAG_collections\": \"\", \"group_id\": \"a1fff284-f306-4e59-af58-368598d18b45\", \"group_name\": \"assistant_207\", \"oauth_consumer_name\": null, \"published_at\": 1784191243, \"published\": false, \"created_at\": 1784191243, \"updated_at\": 1784191243, \"access_level\": null, \"is_owner\": null}], \"total_count\": 4}}"
+     },
+     {
+      "role": "assistant",
+      "content": "You have **4 assistants**:\n\n<<<CANVAS title=\"Your Assistants\">>>\n| ID | Name | Model | Published |\n|----|------|-------|-----------|\n| 210 | 280_golden_test_es_4 | gpt-4o-mini | No |\n| 209 | 280_golden_test_es_3 | gpt-4o-mini | No |\n| 208 | 280_golden_test_es_2 | gpt-4o-mini | No |\n| 207 | 280_golden_test_es | gpt-4o-mini | No |\n<<<END_CANVAS>>>\n\nAll four use **gpt-4o-mini**, are unpublished, and have a Spanish system prompt (\"Eres un asistente de prueba\").\n\n**Next?**\n1. Inspect one in detail\n2. Create a new assistant\n3. Other — tell me"
+     }
+    ],
+    "created_at": "2026-07-17T07:39:05.895587",
+    "updated_at": "2026-07-17T07:39:34.373712",
+    "title": "golden:multi-tool-list__stream",
+    "pending_action": null,
+    "skill_info": null,
+    "tool_audit": [
+     {
+      "ts": "2026-07-17T07:39:08.173022Z",
+      "command": "lamb assistant list",
+      "action_key": "assistant.list",
+      "intent": "Loading assistants",
+      "success": true,
+      "elapsed_ms": 27.6,
+      "artifacts": [
+       {
+        "type": "assistant",
+        "id": null,
+        "action": "read"
+       }
+      ],
+      "summary": "keys: assistants, total_count"
+     }
+    ]
+   }
+  }
+ ]
+}

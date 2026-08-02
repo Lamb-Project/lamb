@@ -1,5 +1,8 @@
 const { test, expect } = require("@playwright/test");
 const path = require("path");
+const {
+  submitKnowledgeBaseCreation,
+} = require("./utils/knowledge_base");
 require("dotenv").config({ path: path.join(__dirname, ".env"), quiet: true });
 
 const LOGIN_EMAIL = process.env.LOGIN_EMAIL || "admin@owi.com";
@@ -63,7 +66,7 @@ test.describe.serial("Knowledge Base Delete Modal", () => {
     const submitButton = dialog.getByRole("button", {
       name: /create knowledge base/i,
     });
-    await submitButton.click();
+    await submitKnowledgeBaseCreation(page, submitButton);
 
     // First confirm the KB appears in the table, then the modal closes.
     // This ordering is more resilient when backend/API is slower.

@@ -223,3 +223,9 @@ def async_return():
 def async_raise():
     """Helper to assign coroutine-raising callables to ``MagicMock`` attributes."""
     return _async_raise
+
+# Vendored-tau test suite (adopted from huggingface/tau v0.1.5, MIT).
+# Pins the anyio backend so @pytest.mark.anyio tests run on asyncio only.
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"

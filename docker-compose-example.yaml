@@ -86,6 +86,7 @@ services:
       - PIP_CACHE_DIR=/root/.cache/pip
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
+      # IMPORTANT: rotate LIBRARY_MANAGER_TOKEN in production — the `change-me` default is a footgun.
       - LAMB_API_TOKEN=${LIBRARY_MANAGER_TOKEN:-change-me}
       - DATA_DIR=${LAMB_PROJECT_PATH}/library-manager/data
       - GLOBAL_LOG_LEVEL=WARNING
@@ -163,11 +164,12 @@ services:
       LOG_LEVEL=$$(echo \"$${KB_LOG_LEVEL:-$${GLOBAL_LOG_LEVEL:-WARNING}}\" | tr '[:upper:]' '[:lower:]') && \
       exec setpriv --reuid=${HOST_UID:-1000} --regid=${HOST_GID:-1001} --clear-groups uvicorn main:app --host 0.0.0.0 --port 9092 --reload --log-level $$LOG_LEVEL --no-access-log"
   backend:
-    image: python:3.11-slim
+    image: python:3.12-slim
     extra_hosts:
       - "host.docker.internal:host-gateway"
     working_dir: ${LAMB_PROJECT_PATH}/backend
     environment:
+      - AAC_LOOP=${AAC_LOOP:-legacy}
       - PORT=9099
       - PIP_DISABLE_PIP_VERSION_CHECK=1
       - PIP_CACHE_DIR=/root/.cache/pip
@@ -175,6 +177,7 @@ services:
       - PYTHONUNBUFFERED=1
       - GLOBAL_LOG_LEVEL=${GLOBAL_LOG_LEVEL:-WARNING}
       - LAMB_LIBRARY_SERVER=http://library-manager:9091
+      # IMPORTANT: rotate LIBRARY_MANAGER_TOKEN in production — the `change-me` default is a footgun.
       - LAMB_LIBRARY_TOKEN=${LIBRARY_MANAGER_TOKEN:-change-me}
       - LAMB_KB_SERVER_V2=http://kb-server:9092
       - LAMB_KB_SERVER_V2_TOKEN=${KB_SERVER_V2_TOKEN:-change-me}

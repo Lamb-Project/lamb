@@ -201,13 +201,16 @@ async def create_completion(
             async def _tracked_stream():
                 async for chunk in generator:
                     yield chunk
-                # Stream finished — fire-and-forget usage log
-                if usage_out and provider:
+                # Stream finished — fire-and-forget usage log. Multi-provider
+                # connectors report their provider family in usage_out; the
+                # static connector map is the fallback.
+                effective_provider = (usage_out.pop("provider", None) if usage_out else None) or provider
+                if usage_out and effective_provider:
                     db_manager.log_token_usage(
                         assistant_id=assistant,
                         org_id=assistant_details.organization_id,
                         model_name=llm,
-                        provider=provider,
+                        provider=effective_provider,
                         usage_data=usage_out
                     )
 
@@ -222,14 +225,18 @@ async def create_completion(
                 assistant_owner=assistant_details.owner
             )
             
-            if connector != "ollama" and isinstance(result, dict) and result.get("usage") and provider:
-                db_manager.log_token_usage(
-                    assistant_id=assistant,
-                    org_id=assistant_details.organization_id,
-                    model_name=llm,
-                    provider=provider,
-                    usage_data=result["usage"]
-                )
+            if connector != "ollama" and isinstance(result, dict) and result.get("usage"):
+                # Provider hint from multi-provider connectors rides inside
+                # usage; pop it so the client payload stays standard.
+                effective_provider = result["usage"].pop("provider", None) or provider
+                if effective_provider:
+                    db_manager.log_token_usage(
+                        assistant_id=assistant,
+                        org_id=assistant_details.organization_id,
+                        model_name=llm,
+                        provider=effective_provider,
+                        usage_data=result["usage"]
+                    )
             return result
     except Exception as e:
         logger.error(f"Error in create_completion: {str(e)}", exc_info=True)
@@ -559,13 +566,15 @@ async def run_lamb_assistant(
                     yield chunk
                 if sources_chunk and not sources_sent:
                     yield sources_chunk
-                # Log usage when stream completes for tracked connectors
-                if connector != "ollama" and usage_out and provider and assistant_details.organization_id is not None:
+                # Log usage when stream completes for tracked connectors.
+                # Multi-provider connectors report their family in usage_out.
+                effective_provider = (usage_out.pop("provider", None) if usage_out else None) or provider
+                if connector != "ollama" and usage_out and effective_provider and assistant_details.organization_id is not None:
                     db_manager.log_token_usage(
                         assistant_id=assistant,
                         org_id=assistant_details.organization_id,
                         model_name=llm,
-                        provider=provider,
+                        provider=effective_provider,
                         usage_data=usage_out
                     )
 
@@ -585,15 +594,19 @@ async def run_lamb_assistant(
                  logger.error(f"Non-streaming connector did not return a dict, got: {type(llm_response)}")
                  raise HTTPException(status_code=500, detail="Internal server error: Connector returned unexpected type for non-streaming response.")
 
-            # Log usage for tracked connectors on non-streaming responses
-            if connector != "ollama" and llm_response.get("usage") and provider and assistant_details.organization_id is not None:
-                db_manager.log_token_usage(
-                    assistant_id=assistant,
-                    org_id=assistant_details.organization_id,
-                    model_name=llm,
-                    provider=provider,
-                    usage_data=llm_response["usage"]
-                )
+            # Log usage for tracked connectors on non-streaming responses.
+            # Multi-provider connectors ride a provider hint inside usage;
+            # pop it so the client payload stays standard.
+            if connector != "ollama" and llm_response.get("usage") and assistant_details.organization_id is not None:
+                effective_provider = llm_response["usage"].pop("provider", None) or provider
+                if effective_provider:
+                    db_manager.log_token_usage(
+                        assistant_id=assistant,
+                        org_id=assistant_details.organization_id,
+                        model_name=llm,
+                        provider=effective_provider,
+                        usage_data=llm_response["usage"]
+                    )
 
             # Opt-in: surface the retrieved RAG context so the evaluation
             # framework can score answers against what was actually retrieved.

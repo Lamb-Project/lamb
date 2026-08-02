@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 ARG NODE_IMAGE=node:20-alpine
-ARG PYTHON_IMAGE=python:3.11-slim
+ARG PYTHON_IMAGE=python:3.12-slim
 
 FROM ${NODE_IMAGE} AS frontend-build
 WORKDIR /frontend/svelte-app

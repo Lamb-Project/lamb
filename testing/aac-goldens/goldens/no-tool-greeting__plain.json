@@ -1,0 +1,56 @@
+{
+ "scenario": "no-tool-greeting",
+ "mode": "plain",
+ "notes": "No-tool-call path. THE divergence-bug witness: on legacy code the plain endpoint returns the first LLM response, the stream endpoint discards it and makes a second streamed call.",
+ "session_id": "8d777942-c25d-4d44-bdbc-02cd0aed1e9c",
+ "captured_at": "2026-07-17T07:38:22.610728+00:00",
+ "base": "http://localhost:9099",
+ "turns": [
+  {
+   "user": "Hello! In one short sentence, what can you help me with?",
+   "result": {
+    "http_status": 200,
+    "elapsed_s": 5.99,
+    "body": {
+     "response": "I help you create, configure, test, and refine AI learning assistants on the LAMB platform.\n\n**Next?**\n1. Create a new assistant\n2. Improve an existing assistant\n3. Other — tell me",
+     "stats": {
+      "turns": 1,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "total_tool_time_ms": 0,
+      "model": "deepseek-v4-flash",
+      "usage": {
+       "prompt_tokens": 6404,
+       "completion_tokens": 70,
+       "total_tokens": 6474,
+       "llm_calls": 1
+      }
+     }
+    }
+   },
+   "envelope_after": {
+    "id": "8d777942-c25d-4d44-bdbc-02cd0aed1e9c",
+    "assistant_id": null,
+    "user_email": "aac-goldens@test.local",
+    "organization_id": 1,
+    "status": "active",
+    "conversation": [
+     {
+      "role": "user",
+      "content": "Hello! In one short sentence, what can you help me with?"
+     },
+     {
+      "role": "assistant",
+      "content": "I help you create, configure, test, and refine AI learning assistants on the LAMB platform.\n\n**Next?**\n1. Create a new assistant\n2. Improve an existing assistant\n3. Other — tell me"
+     }
+    ],
+    "created_at": "2026-07-17T07:38:22.600927",
+    "updated_at": "2026-07-17T07:38:28.597307",
+    "title": "golden:no-tool-greeting__plain",
+    "pending_action": null,
+    "skill_info": null,
+    "tool_audit": []
+   }
+  }
+ ]
+}
