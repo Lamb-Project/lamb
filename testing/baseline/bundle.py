@@ -81,6 +81,19 @@ def _snapshot_db(src: Path, dest: Path) -> dict:
     return {"present": True, "bytes": dest.stat().st_size, "sha256_16": _sha(dest)}
 
 
+def _integrity(path: Path) -> str:
+    """SQLite's own verdict on a database file. Cheap, and the only way to know
+    a copy is usable rather than merely present."""
+    try:
+        con = sqlite3.connect(str(path))
+        try:
+            return con.execute("PRAGMA integrity_check").fetchone()[0]
+        finally:
+            con.close()
+    except sqlite3.DatabaseError as e:
+        return f"unreadable: {e}"
+
+
 def _stack_running() -> list[str]:
     try:
         out = subprocess.run(
@@ -117,8 +130,15 @@ def save(name: str) -> Path:
             continue
         info = _snapshot_db(src, dest / "db" / f"{key}.db")
         info["path"] = rel
+        verdict = _integrity(dest / "db" / f"{key}.db")
+        info["integrity"] = verdict
         manifest["databases"][key] = info
-        print(f"  ✓ {key}: {info['bytes']:,} bytes")
+        if verdict != "ok":
+            raise SystemExit(
+                f"refusing to save: {key} is not intact ({verdict}).\n"
+                f"A checkpoint of a damaged database is worse than none — it looks\n"
+                f"like a safety net and is not one.")
+        print(f"  ✓ {key}: {info['bytes']:,} bytes, integrity ok")
         if key == "lamb":
             con = sqlite3.connect(dest / "db" / "lamb.db")
             try:
@@ -185,6 +205,18 @@ def restore(name: str, force: bool = False) -> None:
             shutil.rmtree(target)
         shutil.copytree(src / "trees" / key, target)
         print(f"  ✓ {key} -> {info['path']} ({info['files']} files)")
+
+    print("\nchecking the restored databases:")
+    damaged = []
+    for key, info in manifest["databases"].items():
+        if not info.get("present"):
+            continue
+        verdict = _integrity(LAMB / info["path"])
+        print(f"  {'✓' if verdict == 'ok' else '✗'} {key}: {verdict[:60]}")
+        if verdict != "ok":
+            damaged.append(key)
+    if damaged:
+        raise SystemExit(f"restore produced damaged databases: {', '.join(damaged)}")
 
     print(f"\nrestored '{name}' — schema v{manifest.get('schema_version')}, "
           f"captured from {manifest['git_branch']}@{manifest['git_commit']}")
