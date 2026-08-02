@@ -51,6 +51,7 @@ class MigrationRunner:
                 cursor = connection.cursor()
 
                 self._ensure_schema_version_table(cursor)
+                self._verify_applied_identities(cursor)
                 applied = self._get_applied_versions(cursor)
                 pending = [v for v in self._defined_versions()
                            if v not in applied and v <= LATEST_VERSION]
@@ -99,6 +100,69 @@ class MigrationRunner:
                 applied_at INTEGER NOT NULL
             )
         """)
+        # Record *which* migration claimed each number, not just that something
+        # did. Without this a number can be silently reused by a different
+        # migration from another branch (#465). Added in place so existing
+        # databases gain it without their own migration.
+        if not self._column_exists(cursor, 'schema_version', 'name'):
+            cursor.execute(
+                f"ALTER TABLE {self.db.table_prefix}schema_version "
+                f"ADD COLUMN name TEXT")
+
+    def _verify_applied_identities(self, cursor):
+        """Refuse to run if a number already applied now names a different
+        migration.
+
+        The applied-set logic means a version already recorded is simply not
+        re-run. That is right when it is the same migration, and catastrophic
+        when it is not: two branches each numbered a migration 26, one merged,
+        and the other became unreachable — its tables never created, no error,
+        the schema reporting itself current (#465).
+
+        Databases predating identity tracking have no recorded name; those rows
+        are skipped rather than guessed at.
+        """
+        cursor.execute(
+            f"SELECT version, name FROM {self.db.table_prefix}schema_version "
+            f"WHERE name IS NOT NULL")
+        conflicts = []
+        for version, recorded in cursor.fetchall():
+            if not hasattr(self, f"_migration_{version}"):
+                continue
+            current = self._migration_identity(version)
+            if recorded != current:
+                conflicts.append((version, recorded, current))
+
+        if conflicts:
+            lines = [
+                "Migration identity conflict — refusing to run.",
+                "",
+                "A migration number recorded on this database now names different",
+                "work in the code. Applying nothing is safe; applying the wrong",
+                "thing is not. This is what happens when two branches assign the",
+                "same number and only one survives the merge.",
+                "",
+            ]
+            for version, recorded, current in conflicts:
+                lines += [
+                    f"  version {version}:",
+                    f"    this database ran: {recorded}",
+                    f"    the code now has:  {current}",
+                ]
+            lines += [
+                "",
+                "Fix: give the new migration an unused number, so both can run.",
+                "Do not renumber the one this database already applied.",
+            ]
+            raise RuntimeError("\n".join(lines))
+
+    def _migration_identity(self, version: int) -> str:
+        """A stable, human-meaningful name for a migration: the first line of
+        its docstring. Two different migrations sharing a number will not share
+        this, which is what makes the collision detectable."""
+        method = getattr(self, f"_migration_{version}", None)
+        doc = (method.__doc__ or "").strip() if method else ""
+        return " ".join(doc.splitlines()[0].split())[:120] if doc else f"migration {version}"
 
     def _defined_versions(self) -> list:
         """Every migration this code defines, ascending.
@@ -138,8 +202,8 @@ class MigrationRunner:
         """Record that a migration version has been applied."""
         cursor.execute(
             f"INSERT OR IGNORE INTO {self.db.table_prefix}schema_version "
-            f"(version, applied_at) VALUES (?, ?)",
-            (version, int(time.time()))
+            f"(version, applied_at, name) VALUES (?, ?, ?)",
+            (version, int(time.time()), self._migration_identity(version))
         )
 
     # ── Helper ──────────────────────────────────────────────────────────
