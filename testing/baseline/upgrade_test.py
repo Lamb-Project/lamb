@@ -124,6 +124,9 @@ def main() -> int:
     ap.add_argument("--checkpoint", required=True)
     ap.add_argument("--to", required=True, help="git revision to upgrade to")
     ap.add_argument("--tag", default="b2", help="seed tag the checkpoint contains")
+    ap.add_argument("--keep-upgraded", action="store_true",
+                    help="leave the upgraded database in place for inspection "
+                         "instead of restoring the checkpoint at the end")
     a = ap.parse_args()
 
     shutil.copy2(HERE / "verify" / "test_baseline.py", TOOLS / "test_baseline.py")
@@ -175,10 +178,18 @@ def main() -> int:
     ok_after, summary_after = verify(a.tag)
     print(f"  {summary_after}")
 
-    print("\n[6/6] returning the code to where you left it")
+    print("\n[6/6] returning the machine to where you left it")
     stack("stop")
     run(["git", "-C", str(LAMB), "checkout", started_on])
     run(["git", "-C", str(LAMB), "stash", "pop"])
+    if a.keep_upgraded:
+        print("  code restored; database left upgraded (--keep-upgraded)")
+    else:
+        # Restoring the branch without the database leaves a schema from the
+        # target revision under the code of the original one. Nothing complains,
+        # and the next person inherits a hybrid that matches no commit.
+        run([sys.executable, str(TOOLS / "bundle.py"), "restore", a.checkpoint])
+        print("  code and database both restored")
     stack("start")
     wait_healthy()
 
