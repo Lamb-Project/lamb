@@ -188,7 +188,10 @@ def restore(name: str, force: bool = False) -> None:
 
     print(f"\nrestored '{name}' — schema v{manifest.get('schema_version')}, "
           f"captured from {manifest['git_branch']}@{manifest['git_commit']}")
-    print("start the stack again before testing.")
+    print("start the stack again, then wait for it to be healthy before testing.")
+    print("SQLite rebuilds its -wal/-shm on first open; writes issued during that")
+    print("window can fail with 'disk I/O error' while reads already succeed —")
+    print("check a write, not just a read, before trusting a restored instance.")
 
 
 def verify(name: str) -> None:
