@@ -51,25 +51,21 @@ class MigrationRunner:
                 cursor = connection.cursor()
 
                 self._ensure_schema_version_table(cursor)
-                current_version = self._get_current_version(cursor)
+                applied = self._get_applied_versions(cursor)
+                pending = [v for v in self._defined_versions()
+                           if v not in applied and v <= LATEST_VERSION]
 
-                if current_version >= LATEST_VERSION:
+                if not pending:
                     logger.debug(
-                        f"Schema up to date (v{current_version}), no migrations needed")
+                        f"Schema up to date (v{self._get_current_version(cursor)}), "
+                        f"no migrations needed")
                     return
 
                 logger.info(
-                    f"Running migrations: current=v{current_version}, "
-                    f"latest=v{LATEST_VERSION}")
+                    f"Running migrations: pending={pending}, latest=v{LATEST_VERSION}")
 
-                for version in range(current_version + 1, LATEST_VERSION + 1):
-                    method = getattr(self, f'_migration_{version}', None)
-                    if method is None:
-                        logger.error(
-                            f"Migration {version} method not found — "
-                            f"skipping. Did you forget to implement _migration_{version}?")
-                        continue
-
+                for version in pending:
+                    method = getattr(self, f'_migration_{version}')
                     logger.info(f"Applying migration {version}...")
                     method(cursor)
                     self._record_version(cursor, version)
@@ -103,6 +99,32 @@ class MigrationRunner:
                 applied_at INTEGER NOT NULL
             )
         """)
+
+    def _defined_versions(self) -> list:
+        """Every migration this code defines, ascending.
+
+        Discovered from the methods themselves rather than assumed to be a
+        contiguous range: branches developed in parallel leave gaps, and a gap
+        must not stop later migrations from running.
+        """
+        import re as _re
+        return sorted(
+            int(_re.fullmatch(r"_migration_(\d+)", name).group(1))
+            for name in dir(self)
+            if _re.fullmatch(r"_migration_\d+", name)
+        )
+
+    def _get_applied_versions(self, cursor) -> set:
+        """The set of migrations already applied to this database.
+
+        The set — not the maximum. A high-water mark cannot express "26 never
+        ran but 27 did", which is exactly what happens when two branches each
+        add a migration and merge in either order. Tracking the set lets a
+        migration that arrives late still run.
+        """
+        cursor.execute(
+            f"SELECT version FROM {self.db.table_prefix}schema_version")
+        return {row[0] for row in cursor.fetchall()}
 
     def _get_current_version(self, cursor) -> int:
         """Return the highest applied migration version, or 0 if none."""
