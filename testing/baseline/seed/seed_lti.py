@@ -94,6 +94,11 @@ def main():
         )
     # The legacy student endpoint is still reachable in the wild, so a baseline
     # that only exercises the unified flow would not notice it breaking.
+    # NOTE (Marc, 2026-08-02): the legacy LTI activity path is to be discontinued
+    # soon. Keep seeding it until it is actually gone — a baseline exists to prove
+    # that what used to work still does, and the day it is removed the assertion
+    # that it stopped working is the point. See issue #467 for the instructor
+    # workflow that replaces it.
     launch_student(args.base_url, args.consumer_key, args.secret,
                    user_id=f"legacy-{args.tag}", username=f"legacy-{args.tag}")
 
