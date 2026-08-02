@@ -20,7 +20,11 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="MIGRATIONS")
 
 # Increment this when adding a new migration method below.
-LATEST_VERSION = 29
+# Migration numbering is coordinated across parallel branches — see the tracker
+# issue on collisions. Current assignment: 26 = api_keys (feature/creator-api-keys),
+# 27 = knowledge_stores (#456), 28-30 below. 26 is a documented gap on this branch
+# until the api_keys work merges.
+LATEST_VERSION = 30
 
 
 class MigrationRunner:
@@ -1059,28 +1063,6 @@ class MigrationRunner:
             f"idx_{tp}audit_log_org_date "
             f"ON {tp}audit_log(organization_id, created_at)")
 
-    def _migration_26(self, cursor):
-        """Add activity_type, setup_config, lis_outcome_service_url to lti_activities
-        for databases created before the file-eval module."""
-        tp = self.db.table_prefix
-        if not self._table_exists(cursor, 'lti_activities'):
-            return
-        if not self._column_exists(cursor, 'lti_activities', 'activity_type'):
-            logger.info("Migrating lti_activities: adding activity_type")
-            cursor.execute(
-                f"ALTER TABLE {tp}lti_activities "
-                f"ADD COLUMN activity_type TEXT NOT NULL DEFAULT 'chat'")
-        if not self._column_exists(cursor, 'lti_activities', 'setup_config'):
-            logger.info("Migrating lti_activities: adding setup_config")
-            cursor.execute(
-                f"ALTER TABLE {tp}lti_activities "
-                f"ADD COLUMN setup_config TEXT DEFAULT '{{}}'")
-        if not self._column_exists(cursor, 'lti_activities', 'lis_outcome_service_url'):
-            logger.info("Migrating lti_activities: adding lis_outcome_service_url")
-            cursor.execute(
-                f"ALTER TABLE {tp}lti_activities "
-                f"ADD COLUMN lis_outcome_service_url TEXT")
-
     def _migration_27(self, cursor):
         """Create knowledge_stores and kb_content_links tables."""
         tp = self.db.table_prefix
@@ -1155,6 +1137,28 @@ class MigrationRunner:
             f"ON {tp}kb_content_links(status)")
 
     def _migration_28(self, cursor):
+        """Add activity_type, setup_config, lis_outcome_service_url to lti_activities
+        for databases created before the file-eval module."""
+        tp = self.db.table_prefix
+        if not self._table_exists(cursor, 'lti_activities'):
+            return
+        if not self._column_exists(cursor, 'lti_activities', 'activity_type'):
+            logger.info("Migrating lti_activities: adding activity_type")
+            cursor.execute(
+                f"ALTER TABLE {tp}lti_activities "
+                f"ADD COLUMN activity_type TEXT NOT NULL DEFAULT 'chat'")
+        if not self._column_exists(cursor, 'lti_activities', 'setup_config'):
+            logger.info("Migrating lti_activities: adding setup_config")
+            cursor.execute(
+                f"ALTER TABLE {tp}lti_activities "
+                f"ADD COLUMN setup_config TEXT DEFAULT '{{}}'")
+        if not self._column_exists(cursor, 'lti_activities', 'lis_outcome_service_url'):
+            logger.info("Migrating lti_activities: adding lis_outcome_service_url")
+            cursor.execute(
+                f"ALTER TABLE {tp}lti_activities "
+                f"ADD COLUMN lis_outcome_service_url TEXT")
+
+    def _migration_29(self, cursor):
         """Add cache-aware columns to model_pricing and assistant_usage_totals.
         Seed OpenAI cached rates."""
         tp = self.db.table_prefix
@@ -1196,7 +1200,7 @@ class MigrationRunner:
                 (cached, inp, out, now, provider, model),
             )
 
-    def _migration_29(self, cursor):
+    def _migration_30(self, cursor):
         """Add cache write, explicit cache, and immutable cost columns.
         Backfill cost_usd for legacy usage_logs and rebuild totals."""
         tp = self.db.table_prefix
