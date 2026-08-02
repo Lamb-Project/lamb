@@ -104,7 +104,18 @@ def _stack_running() -> list[str]:
     return [n for n in out.split() if n.startswith("lamb-")]
 
 
-def save(name: str) -> Path:
+def save(name: str, force: bool = False) -> Path:
+    running = _stack_running()
+    if running and not force:
+        raise SystemExit(
+            "refusing to save while the stack is running.\n"
+            "These databases sit on the host and reach the containers through a\n"
+            "Docker bind mount. SQLite coordinates access with POSIX advisory locks,\n"
+            "and those are not reliably shared across that boundary — a host process\n"
+            "reading while a containerised process writes is two parties with no\n"
+            "common view of the locks. That corrupted a table here on 2026-08-02.\n"
+            f"running: {', '.join(running)}\n"
+            f"stop them first (docker stop {' '.join(running)}), or pass --force")
     dest = CHECKPOINTS / name
     if dest.exists():
         shutil.rmtree(dest)
@@ -265,7 +276,7 @@ if __name__ == "__main__":
     elif not a.name:
         raise SystemExit("a checkpoint name is required")
     elif a.action == "save":
-        save(a.name)
+        save(a.name, a.force)
     elif a.action == "verify":
         verify(a.name)
     else:

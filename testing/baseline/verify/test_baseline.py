@@ -28,6 +28,34 @@ LAMB_DB = "/opt/lamb/lamb_v4.db"
 OWI_DB = "/opt/lamb/open-webui/backend/data/webui.db"
 PASSWORD = "Baseline!2026"
 
+def _db_in_container(db_path: str, sql: str):
+    """Run a query INSIDE the backend container.
+
+    The databases live on the macOS host and reach the containers through a
+    Docker bind mount. SQLite coordinates concurrent access with POSIX advisory
+    locks, and those locks are not reliably shared across that boundary — a host
+    process and a containerised process holding the same file open are two
+    writers who cannot see each other's locks, which is how pages get corrupted.
+    So every direct query goes through the container: one side of the boundary,
+    one view of the locks.
+    """
+    import json as _json
+    import subprocess as _sp
+    code = (
+        "import sqlite3,json;"
+        f"con=sqlite3.connect({db_path!r});"
+        f"print(json.dumps([list(r) for r in con.execute({sql!r})]))"
+    )
+    p = _sp.run(["docker", "exec", "lamb-backend", "python", "-c", code],
+                capture_output=True, text=True)
+    if p.returncode != 0:
+        return [["ERROR", (p.stderr or "").strip()[:120]]]
+    try:
+        return _json.loads(p.stdout.strip().splitlines()[-1])
+    except Exception as e:
+        return [["ERROR", f"unparseable: {e}"]]
+
+
 results: list[tuple[bool, str, str]] = []
 
 
@@ -57,13 +85,11 @@ def login(email: str, password: str = PASSWORD, server="http://localhost:9099") 
 
 
 def db(path: str, sql: str, *params):
-    con = sqlite3.connect(path)
-    try:
-        return con.execute(sql, params).fetchall()
-    except sqlite3.Error as e:
-        return [("ERROR", str(e))]
-    finally:
-        con.close()
+    """Query a database through the container — never from the host. See
+    _db_in_container for why that distinction is not cosmetic."""
+    for i, val in enumerate(params):
+        sql = sql.replace("?", repr(val), 1)
+    return _db_in_container(path, sql)
 
 
 def main() -> int:

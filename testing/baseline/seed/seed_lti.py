@@ -28,15 +28,41 @@ from lti_test import build_lti_params, launch_student, launch_unified  # noqa: E
 LAMB_DB = "/opt/lamb/lamb_v4.db"
 OWI_DB = "/opt/lamb/open-webui/backend/data/webui.db"
 
+def _db_in_container(db_path: str, sql: str):
+    """Run a query INSIDE the backend container.
+
+    The databases live on the macOS host and reach the containers through a
+    Docker bind mount. SQLite coordinates concurrent access with POSIX advisory
+    locks, and those locks are not reliably shared across that boundary — a host
+    process and a containerised process holding the same file open are two
+    writers who cannot see each other's locks, which is how pages get corrupted.
+    So every direct query goes through the container: one side of the boundary,
+    one view of the locks.
+    """
+    import json as _json
+    import subprocess as _sp
+    code = (
+        "import sqlite3,json;"
+        f"con=sqlite3.connect({db_path!r});"
+        f"print(json.dumps([list(r) for r in con.execute({sql!r})]))"
+    )
+    p = _sp.run(["docker", "exec", "lamb-backend", "python", "-c", code],
+                capture_output=True, text=True)
+    if p.returncode != 0:
+        return [["ERROR", (p.stderr or "").strip()[:120]]]
+    try:
+        return _json.loads(p.stdout.strip().splitlines()[-1])
+    except Exception as e:
+        return [["ERROR", f"unparseable: {e}"]]
+
+
 
 def _count(db: str, sql: str) -> int:
-    con = sqlite3.connect(db)
+    rows = _db_in_container(db, sql)
     try:
-        return con.execute(sql).fetchone()[0]
-    except sqlite3.Error:
+        return int(rows[0][0])
+    except (IndexError, ValueError, TypeError):
         return -1
-    finally:
-        con.close()
 
 
 def snapshot() -> dict:
