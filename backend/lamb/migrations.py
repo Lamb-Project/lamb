@@ -20,7 +20,13 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="MIGRATIONS")
 
 # Increment this when adding a new migration method below.
-LATEST_VERSION = 26
+# NOTE: version 26 is deliberately absent here. It is taken by the api_keys
+# migration on `feature/creator-api-keys`, which has already been applied to
+# live databases. Knowledge Stores were originally numbered 26 too; renumbered
+# to 27 so both migrations survive on a database that has seen either branch.
+# Parallel branches picking the same next integer is a standing hazard — see
+# the tracker issue on migration numbering.
+LATEST_VERSION = 27
 
 
 class MigrationRunner:
@@ -1056,7 +1062,7 @@ class MigrationRunner:
             f"idx_{tp}audit_log_org_date "
             f"ON {tp}audit_log(organization_id, created_at)")
 
-    def _migration_26(self, cursor):
+    def _migration_27(self, cursor):
         """Create knowledge_stores and kb_content_links tables.
 
         These power the new KB Server (port 9092) integration. The existing
