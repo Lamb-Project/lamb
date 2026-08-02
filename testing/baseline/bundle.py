@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -35,7 +36,11 @@ import time
 from pathlib import Path
 
 LAMB = Path("/opt/lamb")
-CHECKPOINTS = Path(__file__).resolve().parent / "checkpoints"
+# Absolute, not relative to this file: the upgrade harness copies this script
+# out of the repository so it survives a branch switch, and a checkpoint path
+# relative to the copy would point at an empty temp directory.
+CHECKPOINTS = Path(os.environ.get(
+    "LAMB_CHECKPOINTS", "/opt/lamb/testing/baseline/checkpoints"))
 
 # What makes up a LAMB installation's state. Order is irrelevant; completeness
 # is everything. Paths that do not exist yet (the new KB server before its first
