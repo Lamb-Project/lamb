@@ -92,8 +92,9 @@ export async function sendMessage(sessionId, message) {
  * @param {(error: string) => void} [onError] - called on error
  * @param {(status: Object) => void} [onStatus] - called for tool/status events
  * @param {AbortSignal} [signal] - abort signal to cancel the stream
+ * @param {(obsPayload: Object) => void} [onObservability] - called for observability frames
  */
-export async function sendMessageStream(sessionId, message, onChunk, onDone, onError, onStatus, signal) {
+export async function sendMessageStream(sessionId, message, onChunk, onDone, onError, onStatus, signal, onObservability) {
 	let res;
 	try {
 		res = await apiFetch(`/aac/sessions/${sessionId}/message/stream`, {
@@ -142,6 +143,11 @@ export async function sendMessageStream(sessionId, message, onChunk, onDone, onE
 				if (payload === '[DONE]') return;
 				try {
 					const data = JSON.parse(payload);
+					// Observability frames get their own callback
+					if (data.type === 'observability') {
+						if (onObservability) onObservability(data.data);
+						continue;
+					}
 					if (data.content) onChunk(data.content);
 					else if (data.status && onStatus) onStatus(data);
 					if (data.done && onDone) onDone(data.stats || {});

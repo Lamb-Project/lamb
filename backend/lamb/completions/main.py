@@ -197,8 +197,23 @@ async def create_completion(
                 generator, usage_out = llm_response, None
             
             async def _tracked_stream():
+                obs_injected = False
                 async for chunk in generator:
+                    # Inject observability frame before [DONE] so frontend
+                    # SSE parser sees it before returning on [DONE].
+                    if observability_enabled(request) and not obs_injected and "data: [DONE]" in chunk:
+                        obs_payload = build_observability_payload(
+                            assistant_details, request, rag_context, messages
+                        )
+                        yield f"data: {json.dumps(obs_payload)}\n\n"
+                        obs_injected = True
                     yield chunk
+                # Fallback: if the generator never emitted [DONE], inject here
+                if observability_enabled(request) and not obs_injected:
+                    obs_payload = build_observability_payload(
+                        assistant_details, request, rag_context, messages
+                    )
+                    yield f"data: {json.dumps(obs_payload)}\n\n"
                 # Stream finished — fire-and-forget usage log
                 if usage_out and provider:
                     db_manager.log_token_usage(
@@ -253,6 +268,55 @@ def get_assistant_details(assistant: int) -> Any:
         logger.error(f"Assistant with ID '{assistant}' not found")
         raise HTTPException(status_code=404, detail=f"Assistant with ID '{assistant}' not found")
     return assistant_details
+
+
+def build_observability_payload(
+    assistant_details,
+    request: dict,
+    rag_context: Optional[dict],
+    messages: list
+) -> dict:
+    """
+    Build the observability SSE frame payload from available scope variables.
+    Called after the generator completes, before [DONE].
+    """
+    # Last user message
+    user_input = ""
+    for msg in reversed(request.get("messages", [])):
+        if msg.get("role") == "user":
+            user_input = msg.get("content", "")
+            break
+
+    # Normalize RAG sources with truncated content
+    sources = []
+    if rag_context:
+        for s in rag_context.get("sources", []):
+            sources.append({
+                "document_id": s.get("document_id", ""),
+                "chunk_id": s.get("chunk_id", ""),
+                "similarity": s.get("similarity", 0.0),
+                "content": s.get("content", "")[:500],
+            })
+
+    return {
+        "type": "observability",
+        "data": {
+            "assistant_name": assistant_details.name,
+            "system_instructions": assistant_details.system_prompt,
+            "user_input": user_input,
+            "rag_context": rag_context.get("context", "") if rag_context else "",
+            "retrieved_sources": sources,
+            "final_llm_messages": messages,
+        }
+    }
+
+
+def observability_enabled(request: dict) -> bool:
+    """
+    Check whether the request asks for observability SSE frames.
+    Phase 1: request-level flag only (no org feature gate yet).
+    """
+    return request.get("observability", False) is True
 
 
 def _provider_for_connector(connector: str) -> str | None:
@@ -521,8 +585,23 @@ async def run_lamb_assistant(
                 generator, usage_out = llm_response, None
 
             async def _tracked_stream():
+                obs_injected = False
                 async for chunk in generator:
+                    # Inject observability frame before [DONE] so frontend
+                    # SSE parser sees it before returning on [DONE].
+                    if observability_enabled(request) and not obs_injected and "data: [DONE]" in chunk:
+                        obs_payload = build_observability_payload(
+                            assistant_details, request, rag_context, messages
+                        )
+                        yield f"data: {json.dumps(obs_payload)}\n\n"
+                        obs_injected = True
                     yield chunk
+                # Fallback: if the generator never emitted [DONE], inject here
+                if observability_enabled(request) and not obs_injected:
+                    obs_payload = build_observability_payload(
+                        assistant_details, request, rag_context, messages
+                    )
+                    yield f"data: {json.dumps(obs_payload)}\n\n"
                 # Log usage when stream completes for tracked connectors
                 if connector != "ollama" and usage_out and provider and assistant_details.organization_id is not None:
                     db_manager.log_token_usage(
