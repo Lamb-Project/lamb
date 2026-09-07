@@ -22,9 +22,9 @@ logger = get_logger(__name__, component="MIGRATIONS")
 # Increment this when adding a new migration method below.
 # Migration numbering is coordinated across parallel branches — see the tracker
 # issue on collisions. Current assignment: 26 = api_keys (feature/creator-api-keys),
-# 27 = knowledge_stores (#456), 28-30 below. 26 is a documented gap on this branch
+# 27 = knowledge_stores (#456), 28-30 below, 31 = LTI instructor flag (#468). 26 is a documented gap on this branch
 # until the api_keys work merges.
-LATEST_VERSION = 30
+LATEST_VERSION = 31
 
 
 class MigrationRunner:
@@ -1348,3 +1348,12 @@ class MigrationRunner:
             logger.info(
                 "Migration 29: Backfill complete "
                 "(cost_usd + cache_read + cache_write + non_cached)")
+
+    def _migration_31(self, cursor):
+        """Add the role flag required by LTI activity-user registration (#468)."""
+        if self._column_exists(cursor, 'lti_activity_users', 'is_instructor'):
+            return
+        cursor.execute(f"""
+            ALTER TABLE {self.db.table_prefix}lti_activity_users
+            ADD COLUMN is_instructor INTEGER NOT NULL DEFAULT 0
+        """)
