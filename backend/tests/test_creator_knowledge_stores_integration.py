@@ -425,3 +425,13 @@ def test_delete_ks_cascades_to_kb_server(client, ks_db, ks_client):
     # The downstream delete must have been called exactly once.
     ks_client.delete_collection.assert_called_once()
     ks_db.delete_knowledge_store.assert_called_once_with("ks-1")
+
+
+def test_content_list_preserves_cli_fields_and_ui_projection(client, ks_db):
+    links = [{"library_item_id": "item-1", "library_id": "lib-1",
+              "status": "ready", "chunks_created": 4}]
+    ks_db.get_kb_content_links_for_ks.return_value = links
+    response = client.get("/creator/knowledge-stores/ks-1/content")
+    assert response.status_code == 200
+    assert response.json()["content"] == links
+    assert response.json()["items"] == [{"library_item_id": "item-1", "status": "ready"}]

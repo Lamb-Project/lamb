@@ -90,7 +90,7 @@ def _build_metadata(
         "prompt_processor": prompt_processor,
         "connector": connector,
         "llm": llm,
-        "rag_processor": rag_processor,
+        "rag_processor": "no_rag" if rag_processor.strip().lower() == "no rag" else rag_processor,
         "capabilities": {
             "vision": vision,
             "image_generation": image_generation,

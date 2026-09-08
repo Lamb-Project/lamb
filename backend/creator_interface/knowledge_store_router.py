@@ -413,6 +413,8 @@ async def list_ks_content(
     links = _db.get_kb_content_links_for_ks(ks_id)
     return {
         "ks_id": ks_id,
+        # Keep the CLI's full-content contract alongside the UI's lightweight list.
+        "content": links,
         "items": [
             {"library_item_id": lnk["library_item_id"], "status": lnk["status"]}
             for lnk in links

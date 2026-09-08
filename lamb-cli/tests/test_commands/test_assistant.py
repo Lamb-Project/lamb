@@ -596,3 +596,16 @@ class TestParseMetadata:
         data = {"name": "test", "metadata": "not-json{"}
         result = _parse_metadata(data)
         assert "connector" not in result
+
+
+def test_legacy_no_rag_default_is_serialized_as_plugin_identifier():
+    from lamb_cli.commands.assistant import _build_metadata
+    metadata = json.loads(_build_metadata("openai", "gpt-4o-mini", "kvcache_augment", "No RAG"))
+    assert metadata["rag_processor"] == "no_rag"
+    assert metadata["prompt_processor"] == "kvcache_augment"
+
+
+def test_knowledge_store_plugin_identifier_is_preserved():
+    from lamb_cli.commands.assistant import _build_metadata
+    metadata = json.loads(_build_metadata("openai", "gpt-4o-mini", "kvcache_augment", "knowledge_store_rag"))
+    assert metadata["rag_processor"] == "knowledge_store_rag"

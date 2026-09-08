@@ -213,6 +213,22 @@ class EvaluatorClient:
     def _extract_score_and_feedback(content: str) -> Dict[str, Any]:
         score = None
 
+        # Rubric feedback can contain criterion scores before the final score.
+        # Prefer the last standalone score line over incidental inline scores.
+        final_scores = re.findall(
+            r'^\s*(?:#{1,6}\s*)?\*{0,2}(?:(?:FINAL\s+)?SCORE|NOTA\s+FINAL)'
+            r'\*{0,2}\s*:\s*\*{0,2}(\d+(?:\.\d+)?)\*{0,2}'
+            r'(?:\s*/\s*10(?:\.0)?)?\s*$',
+            content, re.IGNORECASE | re.MULTILINE,
+        )
+        if final_scores:
+            candidate = float(final_scores[-1])
+            return {
+                'score': candidate if 0 <= candidate <= 10 else None,
+                'comment': content,
+                'raw_response': content,
+            }
+
         patterns = [
             r'(?:NOTA\s+FINAL|FINAL\s+SCORE)\s*:\s*(\d+\.?\d*)',
             r'(?:#*\s*\**\s*)(?:Nota|Puntuación|Calificación)\s*(?:\**)\s*:\s*(\d+\.?\d*)',
