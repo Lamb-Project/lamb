@@ -22,6 +22,7 @@ from google import genai
 from google.genai import types
 from PIL import Image
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
+from lamb.completions.provider_io_log import log_provider_request, log_provider_response
 from lamb.database_manager import LambDatabaseManager
 import config
 
@@ -386,7 +387,38 @@ async def _dict_to_streaming_response(response_dict: Dict[str, Any]):
     yield "data: [DONE]\n\n"
 
 
-async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None):
+def _summarize_gemini_response(response) -> dict:
+    """Serialize Gemini generate_content response for provider I/O logs."""
+    summary: dict[str, Any] = {"type": type(response).__name__}
+    candidates = getattr(response, "candidates", None)
+    if not candidates:
+        return summary
+    summary["candidates"] = []
+    for candidate in candidates:
+        entry: dict[str, Any] = {}
+        content = getattr(candidate, "content", None)
+        if content and hasattr(content, "parts"):
+            parts_out = []
+            for part in content.parts:
+                if hasattr(part, "text") and part.text:
+                    parts_out.append({"text": part.text})
+                elif hasattr(part, "inline_data") and part.inline_data:
+                    data = getattr(part.inline_data, "data", None)
+                    mime = getattr(part.inline_data, "mime_type", None)
+                    parts_out.append({
+                        "inline_data": {
+                            "mime_type": mime,
+                            "data": f"<bytes len={len(data) if data else 0}>",
+                        }
+                    })
+                else:
+                    parts_out.append({"part": repr(part)[:500]})
+            entry["parts"] = parts_out
+        summary["candidates"].append(entry)
+    return summary
+
+
+async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None, requires_explicit_cache: bool = False):
     """
     Banana Image connector for Google Gen AI (Gemini) image generation
     
@@ -728,17 +760,48 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
                     
                     logger.info(f"📦 Built multimodal content with {len(content_parts)} parts")
                     
+                    log_provider_request(
+                        "google-gemini",
+                        operation="models.generate_content",
+                        payload={
+                            "model": api_model_id,
+                            "contents": f"<{len(content_parts)} parts: "
+                            f"{len(input_images)} image(s) + text prompt>",
+                            "prompt": prompt,
+                            "generation_config": generation_config,
+                        },
+                    )
+
                     # Call generate_content with multimodal input
                     response = client.models.generate_content(
                         model=api_model_id,
                         contents=content_parts
                     )
+                    log_provider_response(
+                        "google-gemini",
+                        operation="models.generate_content",
+                        payload=_summarize_gemini_response(response),
+                    )
             else:
                 # TEXT-TO-IMAGE: Simple text prompt
                 logger.info(f"🔄 Using generate_content API for TEXT-TO-IMAGE with model: {api_model_id}")
+                log_provider_request(
+                    "google-gemini",
+                    operation="models.generate_content",
+                    payload={
+                        "model": api_model_id,
+                        "contents": prompt,
+                        "generation_config": generation_config,
+                    },
+                )
                 response = client.models.generate_content(
                     model=api_model_id,
                     contents=prompt
+                )
+                log_provider_response(
+                    "google-gemini",
+                    operation="models.generate_content",
+                    payload=_summarize_gemini_response(response),
                 )
             
             # Extract images from response

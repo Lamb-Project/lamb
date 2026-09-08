@@ -11,13 +11,49 @@ from openai import AsyncOpenAI, APIError, APIConnectionError, RateLimitError, Au
 from httpx import Timeout, Limits
 import config as app_config
 from lamb.logging_config import get_logger
+from lamb.completions.explicit_cache import apply_cache_markers
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
+from lamb.completions.provider_io_log import log_provider_request, log_provider_response
 from utils.langsmith_config import traceable_llm_call, add_trace_metadata, is_tracing_enabled
 
 logger = get_logger(__name__, component="API")
 
 # Set up multimodal logging using centralized config
 multimodal_logger = get_logger('multimodal.openai', component="API")
+
+
+def _usage_to_dict(usage) -> dict:
+    """Normalize an OpenAI SDK usage object into a plain dict.
+
+    Ensures cache_creation_input_tokens is captured even when the SDK's
+    Pydantic model does not include it (e.g. Alibaba-compatible APIs).
+    """
+    if usage is None:
+        return {}
+
+    result = {
+        "prompt_tokens": usage.prompt_tokens,
+        "completion_tokens": usage.completion_tokens,
+        "total_tokens": usage.total_tokens,
+    }
+
+    details = getattr(usage, "prompt_tokens_details", None)
+    if details is not None:
+        prompt_details = {}
+        cached = getattr(details, "cached_tokens", None)
+        if cached is not None:
+            prompt_details["cached_tokens"] = cached
+        creation = getattr(details, "cache_creation_input_tokens", None)
+        if creation is not None:
+            prompt_details["cache_creation_input_tokens"] = creation
+        text_tok = getattr(details, "text_tokens", None)
+        if text_tok is not None:
+            prompt_details["text_tokens"] = text_tok
+        if prompt_details:
+            result["prompt_tokens_details"] = prompt_details
+
+    return result
+
 
 # ---------------------------------------------------------------------------
 # Shared AsyncOpenAI client pool
@@ -284,7 +320,7 @@ def validate_image_urls(messages: List[Dict[str, Any]]) -> List[str]:
     return errors
 
 @traceable_llm_call(name="openai_completion", run_type="llm", tags=["openai", "lamb"])
-async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None, use_small_fast_model: bool = False):
+async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None, use_small_fast_model: bool = False, requires_explicit_cache: bool = False):
     """
 Connects to the specified Large Language Model (LLM) using the OpenAI API.
 
@@ -351,6 +387,12 @@ Returns:
             stream_obj = await vision_client.chat.completions.create(**vision_params)
 
             async for chunk in stream_obj:
+                log_provider_response(
+                    "openai",
+                    operation="chat.completions.create",
+                    payload=chunk.model_dump(),
+                    label="stream chunk",
+                )
                 yield f"data: {chunk.model_dump_json()}\n\n"
 
             yield "data: [DONE]\n\n"
@@ -518,6 +560,12 @@ Returns:
 
         # Transform messages to vision format for initial attempt
         vision_messages = transform_multimodal_to_vision_format(messages)
+        if requires_explicit_cache:
+            vision_messages = apply_cache_markers(vision_messages)
+            logger.info(
+                "Explicit cache: applied cache_control to vision messages "
+                f"(marker on index {max(0, len(vision_messages) - 2)})"
+            )
         multimodal_logger.debug("Transformed messages to vision format")
 
         # Try vision API call first
@@ -534,12 +582,23 @@ Returns:
             vision_client = _get_openai_client(api_key, base_url)
 
             logger.debug(f"OpenAI vision client acquired from pool")
+            log_provider_request(
+                "openai",
+                operation="chat.completions.create",
+                payload=vision_params,
+                extra={"mode": "vision"},
+            )
 
             # Try the vision API call
             if stream:
                 return _generate_vision_stream(vision_client, vision_params)
             else:
                 response = await vision_client.chat.completions.create(**vision_params)
+                log_provider_response(
+                    "openai",
+                    operation="chat.completions.create",
+                    payload={"mode": "vision", **response.model_dump()},
+                )
                 logger.debug(f"OpenAI vision response created")
                 multimodal_logger.info("Vision API call successful")
                 multimodal_supported = True
@@ -571,6 +630,12 @@ Returns:
     # Prepare request parameters for OpenAI API call (text-only or fallback)
     params = body.copy() if body else {}
     params["model"] = resolved_model
+    if requires_explicit_cache:
+        messages = apply_cache_markers(messages)
+        logger.info(
+            "Explicit cache: applied cache_control to messages "
+            f"(marker on index {max(0, len(messages) - 2)})"
+        )
     params["messages"] = messages
     params["stream"] = stream
 
@@ -598,7 +663,26 @@ Returns:
         
         try:
             logger.debug(f"Attempting API call with model: {current_model}")
-            return await client.chat.completions.create(**params_to_use)
+            log_provider_request(
+                "openai",
+                operation="chat.completions.create",
+                payload=params_to_use,
+            )
+            result = await client.chat.completions.create(**params_to_use)
+            if params_to_use.get("stream"):
+                log_provider_response(
+                    "openai",
+                    operation="chat.completions.create",
+                    payload={"stream": True, "note": "SSE chunks logged separately"},
+                    label="response",
+                )
+            else:
+                log_provider_response(
+                    "openai",
+                    operation="chat.completions.create",
+                    payload=result.model_dump(),
+                )
+            return result
         
         except (APIError, APIConnectionError, RateLimitError, AuthenticationError) as e:
             error_type = type(e).__name__
@@ -757,7 +841,33 @@ Returns:
                 usage_out["prompt_tokens"]     = chunk.usage.prompt_tokens
                 usage_out["completion_tokens"] = chunk.usage.completion_tokens
                 usage_out["total_tokens"]      = chunk.usage.total_tokens
+                if hasattr(chunk.usage, "prompt_tokens_details") and chunk.usage.prompt_tokens_details:
+                    details = chunk.usage.prompt_tokens_details
+                    usage_out["prompt_tokens_details"] = {}
+                    cached = getattr(details, "cached_tokens", None)
+                    if cached is not None:
+                        usage_out["prompt_tokens_details"]["cached_tokens"] = cached
+                    creation = getattr(details, "cache_creation_input_tokens", None)
+                    if creation is not None:
+                        usage_out["prompt_tokens_details"]["cache_creation_input_tokens"] = creation
+                    text_tok = getattr(details, "text_tokens", None)
+                    if text_tok is not None:
+                        usage_out["prompt_tokens_details"]["text_tokens"] = text_tok
+            log_provider_response(
+                "openai",
+                operation="chat.completions.create",
+                payload=chunk.model_dump(),
+                label="stream chunk",
+            )
             yield f"data: {chunk.model_dump_json()}\n\n"
+
+        if usage_out:
+            log_provider_response(
+                "openai",
+                operation="chat.completions.create",
+                payload=usage_out,
+                label="stream usage summary",
+            )
 
         yield "data: [DONE]\n\n"
         logger.debug(f"Experimental Stream completed")
@@ -772,4 +882,7 @@ Returns:
         # Non-streaming call with fallback
         response = await _make_api_call_with_fallback(params) # Use helper with fallback
         logger.debug(f"Direct response created")
-        return response.model_dump()
+        result = response.model_dump()
+        if hasattr(response, "usage") and response.usage is not None:
+            result["usage"] = _usage_to_dict(response.usage)
+        return result

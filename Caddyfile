@@ -15,6 +15,7 @@ lamb.yourdomain.com {
     }
 
     handle /lamb/* {
+        uri strip_prefix /lamb
         reverse_proxy backend:9099 {
             header_up X-Forwarded-Prefix "/lamb"
         }
@@ -33,6 +34,23 @@ lamb.yourdomain.com {
 
     handle /static/* {
         reverse_proxy backend:9099
+    }
+
+    handle /docs/* {
+        reverse_proxy backend:9099
+    }
+
+    # Module frontends (SPA fallback to module-specific index.html)
+    handle /m/chat/* {
+        root * /var/www/frontend
+        try_files {path} /m/chat/index.html
+        file_server
+    }
+
+    handle /m/file-eval/* {
+        root * /var/www/frontend
+        try_files {path} /m/file-eval/index.html
+        file_server
     }
 
     handle {

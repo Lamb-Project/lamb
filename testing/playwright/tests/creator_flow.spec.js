@@ -141,7 +141,7 @@ test.describe.serial("Creator flow (KB + ingest + query)", () => {
 // Assistant-related tests do not depend on the KB flow above,
 // so they live in their own describe block and will still run
 // even if the KB tests fail.
-test.describe("Creator flow (assistants + chat)", () => {
+test.describe.serial("Creator flow (assistants + chat)", () => {
   const assistantName = `pw_asst_${Date.now()}`;
 
   test("Create assistant (smoke)", async ({ page }) => {

@@ -194,6 +194,7 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     // Click the "Disable" button in the modal
     const confirmButton = modal.getByRole("button", { name: /^disable$/i });
     await expect(confirmButton).toBeVisible({ timeout: 5_000 });
+    page.on("dialog", (d) => d.accept());
     await confirmButton.click();
 
     // Wait for modal to disappear and status to change
@@ -796,6 +797,7 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
 
   test("14. Sharing: Disable test users (as system admin)", async ({ page }) => {
     // Still logged in as admin from previous test
+    page.on("dialog", (d) => d.accept());
     await page.goto("admin?view=users");
     await page.waitForLoadState("networkidle");
 

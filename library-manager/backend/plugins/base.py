@@ -16,9 +16,12 @@ import abc
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from plugins.content_handlers.capability import Capability
 
 
 # ---------------------------------------------------------------------------
@@ -89,16 +92,29 @@ class LibraryImportPlugin(abc.ABC):
     """Abstract base for all Library Manager import plugins.
 
     Subclasses must set the class-level attributes ``name``,
-    ``description``, ``supported_source_types``, and
-    ``supported_file_types``, and implement ``import_content`` and
+    ``description``, ``supported_source_types``, ``file_extensions``,
+    and ``human_label``, and implement ``import_content`` and
     ``get_parameters``.
     """
 
     name: str = "base"
     description: str = "Base plugin interface"
     supported_source_types: set[str] = set()  # {'file', 'url', 'youtube'}
-    supported_file_types: set[str] = set()  # {'.pdf', '.docx', ...}
     required_keys: list[str] = []  # ['openai_vision'] if needed
+    # Capabilities this plugin may produce. Authoritative truth lives in the
+    # item's ``metadata.json`` (computed by inspecting the filesystem after
+    # import). This list is the *declaration* used by the UI to anticipate
+    # what may appear. See ``plugins/content_handlers/capability.py``.
+    produces_capabilities: ClassVar[list["Capability"]] = []
+    # File extensions this plugin accepts (lowercase, no dot). Empty for
+    # non-file plugins (URL, YouTube). Used by the frontend tie-break flow:
+    # when multiple plugins match the uploaded file's extension, the user is
+    # prompted to choose. Plugins are the single source of truth for which
+    # extensions they handle — no hardcoded routing on the frontend.
+    file_extensions: ClassVar[list[str]] = []
+    # Human-readable label shown in the upload picker and source-type tabs.
+    # Falls back to ``name`` when empty.
+    human_label: ClassVar[str] = ""
 
     @abc.abstractmethod
     def import_content(
@@ -212,8 +228,9 @@ class PluginRegistry:
 
         Returns:
             A list of dicts with keys: ``name``, ``description``,
-            ``supported_source_types``, ``supported_file_types``,
-            ``required_keys``, ``mode``, ``parameters``.
+            ``source_type``, ``supported_source_types``, ``file_extensions``,
+            ``human_label``, ``required_keys``, ``produces_capabilities``,
+            ``mode``, ``parameters``.
         """
         result = []
         for name, plugin_class in cls._plugins.items():
@@ -224,42 +241,45 @@ class PluginRegistry:
             if mode == "SIMPLIFIED":
                 params = [p for p in params if not p.advanced]
 
-            result.append({
-                "name": name,
-                "description": plugin_class.description,
-                "supported_source_types": sorted(plugin_class.supported_source_types),
-                "supported_file_types": sorted(plugin_class.supported_file_types),
-                "required_keys": plugin_class.required_keys,
-                "mode": mode,
-                "parameters": [
-                    {
-                        "name": p.name,
-                        "type": p.type,
-                        "description": p.description,
-                        "default": p.default,
-                        "required": p.required,
-                        "choices": p.choices,
-                    }
-                    for p in params
-                ],
-            })
+            # Singular ``source_type`` — derived from ``supported_source_types``
+            # for the UI which needs one source-type per plugin to bucket into
+            # tabs. When a plugin spans multiple source-types the first one
+            # (sorted) is used; this matches the underlying drop-in convention
+            # of one capability cluster per plugin module.
+            source_types_sorted = sorted(plugin_class.supported_source_types)
+            primary_source_type = source_types_sorted[0] if source_types_sorted else "file"
+
+            result.append(
+                {
+                    "name": name,
+                    "description": plugin_class.description,
+                    "source_type": primary_source_type,
+                    "supported_source_types": source_types_sorted,
+                    "required_keys": plugin_class.required_keys,
+                    "produces_capabilities": [
+                        cap.value if hasattr(cap, "value") else str(cap)
+                        for cap in getattr(plugin_class, "produces_capabilities", [])
+                    ],
+                    "file_extensions": [
+                        str(ext).lower().lstrip(".")
+                        for ext in getattr(plugin_class, "file_extensions", [])
+                    ],
+                    "human_label": getattr(plugin_class, "human_label", "") or name,
+                    "mode": mode,
+                    "parameters": [
+                        {
+                            "name": p.name,
+                            "type": p.type,
+                            "description": p.description,
+                            "default": p.default,
+                            "required": p.required,
+                            "choices": p.choices,
+                        }
+                        for p in params
+                    ],
+                }
+            )
         return result
-
-    @classmethod
-    def get_plugin_for_file_type(cls, extension: str) -> LibraryImportPlugin | None:
-        """Find the first plugin that supports a given file extension.
-
-        Args:
-            extension: File extension without dot (e.g. ``"pdf"``).
-
-        Returns:
-            A plugin instance, or ``None`` if no plugin supports this type.
-        """
-        ext = extension.lower().lstrip(".")
-        for plugin_class in cls._plugins.values():
-            if ext in plugin_class.supported_file_types:
-                return plugin_class()
-        return None
 
     @classmethod
     def get_plugin_mode(cls, name: str) -> str:
@@ -281,9 +301,7 @@ class PluginRegistry:
         return "ADVANCED"
 
     @classmethod
-    def sanitize_params(
-        cls, plugin_name: str, params: dict[str, Any]
-    ) -> dict[str, Any]:
+    def sanitize_params(cls, plugin_name: str, params: dict[str, Any]) -> dict[str, Any]:
         """Filter plugin parameters based on governance mode.
 
         In ``SIMPLIFIED`` mode, only non-advanced parameters are kept.
@@ -302,10 +320,6 @@ class PluginRegistry:
 
         mode = cls.get_plugin_mode(plugin_name)
         allowed = plugin.get_parameters()
-        allowed_names = {
-            p.name
-            for p in allowed
-            if mode == "ADVANCED" or not p.advanced
-        }
+        allowed_names = {p.name for p in allowed if mode == "ADVANCED" or not p.advanced}
 
         return {k: v for k, v in params.items() if k in allowed_names}

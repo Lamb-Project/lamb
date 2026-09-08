@@ -151,11 +151,17 @@ class LambClient:
 
     def _raise_for_status(self, resp: httpx.Response) -> None:
         """Map HTTP status codes to typed exceptions."""
+        body: dict = {}
         try:
             # For streaming responses, read the body first
             if not resp.is_stream_consumed:
                 resp.read()
-            detail = resp.json().get("detail", resp.text)
+            parsed = resp.json()
+            if isinstance(parsed, dict):
+                body = parsed
+                detail = parsed.get("detail", resp.text)
+            else:
+                detail = resp.text
         except Exception:
             try:
                 detail = resp.text
@@ -168,7 +174,11 @@ class LambClient:
             raise AuthenticationError(f"Permission denied: {detail}")
         if resp.status_code == 404:
             raise NotFoundError(f"Not found: {detail}")
-        raise ApiError(f"API error ({resp.status_code}): {detail}", status_code=resp.status_code)
+        raise ApiError(
+            f"API error ({resp.status_code}): {detail}",
+            status_code=resp.status_code,
+            body=body,
+        )
 
 
 def get_client(require_auth: bool = True, timeout: float = 30.0) -> LambClient:

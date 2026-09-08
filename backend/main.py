@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, Depends, status, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
 
@@ -20,6 +21,7 @@ from utils.main_helpers import completions_get_form_data, helper_get_assistant_i
 
 from lamb.main import app as lamb_app
 from lamb.completions.main import run_lamb_assistant
+from lamb.modules import discover_modules
 
 
 from contextlib import asynccontextmanager
@@ -69,6 +71,54 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to run database migrations: {e}")
         raise
+
+    discover_modules()
+    logger.info("Activity modules discovered")
+    
+    # --- LOG: Check which modules were discovered ---
+    from lamb.modules import get_all_modules
+    discovered = get_all_modules()
+    logger.info(f"Discovered {len(discovered)} module(s): {[m.name for m in discovered]}")
+
+    # --- Fix file_evaluation FKs if mod tables were created with wrong lti_activities name ---
+    try:
+        from lamb.modules.file_evaluation.migrations import (
+            repair_file_eval_schema_if_needed,
+            ensure_mod_file_eval_student_name_column,
+        )
+
+        _db_pre = LambDatabaseManager()
+        _conn_pre = _db_pre.get_connection()
+        if _conn_pre:
+            try:
+                repair_file_eval_schema_if_needed(_conn_pre, _db_pre.table_prefix)
+                ensure_mod_file_eval_student_name_column(_conn_pre)
+                _conn_pre.commit()
+            finally:
+                _conn_pre.close()
+    except Exception as repair_err:
+        logger.error(f"file_evaluation schema repair failed: {repair_err}")
+
+    # --- Apply module migrations (idempotent CREATE TABLE IF NOT EXISTS) ---
+    for module in discovered:
+        migrations = module.get_migrations()
+        if migrations:
+            _db = LambDatabaseManager()
+            conn = _db.get_connection()
+            if conn:
+                try:
+                    for sql in migrations:
+                        if sql and sql.strip():
+                            conn.execute(sql)
+                    conn.commit()
+                    logger.info(f"Applied {len(migrations)} migration(s) for module: {module.name}")
+                except Exception as mig_err:
+                    logger.error(f"Migration error for module {module.name}: {mig_err}")
+                finally:
+                    conn.close()
+
+    # Module HTTP routers are registered on lamb.main:app (see lamb/main.py) so they
+    # are reachable under /lamb/v1/modules/{name}/...
 
     await start_news_cache_refresh_loop()
     logger.info("News cache refresh loop started")
@@ -214,6 +264,15 @@ app = FastAPI(
     openapi_url="/openapi.json",
     lifespan=lifespan
 )
+
+from lamb.assistant_default_pps import load_defaults_json_document
+
+
+@app.get("/static/json/defaults.json", include_in_schema=False)
+async def serve_defaults_json():
+    """Serve defaults.json from disk."""
+    return JSONResponse(load_defaults_json_document())
+
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -878,6 +937,38 @@ if os.path.isdir(abs_frontend_build_dir):
     else:
         logger.warning(f"SvelteKit app directory not found: {svelte_app_dir}")
 
+    # For module-chat
+    module_chat_dir = os.path.join(abs_frontend_build_dir, "m", "chat")
+    module_chat_app_dir = os.path.join(module_chat_dir, "app")
+    
+    # LOG: Check if module-chat build exists
+    if os.path.isdir(module_chat_dir):
+        logger.info(f"✓ Module-chat build directory found at {module_chat_dir}")
+        try:
+            contents = os.listdir(module_chat_dir)
+            logger.info(f"  Contents: {contents}")
+        except Exception as e:
+            logger.warning(f"  Could not list contents: {e}")
+    else:
+        logger.error(f"✗ Module-chat build directory NOT found at {module_chat_dir}")
+        logger.error(f"  Available in frontend/build: {os.listdir(abs_frontend_build_dir)}")
+    
+    if os.path.isdir(module_chat_app_dir):
+        logger.info(f"Mounting module-chat SvelteKit assets from: {module_chat_app_dir} at /m/chat/app")
+        app.mount("/m/chat/app", StaticFiles(directory=module_chat_app_dir), name="module_chat_assets")
+    else:
+        logger.error(f"Module-chat app directory not found: {module_chat_app_dir}")
+
+    # For module-file-eval
+    module_file_eval_dir = os.path.join(abs_frontend_build_dir, "m", "file-eval")
+    module_file_eval_app_dir = os.path.join(module_file_eval_dir, "app")
+
+    if os.path.isdir(module_file_eval_app_dir):
+        logger.info(f"Mounting module-file-eval assets from: {module_file_eval_app_dir} at /m/file-eval/app")
+        app.mount("/m/file-eval/app", StaticFiles(directory=module_file_eval_app_dir), name="module_file_eval_assets")
+    else:
+        logger.info(f"Module-file-eval app directory not found (not built yet?): {module_file_eval_app_dir}")
+
     svelte_img_dir = os.path.join(abs_frontend_build_dir, "img")
     if os.path.isdir(svelte_img_dir):
         logger.info(f"Mounting images from: {svelte_img_dir} at /img")
@@ -905,6 +996,49 @@ if os.path.isdir(abs_frontend_build_dir):
     else:
         logger.warning(f"config.js not found: {config_js_path}")
 
+    # Module SPAs: static/config.js is emitted next to index.html (not under app/), so it is not
+    # covered by StaticFiles mounts at /m/chat/app and /m/file-eval/app. The catch-all would 404
+    # paths like m/file-eval/config.js. Serve explicitly (same pattern as /config.js for root SPA).
+    _minimal_lamb_config_js = b"window.LAMB_CONFIG = window.LAMB_CONFIG || {};\n"
+
+    module_chat_config_js = os.path.join(module_chat_dir, "config.js")
+
+    @app.get("/m/chat/config.js", include_in_schema=False)
+    async def get_module_chat_config_js():
+        if os.path.isfile(module_chat_config_js):
+            return FileResponse(module_chat_config_js, media_type="application/javascript")
+        logger.warning(
+            "module-chat build has no config.js at %s; serving minimal inline LAMB_CONFIG",
+            module_chat_config_js,
+        )
+        return Response(content=_minimal_lamb_config_js, media_type="application/javascript")
+
+    if os.path.isfile(module_chat_config_js):
+        logger.info(f"Serving module-chat config.js from: {module_chat_config_js}")
+    else:
+        logger.warning(
+            "Add frontend/packages/module-chat/static/config.js and rebuild m/chat to persist config on disk."
+        )
+
+    module_file_eval_config_js = os.path.join(module_file_eval_dir, "config.js")
+
+    @app.get("/m/file-eval/config.js", include_in_schema=False)
+    async def get_module_file_eval_config_js():
+        if os.path.isfile(module_file_eval_config_js):
+            return FileResponse(module_file_eval_config_js, media_type="application/javascript")
+        logger.warning(
+            "module-file-eval build has no config.js at %s; serving minimal inline LAMB_CONFIG",
+            module_file_eval_config_js,
+        )
+        return Response(content=_minimal_lamb_config_js, media_type="application/javascript")
+
+    if os.path.isfile(module_file_eval_config_js):
+        logger.info(f"Serving module-file-eval config.js from: {module_file_eval_config_js}")
+    else:
+        logger.warning(
+            "Add frontend/packages/module-file-eval/static/config.js and rebuild m/file-eval to persist config on disk."
+        )
+
     # 3. SPA Catch-all Route (Defined last to avoid overriding API routes)
     if os.path.isfile(frontend_index_html):
         logger.info(f"SPA index.html found: {frontend_index_html}. Enabling catch-all route.")
@@ -930,11 +1064,9 @@ if os.path.isdir(abs_frontend_build_dir):
                 return Response(content=f"Resource not found at '{full_path}'", status_code=404)
 
 
-            # Check if the path looks like a file extension commonly used for assets served by static mounts
-            # e.g. /app/xxx.js, /img/yyy.png
             if '.' in full_path.split('/')[-1] and not full_path.endswith(".html"):
-                 # Check if it's likely served by '/app' or '/img' mounts
-                 if full_path.startswith(('/app/', '/img/')):
+                 # Check if it's likely served by '/app', '/m/chat/app', or '/img' mounts
+                 if full_path.startswith(('app/', 'img/', 'm/chat/app/', 'm/file-eval/app/')):
                       # Let the StaticFiles mount handle this (FastAPI does this automatically if the route isn't matched)
                       logger.debug(f"SPA Catch-all: Path '{full_path}' looks like a mounted asset, letting StaticFiles handle.")
                       # Return 404 here because if we reached this point, StaticFiles didn't find it.
@@ -945,8 +1077,24 @@ if os.path.isdir(abs_frontend_build_dir):
                       return Response(content=f"File not found at '{full_path}'", status_code=404)
             else:
                 # If the path doesn't look like a static file asset (or is .html) and wasn't an API/static path,
-                # assume it's an SPA route and serve the main index.html file.
-                logger.debug(f"SPA Catch-all triggered for path: {full_path}. Serving index.html")
+                # assume it's an SPA route. Decide which SPA to serve based on the path prefix.
+                if full_path.startswith("m/chat"):
+                    module_chat_index = os.path.join(abs_frontend_build_dir, "m", "chat", "index.html")
+                    if os.path.isfile(module_chat_index):
+                        logger.debug(f"SPA Catch-all triggered for module-chat path: {full_path}. Serving m/chat/index.html")
+                        return FileResponse(module_chat_index)
+                    else:
+                        logger.warning(f"module-chat index.html not found at {module_chat_index}")
+
+                if full_path.startswith("m/file-eval"):
+                    module_fe_index = os.path.join(abs_frontend_build_dir, "m", "file-eval", "index.html")
+                    if os.path.isfile(module_fe_index):
+                        logger.debug(f"SPA Catch-all triggered for module-file-eval path: {full_path}. Serving m/file-eval/index.html")
+                        return FileResponse(module_fe_index)
+                    else:
+                        logger.warning(f"module-file-eval index.html not found at {module_fe_index}")
+
+                logger.debug(f"SPA Catch-all triggered for path: {full_path}. Serving root index.html")
                 return FileResponse(frontend_index_html)
     else:
         logger.error(f"index.html not found in frontend build directory: {frontend_index_html}")

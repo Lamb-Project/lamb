@@ -147,11 +147,11 @@ def test_concurrent_user_creation():
         if user_count == 1:
             print("✅ TEST PASSED: File locking prevented race condition!")
             print("   Only one user was created despite 4 concurrent attempts.")
-            return True
         else:
             print(f"❌ TEST FAILED: Expected 1 user, found {user_count}")
             print("   File locking did not prevent race condition.")
-            return False
+
+        assert user_count == 1, f"Expected 1 user, found {user_count} — file locking did not prevent race condition"
             
     finally:
         # Cleanup

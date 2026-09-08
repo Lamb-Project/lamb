@@ -65,6 +65,7 @@ async def import_file(
     title: str = Form(...),
     plugin_params: str = Form("{}"),
     api_keys: str = Form("{}"),
+    folder_id: str | None = Form(None),
     db: Session = Depends(get_session),
 ) -> dict:
     """Upload a file and queue it for import.
@@ -100,15 +101,16 @@ async def import_file(
         raise HTTPException(
             status_code=400,
             detail=f"Plugin '{plugin_name}' does not support file uploads. "
-                   f"Supported sources: {', '.join(sorted(plugin.supported_source_types))}",
+            f"Supported sources: {', '.join(sorted(plugin.supported_source_types))}",
         )
 
     ext = Path(file.filename or "").suffix.lower().lstrip(".")
-    if plugin.supported_file_types and ext not in plugin.supported_file_types:
+    accepted = {e.lower().lstrip(".") for e in getattr(plugin, "file_extensions", [])}
+    if accepted and ext not in accepted:
         raise HTTPException(
             status_code=400,
             detail=f"Plugin '{plugin_name}' does not support .{ext} files. "
-                   f"Supported: {', '.join(sorted(plugin.supported_file_types))}",
+            f"Supported: {', '.join(sorted(accepted))}",
         )
 
     try:
@@ -138,13 +140,23 @@ async def import_file(
                     raise HTTPException(
                         status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                         detail=f"File exceeds maximum upload size "
-                               f"({MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB).",
+                        f"({MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB).",
                     )
                 f.write(chunk)
     finally:
         await file.close()
 
     file_size = temp_path.stat().st_size
+
+    # Reject empty uploads outright — a 0-byte file produces an empty
+    # ``content/full.md`` and a useless library item that never serves any
+    # downstream RAG / KS use. Refuse it before any DB row or job is queued.
+    if file_size == 0:
+        temp_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is empty (0 bytes). Cannot import an empty file.",
+        )
 
     try:
         item_id, job_id = import_service.queue_file_import(
@@ -159,7 +171,11 @@ async def import_file(
             file_size=file_size,
             plugin_params=parsed_params,
             api_keys=parsed_keys,
+            folder_id=folder_id,
         )
+    except ValueError as exc:
+        temp_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception:
         temp_path.unlink(missing_ok=True)
         raise
@@ -204,16 +220,20 @@ async def import_url(
             detail=f"Plugin '{body.plugin_name}' does not support URL imports.",
         )
 
-    item_id, job_id = import_service.queue_url_import(
-        db=db,
-        library_id=lib_id,
-        organization_id=lib.organization_id,
-        title=body.title,
-        plugin_name=body.plugin_name,
-        url=body.url,
-        plugin_params=body.plugin_params,
-        api_keys=body.api_keys,
-    )
+    try:
+        item_id, job_id = import_service.queue_url_import(
+            db=db,
+            library_id=lib_id,
+            organization_id=lib.organization_id,
+            title=body.title,
+            plugin_name=body.plugin_name,
+            url=body.url,
+            plugin_params=body.plugin_params,
+            api_keys=body.api_keys,
+            folder_id=body.folder_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"item_id": item_id, "job_id": job_id, "status": "processing"}
 
@@ -255,19 +275,27 @@ async def import_youtube(
             detail=f"Plugin '{body.plugin_name}' does not support YouTube imports.",
         )
 
-    # Merge language into plugin_params.
-    params = body.plugin_params or {}
-    params["language"] = body.language
+    # Prefer plugin_params["language"] when the caller sent it via the
+    # schema-driven path. Fall back to the deprecated top-level ``language``
+    # only when plugin_params doesn't carry one. Once all known callers
+    # send language inside plugin_params, the top-level field can be
+    # dropped from YoutubeImportRequest.
+    params = dict(body.plugin_params or {})
+    params.setdefault("language", body.language)
 
-    item_id, job_id = import_service.queue_youtube_import(
-        db=db,
-        library_id=lib_id,
-        organization_id=lib.organization_id,
-        title=body.title,
-        plugin_name=body.plugin_name,
-        video_url=body.video_url,
-        plugin_params=params,
-        api_keys=body.api_keys,
-    )
+    try:
+        item_id, job_id = import_service.queue_youtube_import(
+            db=db,
+            library_id=lib_id,
+            organization_id=lib.organization_id,
+            title=body.title,
+            plugin_name=body.plugin_name,
+            video_url=body.video_url,
+            plugin_params=params,
+            api_keys=body.api_keys,
+            folder_id=body.folder_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"item_id": item_id, "job_id": job_id, "status": "processing"}

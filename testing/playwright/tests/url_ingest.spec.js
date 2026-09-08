@@ -171,8 +171,7 @@ test.describe.serial("URL ingestion and query verification", () => {
         // API key input not found, might be optional
       }
     }
-
-    // Fill Firecrawl API URL if provided
+       // Fill Firecrawl API URL if provided
     if (FIRECRAWL_API_URL) {
       const apiUrlInput = page.locator("#param-api_url-inline");
       try {

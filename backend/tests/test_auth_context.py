@@ -155,13 +155,13 @@ class TestBuildAuthContext:
     @patch("lamb.auth_context._db")
     @patch("lamb.auth.decode_token")
     def test_user_not_in_db(self, mock_decode, mock_db):
-        """Valid JWT but no matching creator user returns None."""
+        """A removed account is denied even if its JWT is still valid."""
         mock_decode.return_value = _make_jwt_payload()
         mock_db.get_creator_user_by_email.return_value = None
 
-        ctx = _build_auth_context("valid-token")
-
-        assert ctx is None
+        with pytest.raises(HTTPException) as exc:
+            _build_auth_context("valid-token")
+        assert exc.value.status_code == 403
 
     @patch("lamb.auth_context._db")
     @patch("lamb.auth.decode_token")

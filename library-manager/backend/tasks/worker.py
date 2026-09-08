@@ -112,8 +112,11 @@ def _process_job_sync(job_id: str) -> None:
     except Exception as exc:
         logger.exception("Job %s failed", job_id)
         try:
-            # Store sanitized message for API consumers; full trace goes to logs only.
-            error_msg = f"Import failed: {type(exc).__name__}: {str(exc)[:500]}"
+            # Store the plugin's message verbatim — no class-name prefix,
+            # no "Import failed:" wrapper. Plugins are responsible for
+            # raising with a clean user-facing message; the traceback is
+            # already in the log above for operators.
+            error_msg = (str(exc) or exc.__class__.__name__)[:500]
             job = db.query(ImportJob).filter(ImportJob.id == job_id).first()
             if job:
                 job.status = "failed"

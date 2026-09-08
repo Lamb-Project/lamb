@@ -176,9 +176,23 @@ async def test_path_traversal_in_original_name(client: AsyncClient, library: dic
 
 
 @pytest.mark.asyncio
-async def test_empty_file_import(client: AsyncClient, library: dict):
-    """An empty file should be imported (plugin handles empty content)."""
+async def test_empty_file_import_rejected(client: AsyncClient, library: dict):
+    """An empty (0-byte) upload must be rejected with HTTP 400.
+
+    Regression test for defect D2 (lifecycle 2026-05-03): a 0-byte file
+    previously succeeded and ended up as a ``ready`` item with file_size=0
+    and an empty full.md, polluting the library. The router must refuse it
+    before any DB row or job is queued.
+    """
     lib_id = library["id"]
+
+    # Snapshot item count before — must be unchanged afterwards.
+    items_before = await client.get(
+        f"/libraries/{lib_id}/items",
+        headers=AUTH_HEADERS,
+    )
+    assert items_before.status_code == 200
+    count_before = len(items_before.json().get("items", items_before.json()))
 
     resp = await client.post(
         f"/libraries/{lib_id}/import/file",
@@ -186,12 +200,20 @@ async def test_empty_file_import(client: AsyncClient, library: dict):
         files={"file": ("empty.md", io.BytesIO(b""), "text/markdown")},
         data={"plugin_name": "simple_import", "title": "Empty Doc"},
     )
-    assert resp.status_code == 202
-    item_id = resp.json()["item_id"]
+    assert resp.status_code == 400
+    detail = resp.json()["detail"].lower()
+    assert "empty" in detail or "0 bytes" in detail
 
-    status = await _wait_for_ready(client, lib_id, item_id)
-    # May be "ready" (empty content stored) or "failed" (plugin rejects empty).
-    assert status in ("ready", "failed")
+    # No row should have been inserted in the ContentItem table.
+    items_after = await client.get(
+        f"/libraries/{lib_id}/items",
+        headers=AUTH_HEADERS,
+    )
+    assert items_after.status_code == 200
+    count_after = len(items_after.json().get("items", items_after.json()))
+    assert count_after == count_before, (
+        f"Empty-file upload created an item ({count_before} -> {count_after})"
+    )
 
 
 # -----------------------------------------------------------------------

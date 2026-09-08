@@ -35,6 +35,7 @@ class UrlImportRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=500, description="Document title.")
     plugin_params: dict[str, Any] | None = None
     api_keys: dict[str, str] | None = None
+    folder_id: str | None = None
 
     @field_validator("url")
     @classmethod
@@ -58,6 +59,7 @@ class YoutubeImportRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=500, description="Document title.")
     plugin_params: dict[str, Any] | None = None
     api_keys: dict[str, str] | None = None
+    folder_id: str | None = None
 
     @field_validator("video_url")
     @classmethod
@@ -88,13 +90,18 @@ class ContentItemSummary(BaseModel):
     id: str
     title: str
     source_type: str
+    source_url: str | None = None
     original_filename: str | None = None
     content_type: str | None = None
     file_size: int | None = None
     import_plugin: str
     status: str
+    # Surfaced on the list endpoint so the UI can show *why* a row is in
+    # the ``failed`` state without an extra detail fetch per item.
+    error_message: str | None = None
     page_count: int = 0
     image_count: int = 0
+    folder_id: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -104,11 +111,9 @@ class ContentItemSummary(BaseModel):
 class ContentItemDetail(ContentItemSummary):
     """Full representation including metadata and permalinks."""
 
-    source_url: str | None = None
     import_params: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
     processing_stats: dict[str, Any] | None = None
-    error_message: str | None = None
     permalink_base: str | None = None
 
 

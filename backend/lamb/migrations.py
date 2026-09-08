@@ -20,7 +20,11 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="MIGRATIONS")
 
 # Increment this when adding a new migration method below.
-LATEST_VERSION = 25
+# Migration numbering is coordinated across parallel branches — see the tracker
+# issue on collisions. Current assignment: 26 = api_keys (feature/creator-api-keys),
+# 27 = knowledge_stores (#456), 28-30 below, 31 = LTI instructor flag (#468). 26 is a documented gap on this branch
+# until the api_keys work merges.
+LATEST_VERSION = 31
 
 
 class MigrationRunner:
@@ -584,6 +588,9 @@ class MigrationRunner:
                 configured_by_email TEXT NOT NULL,
                 configured_by_name TEXT,
                 chat_visibility_enabled INTEGER NOT NULL DEFAULT 0,
+                activity_type TEXT NOT NULL DEFAULT 'chat',
+                setup_config TEXT DEFAULT '{{}}',
+                lis_outcome_service_url TEXT,
                 status TEXT NOT NULL DEFAULT 'active',
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
@@ -1141,3 +1148,298 @@ class MigrationRunner:
             f"CREATE INDEX IF NOT EXISTS "
             f"idx_{tp}audit_log_org_date "
             f"ON {tp}audit_log(organization_id, created_at)")
+
+    def _migration_27(self, cursor):
+        """Create knowledge_stores and kb_content_links tables."""
+        tp = self.db.table_prefix
+
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {tp}knowledge_stores (
+                id TEXT PRIMARY KEY,
+                organization_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                owner_user_id INTEGER NOT NULL,
+                is_shared INTEGER DEFAULT 0,
+                chunking_strategy TEXT NOT NULL,
+                chunking_params TEXT,
+                embedding_vendor TEXT NOT NULL,
+                embedding_model TEXT NOT NULL,
+                embedding_endpoint TEXT,
+                vector_db_backend TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (organization_id)
+                    REFERENCES {tp}organizations(id) ON DELETE CASCADE,
+                FOREIGN KEY (owner_user_id)
+                    REFERENCES {tp}Creator_users(id),
+                UNIQUE(organization_id, name)
+            )
+        """)
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}knowledge_stores_owner "
+            f"ON {tp}knowledge_stores(owner_user_id)")
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}knowledge_stores_org_shared "
+            f"ON {tp}knowledge_stores(organization_id, is_shared)")
+
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {tp}kb_content_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                knowledge_store_id TEXT NOT NULL,
+                library_id TEXT NOT NULL,
+                library_item_id TEXT NOT NULL,
+                organization_id INTEGER NOT NULL,
+                kb_job_id TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                chunks_created INTEGER DEFAULT 0,
+                error_message TEXT,
+                created_by_user_id INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (knowledge_store_id)
+                    REFERENCES {tp}knowledge_stores(id) ON DELETE CASCADE,
+                FOREIGN KEY (organization_id)
+                    REFERENCES {tp}organizations(id) ON DELETE CASCADE,
+                FOREIGN KEY (created_by_user_id)
+                    REFERENCES {tp}Creator_users(id),
+                UNIQUE(knowledge_store_id, library_item_id)
+            )
+        """)
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}kb_content_links_ks "
+            f"ON {tp}kb_content_links(knowledge_store_id)")
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}kb_content_links_item "
+            f"ON {tp}kb_content_links(library_item_id)")
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}kb_content_links_status "
+            f"ON {tp}kb_content_links(status)")
+
+    def _migration_28(self, cursor):
+        """Add activity_type, setup_config, lis_outcome_service_url to lti_activities
+        for databases created before the file-eval module."""
+        tp = self.db.table_prefix
+        if not self._table_exists(cursor, 'lti_activities'):
+            return
+        if not self._column_exists(cursor, 'lti_activities', 'activity_type'):
+            logger.info("Migrating lti_activities: adding activity_type")
+            cursor.execute(
+                f"ALTER TABLE {tp}lti_activities "
+                f"ADD COLUMN activity_type TEXT NOT NULL DEFAULT 'chat'")
+        if not self._column_exists(cursor, 'lti_activities', 'setup_config'):
+            logger.info("Migrating lti_activities: adding setup_config")
+            cursor.execute(
+                f"ALTER TABLE {tp}lti_activities "
+                f"ADD COLUMN setup_config TEXT DEFAULT '{{}}'")
+        if not self._column_exists(cursor, 'lti_activities', 'lis_outcome_service_url'):
+            logger.info("Migrating lti_activities: adding lis_outcome_service_url")
+            cursor.execute(
+                f"ALTER TABLE {tp}lti_activities "
+                f"ADD COLUMN lis_outcome_service_url TEXT")
+
+    def _migration_29(self, cursor):
+        """Add cache-aware columns to model_pricing and assistant_usage_totals.
+        Seed OpenAI cached rates."""
+        tp = self.db.table_prefix
+
+        if not self._column_exists(cursor, 'model_pricing', 'cached_input_per_1m'):
+            cursor.execute(
+                f"ALTER TABLE {tp}model_pricing "
+                f"ADD COLUMN cached_input_per_1m REAL")
+
+        if not self._column_exists(cursor, 'assistant_usage_totals', 'cached_prompt_tokens_total'):
+            cursor.execute(
+                f"ALTER TABLE {tp}assistant_usage_totals "
+                f"ADD COLUMN cached_prompt_tokens_total INTEGER DEFAULT 0")
+        if not self._column_exists(cursor, 'assistant_usage_totals', 'non_cached_prompt_tokens_total'):
+            cursor.execute(
+                f"ALTER TABLE {tp}assistant_usage_totals "
+                f"ADD COLUMN non_cached_prompt_tokens_total INTEGER DEFAULT 0")
+
+        import time
+        now = int(time.time())
+        upsert_rows = [
+            ("openai", "gpt-4.1",       2.00,  1.00,  8.00),
+            ("openai", "gpt-4.1-mini",   0.40,  0.20,  1.60),
+            ("openai", "gpt-4.1-nano",   0.10,  0.025, 0.40),
+            ("openai", "gpt-4o",         2.50,  1.25, 10.00),
+            ("openai", "gpt-4o-mini",    0.15,  0.075, 0.60),
+            ("openai", "gpt-4-turbo",   10.00,  None, 30.00),
+            ("openai", "gpt-4",         30.00,  None, 60.00),
+            ("openai", "o3-mini",        1.10,  0.55,  4.40),
+        ]
+        for provider, model, inp, cached, out in upsert_rows:
+            cursor.execute(
+                f"""UPDATE {tp}model_pricing
+                    SET cached_input_per_1m = ?,
+                        input_per_1m = ?,
+                        output_per_1m = ?,
+                        updated_at = ?
+                    WHERE provider = ? AND model_name = ?""",
+                (cached, inp, out, now, provider, model),
+            )
+
+    def _migration_30(self, cursor):
+        """Add cache write, explicit cache, and immutable cost columns.
+        Backfill cost_usd for legacy usage_logs and rebuild totals."""
+        tp = self.db.table_prefix
+
+        # 29a: Add cache_read/write/explicit to model_pricing
+        if not self._column_exists(cursor, 'model_pricing', 'cache_read_per_1m'):
+            cursor.execute(
+                f"ALTER TABLE {tp}model_pricing ADD COLUMN cache_read_per_1m REAL")
+        if not self._column_exists(cursor, 'model_pricing', 'cache_write_per_1m'):
+            cursor.execute(
+                f"ALTER TABLE {tp}model_pricing ADD COLUMN cache_write_per_1m REAL")
+        if not self._column_exists(cursor, 'model_pricing', 'requires_explicit_cache'):
+            cursor.execute(
+                f"ALTER TABLE {tp}model_pricing "
+                f"ADD COLUMN requires_explicit_cache INTEGER DEFAULT 0")
+
+        # 29b: Copy cached_input_per_1m values to cache_read_per_1m
+        if self._column_exists(cursor, 'model_pricing', 'cached_input_per_1m'):
+            cursor.execute(
+                f"UPDATE {tp}model_pricing "
+                f"SET cache_read_per_1m = cached_input_per_1m "
+                f"WHERE cache_read_per_1m IS NULL AND cached_input_per_1m IS NOT NULL")
+
+        # 29c: Add cache token columns to assistant_usage_totals
+        if not self._column_exists(cursor, 'assistant_usage_totals', 'cache_read_tokens_total'):
+            cursor.execute(
+                f"ALTER TABLE {tp}assistant_usage_totals "
+                f"ADD COLUMN cache_read_tokens_total INTEGER DEFAULT 0")
+        if not self._column_exists(cursor, 'assistant_usage_totals', 'cache_write_tokens_total'):
+            cursor.execute(
+                f"ALTER TABLE {tp}assistant_usage_totals "
+                f"ADD COLUMN cache_write_tokens_total INTEGER DEFAULT 0")
+
+        # 29d: Copy cached_prompt_tokens_total to cache_read_tokens_total
+        if self._column_exists(cursor, 'assistant_usage_totals', 'cached_prompt_tokens_total'):
+            cursor.execute(
+                f"UPDATE {tp}assistant_usage_totals "
+                f"SET cache_read_tokens_total = cached_prompt_tokens_total "
+                f"WHERE cache_read_tokens_total = 0 AND cached_prompt_tokens_total > 0")
+
+        # 29e: Add cost_usd to usage_logs
+        if not self._column_exists(cursor, 'usage_logs', 'cost_usd'):
+            cursor.execute(
+                f"ALTER TABLE {tp}usage_logs ADD COLUMN cost_usd REAL")
+
+        # 29f: Seed Qwen pricing row
+        import time
+        now = int(time.time())
+        cursor.execute(
+            f"""INSERT OR IGNORE INTO {tp}model_pricing
+                (provider, model_name, input_per_1m, cache_read_per_1m,
+                 cache_write_per_1m, output_per_1m, requires_explicit_cache,
+                 notes, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "openai", "qwen3.6-plus",
+                0.80, 0.16, 1.00, 2.00, 1,
+                "Alibaba Qwen 3.6 Plus via compatible API",
+                now,
+            ),
+        )
+
+        # 29g: Backfill cost_usd for existing usage_logs rows where cost_usd IS NULL
+        cursor.execute(
+            f"SELECT id, usage_data, model_name, provider "
+            f"FROM {tp}usage_logs WHERE cost_usd IS NULL")
+        legacy_rows = cursor.fetchall()
+        if legacy_rows:
+            logger.info(
+                f"Migration 29: Backfilling cost_usd for "
+                f"{len(legacy_rows)} legacy usage_logs rows")
+            import json
+            from lamb.completions.token_repartition import extract_token_buckets
+            from lamb.completions.cost_formula import compute_cost_usd
+
+            pricing_cache = {}
+            for legacy_id, usage_json, leg_model, leg_provider in legacy_rows:
+                try:
+                    usage_obj = json.loads(usage_json) if isinstance(usage_json, str) else {}
+                except Exception:
+                    usage_obj = {}
+
+                pricing_key = (leg_provider, leg_model)
+                if pricing_key not in pricing_cache:
+                    cursor.execute(
+                        f"""SELECT input_per_1m, cache_read_per_1m,
+                                   cache_write_per_1m, output_per_1m,
+                                   requires_explicit_cache
+                            FROM {tp}model_pricing
+                            WHERE provider = ? AND model_name = ?""",
+                        (leg_provider, leg_model),
+                    )
+                    p_row = cursor.fetchone()
+                    if p_row:
+                        pricing_cache[pricing_key] = {
+                            "input_per_1m": p_row[0],
+                            "cache_read_per_1m": p_row[1],
+                            "cache_write_per_1m": p_row[2],
+                            "output_per_1m": p_row[3],
+                            "requires_explicit_cache": bool(p_row[4]),
+                        }
+                    else:
+                        pricing_cache[pricing_key] = None
+
+                buckets = extract_token_buckets(usage_obj)
+                cost = compute_cost_usd(pricing_cache[pricing_key], buckets)
+                cursor.execute(
+                    f"UPDATE {tp}usage_logs SET cost_usd = ? WHERE id = ?",
+                    (cost, legacy_id),
+                )
+
+            # 29h: Rebuild cost_usd_total from usage_logs.cost_usd
+            cursor.execute(f"""
+                UPDATE {tp}assistant_usage_totals
+                SET cost_usd_total = COALESCE((
+                    SELECT SUM(ul.cost_usd)
+                    FROM {tp}usage_logs ul
+                    WHERE ul.assistant_id = {tp}assistant_usage_totals.assistant_id
+                ), 0.0)
+            """)
+
+            # 29i: Rebuild cache token totals in assistant_usage_totals
+            cursor.execute(f"""
+                SELECT assistant_id,
+                       SUM(COALESCE(json_extract(usage_data, '$.prompt_tokens'), 0)),
+                       SUM(COALESCE(json_extract(usage_data, '$.prompt_tokens_details.cached_tokens'), 0)),
+                       SUM(COALESCE(json_extract(usage_data, '$.prompt_tokens_details.cache_creation_input_tokens'), 0))
+                FROM {tp}usage_logs
+                GROUP BY assistant_id
+            """)
+            for aid, prompt_sum, read_sum, write_sum in cursor.fetchall():
+                prompt_sum = int(prompt_sum or 0)
+                read_sum = int(read_sum or 0)
+                write_sum = int(write_sum or 0)
+                non_cached = max(0, prompt_sum - read_sum - write_sum)
+                cursor.execute(
+                    f"""UPDATE {tp}assistant_usage_totals
+                        SET cache_read_tokens_total = ?,
+                            cache_write_tokens_total = ?,
+                            non_cached_prompt_tokens_total = ?
+                        WHERE assistant_id = ?""",
+                    (read_sum, write_sum, non_cached, aid),
+                )
+
+            logger.info(
+                "Migration 29: Backfill complete "
+                "(cost_usd + cache_read + cache_write + non_cached)")
+
+    def _migration_31(self, cursor):
+        """Add the role flag required by LTI activity-user registration (#468)."""
+        if self._column_exists(cursor, 'lti_activity_users', 'is_instructor'):
+            return
+        cursor.execute(f"""
+            ALTER TABLE {self.db.table_prefix}lti_activity_users
+            ADD COLUMN is_instructor INTEGER NOT NULL DEFAULT 0
+        """)

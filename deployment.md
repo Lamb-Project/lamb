@@ -264,10 +264,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
-COPY requirements.txt .
+# Copy requirements first for better caching (two-step install avoids pip resolution-too-deep)
+COPY requirements-base.txt requirements-ml.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements-base.txt && \
+    pip install --no-cache-dir -r requirements-ml.txt
 
 # Copy application code
 COPY . .

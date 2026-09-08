@@ -1,0 +1,6 @@
+.prettierrc
+.svelte-kit
+build
+dist
+node_modules
+*.log

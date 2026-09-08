@@ -257,6 +257,57 @@ class AuthContext:
 
         return access
 
+    def can_access_knowledge_store(self, knowledge_store_id: str) -> str:
+        """Check user's access level for a knowledge store.
+
+        Used by the new KB Server (port 9092) integration. Mirrors the
+        ``can_access_library`` pattern — owner / shared / org-admin / system-admin.
+
+        Returns:
+            ``"owner"`` | ``"shared"`` | ``"none"``
+        """
+        user_id = self.user.get("id")
+        if not user_id:
+            return "none"
+
+        can_access, access_type = _db.user_can_access_knowledge_store(knowledge_store_id, user_id)
+        if can_access:
+            return access_type
+
+        if self.is_system_admin:
+            return "owner"
+
+        if self.is_org_admin:
+            entry = _db.get_knowledge_store(knowledge_store_id)
+            if entry and entry['organization_id'] == self.organization.get('id'):
+                return "owner"
+
+        return "none"
+
+    def require_knowledge_store_access(self, knowledge_store_id: str,
+                                       level: str = "any") -> str:
+        """Raise ``HTTPException(403/404)`` if KS access is insufficient.
+
+        Args:
+            knowledge_store_id: The KS UUID to check.
+            level: Required level — ``"any"``, ``"owner"``.
+
+        Returns:
+            The actual access level string.
+        """
+        access = self.can_access_knowledge_store(knowledge_store_id)
+
+        if access == "none":
+            raise HTTPException(status_code=404, detail="Knowledge store not found")
+
+        if level == "owner" and access != "owner":
+            raise HTTPException(
+                status_code=403,
+                detail="Only the knowledge store owner can perform this action",
+            )
+
+        return access
+
     # ------------------------------------------------------------------
     # Serialization
     # ------------------------------------------------------------------
@@ -336,8 +387,20 @@ def _build_auth_context(token: str) -> Optional[AuthContext]:
     creator_user = _db.get_creator_user_by_email(user_email)
     if not creator_user:
         logger.error(f"No creator user found for email: {user_email}")
-        return None
+        raise HTTPException(
+            status_code=403,
+            detail="Account no longer exists. Please contact your administrator.",
+            headers={"X-Account-Status": "deleted"}
+        )
 
+    if not creator_user.get('enabled', True):
+        logger.warning(f"Disabled user {user_email} attempted API access")
+        raise HTTPException(
+            status_code=403,
+            detail="Account has been disabled. Please contact your administrator.",
+            headers={"X-Account-Status": "disabled"}
+        )
+        
     # Use JWT role as authoritative; fall back to DB role
     effective_role = jwt_role or creator_user.get("role", "user")
     creator_user["role"] = effective_role
@@ -384,6 +447,47 @@ def _build_auth_context(token: str) -> Optional[AuthContext]:
         organization=organization,
         features=features,
     )
+
+
+# ---------------------------------------------------------------------------
+# Validation helpers
+# ---------------------------------------------------------------------------
+
+def validate_user_enabled(user_email: str) -> Dict[str, Any]:
+    """
+    Validate that a user exists and is enabled.
+    
+    This is a lightweight helper for non-JWT auth flows (e.g., MCP with LTI_SECRET)
+    that need to verify user status without full AuthContext construction.
+    
+    Args:
+        user_email: The user's email address
+        
+    Returns:
+        The user dictionary if valid
+        
+    Raises:
+        HTTPException(403) if user is deleted or disabled
+    """
+    user = _db.get_creator_user_by_email(user_email)
+    
+    if not user:
+        logger.error(f"No creator user found for email: {user_email}")
+        raise HTTPException(
+            status_code=403,
+            detail="Account no longer exists. Please contact your administrator.",
+            headers={"X-Account-Status": "deleted"}
+        )
+    
+    if not user.get('enabled', True):
+        logger.warning(f"Disabled user {user_email} attempted API access")
+        raise HTTPException(
+            status_code=403,
+            detail="Account has been disabled. Please contact your administrator.",
+            headers={"X-Account-Status": "disabled"}
+        )
+    
+    return user
 
 
 # ---------------------------------------------------------------------------
