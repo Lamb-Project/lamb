@@ -35,12 +35,14 @@ import sys
 import time
 from pathlib import Path
 
-LAMB = Path("/opt/lamb")
+# Root of the installation under test. Host path == in-container path (the
+# compose file bind-mounts LAMB_PROJECT_PATH at itself), so one value serves both.
+LAMB = Path(os.environ.get("LAMB_ROOT", "/opt/lamb"))
 # Absolute, not relative to this file: the upgrade harness copies this script
 # out of the repository so it survives a branch switch, and a checkpoint path
 # relative to the copy would point at an empty temp directory.
 CHECKPOINTS = Path(os.environ.get(
-    "LAMB_CHECKPOINTS", "/opt/lamb/testing/baseline/checkpoints"))
+    "LAMB_CHECKPOINTS", str(LAMB / "testing/baseline/checkpoints")))
 
 # What makes up a LAMB installation's state. Order is irrelevant; completeness
 # is everything. Paths that do not exist yet (the new KB server before its first

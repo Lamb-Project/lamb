@@ -17,6 +17,7 @@ and the branch you were on is restored at the end.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import tempfile
@@ -25,14 +26,20 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-LAMB = Path("/opt/lamb")
+LAMB = Path(os.environ.get("LAMB_ROOT", "/opt/lamb"))
+# Compose project and container names. The historical dev stack is project
+# "lamb" with a fixed backend container name; any other installation follows
+# compose's <project>-<service>-1 rule.
+PROJECT = os.environ.get("LAMB_COMPOSE_PROJECT", "lamb")
+BACKEND = os.environ.get("LAMB_BACKEND_CONTAINER",
+                         "lamb-backend" if PROJECT == "lamb" else f"{PROJECT}-backend-1")
 # The harness must outlive the checkout. These files live in the repository
 # under test, so switching to the target revision deletes them mid-run — an
 # upgrade test whose tester changes with the tested is measuring a moving
 # target. They are copied out before anything moves and run from the copy.
 TOOLS = Path(tempfile.mkdtemp(prefix="lamb-upgrade-harness-"))
-STACK = ["lamb-kb-1", "lamb-library-manager-1", "lamb-kb-server-1",
-         "lamb-openwebui-1", "lamb-frontend-1", "lamb-backend"]
+STACK = [f"{PROJECT}-kb-1", f"{PROJECT}-library-manager-1", f"{PROJECT}-kb-server-1",
+         f"{PROJECT}-openwebui-1", f"{PROJECT}-frontend-1", BACKEND]
 
 
 def run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
@@ -61,8 +68,8 @@ def wait_healthy(timeout: int = 300) -> bool:
     import urllib.request
 
     def db_writable() -> bool:
-        p = run(["docker", "exec", "lamb-backend", "python", "-c",
-                 "import sqlite3;c=sqlite3.connect('/opt/lamb/lamb_v4.db');"
+        p = run(["docker", "exec", BACKEND, "python", "-c",
+                 "import sqlite3;c=sqlite3.connect('" + str(LAMB / 'lamb_v4.db') + "');"
                  "c.execute('create table if not exists _probe(x int)');c.commit();"
                  "c.execute('drop table _probe');c.commit();print('rw')"])
         return "rw" in p.stdout
@@ -113,8 +120,8 @@ def verify(tag: str) -> tuple[bool, str]:
 
 
 def schema_version() -> str:
-    p = run(["docker", "exec", "lamb-backend", "python", "-c",
-             "import sqlite3;c=sqlite3.connect('/opt/lamb/lamb_v4.db');"
+    p = run(["docker", "exec", BACKEND, "python", "-c",
+             "import sqlite3;c=sqlite3.connect('" + str(LAMB / 'lamb_v4.db') + "');"
              "print(c.execute('select coalesce(max(version),0) from LAMB_schema_version').fetchone()[0])"])
     return p.stdout.strip() or "?"
 

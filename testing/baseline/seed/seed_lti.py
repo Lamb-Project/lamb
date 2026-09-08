@@ -18,6 +18,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -25,8 +26,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from lti_test import build_lti_params, launch_student, launch_unified  # noqa: E402
 
-LAMB_DB = "/opt/lamb/lamb_v4.db"
-OWI_DB = "/opt/lamb/open-webui/backend/data/webui.db"
+LAMB_ROOT = os.environ.get("LAMB_ROOT", "/opt/lamb")
+BACKEND = os.environ.get("LAMB_BACKEND_CONTAINER", "lamb-backend")
+LAMB_DB = f"{LAMB_ROOT}/lamb_v4.db"
+OWI_DB = f"{LAMB_ROOT}/open-webui/backend/data/webui.db"
 
 def _db_in_container(db_path: str, sql: str):
     """Run a query INSIDE the backend container.
@@ -46,7 +49,7 @@ def _db_in_container(db_path: str, sql: str):
         f"con=sqlite3.connect({db_path!r});"
         f"print(json.dumps([list(r) for r in con.execute({sql!r})]))"
     )
-    p = _sp.run(["docker", "exec", "lamb-backend", "python", "-c", code],
+    p = _sp.run(["docker", "exec", BACKEND, "python", "-c", code],
                 capture_output=True, text=True)
     if p.returncode != 0:
         return [["ERROR", (p.stderr or "").strip()[:120]]]
