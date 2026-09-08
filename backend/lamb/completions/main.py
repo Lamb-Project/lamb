@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse, Response
 from utils.pipelines.auth import bearer_security, get_current_user
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Any, Dict, Optional, Union, Tuple
+from typing import Any, Dict, Optional, Union, Tuple, AsyncGenerator
 import importlib
 import os
 import glob
@@ -11,6 +11,7 @@ import json
 from lamb.logging_config import get_logger
 from lamb.auth_context import AuthContext, get_optional_auth_context
 from lamb.completions.task_routing import maybe_route_non_streaming_task
+from lamb.completions.tools.loop import ToolLoop
 from utils.langsmith_config import traceable_llm_call, add_trace_metadata, is_tracing_enabled
 import traceback
 import asyncio
@@ -182,6 +183,8 @@ async def create_completion(
                 body=request,
                 llm=plugin_config["llm"],
                 assistant_owner=assistant_details.owner,
+                tools=request.get("tools"),
+                tool_choice=request.get("tool_choice", "auto"),
             )
             logger.debug("Returning streaming response")
             if connector == "ollama":
@@ -195,34 +198,21 @@ async def create_completion(
                 generator, usage_out = llm_response
             else:
                 generator, usage_out = llm_response, None
-            
+
             async def _tracked_stream():
-                obs_injected = False
-                async for chunk in generator:
-                    # Inject observability frame before [DONE] so frontend
-                    # SSE parser sees it before returning on [DONE].
-                    if observability_enabled(request) and not obs_injected and "data: [DONE]" in chunk:
-                        obs_payload = build_observability_payload(
-                            assistant_details, request, rag_context, messages
-                        )
-                        yield f"data: {json.dumps(obs_payload)}\n\n"
-                        obs_injected = True
+                async for chunk in _stream_with_observability(
+                    generator,
+                    request=request,
+                    assistant_details=assistant_details,
+                    rag_context=rag_context,
+                    obs_messages=messages,
+                    usage_out=usage_out,
+                    provider=provider,
+                    connector=connector,
+                    assistant=assistant,
+                    llm=llm,
+                ):
                     yield chunk
-                # Fallback: if the generator never emitted [DONE], inject here
-                if observability_enabled(request) and not obs_injected:
-                    obs_payload = build_observability_payload(
-                        assistant_details, request, rag_context, messages
-                    )
-                    yield f"data: {json.dumps(obs_payload)}\n\n"
-                # Stream finished — fire-and-forget usage log
-                if usage_out and provider:
-                    db_manager.log_token_usage(
-                        assistant_id=assistant,
-                        org_id=assistant_details.organization_id,
-                        model_name=llm,
-                        provider=provider,
-                        usage_data=usage_out
-                    )
 
             return StreamingResponse(_tracked_stream(), media_type="text/event-stream")
         else:
@@ -317,6 +307,71 @@ def observability_enabled(request: dict) -> bool:
     Phase 1: request-level flag only (no org feature gate yet).
     """
     return request.get("observability", False) is True
+
+
+async def _stream_with_observability(
+    generator,
+    *,
+    request: dict,
+    assistant_details,
+    rag_context,
+    obs_messages,
+    usage_out,
+    provider,
+    connector: str,
+    assistant: int,
+    llm: str,
+) -> AsyncGenerator[str, None]:
+    """
+    Wrap a connector's async chunk generator and inject an observability SSE
+    frame right before [DONE], then log token usage once the stream finishes.
+
+    This centralises the duplicated "inject obs + log usage" logic that
+    previously lived in three places (create_completion's _tracked_stream,
+    run_lamb_assistant's _tracked_stream, and run_lamb_assistant's
+    _tool_stream), so future changes only touch one spot.
+
+    Args:
+        generator: async iterator of raw SSE chunks from a connector.
+        request: original completion request (read for the observability flag).
+        assistant_details: assistant DB record (for building the obs payload).
+        rag_context: RAG results (for building the obs payload).
+        obs_messages: messages used to build the obs payload. For the ToolLoop
+            path pass the *final* messages (after tool rounds) so the payload
+            reflects what the LLM actually saw; elsewhere pass `messages`.
+        usage_out: usage dict from tracked connectors (may be None).
+        provider: provider string for the pricing table (may be None).
+        connector: connector name (used to skip usage logging for free LLMs).
+        assistant: assistant id (for token usage log).
+        llm: model name (for token usage log).
+    """
+    obs_injected = False
+    async for chunk in generator:
+        # Inject observability frame before [DONE] so frontend SSE parser
+        # sees it before returning on [DONE].
+        if observability_enabled(request) and not obs_injected and "data: [DONE]" in chunk:
+            obs_payload = build_observability_payload(
+                assistant_details, request, rag_context, obs_messages
+            )
+            yield f"data: {json.dumps(obs_payload)}\n\n"
+            obs_injected = True
+        yield chunk
+    # Fallback: if the generator never emitted [DONE], inject here.
+    if observability_enabled(request) and not obs_injected:
+        obs_payload = build_observability_payload(
+            assistant_details, request, rag_context, obs_messages
+        )
+        yield f"data: {json.dumps(obs_payload)}\n\n"
+    # Log usage when stream completes for tracked connectors.
+    # Skip ollama (free) and orgs without an organization.
+    if connector != "ollama" and usage_out and provider and assistant_details.organization_id is not None:
+        db_manager.log_token_usage(
+            assistant_id=assistant,
+            org_id=assistant_details.organization_id,
+            model_name=llm,
+            provider=provider,
+            usage_data=usage_out
+        )
 
 
 def _provider_for_connector(connector: str) -> str | None:
@@ -574,10 +629,77 @@ async def run_lamb_assistant(
             stream=stream,
             body=request, # Pass the original request dict as body
             llm=llm,
-            assistant_owner=assistant_details.owner
+            assistant_owner=assistant_details.owner,
+            tools=request.get("tools"),
+            tool_choice=request.get("tool_choice", "auto"),
         )
 
         if stream:
+            tools = request.get("tools")
+            use_tool_loop = bool(tools)
+
+            if use_tool_loop:
+                # ── ToolLoop path: function-calling rounds ──
+                async def _tool_stream():
+                    tool_loop = ToolLoop()
+                    final_msgs = None
+                    async for event in tool_loop.run(
+                        messages=messages,
+                        tools=tools,
+                        tool_choice=request.get("tool_choice", "auto"),
+                        llm_call_fn=lambda msgs, tl, tc: connectors[connector](
+                            messages=msgs,
+                            stream=False,
+                            body=request,
+                            llm=llm,
+                            assistant_owner=assistant_details.owner,
+                            tools=tl,
+                            tool_choice=tc,
+                        ),
+                    ):
+                        if event["type"] in ("thinking", "tool", "tool_done"):
+                            yield f"data: {json.dumps({'type': 'tool_event', 'data': event})}\n\n"
+                        elif event["type"] == "result":
+                            final_msgs = event["messages"]
+
+                    if final_msgs is None:
+                        final_msgs = messages
+
+                    # Stream final text reply
+                    gen_result = await connectors[connector](
+                        messages=final_msgs,
+                        stream=True,
+                        body=request,
+                        llm=llm,
+                        assistant_owner=assistant_details.owner,
+                    )
+                    if isinstance(gen_result, tuple):
+                        gen, usage_out = gen_result
+                    else:
+                        gen, usage_out = gen_result, None
+
+                    async for chunk in _stream_with_observability(
+                        gen,
+                        request=request,
+                        assistant_details=assistant_details,
+                        rag_context=rag_context,
+                        obs_messages=final_msgs,
+                        usage_out=usage_out,
+                        provider=provider,
+                        connector=connector,
+                        assistant=assistant,
+                        llm=llm,
+                    ):
+                        yield chunk
+
+                logger.debug("Returning ToolLoop streaming response")
+                return StreamingResponse(
+                    _tool_stream(),
+                    media_type="text/event-stream",
+                    headers=final_headers
+                )
+
+            # ── Standard (non-tool) streaming path ──
             # Tracked connectors return (generator, usage_out); others return the generator directly
             if isinstance(llm_response, tuple):
                 generator, usage_out = llm_response
@@ -585,32 +707,19 @@ async def run_lamb_assistant(
                 generator, usage_out = llm_response, None
 
             async def _tracked_stream():
-                obs_injected = False
-                async for chunk in generator:
-                    # Inject observability frame before [DONE] so frontend
-                    # SSE parser sees it before returning on [DONE].
-                    if observability_enabled(request) and not obs_injected and "data: [DONE]" in chunk:
-                        obs_payload = build_observability_payload(
-                            assistant_details, request, rag_context, messages
-                        )
-                        yield f"data: {json.dumps(obs_payload)}\n\n"
-                        obs_injected = True
+                async for chunk in _stream_with_observability(
+                    generator,
+                    request=request,
+                    assistant_details=assistant_details,
+                    rag_context=rag_context,
+                    obs_messages=messages,
+                    usage_out=usage_out,
+                    provider=provider,
+                    connector=connector,
+                    assistant=assistant,
+                    llm=llm,
+                ):
                     yield chunk
-                # Fallback: if the generator never emitted [DONE], inject here
-                if observability_enabled(request) and not obs_injected:
-                    obs_payload = build_observability_payload(
-                        assistant_details, request, rag_context, messages
-                    )
-                    yield f"data: {json.dumps(obs_payload)}\n\n"
-                # Log usage when stream completes for tracked connectors
-                if connector != "ollama" and usage_out and provider and assistant_details.organization_id is not None:
-                    db_manager.log_token_usage(
-                        assistant_id=assistant,
-                        org_id=assistant_details.organization_id,
-                        model_name=llm,
-                        provider=provider,
-                        usage_data=usage_out
-                    )
 
             # The openai.py connector returns an async generator yielding SSE strings
             # Wrap this directly in StreamingResponse
