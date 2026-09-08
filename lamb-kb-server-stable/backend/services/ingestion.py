@@ -270,7 +270,7 @@ class IngestionService:
         """
         print(f"DEBUG: [ingest_file] Starting ingestion for file: {file_path}")
         print(f"DEBUG: [ingest_file] Using plugin: {plugin_name}")
-        print(f"DEBUG: [ingest_file] Plugin params: {plugin_params}")
+        print(f"DEBUG: [ingest_file] Plugin params: {sorted(plugin_params)}")  # names only: values carry API keys
         
         # Check file exists
         if not os.path.exists(file_path):
@@ -376,7 +376,7 @@ class IngestionService:
         embedding_config = json.loads(db_collection['embeddings_model']) if isinstance(db_collection, dict) and isinstance(db_collection['embeddings_model'], str) else \
                            db_collection.embeddings_model if not isinstance(db_collection, dict) else \
                            db_collection['embeddings_model']
-        print(f"DEBUG: [add_documents_to_collection] Embedding config: {embedding_config}")
+        print(f"DEBUG: [add_documents_to_collection] Embedding config: { {k: v for k, v in embedding_config.items() if k != 'apikey'} }")
         
         # Extract key embedding model parameters for verification
         vendor = embedding_config.get("vendor", "")
