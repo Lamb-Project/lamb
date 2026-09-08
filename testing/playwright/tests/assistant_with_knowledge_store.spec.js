@@ -330,39 +330,39 @@ test.describe.serial("Assistant with Knowledge Store RAG (UI) @phase5-pending", 
     await expect(ragSelect).toBeEnabled({ timeout: 10000 });
     await ragSelect.selectOption("knowledge_store_rag");
 
-    // Try to pick the Ollama connector + a chat-capable model so we don't
-    // hit OpenAI (test orgs typically have a placeholder OpenAI key). If
-    // Ollama is not configured with a chat model on this org we'll fall
-    // through to whatever the form defaults to and detect the missing
-    // chat capability when calling /chat/completions, then skip.
+    // Prefer a chat-capable Ollama model (qwen / llama / phi / mistral / gemma)
+    // when the org offers one; otherwise keep the form's default connector
+    // and model. Switching the connector to Ollama without a chat model left
+    // the form on an embedding-only model (nomic-embed-text), which cannot
+    // answer, and the RAG assertion failed for the wrong reason (2026-09-08).
     let usingOllamaChat = false;
     const connectorSel = page.locator('select[name="connector"], #connector').first();
-    if (await connectorSel.count()) {
+    const modelSel = page.locator('select[name="llm"], #llm').first();
+    if ((await connectorSel.count()) && (await modelSel.count())) {
+      const originalConnector = await connectorSel.inputValue();
+      const originalModel = await modelSel.inputValue();
       const connectorValues = await connectorSel.evaluate((sel) =>
         Array.from(sel.options).map((o) => o.value),
       );
       const ollamaVal = connectorValues.find((v) => /ollama/i.test(v));
       if (ollamaVal) {
         await connectorSel.selectOption(ollamaVal, { timeout: 5000 }).catch(() => {});
-      }
-    }
-    const modelSel = page.locator('select[name="llm"], #llm').first();
-    if (await modelSel.count()) {
-      // Give the model dropdown a moment to repopulate after the connector
-      // change before reading its options.
-      await page.waitForTimeout(500);
-      const modelValues = await modelSel.evaluate((sel) =>
-        Array.from(sel.options).map((o) => o.value),
-      );
-      // Prefer a chat-capable Ollama model (qwen / llama / phi / mistral);
-      // if the org only has an embedding model (e.g. nomic-embed-text)
-      // there's no Ollama chat option to pick.
-      const chatModel = modelValues.find((v) =>
-        /qwen|llama|phi|mistral|gemma/i.test(v),
-      );
-      if (chatModel) {
-        await modelSel.selectOption(chatModel, { timeout: 5000 }).catch(() => {});
-        usingOllamaChat = true;
+        await page.waitForTimeout(500);
+        const modelValues = await modelSel.evaluate((sel) =>
+          Array.from(sel.options).map((o) => o.value),
+        );
+        const chatModel = modelValues.find((v) => /qwen|llama|phi|mistral|gemma/i.test(v));
+        if (chatModel) {
+          await modelSel.selectOption(chatModel, { timeout: 5000 }).catch(() => {});
+          usingOllamaChat = true;
+        } else if (originalConnector) {
+          // No Ollama chat model: restore the default connector and model.
+          await connectorSel.selectOption(originalConnector, { timeout: 5000 }).catch(() => {});
+          await page.waitForTimeout(500);
+          if (originalModel) {
+            await modelSel.selectOption(originalModel, { timeout: 5000 }).catch(() => {});
+          }
+        }
       }
     }
 
