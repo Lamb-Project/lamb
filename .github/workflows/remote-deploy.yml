@@ -1,15 +1,13 @@
-# Workflow: Remote deploy on push
+# Workflow: deliberate deployment of the shared dev test server
 
-name: Remote deploy on push
+name: Remote deploy (manual dev)
 
 on:
-  push:
-    branches:
-      - dev
   workflow_dispatch:
 
 jobs:
   ssh-deploy:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev'
     name: SSH deploy
     runs-on: ubuntu-latest
     steps:
