@@ -1,5 +1,6 @@
 <script>
 	import { onMount, onDestroy, tick } from 'svelte';
+	import { splitCanvasContent, canvasFromMessages } from '$lib/utils/aacCanvas.js';
 	import { sendMessageStream, getSession, sendMessage } from '$lib/services/aacService';
 	import { recordTabActivity } from '$lib/stores/aacStore.svelte';
 	import { renderMarkdownWithMath } from '$lib/utils/renderMarkdown.js';
@@ -40,41 +41,13 @@
 	/** @type {boolean} */
 	let showStats = $state(false);
 
-	/** @type {{ title: string, content: string } | null} */
-	let canvasData = $state(null);
+	// Derive the latest canvas from the transcript, never mutate state while rendering.
+	let dismissedCanvas = $state(null);
+	let latestCanvas = $derived(canvasFromMessages(messages));
+	let canvasData = $derived(latestCanvas?.key === dismissedCanvas ? null : latestCanvas);
 
-	/**
-	 * Split canvas directives from agent response.
-	 * @param {string} text
-	 * @returns {{ text: string, canvas: { title: string, content: string } | null }}
-	 */
-	function splitCanvasContent(text) {
-		if (!text) return { text: '', canvas: null };
-		const match = text.match(/<<<CANVAS(?:\s+title="([^"]*)")?>>>([\s\S]*?)<<<END_CANVAS>>>/);
-		if (!match) {
-			// Check for clear directive
-			if (text.includes('<<<CANVAS_CLEAR>>>')) {
-				return { text: text.replace(/<<<CANVAS_CLEAR>>>/g, '').trim(), canvas: null };
-			}
-			return { text, canvas: null };
-		}
-		const title = match[1] || '';
-		const canvasContent = match[2].trim();
-		const cleanText = text.replace(/<<<CANVAS[\s\S]*?<<<END_CANVAS>>>/, '').trim();
-		return { text: cleanText, canvas: { title, content: canvasContent } };
-	}
-
-	/**
-	 * Render an assistant message, extracting any canvas content.
-	 * @param {string} content
-	 * @returns {string}
-	 */
 	function renderAssistantMessage(content) {
-		const { text, canvas } = splitCanvasContent(content);
-		if (canvas) {
-			canvasData = canvas;
-		}
-		return renderMarkdown(text);
+		return renderMarkdown(splitCanvasContent(content).text);
 	}
 
 	onMount(async () => {
@@ -412,7 +385,7 @@
 		            {darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'}">
 			<h3 class="text-sm font-semibold truncate">{canvasData.title || 'Canvas'}</h3>
 			<button
-				onclick={() => canvasData = null}
+				onclick={() => dismissedCanvas = latestCanvas?.key}
 				class="text-xs opacity-50 hover:opacity-100 transition-opacity"
 				title="Close canvas"
 			>✕</button>

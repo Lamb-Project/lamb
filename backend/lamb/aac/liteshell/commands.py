@@ -632,6 +632,53 @@ def docs_read(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
     }
 
 
+# Existing CLI analytics vocabulary; the API remains the authorization boundary.
+def _analytics_params(kwargs, defaults=None):
+    params = dict(defaults or {})
+    for key in ("page", "per_page", "user_id", "start_date", "end_date", "period"):
+        if key in kwargs:
+            params[key] = kwargs[key]
+    if "search" in kwargs:
+        params["search_content"] = kwargs["search"]
+    for key in ("page", "per_page"):
+        if key in params:
+            params[key] = int(params[key])
+            if params[key] < 1:
+                raise ValueError(f"{key} must be positive")
+    if "period" in params and params["period"] not in {"day", "week", "month"}:
+        raise ValueError("period must be day, week or month")
+    return params
+
+
+@register("analytics.chats")
+async def analytics_chats(ctx, args, kwargs):
+    """List assistant chats with CLI-compatible filters."""
+    data = await ctx.http.get(f"/creator/analytics/assistant/{args[0]}/chats",
+                             params=_analytics_params(kwargs, {"page": 1, "per_page": 20}))
+    return data.get("chats", [])
+
+
+@register("analytics.chat-detail")
+async def analytics_chat_detail(ctx, args, kwargs):
+    """Get an authorized assistant chat and its messages."""
+    from urllib.parse import quote
+    return await ctx.http.get(f"/creator/analytics/assistant/{args[0]}/chats/{quote(args[1], safe='')}")
+
+
+@register("analytics.stats")
+async def analytics_stats(ctx, args, kwargs):
+    """Get assistant chat statistics."""
+    return await ctx.http.get(f"/creator/analytics/assistant/{args[0]}/stats",
+                             params=_analytics_params(kwargs))
+
+
+@register("analytics.timeline")
+async def analytics_timeline(ctx, args, kwargs):
+    """Get assistant activity by day, week or month."""
+    return await ctx.http.get(f"/creator/analytics/assistant/{args[0]}/timeline",
+                             params=_analytics_params(kwargs, {"period": "day"}))
+
+
 # ---------------------------------------------------------------------------
 # Utility commands (LOCAL — sync)
 # ---------------------------------------------------------------------------

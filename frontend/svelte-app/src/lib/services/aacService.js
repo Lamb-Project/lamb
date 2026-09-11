@@ -118,40 +118,41 @@ export async function sendMessageStream(sessionId, message, onChunk, onDone, onE
 	}
 
 	const reader = res.body?.getReader();
-	if (!reader) return;
-
+	if (!reader) { onError?.('Empty response stream'); return; }
 	const decoder = new TextDecoder();
 	let buffer = '';
-
+	let completed = false;
+	let failed = false;
+	function consume(line) {
+		if (!line.startsWith('data:')) return;
+		const payload = line.slice(5).trim();
+		if (payload === '[DONE]') { completed = true; return; }
+		let data;
+		try { data = JSON.parse(payload); } catch (_) { return; }
+		if (data.content) onChunk(data.content);
+		if (data.status) onStatus?.(data);
+		if (data.error) { failed = true; onError?.(data.error); }
+		if (data.done) { completed = true; onDone?.(data.stats || {}); }
+	}
 	try {
-		while (true) {
-			if (signal?.aborted) {
-				try { await reader.cancel(); } catch (_) { /* noop */ }
-				return;
-			}
+		while (!completed) {
+			if (signal?.aborted) return;
 			const { done, value } = await reader.read();
-			if (done) break;
-
-			buffer += decoder.decode(value, { stream: true });
+			buffer += decoder.decode(value, { stream: !done });
 			const lines = buffer.split('\n');
 			buffer = lines.pop() || '';
-
-			for (const line of lines) {
-				if (!line.startsWith('data: ')) continue;
-				const payload = line.slice(6);
-				if (payload === '[DONE]') return;
-				try {
-					const data = JSON.parse(payload);
-					if (data.content) onChunk(data.content);
-					else if (data.status && onStatus) onStatus(data);
-					if (data.done && onDone) onDone(data.stats || {});
-					if (data.error && onError) onError(data.error);
-				} catch (_) { /* ignore parse errors */ }
+			for (const line of lines) consume(line);
+			if (done) {
+				if (buffer) consume(buffer);
+				if (!completed && !failed) onError?.('Response interrupted. Please try again.');
+				break;
 			}
 		}
 	} catch (e) {
-		if (e?.name === 'AbortError') return;
-		throw e;
+		if (e?.name !== 'AbortError') throw e;
+	} finally {
+		try { await reader.cancel(); } catch (_) { /* already closed */ }
+		reader.releaseLock();
 	}
 }
 
