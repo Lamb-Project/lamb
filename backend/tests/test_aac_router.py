@@ -1,0 +1,72 @@
+"""Request lifecycle regressions: state and resources survive failed/cancelled turns."""
+import asyncio
+import unittest
+from types import SimpleNamespace as N
+from unittest.mock import AsyncMock, Mock, patch
+from fastapi import HTTPException
+from lamb.aac import router as r
+
+class LifecycleTests(unittest.IsolatedAsyncioTestCase):
+    def fixture(self):
+        a=N(conversation=[{'role':'user','content':'hello'}],pending_action={'command':'lamb assistant update 1'},
+            tool_audit=[{'success':True}],shell=N(close=AsyncMock()),llm_client=N(close=AsyncMock()),
+            session_logger=None,chat=AsyncMock(return_value='done'),get_stats=lambda:{'turns':1})
+        mgr=Mock();mgr.get_session.return_value={'id':'s'}
+        req=N(json=AsyncMock(return_value={'message':'hello'}),headers={})
+        auth=N(user={'email':'teacher@example.test'},organization={'id':1})
+        return a,mgr,req,auth
+
+    async def test_plain_success_failure_and_cancel_persist_and_close(self):
+        for error in [None,RuntimeError('provider failed'),asyncio.CancelledError()]:
+            with self.subTest(error=type(error).__name__):
+                a,mgr,req,auth=self.fixture();a.chat.side_effect=error
+                with patch.object(r,'AACSessionManager',return_value=mgr),patch.object(r,'_prepare_agent_and_message',AsyncMock(return_value=(a,'hello',None))):
+                    if error:
+                        with self.assertRaises(asyncio.CancelledError if isinstance(error,asyncio.CancelledError) else HTTPException):
+                            await r.send_message('s',req,auth)
+                    else:self.assertEqual((await r.send_message('s',req,auth))['response'],'done')
+                mgr.update_conversation.assert_called_once()
+                self.assertEqual(mgr.update_conversation.call_args.kwargs['pending_action'],a.pending_action)
+                self.assertEqual(mgr.update_conversation.call_args.kwargs['tool_audit'],a.tool_audit)
+                a.shell.close.assert_awaited_once();a.llm_client.close.assert_awaited_once()
+
+    async def test_stream_failure_and_disconnect_persist(self):
+        for error in [None,RuntimeError('provider failed'),asyncio.CancelledError()]:
+            a,mgr,req,auth=self.fixture()
+            async def chunks(message):
+                yield 'partial'
+                if error:raise error
+            a.chat_stream=chunks
+            with patch.object(r,'AACSessionManager',return_value=mgr),patch.object(r,'_prepare_agent_and_message',AsyncMock(return_value=(a,'hello',None))):
+                response=await r.send_message_stream('s',req,auth)
+                if isinstance(error,asyncio.CancelledError):
+                    with self.assertRaises(asyncio.CancelledError):
+                        _=[x async for x in response.body_iterator]
+                else:
+                    output=''.join([x async for x in response.body_iterator])
+                    self.assertIn('[DONE]',output)
+                    self.assertEqual('provider failed' in output,error is not None)
+            mgr.update_conversation.assert_called_once()
+            a.shell.close.assert_awaited_once();a.llm_client.close.assert_awaited_once()
+
+    async def test_persistence_or_shell_close_failure_still_closes_llm(self):
+        for where in ['db','shell']:
+            a,mgr,_,_=self.fixture()
+            if where=='db':mgr.update_conversation.side_effect=RuntimeError('db failed')
+            else:a.shell.close.side_effect=RuntimeError('close failed')
+            with self.assertRaises(RuntimeError):await r._finish_turn(mgr,a,'s','e',None)
+            a.shell.close.assert_awaited_once();a.llm_client.close.assert_awaited_once()
+
+    async def test_missing_session_never_builds_agent(self):
+        a,mgr,req,auth=self.fixture();mgr.get_session.return_value=None
+        for endpoint in [r.send_message,r.send_message_stream]:
+            with patch.object(r,'AACSessionManager',return_value=mgr),patch.object(r,'_prepare_agent_and_message',AsyncMock()) as build:
+                with self.assertRaises(HTTPException) as error:await endpoint('foreign',req,auth)
+                self.assertEqual(error.exception.status_code,404);build.assert_not_awaited()
+
+    async def test_invalid_message_shapes_are_client_errors(self):
+        for body in [None, [], {}, {'message':None}, {'message':42}, {'message':[]}, {'message':'  '}]:
+            for endpoint in [r.send_message,r.send_message_stream]:
+                _,_,req,auth=self.fixture();req.json.return_value=body
+                with self.assertRaises(HTTPException) as error:await endpoint('s',req,auth)
+                self.assertEqual(error.exception.status_code,400)

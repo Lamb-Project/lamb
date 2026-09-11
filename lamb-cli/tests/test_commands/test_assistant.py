@@ -283,8 +283,7 @@ class TestAssistantUpdate:
 
     def test_update_metadata_merge(self, httpx_mock, mock_token):
         """Update --llm merges with existing metadata fetched from server."""
-        # GET for metadata merge, GET for name backfill, then PUT.
-        httpx_mock.add_response(json=SAMPLE_ASSISTANT_WITH_METADATA)
+        # One GET supplies both metadata and name, then PUT.
         httpx_mock.add_response(json=SAMPLE_ASSISTANT_WITH_METADATA)
         httpx_mock.add_response(json={"assistant_id": "ast-1", "message": "Updated"})
         result = runner.invoke(
@@ -300,8 +299,7 @@ class TestAssistantUpdate:
 
     def test_update_vision_flag(self, httpx_mock, mock_token):
         """Update --vision merges capability into existing metadata."""
-        # GET for metadata merge, GET for name backfill, then PUT.
-        httpx_mock.add_response(json=SAMPLE_ASSISTANT_WITH_METADATA)
+        # One GET supplies both metadata and name, then PUT.
         httpx_mock.add_response(json=SAMPLE_ASSISTANT_WITH_METADATA)
         httpx_mock.add_response(json={"assistant_id": "ast-1", "message": "Updated"})
         result = runner.invoke(
@@ -534,13 +532,7 @@ class TestAssistantKnowledgeStoreFlag:
     def test_update_with_knowledge_store_replaces_collections(
         self, httpx_mock, mock_token
     ):
-        # update fetches current metadata + name backfill, then PUT
-        # but with only --knowledge-store and --rag-processor, the metadata
-        # GET happens then name backfill GET, then PUT. Let's check actual flow:
-        # has_config_flags is True (rag_processor set), so:
-        # 1) GET current for metadata merge, 2) PUT (no name backfill since
-        # metadata GET already gave us 'name' indirectly? actually re-read…).
-        httpx_mock.add_response(json=SAMPLE_ASSISTANT_WITH_METADATA)
+        # One GET supplies metadata and name; knowledge binding remains explicit.
         httpx_mock.add_response(json=SAMPLE_ASSISTANT_WITH_METADATA)
         httpx_mock.add_response(json={"message": "Updated"})
         result = runner.invoke(

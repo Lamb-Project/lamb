@@ -20,6 +20,10 @@ logger = get_logger(__name__, component="AAC")
 
 # Default policy: which commands need confirmation
 DEFAULT_POLICY: dict[str, str] = {
+    "analytics.chats": "auto",
+    "analytics.chat-detail": "auto",
+    "analytics.stats": "auto",
+    "analytics.timeline": "auto",
     # Reads — always auto
     "assistant.list": "auto",
     "assistant.list-shared": "auto",
@@ -136,6 +140,10 @@ def classify_user_confirmation(message: str) -> str:
 
     # Long messages are probably not simple yes/no
     if len(words) > 8:
+        return "other"
+
+    # Contradictory short replies must never approve a pending write.
+    if any(w in _APPROVAL_WORDS for w in words) and any(w in _REJECTION_WORDS for w in words):
         return "other"
 
     # Check exact phrase match first

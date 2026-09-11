@@ -386,6 +386,7 @@ def update_assistant(
     has_config_flags = any(v is not None for v in [connector, llm, prompt_processor, rag_processor, vision, image_generation])
 
     with get_client() as client:
+        current = None
         if interactive:
             config = _interactive_wizard(client)
             body["metadata"] = _build_metadata(**config)
@@ -411,17 +412,27 @@ def update_assistant(
                 image_generation=image_generation if image_generation is not None else current_md.get("capabilities", {}).get("image_generation", False),
             )
 
+        if has_config_flags and not interactive:
+            updated_metadata = json.loads(body["metadata"])
+            old_capabilities = current_md.get("capabilities", {})
+            updated_metadata["capabilities"] = {**old_capabilities, **updated_metadata.get("capabilities", {})}
+            body["metadata"] = json.dumps({**current_md, **updated_metadata})
+
         if not body:
             print_error("No fields to update. Provide at least one option.")
             raise typer.Exit(1)
 
         # The backend requires 'name' on every update; fetch current if not provided.
         if "name" not in body:
-            current = client.get(f"/creator/assistant/get_assistant/{assistant_id}")
+            if current is None:
+                current = client.get(f"/creator/assistant/get_assistant/{assistant_id}")
             body["name"] = current.get("name", "")
 
         data = client.put(f"/creator/assistant/update_assistant/{assistant_id}", json=body)
-    print_success(data.get("message", "Assistant updated."))
+    if fmt == "json":
+        format_output(data, [], "json")
+    else:
+        print_success(data.get("message", "Assistant updated."))
 
 
 @app.command("delete")
@@ -440,25 +451,39 @@ def delete_assistant(
 @app.command("publish")
 def publish_assistant(
     assistant_id: str = typer.Argument(..., help="Assistant ID."),
+    output: str = typer.Option(None, "-o", "--output", help="Output format: table, json, plain."),
 ) -> None:
     """Publish an assistant (make it available to end-users)."""
     with get_client() as client:
         data = client.put(
             f"/creator/assistant/publish/{assistant_id}", json={"publish_status": True}
         )
-    print_success(f"Assistant {assistant_id} published.")
+    if isinstance(data, dict) and data.get("success") is False:
+        print_error(data.get("error", "Publication failed"))
+        raise typer.Exit(1)
+    if (output or get_output_format()) == "json":
+        typer.echo(json.dumps({"id": assistant_id, "published": True, "response": data}, default=str))
+    else:
+        print_success(f"Assistant {assistant_id} published.")
 
 
 @app.command("unpublish")
 def unpublish_assistant(
     assistant_id: str = typer.Argument(..., help="Assistant ID."),
+    output: str = typer.Option(None, "-o", "--output", help="Output format: table, json, plain."),
 ) -> None:
     """Unpublish an assistant (hide from end-users)."""
     with get_client() as client:
         data = client.put(
             f"/creator/assistant/publish/{assistant_id}", json={"publish_status": False}
         )
-    print_success(f"Assistant {assistant_id} unpublished.")
+    if isinstance(data, dict) and data.get("success") is False:
+        print_error(data.get("error", "Publication failed"))
+        raise typer.Exit(1)
+    if (output or get_output_format()) == "json":
+        typer.echo(json.dumps({"id": assistant_id, "published": False, "response": data}, default=str))
+    else:
+        print_success(f"Assistant {assistant_id} unpublished.")
 
 
 @app.command("export")

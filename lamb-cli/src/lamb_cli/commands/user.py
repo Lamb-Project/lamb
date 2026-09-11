@@ -107,7 +107,8 @@ def create_user(
         data = client.post("/creator/admin/org-admin/users", json=body, params=params)
     # Name the organization explicitly: silent placement in the caller's org was
     # the actual defect behind #461, not just the missing flag.
-    print_success(f"User created: {data.get('email', data.get('id', ''))} (organization: {org or 'your own'})")
+    if fmt != "json":
+        print_success(f"User created: {data.get('email', data.get('id', ''))} (organization: {org or 'your own'})")
     format_output(data, USER_LIST_COLUMNS, fmt)
 
 

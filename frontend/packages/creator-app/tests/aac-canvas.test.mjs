@@ -1,0 +1,11 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {splitCanvasContent,canvasFromMessages} from '../src/lib/utils/aacCanvas.js';
+const a=content=>({role:'assistant',content});
+const canvas=(title,content)=>`<<<CANVAS title="${title}">>>${content}<<<END_CANVAS>>>`;
+test('extract canvas, leave surrounding prose',()=>{const r=splitCanvasContent('Before '+canvas('Plan','**Hello**')+' after');assert.equal(r.text,'Before  after');assert.equal(r.events[0].content,'**Hello**');});
+test('clear directive removes previous canvas in history',()=>{assert.equal(canvasFromMessages([a(canvas('Plan','x')),a('<<<CANVAS_CLEAR>>>')]),null);});
+test('last canvas wins across and within messages',()=>{assert.equal(canvasFromMessages([a(canvas('Old','x')),a(canvas('New','y')+canvas('Last','z'))]).title,'Last');});
+test('incomplete streamed canvas stays hidden and preserves previous',()=>{assert.equal(splitCanvasContent('text <<<CANVAS title="x">>>partial').text,'text');assert.equal(canvasFromMessages([a(canvas('Old','x')),a('<<<CANVAS')]).title,'Old');});
+test('user directives cannot alter canvas',()=>{assert.equal(canvasFromMessages([{role:'user',content:canvas('Bad','x')}]),null);});
+test('clear and replace in same message follows order',()=>{assert.equal(canvasFromMessages([a('<<<CANVAS_CLEAR>>>'+canvas('Next','n'))]).title,'Next');assert.equal(canvasFromMessages([a(canvas('Next','n')+'<<<CANVAS_CLEAR>>>')]),null);});

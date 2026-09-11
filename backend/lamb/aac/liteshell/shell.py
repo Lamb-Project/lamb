@@ -19,6 +19,57 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="AAC")
 
 
+# Explicit supported shell surface. Unsupported CLI options fail instead of being ignored.
+# key: (minimum positional arguments, maximum, accepted option names)
+COMMAND_CONTRACTS = {
+    "assistant.list": (0, 0, ""), "assistant.list-shared": (0, 0, ""),
+    "assistant.get": (1, 1, ""), "assistant.config": (0, 0, ""),
+    "assistant.debug": (1, 1, "message m"),
+    "assistant.create": (1, 1, "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format"),
+    "assistant.update": (1, 1, "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format"),
+    "assistant.delete": (1, 1, ""), "assistant.list-published": (0, 0, ""),
+    "assistant.chat": (1, 1, "message m bypass b"),
+    "rubric.list": (0, 0, ""), "rubric.list-public": (0, 0, ""),
+    "rubric.get": (1, 1, ""), "rubric.export": (1, 1, "format f"),
+    "kb.list": (0, 0, ""), "kb.get": (1, 1, ""),
+    "template.list": (0, 0, ""), "template.get": (1, 1, ""),
+    "test.scenarios": (1, 1, ""), "test.add": (1, 2, "title message m description type t expected e"),
+    "test.run": (1, 1, "bypass b scenario s"), "test.runs": (1, 1, ""),
+    "test.run-detail": (1, 2, "assistant a"), "test.evaluate": (2, 3, "assistant a notes n"),
+    "session.rename": (1, 1, "session s"), "skill.list": (0, 0, ""),
+    "skill.load": (1, 1, "assistant a language"), "docs.index": (0, 0, ""),
+    "docs.read": (1, 1, "section"), "help": (0, 0, ""),
+    "analytics.chats": (1, 1, "page per_page user_id search start_date end_date"),
+    "analytics.chat-detail": (2, 2, ""), "analytics.stats": (1, 1, "start_date end_date"),
+    "analytics.timeline": (1, 1, "period start_date end_date"),
+}
+
+
+def validate_command(key, args, kwargs):
+    minimum, maximum, options = COMMAND_CONTRACTS[key]
+    if not minimum <= len(args) <= maximum:
+        raise ValueError(f"{key} expects {minimum}..{maximum} positional arguments")
+    allowed = set(options.split()) | {"output", "o"}
+    unknown = set(kwargs) - allowed
+    if unknown:
+        raise ValueError(f"Unsupported options for {key}: {', '.join(sorted(unknown))}")
+    for option, value in kwargs.items():
+        if option in {"bypass", "b"}:
+            if value not in (True, "true", "false"):
+                raise ValueError(f"Invalid boolean for {option}")
+        elif value is True:
+            raise ValueError(f"Missing value for {option}")
+    if kwargs.get("output", kwargs.get("o", "json")) != "json":
+        raise ValueError("The AAC shell returns structured JSON; use -o json")
+    if key.startswith("analytics."):
+        if int(args[0]) < 1:
+            raise ValueError("assistant_id must be positive")
+        args[0] = str(int(args[0]))
+    if "s" in kwargs and key in {"assistant.create", "assistant.update"}:
+        kwargs["system_prompt"] = kwargs.pop("s")
+    if "rag_top_k" in kwargs and int(kwargs["rag_top_k"]) < 1:
+        raise ValueError("rag_top_k must be positive")
+
 @dataclass
 class ShellResult:
     """Result of a liteshell command execution."""
@@ -113,7 +164,7 @@ class LiteShell:
         group = tokens[0]
 
         # Check allowlist
-        if self.allowlist and group not in self.allowlist:
+        if self.allowlist is not None and group not in self.allowlist:
             return ShellResult(
                 success=False,
                 error=f"Command '{group}' not allowed. Available: {sorted(self.allowlist)}",
@@ -145,10 +196,14 @@ class LiteShell:
                 )
 
         args, kwargs = _parse_args(arg_tokens)
+        if kwargs.pop("help", kwargs.pop("h", False)):
+            return ShellResult(success=True, data={"command": key, "help": handler.__doc__ or "",
+                "options": COMMAND_CONTRACTS[key][2].split()})
+        validate_command(key, args, kwargs)
 
         # Build context for the handler
         ctx = CommandContext(
-            http=self._get_http(),
+            http=None if key in LOCAL_COMMANDS else self._get_http(),
             server_url=self.server_url,
             token=self.token,
             user_email=self.user_email,

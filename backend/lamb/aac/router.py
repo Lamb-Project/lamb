@@ -7,6 +7,7 @@ Agent-Assisted Creator.
 from __future__ import annotations
 
 import json
+import anyio
 from pathlib import Path
 from typing import Any
 
@@ -199,9 +200,10 @@ async def send_message(
     will ask the user, and the user's next message resolves it.
     """
     body = await request.json()
-    user_message = body.get("message", "").strip()
-    if not user_message:
+    user_message = body.get("message") if isinstance(body, dict) else None
+    if not isinstance(user_message, str) or not user_message.strip():
         raise HTTPException(status_code=400, detail="Message is required")
+    user_message = user_message.strip()
 
     mgr = AACSessionManager()
     session = mgr.get_session(session_id, auth.user["email"])
@@ -223,20 +225,10 @@ async def send_message(
         if agent.session_logger:
             agent.session_logger.log_error(str(e), context="agent_chat")
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+    finally:
+        await _finish_turn(mgr, agent, session_id, auth.user["email"], skill_info)
 
-    # Mark skill as started
-    if skill_info:
-        skill_info["started"] = True
 
-    # Persist conversation + pending action + skill_info + tool_audit
-    mgr.update_conversation(
-        session_id=session_id,
-        user_email=auth.user["email"],
-        conversation=agent.conversation,
-        pending_action=agent.pending_action,
-        skill_info=skill_info,
-        tool_audit=agent.tool_audit,
-    )
 
     stats = agent.get_stats()
     if agent.session_logger:
@@ -260,9 +252,10 @@ async def send_message_stream(
     Response: text/event-stream with chunks, ending with [DONE]
     """
     body = await request.json()
-    user_message = body.get("message", "").strip()
-    if not user_message:
+    user_message = body.get("message") if isinstance(body, dict) else None
+    if not isinstance(user_message, str) or not user_message.strip():
         raise HTTPException(status_code=400, detail="Message is required")
+    user_message = user_message.strip()
 
     mgr = AACSessionManager()
     session = mgr.get_session(session_id, auth.user["email"])
@@ -284,16 +277,8 @@ async def send_message_stream(
             logger.error(f"Stream error in session {session_id}: {e}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
-        if skill_info:
-            skill_info["started"] = True
-        mgr.update_conversation(
-            session_id=session_id,
-            user_email=auth.user["email"],
-            conversation=agent.conversation,
-            pending_action=agent.pending_action,
-            skill_info=skill_info,
-            tool_audit=agent.tool_audit,
-        )
+        finally:
+            await _finish_turn(mgr, agent, session_id, auth.user["email"], skill_info)
         stats = agent.get_stats()
         if agent.session_logger:
             agent.session_logger.log("turn_complete", stats)
@@ -306,6 +291,23 @@ async def send_message_stream(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+async def _finish_turn(mgr, agent, session_id, user_email, skill_info):
+    """Persist completed tool effects even when output fails or the client leaves."""
+    if skill_info:
+        skill_info["started"] = True
+    try:
+        mgr.update_conversation(session_id=session_id, user_email=user_email,
+            conversation=agent.conversation, pending_action=agent.pending_action,
+            skill_info=skill_info, tool_audit=agent.tool_audit)
+    finally:
+        # Starlette cancels the response scope on disconnect; close clients inside a shield.
+        with anyio.CancelScope(shield=True):
+            try:
+                await agent.shell.close()
+            finally:
+                await agent.llm_client.close()
 
 
 async def _prepare_agent_and_message(
@@ -477,6 +479,10 @@ async def _build_agent_with_skill(
     # Execute startup actions via liteshell
     from lamb.aac.agent.loop import _parse_action_key, _extract_artifacts
     for action in skill["startup_actions"]:
+        if authorizer.check(authorizer.resolve_action_key(action) or "") != "auto":
+            agent.conversation.append({"role": "user", "content":
+                f"[System: Startup action skipped because it requires authorization: {action}]"})
+            continue
         result = await shell.execute(action)
         # Record in tool audit
         action_key = _parse_action_key(action)
