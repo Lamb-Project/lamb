@@ -72,3 +72,12 @@ def test_update_json_preserves_custom_metadata_and_prompt(httpx_mock,mock_token)
     metadata=json.loads(body['metadata'])
     assert metadata['custom']=='keep'
     assert metadata['capabilities']['custom_cap'] is True
+
+
+@pytest.mark.parametrize('extra',[{'first_message':'Here is **my analysis**','stats':{'tool_calls':1}}, {'error':'Startup provider unavailable'}])
+def test_skill_start_json_remains_machine_readable(httpx_mock,mock_token,extra):
+    response={'id':'session-123','assistant_id':42,**extra}
+    httpx_mock.add_response(json=response)
+    result=runner.invoke(app,['aac','start','--skill','test-and-evaluate','--assistant','42','-o','json'])
+    assert result.exit_code==0,result.output
+    assert json.loads(result.stdout)==response

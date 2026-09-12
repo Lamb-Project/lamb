@@ -115,6 +115,10 @@ def start_session(
     with get_client(timeout=120.0) as client:
         data = client.post("/creator/aac/sessions", json=body)
 
+    if fmt == "json":
+        print_json(data)
+        return
+
     session_id = data.get("id", "")
     print_success(f"Session started: {session_id}")
 
@@ -131,8 +135,6 @@ def start_session(
             )
     elif data.get("error"):
         print_error(data["error"])
-    elif fmt == "json":
-        print_json(data)
     else:
         format_output(data, SESSION_LIST_COLUMNS, fmt, detail_fields=SESSION_DETAIL_FIELDS)
 
