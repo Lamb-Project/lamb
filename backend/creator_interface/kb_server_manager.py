@@ -1718,6 +1718,25 @@ class KBServerManager:
     
     # --- End Ingestion Status API Methods --- #
 
+    async def get_query_plugins(self, creator_user: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Discover query plugins on the authenticated user's configured KB server."""
+        kb_config = self._get_kb_config_for_user(creator_user)
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{kb_config['url'].rstrip('/')}/query/plugins",
+                    headers=self._get_auth_headers(kb_config['token']),
+                )
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code,
+                                    detail=f"KB server error fetching query plugins: {self._extract_error_detail(response)}")
+            data = response.json()
+            if not isinstance(data, list):
+                raise HTTPException(status_code=502, detail="Invalid query plugin response from KB server")
+            return data
+        except httpx.RequestError:
+            raise HTTPException(status_code=503, detail="Unable to connect to KB server")
+
     async def get_ingestion_plugins(self) -> Dict[str, Any]:
         """
         Get a list of available ingestion plugins and their parameters.

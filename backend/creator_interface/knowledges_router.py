@@ -2073,10 +2073,14 @@ async def plugin_ingest_base(
 
 # --- Query Plugins Endpoint ---
 
-# Reuse the IngestionPlugin model for individual query plugins if structure matches
-# Define the response model for the list of query plugins
+class QueryPlugin(BaseModel):
+    name: str
+    description: str
+    parameters: Dict[str, Dict[str, Any]]
+    mode: Optional[str] = None
+
 class GetQueryPluginsResponse(BaseModel):
-    plugins: List[IngestionPlugin]
+    plugins: List[QueryPlugin]
 
 @router.get(
     "/query-plugins",
@@ -2164,8 +2168,8 @@ async def get_query_plugins(request: Request):
             # Return the standard offline response object
             return KnowledgeBaseServerOfflineResponse()
 
-        # Get the plugins from the manager - this method needs to be added
-        plugins = await kb_server_manager.get_query_plugins()
+        # Use the same organization-specific server as the availability check.
+        plugins = await kb_server_manager.get_query_plugins(creator_user)
         logger.info(f"KB-router: Query Plugins received: {len(plugins) if isinstance(plugins, list) else 'Invalid format'}")
 
         # Return the plugins wrapped in a dictionary matching the response model

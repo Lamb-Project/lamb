@@ -211,6 +211,12 @@ async def get_ingestion_config():
     }
 
 
+@app.get("/query/plugins", tags=["Query"], summary="List query plugins")
+async def list_query_plugins(token: str = Depends(verify_token)):
+    """Return the enabled query registry and its configured parameter visibility."""
+    return QueryService.list_plugins()
+
+
 @app.get(
     "/ingestion/plugins",
     response_model=List[IngestionPluginInfo],
