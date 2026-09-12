@@ -18,6 +18,7 @@ class LambClient:
     """Wrapper around httpx.Client for LAMB API calls."""
 
     def __init__(self, server_url: str, token: str | None = None, timeout: float = 30.0):
+        self.last_response_headers: dict[str, str] = {}
         headers = {}
         if token:
             headers["Authorization"] = f"Bearer {token}"
@@ -112,10 +113,12 @@ class LambClient:
             return self._request("POST", path, files=files, data=data or {}, **kwargs)
 
     def stream_post(self, path: str, **kwargs: Any) -> Iterator[str]:
-        """POST and yield streaming text chunks."""
+        """POST and yield streaming text chunks; retain response metadata."""
+        self.last_response_headers = {}
         try:
             with self._http.stream("POST", path, **kwargs) as resp:
                 self._check_status(resp)
+                self.last_response_headers = dict(resp.headers)
                 for chunk in resp.iter_text():
                     yield chunk
         except httpx.HTTPStatusError as exc:

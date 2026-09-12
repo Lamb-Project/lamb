@@ -46,6 +46,9 @@ def _stream_response(client, assistant_id: int, message: str, chat_id: str | Non
                     returned_chat_id = data["chat_id"]
             except (json.JSONDecodeError, IndexError, KeyError):
                 pass
+    headers = getattr(client, "last_response_headers", {})
+    if not returned_chat_id and isinstance(headers, dict):
+        returned_chat_id = headers.get("x-chat-id")
     sys.stdout.write("\n")
     if returned_chat_id:
         print(f"Chat ID: {returned_chat_id}", file=sys.stderr)

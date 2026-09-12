@@ -138,3 +138,15 @@ class TestChatEndpoint:
         assert result.exit_code == 0
         call_args = mock_client.stream_post.call_args
         assert call_args.args[0] == "/creator/assistant/42/chat/completions"
+
+
+def test_chat_id_from_real_stream_header(mock_token, mock_server_url, httpx_mock):
+    for _ in range(2):
+        httpx_mock.add_response(method='POST', url=mock_server_url + '/creator/assistant/1/chat/completions', headers={'X-Chat-Id':'header-chat'}, text=''.join(_make_sse_chunks('Hello')))
+    result = runner.invoke(app,['chat','1','--message','Hi'])
+    assert result.exit_code == 0
+    assert result.stdout == 'Hello\n'
+    assert 'Chat ID: header-chat' in result.stderr
+    followup = runner.invoke(app,['chat','1','--message','Continue','--chat-id','header-chat'])
+    assert followup.exit_code == 0
+    assert json.loads(httpx_mock.get_requests()[-1].content)['chat_id'] == 'header-chat'
