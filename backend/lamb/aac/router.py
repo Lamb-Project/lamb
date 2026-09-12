@@ -11,7 +11,7 @@ import anyio
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
 from openai import AsyncOpenAI
 
@@ -34,6 +34,44 @@ SKILLS_DIR = Path(__file__).parent / "skills"
 # ---------------------------------------------------------------------------
 # Session endpoints
 # ---------------------------------------------------------------------------
+
+
+@router.post("/files")
+async def attach_file(file: UploadFile = File(...), auth: AuthContext = Depends(get_auth_context)):
+    """Stage an actual user-selected file and return an owned reference for AAC tools."""
+    from uuid import uuid4
+    from lamb.aac.files import ROOT, MAX_BYTES
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".txt", ".md", ".json", ".pdf"}:
+        raise HTTPException(400, "Supported attachment types: txt, md, json, pdf")
+    content = await file.read(MAX_BYTES + 1)
+    if not content or len(content) > MAX_BYTES:
+        raise HTTPException(413, "Attachment must be nonempty and at most 10 MiB")
+    if suffix != ".pdf":
+        try:
+            content.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(400, "Text attachments must be UTF-8")
+    folder = ROOT / str(auth.user["id"])
+    folder.mkdir(parents=True, exist_ok=True)
+    if folder.is_symlink():
+        raise HTTPException(400, "Invalid upload directory")
+    path = folder / ("aac_" + uuid4().hex + suffix)
+    path.write_bytes(content)
+    return {"path": str(path.relative_to(ROOT)), "name": Path(file.filename).name, "size": len(content)}
+
+
+@router.get("/files/validate")
+async def validate_file(reference: str, auth: AuthContext = Depends(get_auth_context)):
+    from lamb.aac.files import owned_file
+    try:
+        path = owned_file(reference, auth.user["id"])
+        if path.suffix.lower() not in {".txt", ".md", ".json"}:
+            raise ValueError("Single-file RAG requires a UTF-8 text file; ingest PDFs into a KB")
+        path.read_text(encoding="utf-8")
+    except (ValueError, UnicodeError) as e:
+        raise HTTPException(400, str(e))
+    return {"path": reference, "valid": True}
 
 
 @router.post("/sessions")

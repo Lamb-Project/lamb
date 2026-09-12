@@ -22,13 +22,20 @@ logger = get_logger(__name__, component="AAC")
 # Explicit supported shell surface. Unsupported CLI options fail instead of being ignored.
 # key: (minimum positional arguments, maximum, accepted option names)
 COMMAND_CONTRACTS = {
+    "kb.jobs": (1, 1, ""), "kb.status": (1, 1, ""),
+    "kb.create": (1, 1, "description d"),
+    "kb.upload": (2, 2, "plugin"),
+    "kb.query": (2, 2, "plugin p top_k k threshold t"),
+    "test.evaluations": (1, 1, ""),
+    "rubric.create": (1, 1, "criteria description subject grade_level scoring_type max_score"),
+    "rubric.update": (1, 1, "title criteria description subject grade_level scoring_type max_score"),
     "assistant.list": (0, 0, ""), "assistant.list-shared": (0, 0, ""),
     "assistant.get": (1, 1, ""), "assistant.config": (0, 0, ""),
     "assistant.debug": (1, 1, "message m"),
-    "assistant.create": (1, 1, "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format"),
-    "assistant.update": (1, 1, "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format"),
+    "assistant.create": (1, 1, "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format file_path"),
+    "assistant.update": (1, 1, "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format file_path"),
     "assistant.delete": (1, 1, ""), "assistant.list-published": (0, 0, ""),
-    "assistant.chat": (1, 1, "message m bypass b"),
+    "assistant.chat": (1, 1, "message m bypass b chat_id persist"),
     "rubric.list": (0, 0, ""), "rubric.list-public": (0, 0, ""),
     "rubric.get": (1, 1, ""), "rubric.export": (1, 1, "format f"),
     "kb.list": (0, 0, ""), "kb.get": (1, 1, ""),
@@ -54,7 +61,7 @@ def validate_command(key, args, kwargs):
     if unknown:
         raise ValueError(f"Unsupported options for {key}: {', '.join(sorted(unknown))}")
     for option, value in kwargs.items():
-        if option in {"bypass", "b"}:
+        if option in {"bypass", "b", "persist"}:
             if value not in (True, "true", "false"):
                 raise ValueError(f"Invalid boolean for {option}")
         elif value is True:

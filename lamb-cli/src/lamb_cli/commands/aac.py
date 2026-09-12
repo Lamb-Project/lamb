@@ -432,3 +432,18 @@ def _print_conversation(conversation: list[dict]) -> None:
             if len(raw) > 200:
                 raw = raw[:200] + "..."
             console.print(f"[dim]  ← {raw}[/dim]")
+
+
+@app.command("attach")
+def attach_file(
+    file: str = typer.Argument(..., help="Local txt, md, json or pdf file to stage for AAC."),
+    output: str = typer.Option(None, "-o", "--output", help="Output format."),
+):
+    """Upload a file; use the returned path with AAC kb upload or assistant --file-path."""
+    from pathlib import Path
+    if not Path(file).is_file():
+        print_error("File not found")
+        raise typer.Exit(1)
+    with get_client() as client:
+        data = client.upload_file("/creator/aac/files", file)
+    format_output(data, [("path", "Reference"), ("name", "Name"), ("size", "Bytes")], output or get_output_format())
