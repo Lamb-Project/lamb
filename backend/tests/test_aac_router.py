@@ -70,3 +70,29 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
                 _,_,req,auth=self.fixture();req.json.return_value=body
                 with self.assertRaises(HTTPException) as error:await endpoint('s',req,auth)
                 self.assertEqual(error.exception.status_code,400)
+
+
+class ProviderRoutingTests(unittest.TestCase):
+    def resolve(self, default, config):
+        with patch.object(r, 'OrganizationConfigResolver') as resolver, patch.object(r, 'AsyncOpenAI') as client:
+            resolver.return_value.get_global_default_model_config.return_value = default
+            resolver.return_value.get_provider_config.return_value = config
+            result = r._resolve_agent_llm('owner@example.test')
+            return result, client.call_args.kwargs, resolver.return_value.get_provider_config.call_args.args[0]
+
+    def test_ollama_stays_local_and_preserves_selected_model(self):
+        for base in ['http://localhost:11434', 'http://localhost:11434/v1/']:
+            result, kwargs, provider = self.resolve({'provider':'ollama','model':'qwen3.8:27b-mlx'}, {'base_url':base,'enabled':True})
+            self.assertEqual(provider, 'ollama')
+            self.assertEqual(result[1], 'qwen3.8:27b-mlx')
+            self.assertEqual(kwargs, {'base_url':'http://localhost:11434/v1','api_key':'ollama'})
+
+    def test_openai_compatible_route_and_legacy_default(self):
+        result, kwargs, provider = self.resolve({}, {'api_key':'test-key','base_url':'http://proxy/v1','default_model':'test-model'})
+        self.assertEqual(provider,'openai');self.assertEqual(result[1],'test-model')
+        self.assertEqual(kwargs['base_url'],'http://proxy/v1')
+
+    def test_invalid_provider_never_falls_back_to_cloud(self):
+        for default, config in [({'provider':'google'}, {}), ({'provider':'ollama','model':'qwen'}, {}), ({'provider':'ollama','model':'qwen'}, {'base_url':'http://local','enabled':False}), ({'provider':'ollama'}, {'base_url':'http://local'}), ({'provider':'openai'}, {'enabled':True})]:
+            with self.subTest(default=default, config=config), self.assertRaises(HTTPException):
+                self.resolve(default,config)

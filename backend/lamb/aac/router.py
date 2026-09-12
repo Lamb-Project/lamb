@@ -376,30 +376,41 @@ async def _prepare_agent_and_message(
         return agent, user_message, skill_info
 
 
+def _resolve_agent_llm(user_email: str):
+    """Use the organization's selected provider for both plain and skill AAC."""
+    resolver = OrganizationConfigResolver(user_email)
+    default = resolver.get_global_default_model_config()
+    provider = default.get("provider") or "openai"
+    if provider not in {"openai", "ollama"}:
+        raise HTTPException(status_code=400, detail=f"AAC does not support provider '{provider}'")
+    config = resolver.get_provider_config(provider)
+    if not config or config.get("enabled") is False:
+        raise HTTPException(status_code=400, detail=f"No enabled {provider} provider configured for this organization")
+    model = default.get("model") or config.get("default_model")
+    base_url = config.get("base_url")
+    if provider == "ollama":
+        if not base_url or not model:
+            raise HTTPException(status_code=400, detail="AAC requires an Ollama base URL and default model")
+        # Ollama's compatible endpoint accepts tools through the existing legacy loop.
+        base_url = base_url.rstrip("/")
+        if not base_url.endswith("/v1"):
+            base_url += "/v1"
+        api_key = config.get("api_key") or "ollama"
+    else:
+        api_key = config.get("api_key")
+        if not api_key:
+            raise HTTPException(status_code=400, detail="No OpenAI API key configured for this organization")
+        model = model or "gpt-4o-mini"
+    return AsyncOpenAI(api_key=api_key, base_url=base_url), model
+
+
 def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop:
     """Build an AgentLoop from auth context and session state."""
     user_email = auth.user["email"]
     org_id = auth.organization["id"]
     user_id = auth.user.get("id", 0)
 
-    # Resolve LLM config from organization
-    resolver = OrganizationConfigResolver(user_email)
-    openai_config = resolver.get_provider_config("openai")
-
-    if not openai_config or not openai_config.get("api_key"):
-        raise HTTPException(
-            status_code=500,
-            detail="No OpenAI provider configured for this organization",
-        )
-
-    llm_client = AsyncOpenAI(
-        api_key=openai_config["api_key"],
-        base_url=openai_config.get("base_url"),
-    )
-
-    # Use global default model, or fall back to provider default
-    global_default = resolver.get_global_default_model_config()
-    model = global_default.get("model") or openai_config.get("default_model", "gpt-4o-mini")
+    llm_client, model = _resolve_agent_llm(user_email)
 
     # Build components — liteshell uses LambClient via HTTP (same path as CLI/frontend)
     import os
@@ -460,22 +471,7 @@ async def _build_agent_with_skill(
     # Load and resolve the skill
     skill = load_skill(skill_id, context)
 
-    # Resolve LLM config
-    resolver = OrganizationConfigResolver(user_email)
-    openai_config = resolver.get_provider_config("openai")
-    if not openai_config or not openai_config.get("api_key"):
-        raise HTTPException(
-            status_code=500,
-            detail="No OpenAI provider configured for this organization",
-        )
-
-    llm_client = AsyncOpenAI(
-        api_key=openai_config["api_key"],
-        base_url=openai_config.get("base_url"),
-    )
-
-    global_default = resolver.get_global_default_model_config()
-    model = global_default.get("model") or openai_config.get("default_model", "gpt-4o-mini")
+    llm_client, model = _resolve_agent_llm(user_email)
 
     # Build components — liteshell uses LambClient via HTTP
     import os
