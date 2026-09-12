@@ -94,3 +94,21 @@ class Authoring(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body['expected_behavior'],'COBALT-742, not a guessed code')
         self.assertEqual(body['message'],'What code?')
         self.assertEqual(body['title'],'Station code')
+
+    async def test_rubric_weight_patch_preserves_ids_and_rejects_invalid_updates(self):
+        s,h=self.shell()
+        criteria=[{'id':'c1','name':'Evidence','weight':50,'levels':[{'id':'l1','score':3}]},
+                  {'id':'c2','name':'Reasoning','weight':50,'levels':[{'id':'l2','score':1}]}]
+        h.get.return_value={'rubric_data':{'title':'Keep title','description':'Keep text','criteria':criteria}}
+        result=await s.execute('lamb rubric update r1 --weights \'{"Evidence":60,"Reasoning":40}\'')
+        self.assertTrue(result.success,result.error)
+        updated=json.loads(h.put.call_args.kwargs['data']['criteria'])
+        self.assertEqual(updated,[{**criteria[0],'weight':60},{**criteria[1],'weight':40}])
+        self.assertEqual(criteria[0]['weight'],50)
+        for weights in ['{}','[]','{"Missing":100}','{"Evidence":-1}','{"Evidence":true}','{"Evidence":NaN}','{"Evidence":60}']:
+            h.put.reset_mock()
+            result=await s.execute("lamb rubric update r1 --weights '"+weights+"'")
+            self.assertFalse(result.success,weights);h.put.assert_not_awaited()
+        h.put.reset_mock()
+        result=await s.execute('lamb rubric update r1 --weights \'{"Evidence":60,"Reasoning":40}\' --criteria \'[]\'')
+        self.assertFalse(result.success);h.put.assert_not_awaited()

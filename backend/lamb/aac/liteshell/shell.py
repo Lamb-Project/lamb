@@ -28,7 +28,7 @@ COMMAND_CONTRACTS = {
     "kb.query": (2, 2, "plugin p top_k k threshold t"),
     "test.evaluations": (1, 1, ""),
     "rubric.create": (1, 1, "criteria description subject grade_level scoring_type max_score"),
-    "rubric.update": (1, 1, "title criteria description subject grade_level scoring_type max_score"),
+    "rubric.update": (1, 1, "title criteria weights description subject grade_level scoring_type max_score"),
     "assistant.list": (0, 0, ""), "assistant.list-shared": (0, 0, ""),
     "assistant.get": (1, 1, ""), "assistant.config": (0, 0, ""),
     "assistant.debug": (1, 1, "message m"),

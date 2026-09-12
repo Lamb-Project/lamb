@@ -750,6 +750,29 @@ async def test_evaluations(ctx, args, kwargs):
     return _unwrap(await ctx.http.get(f'/creator/assistant/{args[0]}/tests/evaluations'))
 
 
+def _apply_weights(criteria, value):
+    """Change named weights without asking an agent to reproduce criteria/level IDs."""
+    import copy
+    import math
+    weights = json.loads(value)
+    if not isinstance(weights, dict) or not weights:
+        raise ValueError('weights must be a nonempty JSON object of exact criterion names and percentages')
+    result = copy.deepcopy(criteria)
+    for name, weight in weights.items():
+        matches = [c for c in result if c.get('name') == name]
+        if len(matches) != 1:
+            raise ValueError(f'Criterion name must match exactly one existing criterion: {name}')
+        if type(weight) not in (int, float) or not math.isfinite(weight) or not 0 <= weight <= 100:
+            raise ValueError('Weights must be finite numbers between 0 and 100')
+        matches[0]['weight'] = weight
+    all_weights = [c.get('weight', 0) for c in result]
+    if any(type(w) not in (int, float) or not math.isfinite(w) or not 0 <= w <= 100 for w in all_weights):
+        raise ValueError('Every resulting weight must be a finite percentage')
+    if not math.isclose(sum(all_weights), 100, abs_tol=0.000001):
+        raise ValueError('Resulting criterion weights must total 100')
+    return result
+
+
 def _rubric_form(current, changes):
     current = current.get('rubric', current)
     raw = current.get('rubric_data', current)
@@ -761,11 +784,14 @@ def _rubric_form(current, changes):
             'maxScore': raw.get('maxScore', 10), 'criteria': raw.get('criteria', [])}
     mapping = {'grade_level':'gradeLevel', 'scoring_type':'scoringType', 'max_score':'maxScore'}
     for key, value in changes.items():
-        if key not in {'o', 'output'}: form[mapping.get(key, key)] = value
+        if key not in {'o', 'output', 'weights'}: form[mapping.get(key, key)] = value
     criteria = form['criteria']
     if isinstance(criteria, str): criteria = json.loads(criteria)
     if not isinstance(criteria, list) or not criteria or not all(isinstance(c, dict) for c in criteria):
         raise ValueError('criteria must be a nonempty JSON array of criterion objects')
+    if 'weights' in changes:
+        if 'criteria' in changes: raise ValueError('Use either --weights or --criteria, not both')
+        criteria = _apply_weights(criteria, changes['weights'])
     if not form['title'].strip(): raise ValueError('Rubric title is required')
     form['criteria'] = json.dumps(criteria, ensure_ascii=False)
     return form

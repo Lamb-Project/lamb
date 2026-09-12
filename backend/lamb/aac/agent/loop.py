@@ -40,7 +40,7 @@ READ: lamb assistant list | list-shared | list-published | get <id_or_name> | co
 READ: lamb rubric list | get <uuid> | export <uuid> [--format md]
 READ: lamb kb list | get <id> | query <id> "text" [--top-k N]
 WRITE (approval): lamb kb create NAME [--description TEXT] | upload KB_ID OWNED_FILE_REFERENCE [--plugin NAME]
-WRITE (approval): lamb rubric create TITLE --criteria JSON | update ID [--title TEXT] [--criteria JSON]
+WRITE (approval): lamb rubric create TITLE --criteria JSON | update ID [--title TEXT] [--criteria JSON | --weights JSON]
 READ: lamb test evaluations ASSISTANT_ID
 Assistant bindings: --file-path OWNED_TEXT_REFERENCE | --rubric-id ID --rubric-format markdown
 Use the attachment references supplied by the user; never invent paths.
