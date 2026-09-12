@@ -123,6 +123,12 @@ class LambClient:
                     yield chunk
         except httpx.HTTPStatusError as exc:
             self._raise_for_status(exc.response)
+        except httpx.ConnectError as exc:
+            raise NetworkError(f"Cannot connect to server: {exc}") from exc
+        except httpx.TimeoutException as exc:
+            raise NetworkError("Streaming request timed out. The server may still be processing; inspect saved state before retrying.") from exc
+        except httpx.HTTPError as exc:
+            raise NetworkError(f"Streaming HTTP error: {exc}") from exc
 
     # --- Internal ---
 

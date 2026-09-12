@@ -24,34 +24,36 @@ def _stream_response(client, assistant_id: int, message: str, chat_id: str | Non
         body["chat_id"] = chat_id
 
     returned_chat_id = chat_id
-    for chunk in client.stream_post(
-        f"/creator/assistant/{assistant_id}/chat/completions",
-        json=body,
-    ):
-        for line in chunk.split("\n"):
-            if not line.startswith("data: "):
-                continue
-            payload = line[6:]
-            if payload == "[DONE]":
-                break
-            try:
-                data = json.loads(payload)
-                delta = data.get("choices", [{}])[0].get("delta", {})
-                content = delta.get("content", "")
-                if content:
-                    sys.stdout.write(content)
-                    sys.stdout.flush()
-                # Capture chat_id from response if present
-                if not returned_chat_id and data.get("chat_id"):
-                    returned_chat_id = data["chat_id"]
-            except (json.JSONDecodeError, IndexError, KeyError):
-                pass
-    headers = getattr(client, "last_response_headers", {})
-    if not returned_chat_id and isinstance(headers, dict):
-        returned_chat_id = headers.get("x-chat-id")
-    sys.stdout.write("\n")
-    if returned_chat_id:
-        print(f"Chat ID: {returned_chat_id}", file=sys.stderr)
+    try:
+        for chunk in client.stream_post(
+            f"/creator/assistant/{assistant_id}/chat/completions",
+            json=body,
+        ):
+            for line in chunk.split("\n"):
+                if not line.startswith("data: "):
+                    continue
+                payload = line[6:]
+                if payload == "[DONE]":
+                    break
+                try:
+                    data = json.loads(payload)
+                    delta = data.get("choices", [{}])[0].get("delta", {})
+                    content = delta.get("content", "")
+                    if content:
+                        sys.stdout.write(content)
+                        sys.stdout.flush()
+                    # Capture chat_id from response if present
+                    if not returned_chat_id and data.get("chat_id"):
+                        returned_chat_id = data["chat_id"]
+                except (json.JSONDecodeError, IndexError, KeyError):
+                    pass
+    finally:
+        headers = getattr(client, "last_response_headers", {})
+        if not returned_chat_id and isinstance(headers, dict):
+            returned_chat_id = headers.get("x-chat-id")
+        sys.stdout.write("\n")
+        if returned_chat_id:
+            print(f"Chat ID: {returned_chat_id}", file=sys.stderr)
     return returned_chat_id
 
 
@@ -84,6 +86,7 @@ def chat(
     message: Optional[str] = typer.Option(None, "--message", "-m", help="Single message (non-interactive)."),
     chat_id: Optional[str] = typer.Option(None, "--chat-id", help="Continue an existing chat."),
     no_persist: bool = typer.Option(False, "--no-persist", help="Don't save chat history on server."),
+    timeout: int = typer.Option(300, "--timeout", min=1, help="HTTP inactivity timeout in seconds for chat (default: 300). No automatic retry."),
     bypass: bool = typer.Option(False, "--bypass", "-b", help="Debug bypass: show what the LLM sees (no tokens used)."),
 ) -> None:
     """Chat with a learning assistant.
@@ -97,7 +100,7 @@ def chat(
     """
     persist = not no_persist
 
-    with get_client() as client:
+    with get_client(timeout=timeout) as client:
         if bypass:
             if message:
                 _bypass_response(client, assistant_id, message)
