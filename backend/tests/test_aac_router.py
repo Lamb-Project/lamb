@@ -149,6 +149,21 @@ class ConcurrentTurns(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(RuntimeError):await endpoint('s',req,auth)
             with turn_lock.TurnLock('s'):pass
 
+    def test_process_guard_survives_mount_with_process_scoped_flock(self):
+        # VirtioFS can accept a second descriptor lock in the same worker.
+        with patch.object(turn_lock.fcntl, 'flock'):
+            with turn_lock.TurnLock('s'):
+                with self.assertRaises(HTTPException) as error:
+                    turn_lock.TurnLock('s')
+                self.assertEqual(error.exception.status_code, 409)
+                with turn_lock.TurnLock('other'):pass
+            with turn_lock.TurnLock('s'):pass
+
+    def test_failed_file_lock_does_not_leak_process_guard(self):
+        with patch.object(turn_lock.fcntl, 'flock', side_effect=OSError('failure')):
+            with self.assertRaises(OSError):turn_lock.TurnLock('s')
+        with turn_lock.TurnLock('s'):pass
+
     def test_lock_is_shared_across_worker_processes(self):
         import subprocess,sys
         script="""from pathlib import Path
