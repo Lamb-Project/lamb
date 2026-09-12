@@ -8583,3 +8583,124 @@ class LambDatabaseManager:
             return None
         finally:
             connection.close()
+
+    # =========================================================================
+    # Workshop session accessors (lti_workshop_sessions)
+    # =========================================================================
+
+    def get_workshop_session_by_id(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a workshop session record by id, or None."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_workshop_sessions
+                    WHERE id = ?
+                """, (session_id,))
+                row = cursor.fetchone()
+                if row:
+                    columns = [col[0] for col in cursor.description]
+                    return dict(zip(columns, row))
+                return None
+        except sqlite3.Error as e:
+            logger.error(f"Error getting workshop session: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_or_create_workshop_session(
+        self,
+        activity_id: int,
+        activity_user_id: int,
+        owi_user_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Get the workshop session for an activity_user, creating it if absent."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                # Try existing (one session per activity_user — Lean MVP)
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_workshop_sessions
+                    WHERE activity_id = ? AND activity_user_id = ?
+                """, (activity_id, activity_user_id))
+                row = cursor.fetchone()
+                if row:
+                    columns = [col[0] for col in cursor.description]
+                    return dict(zip(columns, row))
+
+                session_id = f"ws-{activity_id}-{activity_user_id}-{now}"
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}lti_workshop_sessions
+                    (id, activity_id, activity_user_id, owi_user_id,
+                     build_state, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, '{{}}', 'in_progress', ?, ?)
+                """, (session_id, activity_id, activity_user_id, owi_user_id, now, now))
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_workshop_sessions
+                    WHERE id = ?
+                """, (session_id,))
+                row = cursor.fetchone()
+                if row:
+                    columns = [col[0] for col in cursor.description]
+                    return dict(zip(columns, row))
+                return None
+        except sqlite3.Error as e:
+            logger.error(f"Error creating workshop session: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def update_workshop_session_assistant(
+        self, session_id: str, assistant_id: int
+    ) -> bool:
+        """Attach an assistant id to a workshop session."""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}lti_workshop_sessions
+                    SET assistant_id = ?, updated_at = ?
+                    WHERE id = ?
+                """, (assistant_id, int(time.time()), session_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error updating workshop session assistant: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def submit_workshop_session(
+        self,
+        session_id: str,
+        saved_chat: Optional[str] = None,
+        reflection: Optional[str] = None,
+    ) -> bool:
+        """Mark a workshop session submitted with chat/reflection."""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}lti_workshop_sessions
+                    SET saved_chat = ?, reflection = ?, status = 'submitted',
+                        updated_at = ?
+                    WHERE id = ?
+                """, (saved_chat, reflection, int(time.time()), session_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error submitting workshop session: {e}")
+            return False
+        finally:
+            connection.close()

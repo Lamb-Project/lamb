@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Consent — AI Workshop{% endblock %}
+
+{% block content %}
+<div class="consent-container">
+    <h1>AI Workshop — Consent</h1>
+    <p>
+        Before you start building your AI assistant, please read the following:
+    </p>
+    <ul>
+        <li>
+            Your chat messages and the documents you upload will be used to build
+            and test your AI assistant.
+        </li>
+        <li>
+            The assistant will only use the information you provide (instructions,
+            documents, knowledge base) to answer questions.
+        </li>
+    </ul>
+    <p>By clicking "I agree", you consent to this activity.</p>
+    <form method="POST" action="/lamb/v1/workshop/consent">
+        <input type="hidden" name="token" value="{{ token }}" />
+        <button type="submit">I agree</button>
+    </form>
+</div>
+{% endblock %}

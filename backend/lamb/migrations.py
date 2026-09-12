@@ -20,7 +20,7 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="MIGRATIONS")
 
 # Increment this when adding a new migration method below.
-LATEST_VERSION = 25
+LATEST_VERSION = 27
 
 
 class MigrationRunner:
@@ -1055,3 +1055,53 @@ class MigrationRunner:
             f"CREATE INDEX IF NOT EXISTS "
             f"idx_{tp}audit_log_org_date "
             f"ON {tp}audit_log(organization_id, created_at)")
+
+    def _migration_26(self, cursor):
+        """Add activity_type column to lti_activities (default 'chat')."""
+        tp = self.db.table_prefix
+        if not self._table_exists(cursor, 'lti_activities'):
+            return
+        if self._column_exists(cursor, 'lti_activities', 'activity_type'):
+            return
+        logger.info("Adding activity_type column to lti_activities")
+        cursor.execute(
+            f"ALTER TABLE {tp}lti_activities "
+            f"ADD COLUMN activity_type TEXT NOT NULL DEFAULT 'chat'")
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}lti_activities_activity_type "
+            f"ON {tp}lti_activities(activity_type)")
+
+    def _migration_27(self, cursor):
+        """Create lti_workshop_sessions table for workshop build state."""
+        tp = self.db.table_prefix
+        if self._table_exists(cursor, 'lti_workshop_sessions'):
+            return
+        logger.info("Creating lti_workshop_sessions table")
+        cursor.execute(f"""
+            CREATE TABLE {tp}lti_workshop_sessions (
+                id TEXT PRIMARY KEY,
+                activity_id INTEGER NOT NULL,
+                activity_user_id INTEGER NOT NULL,
+                owi_user_id TEXT,
+                assistant_id INTEGER,
+                build_state JSON NOT NULL DEFAULT '{{}}',
+                saved_chat TEXT,
+                reflection TEXT,
+                status TEXT NOT NULL DEFAULT 'in_progress',
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (activity_id)
+                    REFERENCES {tp}lti_activities(id) ON DELETE CASCADE,
+                FOREIGN KEY (activity_user_id)
+                    REFERENCES {tp}lti_activity_users(id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}ws_sessions_activity "
+            f"ON {tp}lti_workshop_sessions(activity_id)")
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}ws_sessions_activity_user "
+            f"ON {tp}lti_workshop_sessions(activity_user_id)")

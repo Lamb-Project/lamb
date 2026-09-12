@@ -165,6 +165,25 @@ async def lti_launch(request: Request):
             # ── CONFIGURED: Student flow ──
             # Student identity comes from the LMS (name, email if provided).
             # LMS instructors control what identity data is passed via LTI privacy settings.
+
+            # Workshop activities dispatch to the build wizard, not OWI chat.
+            activity_type = activity.get("activity_type", "chat")
+            if activity_type == "workshop":
+                logger.info(
+                    f"Workshop student launch for {resource_link_id} → build wizard")
+                from lamb.modules.workshop import module
+                result = module.on_student_launch({
+                    "activity": activity,
+                    "username": username,
+                    "display_name": display_name,
+                    "lms_user_id": lms_user_id,
+                    "public_base": public_base,
+                })
+                if not result or not result.get("redirect"):
+                    raise HTTPException(
+                        status_code=500, detail="Failed to start workshop")
+                return RedirectResponse(url=result["redirect"], status_code=303)
+
             owi_token = manager.handle_student_launch(
                 activity=activity,
                 username=username,
