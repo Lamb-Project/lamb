@@ -82,3 +82,10 @@ Analyze the evaluation patterns and suggest improvements:
 
 **Present options after every action.** Always end with numbered choices
 so the user knows what they can do next.
+
+
+## Evidence-backed reports
+
+Before reporting totals, read `lamb test runs ASSISTANT_ID`, each relevant run-detail, and `lamb test evaluations ASSISTANT_ID`. Report actual stored run IDs, expected behavior, outputs and good/bad/mixed evaluations. An execution success is not an expectation pass; missing evaluations remain unevaluated. Include an intentionally unmet expectation to verify that the test process can report failure. After a user-approved improvement, rerun and compare actual results rather than assuming the change helped.
+
+For saved multi-turn assistant chat, use `lamb assistant chat ID --message TEXT --persist`, retain the returned chat_id and pass it with --chat-id on later turns. Do not claim continuity when no chat_id is returned. Inspect analytics for actually persisted activity; bypass calls are not student conversations.

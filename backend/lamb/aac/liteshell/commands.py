@@ -152,10 +152,14 @@ async def assistant_create(ctx: "CommandContext", args: list[str], kwargs: dict)
     if not args:
         raise ValueError("Usage: lamb assistant create <name> [--system-prompt ...] [--llm ...]")
     name = args[0]
+    if kwargs.get("file_path"):
+        await ctx.http.get("/creator/aac/files/validate", params={"reference":kwargs["file_path"]})
+    if kwargs.get("rubric_id"):
+        await ctx.http.get(f"/creator/rubrics/{kwargs['rubric_id']}")
 
     metadata: dict[str, Any] = {}
     for key in ("llm", "connector", "prompt_processor", "rag_processor",
-                "rubric_id", "rubric_format"):
+                "rubric_id", "rubric_format", "file_path"):
         if key in kwargs:
             metadata[key] = kwargs[key]
 
@@ -182,6 +186,10 @@ async def assistant_update(ctx: "CommandContext", args: list[str], kwargs: dict)
     if not args:
         raise ValueError("Usage: lamb assistant update <id> [--name ...] [--system-prompt ...]")
     assistant_id = args[0]
+    if kwargs.get("file_path"):
+        await ctx.http.get("/creator/aac/files/validate", params={"reference":kwargs["file_path"]})
+    if kwargs.get("rubric_id"):
+        await ctx.http.get(f"/creator/rubrics/{kwargs['rubric_id']}")
 
     # Fetch current assistant to merge with
     current = _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{assistant_id}"))
@@ -224,7 +232,7 @@ async def assistant_update(ctx: "CommandContext", args: list[str], kwargs: dict)
         existing_meta = raw_meta
 
     for key in ("llm", "connector", "prompt_processor", "rag_processor",
-                "rubric_id", "rubric_format"):
+                "rubric_id", "rubric_format", "file_path"):
         if key in kwargs:
             existing_meta[key] = kwargs[key]
     body["metadata"] = json.dumps(existing_meta)
@@ -434,8 +442,10 @@ async def assistant_chat(ctx: "CommandContext", args: list[str], kwargs: dict) -
     body: dict[str, Any] = {
         "messages": [{"role": "user", "content": message}],
         "stream": False,
-        "persist_chat": False,
+        "persist_chat": kwargs.get("persist") in (True, "true"),
     }
+    if kwargs.get("chat_id"):
+        body["chat_id"] = kwargs["chat_id"]
     bypass = kwargs.get("bypass", kwargs.get("b", False))
     if bypass is True or bypass == "true":
         body["debug_bypass"] = True
@@ -449,7 +459,7 @@ async def assistant_chat(ctx: "CommandContext", args: list[str], kwargs: dict) -
         choices = result.get("choices", [])
         if choices:
             content = choices[0].get("message", {}).get("content", "")
-            return {"response": content, "model": result.get("model", ""), "usage": result.get("usage", {})}
+            return {"response": content, "model": result.get("model", ""), "usage": result.get("usage", {}), "chat_id": result.get("chat_id")}
     return result
 
 
@@ -691,3 +701,97 @@ def help_cmd(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict[str, 
         doc = func.__doc__ or ""
         result[f"lamb {key.replace('.', ' ')}"] = doc.split("\n")[0].strip()
     return result
+
+
+@register("kb.create")
+async def kb_create(ctx, args, kwargs):
+    """Create a knowledge base: kb create NAME [--description TEXT]."""
+    return _unwrap(await ctx.http.post('/creator/knowledgebases', json={
+        'name': args[0], 'description': kwargs.get('description', kwargs.get('d', ''))}))
+
+
+@register("kb.upload")
+async def kb_upload(ctx, args, kwargs):
+    """Ingest an owned uploaded-file reference: kb upload KB_ID USER_ID/FILE [--plugin NAME]. Read KB details and query to verify readiness; submission is not success."""
+    from lamb.aac.files import owned_file
+    path = owned_file(args[1], ctx.user_id)
+    plugin = kwargs.get('plugin', 'markitdown_ingest' if path.suffix.lower() == '.pdf' else 'simple_ingest')
+    with path.open('rb') as handle:
+        result = await ctx.http.post(f'/creator/knowledgebases/kb/{args[0]}/plugin-ingest-file',
+            data={'plugin_name': plugin}, files={'file': (path.name, handle, 'application/octet-stream')})
+    return {'ingestion_response': _unwrap(result), 'verification_required': True,
+            'next_step': 'Inspect kb get, then kb query for a distinctive fact from this file.'}
+
+
+@register("kb.query")
+async def kb_query(ctx, args, kwargs):
+    """Query actual KB content: kb query KB_ID TEXT [--top-k N] [--threshold N] [--plugin NAME]."""
+    body = {'query_text': args[1]}
+    params = {}
+    top = kwargs.get('top_k', kwargs.get('k'))
+    if top is not None:
+        top = int(top)
+        if top < 1: raise ValueError('top-k must be positive')
+        params['top_k'] = top
+    threshold = kwargs.get('threshold', kwargs.get('t'))
+    if threshold is not None:
+        import math
+        threshold = float(threshold)
+        if not math.isfinite(threshold): raise ValueError('threshold must be finite')
+        params['threshold'] = threshold
+    if params: body['plugin_params'] = params
+    if kwargs.get('plugin', kwargs.get('p')): body['plugin_name'] = kwargs.get('plugin', kwargs.get('p'))
+    return _unwrap(await ctx.http.post(f'/creator/knowledgebases/kb/{args[0]}/query', json=body))
+
+
+@register("test.evaluations")
+async def test_evaluations(ctx, args, kwargs):
+    """Read stored evaluations before reporting test outcomes: test evaluations ASSISTANT_ID."""
+    return _unwrap(await ctx.http.get(f'/creator/assistant/{args[0]}/tests/evaluations'))
+
+
+def _rubric_form(current, changes):
+    current = current.get('rubric', current)
+    raw = current.get('rubric_data', current)
+    raw = json.loads(raw) if isinstance(raw, str) else raw
+    metadata = raw.get('metadata', {})
+    form = {'title': raw.get('title', current.get('title', '')),
+            'description': raw.get('description', ''), 'subject': metadata.get('subject', ''),
+            'gradeLevel': metadata.get('gradeLevel', ''), 'scoringType': raw.get('scoringType', 'points'),
+            'maxScore': raw.get('maxScore', 10), 'criteria': raw.get('criteria', [])}
+    mapping = {'grade_level':'gradeLevel', 'scoring_type':'scoringType', 'max_score':'maxScore'}
+    for key, value in changes.items():
+        if key not in {'o', 'output'}: form[mapping.get(key, key)] = value
+    criteria = form['criteria']
+    if isinstance(criteria, str): criteria = json.loads(criteria)
+    if not isinstance(criteria, list) or not criteria or not all(isinstance(c, dict) for c in criteria):
+        raise ValueError('criteria must be a nonempty JSON array of criterion objects')
+    if not form['title'].strip(): raise ValueError('Rubric title is required')
+    form['criteria'] = json.dumps(criteria, ensure_ascii=False)
+    return form
+
+
+@register("rubric.create")
+async def rubric_create(ctx, args, kwargs):
+    """Create rubric: rubric create TITLE --criteria JSON [--description TEXT] [--max-score N]. Server validates criteria/levels/weights."""
+    return await ctx.http.post('/creator/rubrics', data=_rubric_form({}, {**kwargs, 'title':args[0]}))
+
+
+@register("rubric.update")
+async def rubric_update(ctx, args, kwargs):
+    """Edit rubric: rubric update ID [--title TEXT] [--criteria JSON]. Unspecified fields and criteria are preserved."""
+    if not set(kwargs) - {'o', 'output'}: raise ValueError('Provide at least one rubric field to update')
+    current = await ctx.http.get(f'/creator/rubrics/{args[0]}')
+    return await ctx.http.put(f'/creator/rubrics/{args[0]}', data=_rubric_form(current, kwargs))
+
+
+@register("kb.jobs")
+async def kb_jobs(ctx, args, kwargs):
+    """List ingestion jobs, terminal status and errors: kb jobs KB_ID."""
+    return await ctx.http.get(f'/creator/knowledgebases/kb/{args[0]}/ingestion-jobs')
+
+
+@register("kb.status")
+async def kb_status(ctx, args, kwargs):
+    """Inspect ingestion status and failures: kb status KB_ID."""
+    return await ctx.http.get(f'/creator/knowledgebases/kb/{args[0]}/ingestion-status')

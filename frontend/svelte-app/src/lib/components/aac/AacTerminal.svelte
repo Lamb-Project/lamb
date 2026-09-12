@@ -1,7 +1,7 @@
 <script>
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { splitCanvasContent, canvasFromMessages } from '$lib/utils/aacCanvas.js';
-	import { sendMessageStream, getSession, sendMessage } from '$lib/services/aacService';
+	import { sendMessageStream, getSession, sendMessage, attachFile } from '$lib/services/aacService';
 	import { recordTabActivity } from '$lib/stores/aacStore.svelte';
 	import { renderMarkdownWithMath } from '$lib/utils/renderMarkdown.js';
 
@@ -138,7 +138,7 @@
 
 	async function handleSend() {
 		const text = inputText.trim();
-		if (!text || loading) return;
+		if (!text || loading || attaching) return;
 
 		// Check if user was away >5 min — prepend context note
 		const wasAway = recordTabActivity(sessionId);
@@ -213,6 +213,23 @@
 		scrollToBottom();
 		inputEl?.focus();
 	}
+
+    let attachmentInput;
+    let attaching = $state(false);
+    async function handleAttachment(event) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        attaching = true;
+        try {
+            const uploaded = await attachFile(file);
+            if (isMounted) inputText = `${inputText}${inputText ? '\n' : ''}Attached file: ${uploaded.name} (reference: ${uploaded.path}). `;
+        } catch (e) {
+            if (isMounted) messages = [...messages, {role:'system', content:`File upload failed: ${e.message}`}];
+        } finally {
+            if (isMounted) attaching = false;
+            event.target.value = '';
+        }
+    }
 
 	onDestroy(() => {
 		isMounted = false;
@@ -356,6 +373,8 @@
 		class:bg-gray-100={!darkMode}
 	>
 		<span class="opacity-60" class:text-cyan-400={darkMode} class:text-blue-600={!darkMode}>$</span>
+        <input type="file" accept=".txt,.md,.json,.pdf" bind:this={attachmentInput} onchange={handleAttachment} class="hidden" aria-label="Attach source file" />
+        <button onclick={() => attachmentInput?.click()} disabled={loading || attaching} title="Attach source file">{attaching ? 'Uploading...' : 'Attach'}</button>
 		<input
 			bind:this={inputEl}
 			bind:value={inputText}
@@ -366,7 +385,7 @@
 		/>
 		<button
 			onclick={handleSend}
-			disabled={loading || !inputText.trim()}
+			disabled={loading || attaching || !inputText.trim()}
 			class="px-2 py-0.5 rounded text-xs transition-opacity"
 			class:opacity-60={loading || !inputText.trim()}
 			class:hover:opacity-100={!loading && inputText.trim()}

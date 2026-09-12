@@ -164,3 +164,13 @@ export async function sendMessageStream(sessionId, message, onChunk, onDone, onE
 export async function deleteSession(sessionId) {
 	return apiJson(`/aac/sessions/${sessionId}`, { method: 'DELETE' });
 }
+
+
+export async function attachFile(file) {
+    const body = new FormData();
+    body.append('file', file);
+    const response = await apiFetch('/aac/files', { method: 'POST', body });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'File upload failed');
+    return data;
+}

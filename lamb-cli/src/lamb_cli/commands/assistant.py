@@ -217,6 +217,9 @@ def create_assistant(
     llm: Optional[str] = typer.Option(None, "--llm", help="LLM model name (e.g. gpt-4o-mini)."),
     prompt_processor: Optional[str] = typer.Option(None, "--prompt-processor", help="Prompt processor plugin."),
     rag_processor: Optional[str] = typer.Option(None, "--rag-processor", help="RAG processor plugin."),
+    file_path: Optional[str] = typer.Option(None, "--file-path", help="Owned uploaded-file reference for single-file RAG."),
+    rubric_id: Optional[str] = typer.Option(None, "--rubric-id", help="Accessible rubric ID."),
+    rubric_format: Optional[str] = typer.Option(None, "--rubric-format", help="Rubric rendering format."),
     vision: bool = typer.Option(False, "--vision/--no-vision", help="Enable vision capability."),
     image_generation: bool = typer.Option(False, "--image-generation/--no-image-generation", help="Enable image generation."),
     rag_top_k: Optional[int] = typer.Option(None, "--rag-top-k", help="Number of RAG chunks."),
@@ -247,10 +250,14 @@ def create_assistant(
     if rag_collections:
         body["RAG_collections"] = rag_collections
 
-    has_config_flags = any(v is not None for v in [connector, llm, prompt_processor, rag_processor])
+    has_config_flags = any(v is not None for v in [connector, llm, prompt_processor, rag_processor, file_path, rubric_id, rubric_format])
     is_tty = hasattr(sys.stdin, "isatty") and sys.stdin.isatty()
 
     with get_client() as client:
+        if file_path:
+            client.get("/creator/aac/files/validate", params={"reference":file_path})
+        if rubric_id:
+            client.get(f"/creator/rubrics/{rubric_id}")
         if has_config_flags:
             # Scripting mode: use explicit flags, fill missing from server defaults
             if not all([connector, llm]):
@@ -273,6 +280,10 @@ def create_assistant(
             body["metadata"] = _build_metadata(**config)
         # else: no metadata — server will use its defaults
 
+        if any(v is not None for v in [file_path, rubric_id, rubric_format]):
+            md = json.loads(body.get("metadata", "{}"))
+            md.update({k:v for k,v in {"file_path":file_path,"rubric_id":rubric_id,"rubric_format":rubric_format}.items() if v is not None})
+            body["metadata"] = json.dumps(md)
         data = client.post("/creator/assistant/create_assistant", json=body)
     print_success(f"Assistant created: {data.get('assistant_id', '')}")
     format_output(data, ASSISTANT_LIST_COLUMNS, fmt)
@@ -288,6 +299,9 @@ def update_assistant(
     llm: Optional[str] = typer.Option(None, "--llm", help="LLM model name."),
     prompt_processor: Optional[str] = typer.Option(None, "--prompt-processor", help="Prompt processor plugin."),
     rag_processor: Optional[str] = typer.Option(None, "--rag-processor", help="RAG processor plugin."),
+    file_path: Optional[str] = typer.Option(None, "--file-path", help="Owned uploaded-file reference for single-file RAG."),
+    rubric_id: Optional[str] = typer.Option(None, "--rubric-id", help="Accessible rubric ID."),
+    rubric_format: Optional[str] = typer.Option(None, "--rubric-format", help="Rubric rendering format."),
     vision: Optional[bool] = typer.Option(None, "--vision/--no-vision", help="Enable/disable vision."),
     image_generation: Optional[bool] = typer.Option(None, "--image-generation/--no-image-generation", help="Enable/disable image generation."),
     rag_top_k: Optional[int] = typer.Option(None, "--rag-top-k", help="Number of RAG chunks."),
@@ -318,9 +332,13 @@ def update_assistant(
     if rag_collections is not None:
         body["RAG_collections"] = rag_collections
 
-    has_config_flags = any(v is not None for v in [connector, llm, prompt_processor, rag_processor, vision, image_generation])
+    has_config_flags = any(v is not None for v in [connector, llm, prompt_processor, rag_processor, vision, image_generation, file_path, rubric_id, rubric_format])
 
     with get_client() as client:
+        if file_path:
+            client.get("/creator/aac/files/validate", params={"reference":file_path})
+        if rubric_id:
+            client.get(f"/creator/rubrics/{rubric_id}")
         current = None
         if interactive:
             config = _interactive_wizard(client)
@@ -352,6 +370,11 @@ def update_assistant(
             old_capabilities = current_md.get("capabilities", {})
             updated_metadata["capabilities"] = {**old_capabilities, **updated_metadata.get("capabilities", {})}
             body["metadata"] = json.dumps({**current_md, **updated_metadata})
+
+        if any(v is not None for v in [file_path, rubric_id, rubric_format]):
+            md = json.loads(body.get("metadata", "{}"))
+            md.update({k:v for k,v in {"file_path":file_path,"rubric_id":rubric_id,"rubric_format":rubric_format}.items() if v is not None})
+            body["metadata"] = json.dumps(md)
 
         if not body:
             print_error("No fields to update. Provide at least one option.")

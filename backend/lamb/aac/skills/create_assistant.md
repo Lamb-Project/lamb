@@ -62,3 +62,8 @@ the raw prompt assembly which is expected and not useful to show the user. Just 
 Default model: use `lamb assistant config` to pick the org default.
 If RAG is enabled, ALWAYS include --rag-processor and --rag-collections in the create command.
 ALWAYS include --connector (usually openai) and --prompt-processor simple_augment.
+
+
+## Explicit knowledge and rubric bindings
+
+Distinguish no_rag, simple_rag (retrieved KB chunks), single_file_rag (whole UTF-8 file), and context_aware_rag. Use --file-path with an owned uploaded reference for single_file_rag; a PDF requires KB ingestion instead. Use --rubric-id and --rubric-format for rubric_rag. Read back saved properties and verify retrieval/context before claiming success. Preserve unrelated fields during edits. Use manage-knowledge-base for KB creation/ingestion/query and manage-rubric for rubric creation/editing.

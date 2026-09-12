@@ -20,6 +20,9 @@ logger = get_logger(__name__, component="AAC")
 
 # Default policy: which commands need confirmation
 DEFAULT_POLICY: dict[str, str] = {
+    "kb.jobs": "auto", "kb.status": "auto",
+    "kb.create": "ask", "kb.upload": "ask", "kb.query": "auto",
+    "rubric.create": "ask", "rubric.update": "ask", "test.evaluations": "auto",
     "analytics.chats": "auto",
     "analytics.chat-detail": "auto",
     "analytics.stats": "auto",
