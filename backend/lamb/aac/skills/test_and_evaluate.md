@@ -37,7 +37,8 @@ Generate a test set based on the assistant's purpose and configuration:
    - 1 adversarial (prompt injection or off-topic request)
 3. For each: provide title, message, expected behavior, and type
 4. Present them to the user for approval
-5. Create via `lamb test add` after approval
+5. After approval, create each with `lamb test add ASSISTANT_ID TITLE --message "input" --expected "approved expected behavior" --type single_turn`. The expectation must be stored, not only described in conversation.
+6. Read `lamb test scenarios ASSISTANT_ID` back and verify each title, message, type and expected_behavior against the approved proposal. Missing expectations are incomplete creation, not a successful test set. Report any mismatch before running.
 
 ## If test scenarios exist but have never been run
 

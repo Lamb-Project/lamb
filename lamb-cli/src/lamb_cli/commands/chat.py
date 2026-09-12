@@ -47,6 +47,8 @@ def _stream_response(client, assistant_id: int, message: str, chat_id: str | Non
             except (json.JSONDecodeError, IndexError, KeyError):
                 pass
     sys.stdout.write("\n")
+    if returned_chat_id:
+        print(f"Chat ID: {returned_chat_id}", file=sys.stderr)
     return returned_chat_id
 
 

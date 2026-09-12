@@ -51,7 +51,7 @@ class TestChatSingleMessage:
         assert body["persist_chat"] is True
 
     def test_single_message_json_output(self, mock_token):
-        chunks = _make_sse_chunks("Response text")
+        chunks = _make_sse_chunks("Response text", chat_id="new-chat-id")
         mock_client = MagicMock()
         mock_client.stream_post.return_value = iter(chunks)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
@@ -61,7 +61,8 @@ class TestChatSingleMessage:
             result = runner.invoke(app, ["chat", "1", "--message", "test"])
 
         assert result.exit_code == 0
-        assert "Response text" in result.output
+        assert "Response text" in result.stdout
+        assert "Chat ID: new-chat-id" in result.stderr
 
 
 class TestChatNoPersist:

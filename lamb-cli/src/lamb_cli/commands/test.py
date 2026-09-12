@@ -7,12 +7,14 @@ import sys
 from typing import Optional
 
 import typer
+import httpx
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 
 from lamb_cli.client import get_client
 from lamb_cli.config import get_output_format
+from lamb_cli.errors import NetworkError
 from lamb_cli.output import format_output, print_error, print_json, print_success
 
 app = typer.Typer(help="Test scenarios, run tests, and evaluate assistants.")
@@ -170,6 +172,7 @@ def run_tests(
     assistant_id: int = typer.Argument(..., help="Assistant ID."),
     scenario_id: Optional[str] = typer.Option(None, "--scenario", "-s", help="Run a specific scenario."),
     bypass: bool = typer.Option(False, "--bypass", "-b", help="Debug bypass: show what the LLM sees instead of calling it."),
+    timeout: float = typer.Option(900.0, "--timeout", min=1.0, help="Seconds to wait for the batch. A timeout does not cancel server work."),
     output: str = typer.Option(None, "-o", "--output", help="Output format."),
 ) -> None:
     """Run test scenarios against an assistant.
@@ -185,8 +188,16 @@ def run_tests(
         body["debug_bypass"] = True
 
     err_console.print("[dim]Running tests...[/dim]")
-    with get_client() as client:
-        data = client.post(f"/creator/assistant/{assistant_id}/tests/run", json=body)
+    try:
+        with get_client(timeout=timeout) as client:
+            data = client.post(f"/creator/assistant/{assistant_id}/tests/run", json=body)
+    except NetworkError as exc:
+        if isinstance(exc.__cause__, httpx.TimeoutException):
+            raise NetworkError(
+                f"Test batch timed out after {timeout:g} seconds. The server may still be processing. "
+                f"Inspect 'lamb test runs {assistant_id} -o json' before retrying."
+            ) from exc
+        raise
 
     if fmt == "json":
         print_json(data)

@@ -52,8 +52,10 @@ It returns connectors, their models, and organization defaults. ALWAYS use this 
 DOCS: lamb docs index | read <topic> [--section "heading"]
 SKILLS: lamb skill list | load <skill-id> [--assistant <id>]
 SESSION: lamb session rename "New title"  (update the current session's title — do this when you learn the user's intent or target assistant name, so the session is findable later)
-CHAT: lamb assistant chat <id> --message "text"  (send a message, get a real response — use this for quick tests)
-TEST: lamb test scenarios <id> | add <id> <title> --message "text" | run <id> [--bypass] | runs <id> | evaluate <run_id> <good|bad|mixed>
+CHAT: lamb assistant chat <id> --message "text" [--persist] [--chat-id ID]
+For multi-turn conversations use --persist on EVERY turn, retain the returned chat_id, and pass --chat-id on later turns. Without --persist a quick test is not saved and returns no chat_id.
+TEST: lamb test scenarios <id> | add <id> <title> --message "text" --expected "expected behavior" | run <id> [--bypass] | runs <id> | evaluate <run_id> <good|bad|mixed> <assistant_id>
+Persist every approved test expectation with --expected. Read scenarios back and compare all approved fields before claiming creation is complete.
 WRITE: lamb assistant create <name> [--system-prompt "..." --llm model ...] | update <id> [...] | delete <id>
 
 debug and --bypass = inspect mode. It runs the full prompt assembly (system prompt + RAG context + template)

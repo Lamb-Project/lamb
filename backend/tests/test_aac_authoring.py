@@ -85,3 +85,12 @@ class Authoring(unittest.IsolatedAsyncioTestCase):
             r=await s.execute('lamb kb '+command+' 3')
             self.assertTrue(r.success,r.error)
             self.assertEqual(h.get.call_args.args[0],'/creator/knowledgebases/kb/3/'+endpoint)
+
+    async def test_expected_behavior_sent_with_approved_scenario(self):
+        s,h=self.shell()
+        r=await s.execute('lamb test add 3 "Station code" --message "What code?" --expected "COBALT-742, not a guessed code" --type single_turn')
+        self.assertTrue(r.success,r.error)
+        body=h.post.call_args.kwargs['json']
+        self.assertEqual(body['expected_behavior'],'COBALT-742, not a guessed code')
+        self.assertEqual(body['message'],'What code?')
+        self.assertEqual(body['title'],'Station code')

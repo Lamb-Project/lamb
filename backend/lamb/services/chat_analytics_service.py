@@ -73,8 +73,8 @@ class ChatAnalyticsService:
             model_pattern = f'lamb_assistant.{assistant_id}'
             
             # Build WHERE clause
-            where_clauses = ["json_extract(c.chat, '$.models') LIKE ?"]
-            params = [f'%{model_pattern}%']
+            where_clauses = ["EXISTS (SELECT 1 FROM json_each(c.chat, '$.models') AS chat_model WHERE chat_model.value = ?)"]
+            params = [model_pattern]
 
             if start_date:
                 where_clauses.append("c.created_at >= ?")
@@ -279,10 +279,10 @@ class ChatAnalyticsService:
                     u.email as user_email
                 FROM chat c
                 LEFT JOIN user u ON c.user_id = u.id
-                WHERE c.id = ? AND json_extract(c.chat, '$.models') LIKE ?
+                WHERE c.id = ? AND EXISTS (SELECT 1 FROM json_each(c.chat, '$.models') AS chat_model WHERE chat_model.value = ?)
             """
 
-            result = self._execute_query(query, (chat_id, f'%{model_pattern}%'), fetch_one=True)
+            result = self._execute_query(query, (chat_id, model_pattern), fetch_one=True)
 
             if not result:
                 return None
@@ -459,8 +459,8 @@ class ChatAnalyticsService:
             model_pattern = f'lamb_assistant.{assistant_id}'
             
             # Build WHERE clause
-            where_clauses = ["json_extract(c.chat, '$.models') LIKE ?"]
-            params = [f'%{model_pattern}%']
+            where_clauses = ["EXISTS (SELECT 1 FROM json_each(c.chat, '$.models') AS chat_model WHERE chat_model.value = ?)"]
+            params = [model_pattern]
             
             if start_date:
                 where_clauses.append("c.created_at >= ?")
@@ -581,8 +581,8 @@ class ChatAnalyticsService:
             model_pattern = f'lamb_assistant.{assistant_id}'
             
             # Build WHERE clause
-            where_clauses = ["json_extract(c.chat, '$.models') LIKE ?"]
-            params = [f'%{model_pattern}%']
+            where_clauses = ["EXISTS (SELECT 1 FROM json_each(c.chat, '$.models') AS chat_model WHERE chat_model.value = ?)"]
+            params = [model_pattern]
             
             if start_date:
                 where_clauses.append("c.created_at >= ?")
