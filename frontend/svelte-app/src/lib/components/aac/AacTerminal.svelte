@@ -74,7 +74,6 @@
 				).map(m => ({ role: m.role, content: m.content || '' }));
 				if (conv.length > 0) {
 					messages = conv;
-					resumeNotice = true;
 				}
 			} catch (e) {
 				if (!isMounted) return;
@@ -89,7 +88,6 @@
 		inputEl?.focus();
 	});
 
-	let resumeNotice = $state(false);
 
 	async function triggerSkillStartup() {
 		loading = true;
@@ -140,13 +138,9 @@
 		const text = inputText.trim();
 		if (!text || loading || attaching) return;
 
-		// Check if user was away >5 min — prepend context note
-		const wasAway = recordTabActivity(sessionId);
-		let messageToSend = text;
-		if (wasAway || resumeNotice) {
-			messageToSend = `[System: User returned after being away. Things may have changed — don't assume earlier data is still current.]\n${text}`;
-			resumeNotice = false;
-		}
+		// Send the user's exact reply so resumed approvals and cancellations
+		// reach the server's confirmation classifier without a hidden prefix.
+		recordTabActivity(sessionId);
 
 		messages = [...messages, { role: 'user', content: text }];
 		inputText = '';
@@ -167,7 +161,7 @@
 		try {
 			await sendMessageStream(
 				sessionId,
-				messageToSend,
+				text,
 				(chunk) => {
 					statusText = '';
 					messages[streamIdx] = { ...messages[streamIdx], content: messages[streamIdx].content + chunk };

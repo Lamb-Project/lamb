@@ -96,6 +96,7 @@ _REJECTION_WORDS = {
 
 _REJECTION_PHRASES = {
     "no thanks", "not now", "hold on", "never mind", "forget it",
+    "clear", "clear it", "clear pending action", "clear the pending action",
     "no gracias", "ahora no", "déjalo", "olvídalo",
     "no gràcies", "ara no", "deixa-ho",
 }

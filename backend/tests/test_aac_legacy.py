@@ -137,6 +137,15 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
             s.execute.assert_not_awaited()
             self.assertEqual(a.pending_action is None,classify_user_confirmation(text)=='reject')
 
+    async def test_clear_cancels_pending_without_a_write(self):
+        for text in ['clear', 'clear it', 'clear the pending action']:
+            for streaming in [False, True]:
+                a,p,s=agent([message('cleared')],pending_action={'command':'lamb assistant create x'})
+                await turn(a,streaming,text)
+                self.assertIsNone(a.pending_action)
+                s.execute.assert_not_awaited()
+        self.assertEqual(classify_user_confirmation('clear the explanation up'), 'other')
+
     async def test_never_policy(self):
         a,p,s=agent([],authorizer=ActionAuthorizer({'assistant.delete':'never'}))
         result=await a._execute_tool(tool('lamb assistant delete 1'))
