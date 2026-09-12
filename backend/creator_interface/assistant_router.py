@@ -429,6 +429,17 @@ def prepare_assistant_body(
             # Fallback: create prefixed name (for backward compatibility)
             prefixed_name = f"{creator_user['id']}_{original_name}"
 
+        metadata = _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", "")))
+        parsed_metadata = json.loads(metadata) if isinstance(metadata, str) else metadata
+        prompt_template = original_body.get("prompt_template", "")
+        # Only default new, omitted templates for the built-in augmentation path.
+        # Explicit templates (including empty ones) and custom processors retain their semantics.
+        if ("prompt_template" not in original_body
+                and parsed_metadata.get("prompt_processor") == "simple_augment"
+                and parsed_metadata.get("rag_processor") in {
+                    "simple_rag", "single_file_rag", "context_aware_rag", "hierarchical_rag", "rubric_rag"}):
+            prompt_template = "Context:\n{context}\n\nUser: {user_input}"
+
         # Build the body according to Assistant class structure
         new_body = {
             "name": prefixed_name,  # Use prefixed name
@@ -437,11 +448,11 @@ def prepare_assistant_body(
             "owner": creator_user['email'],
             # Handle metadata as source of truth, copy to api_callback for backward compatibility
             # Ensure essential defaults (prompt_processor) are set
-            "metadata": _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", ""))),
-            "api_callback": _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", ""))),
+            "metadata": metadata,
+            "api_callback": metadata,
             # Check for system_prompt first, then instructions as fallback
             "system_prompt": original_body.get("system_prompt", original_body.get("instructions", "")),
-            "prompt_template": original_body.get("prompt_template", ""),
+            "prompt_template": prompt_template,
             # Removed unused fields: pre_retrieval_endpoint, post_retrieval_endpoint, RAG_endpoint
             # These are still expected by the backend but we'll pass empty strings
             "pre_retrieval_endpoint": "",

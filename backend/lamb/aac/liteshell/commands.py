@@ -168,7 +168,7 @@ async def assistant_create(ctx: "CommandContext", args: list[str], kwargs: dict)
         body["system_prompt"] = kwargs["system_prompt"]
     if kwargs.get("description") or kwargs.get("d"):
         body["description"] = kwargs.get("description", kwargs.get("d", ""))
-    if kwargs.get("prompt_template"):
+    if "prompt_template" in kwargs:
         body["prompt_template"] = kwargs["prompt_template"]
     if kwargs.get("rag_top_k"):
         body["RAG_Top_k"] = int(kwargs["rag_top_k"])
