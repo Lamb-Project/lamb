@@ -5,6 +5,7 @@
     import ChatInterface from '$lib/components/ChatInterface.svelte';
     import ChatAnalytics from '$lib/components/analytics/ChatAnalytics.svelte';
     import { _, locale } from '$lib/i18n';
+    import { isKbBasedRag } from '$lib/utils/ragProcessorHelpers.js';
     import { user } from '$lib/stores/userStore';
     import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte'; // Generic confirmation modal
     import NotificationModal from '$lib/components/modals/NotificationModal.svelte';
@@ -695,13 +696,13 @@
 	async function fetchKnowledgeBasesForDetail() {
 		if (loadingKnowledgeBases || kbFetchTriggered) return; // Don't refetch if loading or already triggered for this assistant
 
-        // Check if the currently displayed assistant uses simple_rag
+        // Fetch collection labels for every KB-based RAG processor.
         let ragProcessor = '';
         const callbackData = getAssistantMetadataObject(selectedAssistantData);
         ragProcessor = callbackData.rag_processor || '';
 
-		if (ragProcessor !== 'simple_rag') {
-			console.log('Skipping KB fetch for detail view (not simple_rag)');
+		if (!isKbBasedRag(ragProcessor)) {
+			console.log('Skipping KB fetch for detail view (not KB-based RAG)');
             accessibleKnowledgeBases = []; // Clear if not needed
             knowledgeBaseError = '';
             kbFetchTriggered = true; // Mark as checked for this load
@@ -1383,8 +1384,8 @@
                                                 </div>
                                             {/if}
 
-                                            <!-- Knowledge Bases (if simple_rag) -->
-                                            {#if apiCallback.rag_processor === 'simple_rag'}
+                                            <!-- Knowledge bases for all collection-based RAG processors -->
+                                            {#if isKbBasedRag(apiCallback.rag_processor)}
                                                 <div>
                                                     <div class="font-medium text-gray-700 mb-1">{$_('assistants.form.knowledgeBases.label', { default: 'Knowledge Bases' })}</div>
                                                     {#if loadingKnowledgeBases}
