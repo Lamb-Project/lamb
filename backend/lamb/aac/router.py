@@ -13,12 +13,14 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
 from openai import AsyncOpenAI
 
 from lamb.auth_context import AuthContext, get_auth_context
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
 from lamb.aac.authorization import ActionAuthorizer
 from lamb.aac.session_manager import AACSessionManager
+from lamb.aac.turn_lock import TurnLock
 from lamb.aac.session_logger import SessionLogger
 from lamb.aac.skill_loader import load_skill, list_skills
 from lamb.aac.liteshell.shell import LiteShell
@@ -222,11 +224,59 @@ async def rename_session(
 # ---------------------------------------------------------------------------
 
 
+async def _read_user_message(request):
+    body = await request.json()
+    user_message = body.get("message") if isinstance(body, dict) else None
+    if not isinstance(user_message, str) or not user_message.strip():
+        raise HTTPException(status_code=400, detail="Message is required")
+    return user_message.strip()
+
+
+def _lock_owned_session(session_id, auth):
+    # Authorize before returning a busy response; reload under the lock in the
+    # handler so a turn completed between this read and lock acquisition is seen.
+    if not AACSessionManager().get_session(session_id, auth.user["email"]):
+        raise HTTPException(status_code=404, detail="Session not found")
+    return TurnLock(session_id)
+
+
 @router.post("/sessions/{session_id}/message")
-async def send_message(
+async def send_message(session_id: str, request: Request, auth: AuthContext = Depends(get_auth_context)):
+    message = await _read_user_message(request)
+    with _lock_owned_session(session_id, auth):
+        return await _send_message(session_id, request, auth, message)
+
+
+@router.post("/sessions/{session_id}/message/stream")
+async def send_message_stream(session_id: str, request: Request, auth: AuthContext = Depends(get_auth_context)):
+    message = await _read_user_message(request)
+    lock = _lock_owned_session(session_id, auth)
+    try:
+        response = await _send_message_stream(session_id, request, auth, message)
+    except BaseException:
+        lock.close()
+        raise
+    original = response.body_iterator
+    async def guarded():
+        try:
+            async for chunk in original:
+                yield chunk
+        finally:
+            try:
+                with anyio.CancelScope(shield=True):
+                    await original.aclose()
+            finally:
+                lock.close()
+    response.body_iterator = guarded()
+    response.background = BackgroundTask(lock.close)
+    return response
+
+
+async def _send_message(
     session_id: str,
     request: Request,
-    auth: AuthContext = Depends(get_auth_context),
+    auth: AuthContext,
+    user_message: str,
 ):
     """Send a message to the AAC agent and get a response.
 
@@ -237,11 +287,6 @@ async def send_message(
     is handled internally — if confirmation is needed, the agent's response
     will ask the user, and the user's next message resolves it.
     """
-    body = await request.json()
-    user_message = body.get("message") if isinstance(body, dict) else None
-    if not isinstance(user_message, str) or not user_message.strip():
-        raise HTTPException(status_code=400, detail="Message is required")
-    user_message = user_message.strip()
 
     mgr = AACSessionManager()
     session = mgr.get_session(session_id, auth.user["email"])
@@ -278,22 +323,17 @@ async def send_message(
     }
 
 
-@router.post("/sessions/{session_id}/message/stream")
-async def send_message_stream(
+async def _send_message_stream(
     session_id: str,
     request: Request,
-    auth: AuthContext = Depends(get_auth_context),
+    auth: AuthContext,
+    user_message: str,
 ):
     """Send a message and stream the response via SSE.
 
     Request body: {"message": "text"}
     Response: text/event-stream with chunks, ending with [DONE]
     """
-    body = await request.json()
-    user_message = body.get("message") if isinstance(body, dict) else None
-    if not isinstance(user_message, str) or not user_message.strip():
-        raise HTTPException(status_code=400, detail="Message is required")
-    user_message = user_message.strip()
 
     mgr = AACSessionManager()
     session = mgr.get_session(session_id, auth.user["email"])

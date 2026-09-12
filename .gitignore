@@ -196,3 +196,4 @@ aac_logs/
 .worktrees/
 .agents/
 skills-lock.json
+.aac-turn-locks/

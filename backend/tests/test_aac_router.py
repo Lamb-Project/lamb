@@ -1,12 +1,19 @@
 """Request lifecycle regressions: state and resources survive failed/cancelled turns."""
 import asyncio
 import unittest
+import tempfile
+from pathlib import Path
+from lamb.aac import turn_lock
 from types import SimpleNamespace as N
 from unittest.mock import AsyncMock, Mock, patch
 from fastapi import HTTPException
 from lamb.aac import router as r
 
 class LifecycleTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        temp=tempfile.TemporaryDirectory();self.addCleanup(temp.cleanup)
+        patcher=patch.object(turn_lock,'LOCK_ROOT',Path(temp.name));patcher.start();self.addCleanup(patcher.stop)
+
     def fixture(self):
         a=N(conversation=[{'role':'user','content':'hello'}],pending_action={'command':'lamb assistant update 1'},
             tool_audit=[{'success':True}],shell=N(close=AsyncMock()),llm_client=N(close=AsyncMock()),
@@ -96,3 +103,67 @@ class ProviderRoutingTests(unittest.TestCase):
         for default, config in [({'provider':'google'}, {}), ({'provider':'ollama','model':'qwen'}, {}), ({'provider':'ollama','model':'qwen'}, {'base_url':'http://local','enabled':False}), ({'provider':'ollama'}, {'base_url':'http://local'}), ({'provider':'openai'}, {'enabled':True})]:
             with self.subTest(default=default, config=config), self.assertRaises(HTTPException):
                 self.resolve(default,config)
+
+class ConcurrentTurns(unittest.IsolatedAsyncioTestCase):
+    fixture=LifecycleTests.fixture
+    setUp=LifecycleTests.setUp
+    async def test_overlapping_turn_rejected_before_agent_build(self):
+        for second_endpoint in [r.send_message,r.send_message_stream]:
+            a,mgr,req,auth=self.fixture()
+            entered=asyncio.Event();release=asyncio.Event()
+            async def first_chat(message):
+                entered.set();await release.wait();return 'first'
+            a.chat.side_effect=first_chat
+            b,_,_,_=self.fixture()
+            build=AsyncMock(side_effect=[(a,'first',None),(b,'second',None)])
+            with patch.object(r,'AACSessionManager',return_value=mgr),patch.object(r,'_prepare_agent_and_message',build):
+                first=asyncio.create_task(r.send_message('s',req,auth))
+                await entered.wait()
+                try:
+                    with self.assertRaises(HTTPException) as error:
+                        await second_endpoint('s',req,auth)
+                    self.assertEqual(error.exception.status_code,409)
+                    self.assertEqual(build.await_count,1)
+                finally:
+                    release.set();await first
+
+    async def test_stream_holds_lock_until_close_and_persists(self):
+        a,mgr,req,auth=self.fixture()
+        async def chunks(message):
+            yield 'first'
+            yield 'second'
+        a.chat_stream=chunks
+        with patch.object(r,'AACSessionManager',return_value=mgr),patch.object(r,'_prepare_agent_and_message',AsyncMock(return_value=(a,'hello',None))):
+            response=await r.send_message_stream('s',req,auth)
+            await response.body_iterator.__anext__()
+            with self.assertRaises(HTTPException) as error:await r.send_message('s',req,auth)
+            self.assertEqual(error.exception.status_code,409)
+            await response.body_iterator.aclose()
+            mgr.update_conversation.assert_called_once()
+            self.assertEqual((await r.send_message('s',req,auth))['response'],'done')
+
+    async def test_failed_agent_build_releases_lock(self):
+        _,mgr,req,auth=self.fixture()
+        for endpoint in [r.send_message,r.send_message_stream]:
+            with patch.object(r,'AACSessionManager',return_value=mgr),patch.object(r,'_prepare_agent_and_message',AsyncMock(side_effect=RuntimeError('build failed'))):
+                with self.assertRaises(RuntimeError):await endpoint('s',req,auth)
+            with turn_lock.TurnLock('s'):pass
+
+    def test_lock_is_shared_across_worker_processes(self):
+        import subprocess,sys
+        script="""from pathlib import Path
+import sys
+from fastapi import HTTPException
+from lamb.aac import turn_lock
+turn_lock.LOCK_ROOT=Path(sys.argv[1])
+try:
+    with turn_lock.TurnLock('s'):pass
+except HTTPException as error:
+    assert error.status_code == 409
+    assert sys.argv[2] == 'busy'
+else:
+    assert sys.argv[2] == 'free'
+"""
+        with turn_lock.TurnLock('s'):
+            subprocess.run([sys.executable,'-c',script,str(turn_lock.LOCK_ROOT),'busy'],check=True)
+        subprocess.run([sys.executable,'-c',script,str(turn_lock.LOCK_ROOT),'free'],check=True)
