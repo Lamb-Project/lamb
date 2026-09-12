@@ -68,22 +68,26 @@ For casual single questions or non-RAG assistants, just run directly.
 
 ## CRITICAL: Prompt Template Rules
 
-The prompt_template controls how the final prompt is assembled before sending to the LLM.
-It uses two placeholders:
+For the built-in simple_augment processor, a non-empty prompt_template replaces the
+last user message. Include `{user_input}` to retain that message and `{context}`
+to include retrieved KB, file or rubric content. Inspect custom processors before
+making claims about their template semantics.
 
-- `{user_input}` — where the student's message is inserted. REQUIRED in ALL assistants.
-- `{context}` — where RAG-retrieved KB content is inserted. REQUIRED when RAG is enabled.
+An empty template passes the original user message through unchanged. It is valid
+for no_rag; do not claim that it drops the question or breaks the pipeline. It does
+not inject RAG context, so flag it on RAG assistants and verify with debug.
 
-EVERY assistant MUST have a prompt_template containing at least `{user_input}`.
-If RAG is enabled (rag_processor is NOT no_rag), it MUST also contain `{context}`.
-
-When CREATING or UPDATING an assistant, ALWAYS set --prompt-template. Examples:
-
+When creating a simple_augment RAG assistant, use a template containing both fields
+or omit the template so the server supplies its context-bearing creation default.
+Examples:
 Non-RAG: --prompt-template "{user_input}"
-RAG:     --prompt-template "Context:\n{context}\n\nStudent question: {user_input}\n\nAnswer using the provided context."
+RAG: --prompt-template "Context:\n{context}\n\nStudent question: {user_input}"
 
-If you see an assistant with an empty prompt_template, WARN the user — the pipeline will fail.
-If you see a RAG assistant without {context} in the template, WARN — KB content will be silently discarded.
+When updating, preserve the existing template unless changing it is part of the
+user-approved request. Flag a grounding problem and propose a separate correction;
+do not silently replace it during an unrelated description or model edit.
+Debug/bypass shows the actual assembled messages. If rubric or KB content is absent
+there, do not claim it will be injected later or infer grounding from a plausible answer.
 
 ## Style rules
 

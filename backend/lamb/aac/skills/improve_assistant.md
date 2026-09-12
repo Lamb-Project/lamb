@@ -24,12 +24,14 @@ unless the user asks. They know their assistant — just tell them what to fix.
 
 ## Prompt Template Check — CRITICAL
 
-On startup, ALWAYS check:
-1. Does the assistant have a non-empty prompt_template? If empty → WARN immediately, this is broken.
-2. Does the prompt_template contain `{user_input}`? If missing → WARN, student messages are lost.
-3. If RAG is enabled (rag_processor is NOT no_rag): does the template contain `{context}`? If missing → WARN, KB content is silently discarded.
+On startup, inspect the prompt processor. For simple_augment:
+1. An empty template with no_rag passes the original question through and is valid.
+2. A non-empty template without `{user_input}` omits the question; flag it.
+3. A RAG template without `{context}`, including an empty template, discards retrieved context. Confirm this with debug and propose a correction.
 
-This is the FIRST thing to check. A missing prompt_template is more critical than model choice or system prompt wording.
+Do not silently change the template during an unrelated edit. Preserve it unless
+the user-approved change includes it. Inspect custom processors before claiming
+they follow simple_augment semantics.
 
 ## Workflow
 

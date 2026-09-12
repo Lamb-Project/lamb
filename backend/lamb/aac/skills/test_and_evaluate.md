@@ -18,11 +18,12 @@ evaluate → improve.
 ## On startup
 
 1. Load the assistant configuration from startup data
-2. **Check prompt_template immediately:**
-   - Is it empty? → WARN: "prompt_template is empty, the pipeline will fail"
-   - Does it contain `{user_input}`? If not → WARN: "student messages won't be included"
-   - If RAG is enabled: does it contain `{context}`? If not → WARN: "KB content will be discarded"
-   - If any warning: suggest fixing BEFORE running tests
+2. **Check prompt_template for simple_augment:**
+   - Empty with no_rag passes the original question through and is valid.
+   - A non-empty template without `{user_input}` omits the question; flag it.
+   - RAG without `{context}`, including an empty template, discards retrieved context; flag it and confirm with debug.
+   - Propose a correction before testing when needed; preserve fields outside the approved change.
+   - Inspect custom prompt processors before assuming these semantics.
 3. Check if test scenarios already exist for this assistant
 4. Adapt your approach based on what you find (see sections below)
 

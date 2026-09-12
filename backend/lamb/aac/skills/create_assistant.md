@@ -23,7 +23,7 @@ Ask 2-3 quick questions (not a checklist):
 
 ## Prompt Template — CRITICAL
 
-EVERY assistant MUST have a prompt_template. Set it with --prompt-template during creation.
+For simple_augment, use an explicit template as shown below. A new RAG assistant also receives a context-bearing default if you omit the template. Inspect the saved configuration.
 
 **Non-RAG assistant** (no knowledge base):
 ```
@@ -35,12 +35,12 @@ EVERY assistant MUST have a prompt_template. Set it with --prompt-template durin
 --prompt-template "Context:\n{context}\n\nStudent question: {user_input}\n\nAnswer using the provided context."
 ```
 
-- `{user_input}` = where the student's message goes. Always required.
+- In a non-empty template, `{user_input}` inserts the student's message.
 - `{context}` = where KB content goes. Required when RAG is enabled.
-- Without `{user_input}`, the student's question is lost.
+- A non-empty template without `{user_input}` omits the question; an empty template passes the original message through.
 - Without `{context}` on a RAG assistant, KB content is silently discarded.
 
-NEVER create an assistant with an empty prompt_template. NEVER.
+An empty template is valid for no_rag but does not inject RAG context. For a custom prompt processor, inspect its behavior before applying these simple_augment rules.
 
 ## Workflow
 
