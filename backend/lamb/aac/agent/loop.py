@@ -16,6 +16,7 @@ The loop:
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,6 +27,7 @@ from openai import AsyncOpenAI
 from lamb.aac.authorization import ActionAuthorizer, classify_user_confirmation
 from lamb.aac.liteshell.shell import LiteShell, CommandContext, ShellResult, prepare_command
 from lamb.aac.session_logger import SessionLogger
+from lamb.aac.skill_routing import SkillRouting, catalogue_prompt
 from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="AAC")
@@ -47,7 +49,7 @@ Use the attachment references supplied by the user; never invent paths.
 READ: lamb template list | get <id>
 READ: lamb analytics chats <assistant_id> | chat-detail <assistant_id> <chat_id> | stats <assistant_id> | timeline <assistant_id> [--period day|week|month]
 
-To see available LLM models (gpt-4o, gpt-4o-mini, etc.), use: lamb assistant config
+To see configured organization models and defaults, use: lamb assistant config
 It returns connectors, their models, and organization defaults. ALWAYS use this for model selection.
 DOCS: lamb docs index | read <topic> [--section "heading"]
 SKILLS: lamb skill list | load <skill-id> [--assistant <id>]
@@ -149,8 +151,7 @@ NEVER switch language mid-conversation. If the user speaks Spanish, respond in S
 NEVER refuse a user's explicit request. If they want to run a real test, run it. You may suggest bypass first, but if the user insists, do what they ask.
 
 When the user asks to do something covered by a specific skill (create, improve, explain, test an assistant),
-use `lamb skill load <skill-id>` to switch. Available skills: manage-knowledge-base, manage-rubric, about-lamb, create-assistant, improve-assistant,
-explain-assistant, test-and-evaluate. Use `lamb skill list` if unsure.
+use `lamb skill load <skill-id>` to switch. Select from the workflow catalogue; use `lamb skill list` if unsure.
 
 End EVERY response with numbered options. EXACTLY this format, no variations:
 
@@ -195,7 +196,7 @@ TOOL_DEFINITIONS = [
             "description": (
                 "Execute a LAMB CLI command. Returns structured JSON data. "
                 "Examples: 'lamb assistant list', 'lamb rubric get <uuid>', "
-                "'lamb assistant create \"My Tutor\" --system-prompt \"You are...\" --llm gpt-4o-mini'."
+                "'lamb assistant create \"My Tutor\" --system-prompt \"You are...\" --llm MODEL_FROM_CONFIG'."
             ),
             "parameters": {
                 "type": "object",
@@ -384,7 +385,7 @@ def _extract_artifacts(cmd: str, result: Any) -> list[dict]:
 
 
 @dataclass
-class AgentLoop:
+class AgentLoop(SkillRouting):
     """The AAC agent loop.
 
     Attributes:
@@ -408,18 +409,12 @@ class AgentLoop:
     session_logger: SessionLogger | None = None
     pending_action: dict | None = None
     tool_audit: list[dict] = field(default_factory=list)
+    skill_state: dict | None = None
     session_id: str = ""  # current AAC session ID (for self-referencing commands like session.rename)
 
     def load_skills(self, skills_dir: Path | str) -> None:
-        """Append skill files (.md) to the system prompt."""
-        skills_dir = Path(skills_dir)
-        if not skills_dir.is_dir():
-            return
-        skill_texts = []
-        for md_file in sorted(skills_dir.glob("*.md")):
-            skill_texts.append(f"\n--- Skill: {md_file.stem} ---\n{md_file.read_text()}")
-        if skill_texts:
-            self.system_prompt += "\n\n# Skills\n" + "\n".join(skill_texts)
+        """Load the compact catalogue only; workflow bodies are activated on demand."""
+        self.system_prompt += catalogue_prompt()
 
     async def chat(self, user_message: str) -> str:
         """Send a user message and return the assistant's text response.
@@ -474,11 +469,17 @@ class AgentLoop:
     async def _request_message(self, messages: list[dict], tools_enabled: bool,
                                streaming: bool) -> AsyncIterator[dict | str]:
         """One provider request, with the same message result for both consumers."""
+        self.record_request_prefix(messages, TOOL_DEFINITIONS if tools_enabled else None)
         kwargs = {"model": self.model, "messages": messages}
         if tools_enabled:
             kwargs.update(tools=TOOL_DEFINITIONS, tool_choice="auto")
+        started = time.monotonic()
         if not streaming:
             response = await self.llm_client.chat.completions.create(**kwargs)
+            if self.session_logger:
+                usage = getattr(response, "usage", None)
+                self.session_logger.log("provider_response", {"elapsed_ms": round((time.monotonic()-started)*1000,1),
+                    "usage": usage.model_dump() if hasattr(usage, "model_dump") else None})
             message = response.choices[0].message
             yield {"_message": {
                 "role": "assistant", "content": message.content or "",
@@ -548,13 +549,13 @@ class AgentLoop:
                     command = _describe_tool_call(tc)
                     yield {"status": "tool", "command": command}
                     if waiting:
-                        result = {"success": False, "error": "Not executed: another action awaits user confirmation."}
+                        result = {"success": False, "error": "Not executed: confirmation or a newly loaded workflow requires a new decision."}
                     else:
                         result = await self._execute_tool(tc)
-                    waiting = waiting or bool(result.get("awaiting_user_confirmation"))
-                    yield {"status": "tool_done", "command": command, "success": result.get("success", False)}
+                    waiting = waiting or bool(result.get("awaiting_user_confirmation") or result.get("skill_loaded"))
                     self.conversation.append({"role": "tool", "tool_call_id": tc.id,
                         "content": json.dumps(result, default=str, ensure_ascii=False)})
+                    yield {"status": "tool_done", "command": command, "success": result.get("success", False)}
                 if tool_rounds >= self.max_tool_rounds:
                     self.conversation.append({"role": "user", "content":
                         "[System: Maximum tool rounds reached. Respond using the results already available. No further tools are allowed this turn.]"})
@@ -589,7 +590,7 @@ class AgentLoop:
 
         # Reject unsupported/malformed commands before they can become pending writes.
         try:
-            action_key, _, _, help_requested = prepare_command(command, getattr(self.shell, "allowlist", None))
+            action_key, parsed_args, parsed_kwargs, help_requested = prepare_command(command, getattr(self.shell, "allowlist", None))
         except ValueError as error:
             result = ShellResult(False, error=str(error), command=command)
             self._record_audit(command, None, False, 0, result)
@@ -597,6 +598,28 @@ class AgentLoop:
                 self.session_logger.log_tool_call(command=command, success=False, elapsed_ms=0, error=result.error)
             return result.to_dict()
         policy = "auto" if help_requested else self.authorizer.check(action_key)
+
+        if self.skill_state is not None and not help_requested:
+            if self.pending_action and action_key == "skill.load":
+                return {"success": False, "error": "Resolve the pending confirmation before switching workflows."}
+            try:
+                if action_key == "skill.load":
+                    context = dict(self.skill_state.get("context", {}))
+                    if "assistant" in parsed_kwargs or "a" in parsed_kwargs:
+                        context["assistant_id"] = parsed_kwargs.get("assistant", parsed_kwargs.get("a"))
+                    if "language" in parsed_kwargs:
+                        context["language"] = parsed_kwargs["language"]
+                    text = self.activate_skill(parsed_args[0], context)
+                    self._record_audit(command, action_key, True, 0, ShellResult(True, data={"skill_id": self.skill_state["skill_id"]}))
+                    return {"success": True, "data": text, "action_executed": False, "skill_loaded": self.skill_state["skill_id"]}
+                if policy != "never" and not self.pending_action:
+                    instructions = self.required_skill(action_key, parsed_args, parsed_kwargs)
+                    if instructions:
+                        self._record_audit(command, action_key, False, 0, ShellResult(False, error="Required workflow loaded; command not executed."))
+                        return {"success": False, "error": "Required workflow loaded. The requested command was NOT executed. Read the recipe and reconsider the command before retrying.",
+                                "skill_loaded": self.skill_state["skill_id"], "instructions": instructions}
+            except ValueError as error:
+                return {"success": False, "error": str(error)}
 
         # Self-referencing commands: inject current session_id
         if action_key == "session.rename" and self.session_id and "--session" not in command:

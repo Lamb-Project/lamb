@@ -65,7 +65,7 @@ Present the test results and guide the user through evaluation:
 1. Show each result in a chat-style format (student question → assistant response)
 2. For each, give your preliminary assessment
 3. Ask the user to evaluate: good, bad, or mixed
-4. Record evaluations via `lamb test evaluate`
+4. Record the user's evaluation via `lamb test evaluate RUN_ID good ASSISTANT_ID --notes "Evidence and rationale"` (choose good, bad or mixed as appropriate)
 
 ## If test scenarios have evaluations
 
@@ -91,3 +91,21 @@ so the user knows what they can do next.
 Before reporting totals, read `lamb test runs ASSISTANT_ID`, each relevant run-detail, and `lamb test evaluations ASSISTANT_ID`. Report actual stored run IDs, expected behavior, outputs and good/bad/mixed evaluations. An execution success is not an expectation pass; missing evaluations remain unevaluated. Include an intentionally unmet expectation to verify that the test process can report failure. After a user-approved improvement, rerun and compare actual results rather than assuming the change helped.
 
 For saved multi-turn assistant chat, use `lamb assistant chat ID --message TEXT --persist`, retain the returned chat_id and pass it with --chat-id on later turns. Do not claim continuity when no chat_id is returned. Inspect analytics for actually persisted activity; bypass calls are not student conversations.
+
+
+## Command sequence and result checks
+
+Use a verified ASSISTANT_ID. Ask for missing expectations before inventing a pass criterion. After the user approves the scenarios:
+```aac-command
+lamb assistant get ASSISTANT_ID
+lamb test scenarios ASSISTANT_ID
+lamb test add ASSISTANT_ID "Approved scenario title" --message "Approved input" --expected "Approved expected behavior" --type single_turn
+lamb test scenarios ASSISTANT_ID
+lamb test run ASSISTANT_ID --scenario SCENARIO_ID
+lamb test runs ASSISTANT_ID
+lamb test run-detail RUN_ID ASSISTANT_ID
+lamb test evaluate RUN_ID good ASSISTANT_ID --notes "User-approved verdict and observed evidence"
+lamb test evaluations ASSISTANT_ID
+```
+
+SCENARIO_ID and RUN_ID must come from actual responses. Check saved expected_behavior, actual output, effective model, run status and evaluation verdict. Use bad or mixed for unmet/partly met expectations; never record good merely because execution succeeded. For a batch, inspect every returned run, including failures; do not substitute bypass after a real run fails. Summaries report stored counts and identify unevaluated runs. For initial quality testing, propose a deliberately unmet expectation and explain its purpose before creating it. After an approved assistant edit, rerun the same scenario and compare actual evidence.

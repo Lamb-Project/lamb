@@ -51,7 +51,7 @@ An empty template is valid for no_rag but does not inject RAG context. For a cus
 4. Create after approval — include ALL config in a SINGLE create command:
    - `--system-prompt`, `--llm`, `--prompt-template` (always)
    - `--rag-processor`, `--rag-collections` (if using a KB)
-   - `--connector openai` (or whatever the org default is)
+   - `--connector PROVIDER` (or whatever the org default is)
    Do NOT create first and then update to add RAG. Put everything in one command.
 5. Verify with `lamb assistant get`
 6. Offer to run a quick test with a sample question
@@ -61,7 +61,7 @@ the raw prompt assembly which is expected and not useful to show the user. Just 
 
 Default model: use `lamb assistant config` to pick the org default.
 If RAG is enabled, ALWAYS include --rag-processor and --rag-collections in the create command.
-ALWAYS include --connector (usually openai) and --prompt-processor simple_augment.
+ALWAYS include --connector (from the organization configuration) and --prompt-processor simple_augment.
 
 
 ## Explicit knowledge and rubric bindings
@@ -71,3 +71,18 @@ Distinguish no_rag, simple_rag (retrieved KB chunks), single_file_rag (whole UTF
 ## UI tutorial requests
 
 For user-operated configuration or single-file selection, read `lamb docs read ui-assistants`. Show its relevant screenshot and full-size link. Single File Rag uses Upload New File in the assistant form, not KB Ingest Content. A tutorial request is not authorization to create or edit resources.
+
+
+## Validated creation recipes
+
+First run `lamb assistant config`. Use the organization's configured PROVIDER and MODEL, not a guessed model name. Replace uppercase placeholders with user-approved content and verified returned IDs. Select ONE mode. These examples use simple_augment; do not mix file, KB and rubric bindings.
+
+```aac-command
+lamb assistant create NAME --description "Approved purpose" --system-prompt "Approved assistant instructions" --connector PROVIDER --llm MODEL --prompt-processor simple_augment --rag-processor no_rag --prompt-template "{user_input}"
+lamb assistant create NAME --description "Approved purpose" --system-prompt "Answer using the supplied sources" --connector PROVIDER --llm MODEL --prompt-processor simple_augment --rag-processor simple_rag --rag-collections KB_ID --rag-top-k 3 --prompt-template "Context: {context} Question: {user_input}"
+lamb assistant create NAME --description "Approved purpose" --system-prompt "Answer using the supplied document" --connector PROVIDER --llm MODEL --prompt-processor simple_augment --rag-processor single_file_rag --file-path OWNED_FILE_REFERENCE --prompt-template "Context: {context} Question: {user_input}"
+lamb assistant create NAME --description "Approved purpose" --system-prompt "Answer using relevant supplied context" --connector PROVIDER --llm MODEL --prompt-processor simple_augment --rag-processor context_aware_rag --rag-collections KB_ID --rag-top-k 3 --prompt-template "Context: {context} Question: {user_input}"
+lamb assistant create NAME --description "Approved assessment purpose" --system-prompt "Assess the submission against the supplied rubric" --connector PROVIDER --llm MODEL --prompt-processor simple_augment --rag-processor rubric_rag --rubric-id RUBRIC_ID --rubric-format markdown --prompt-template "Rubric: {context} Submission: {user_input}"
+```
+
+Create requires confirmation. Keep the returned assistant ID. Read back `lamb assistant get ASSISTANT_ID` and compare every requested setting. Do not create twice after an unclear response; inspect the list first. For single-file frontend selection, show the ui-assistants guide and let the user choose/upload through the form; wait for an actual owned reference, never invent one. For KB setup activate manage-knowledge-base, and for a missing rubric activate manage-rubric. Return to this recipe after that prerequisite exists. A readback proves configuration, not behavior: use chat-with-assistant and test-and-evaluate for real responses and saved tests.

@@ -64,3 +64,23 @@ Distinguish no_rag, simple_rag (retrieved KB chunks), single_file_rag (whole UTF
 ## UI tutorial requests
 
 For user-operated configuration or single-file selection, read `lamb docs read ui-assistants`. Show its relevant screenshot and full-size link. Single File Rag uses Upload New File in the assistant form, not KB Ingest Content. A tutorial request is not authorization to create or edit resources.
+
+
+## Exact edit sequence
+
+Use an actual selected/listed ASSISTANT_ID. Read its full current state first:
+```aac-command
+lamb assistant get ASSISTANT_ID
+```
+Translate the user's suggestion into specific fields, show the proposed changes and wait for approval. A rejection changes nothing. For an approved request to shorten answers, retain the original prompt's other instructions and add only the requested constraint:
+```aac-command
+lamb assistant update ASSISTANT_ID --system-prompt "Original instructions plus the approved shorter-answer constraint"
+lamb assistant get ASSISTANT_ID
+```
+Compare requested changes and unrelated model/RAG/rubric/template settings with the original. On an error, report it and inspect before retrying. Never reset model or RAG settings during a text-only edit. Use chat-with-assistant for the same representative question before/after; use test-and-evaluate to rerun the user's selected saved scenarios. A debug result is not a behavioral pass.
+
+Deletion is separate from improvement. Only for an explicit deletion request, identify the assistant and explain the deletion before the normal confirmation:
+```aac-command
+lamb assistant delete ASSISTANT_ID
+```
+Do not recreate or delete an assistant as a workaround for an edit failure.

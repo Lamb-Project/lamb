@@ -83,7 +83,7 @@ def load_skill(
 
     # Validate required context
     required = meta.get("required_context", [])
-    missing = [k for k in required if k not in context]
+    missing = [k for k in required if context.get(k) in (None, "")]
     if missing:
         raise ValueError(f"Skill '{skill_id}' requires context: {missing}")
 
@@ -116,8 +116,10 @@ def load_skill(
 def _find_skill_file(skill_id: str) -> Path | None:
     """Find a skill file by ID (checks frontmatter) or filename stem."""
     # First try exact filename match
+    if not re.fullmatch(r"[a-zA-Z0-9_-]+", skill_id):
+        return None
     direct = SKILLS_DIR / f"{skill_id}.md"
-    if direct.exists():
+    if direct.is_file():
         return direct
 
     # Search by frontmatter id

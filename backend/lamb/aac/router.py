@@ -382,6 +382,7 @@ async def _send_message_stream(
 
 async def _finish_turn(mgr, agent, session_id, user_email, skill_info):
     """Persist completed tool effects even when output fails or the client leaves."""
+    skill_info = getattr(agent, "skill_state", None) or skill_info
     if skill_info:
         skill_info["started"] = True
     try:
@@ -404,25 +405,12 @@ async def _prepare_agent_and_message(
 
     Returns: (agent, message, skill_info)
     """
-    skill_info = session.get("skill_info")
-
-    if skill_info and not skill_info.get("started"):
-        # First message in a skill session — build with skill and use startup trigger
-        agent = await _build_agent_with_skill(
-            auth, session,
-            skill_info["skill_id"],
-            skill_info.get("context", {}),
-            token=token,
-        )
-        # The user message becomes the startup trigger; prepend the actual message if any
-        if user_message and not user_message.startswith("[System:"):
-            startup_msg = f"[System: Skill launched. Greet the user and present your initial analysis.]\nUser's first message: {user_message}"
-        else:
-            startup_msg = "[System: Skill launched. Greet the user and present your initial analysis.]"
-        return agent, startup_msg, skill_info
-    else:
-        agent = _build_agent(auth, session, token=token)
-        return agent, user_message, skill_info
+    agent = _build_agent(auth, session, token=token)
+    state = agent.skill_state
+    if state.get("skill_id") and not state.get("active_snapshot") and not agent.pending_action:
+        instructions = agent.activate_skill(state["skill_id"], state.get("context"), reason="session_selection")
+        agent.conversation.append({"role": "user", "content": "[Application workflow instructions]\n" + instructions})
+    return agent, user_message, state
 
 
 def _resolve_agent_llm(user_email: str):
@@ -494,9 +482,18 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
         session_id=session["id"],
     )
 
-    # Load generic skills (for non-skill sessions)
-    if SKILLS_DIR.is_dir():
+    # Pin the rendered prefix for this session. Skill transitions append to history.
+    state = dict(session.get("skill_info") or {})
+    if "system_prompt" not in state:
         agent.load_skills(SKILLS_DIR)
+        state["system_prompt"] = agent.system_prompt
+        state["routing_version"] = 1
+        state.setdefault("context", {})
+        if session.get("assistant_id"):
+            state["context"].setdefault("assistant_id", session["assistant_id"])
+        slog.log("skill_routing_initialized", {"legacy_session": bool(session.get("conversation"))})
+    agent.system_prompt = state["system_prompt"]
+    agent.skill_state = state
 
     # Restore state from session
     agent.conversation = session.get("conversation", [])
@@ -513,88 +510,10 @@ async def _build_agent_with_skill(
     context: dict,
     token: str = "",
 ) -> AgentLoop:
-    """Build an AgentLoop configured for a specific skill.
-
-    The skill's prompt replaces the generic skills. Startup actions
-    are executed before the agent's first turn.
-    """
-    user_email = auth.user["email"]
-    org_id = auth.organization["id"]
-    user_id = auth.user.get("id", 0)
-
-    # Load and resolve the skill
-    skill = load_skill(skill_id, context)
-
-    llm_client, model = _resolve_agent_llm(user_email)
-
-    # Build components — liteshell uses LambClient via HTTP
-    import os
-    server_url = os.environ.get("LAMB_LITESHELL_URL", "http://localhost:9099")
-    shell = LiteShell(
-        server_url=server_url,
-        token=token,
-        user_email=user_email,
-        organization_id=org_id,
-        user_id=user_id,
-    )
-    authorizer = ActionAuthorizer()
-
-    slog = SessionLogger(
-        session_id=session["id"],
-        user_email=user_email,
-        user_id=user_id,
-    )
-    slog.log_session_start(
-        assistant_id=session.get("assistant_id"),
-        model=model,
-    )
-    slog.log("skill_loaded", {"skill_id": skill_id, "context": context})
-
-    # Build agent with skill prompt instead of generic skills
-    from lamb.aac.agent.loop import DEFAULT_SYSTEM_PROMPT
-    system_prompt = DEFAULT_SYSTEM_PROMPT + "\n\n# Active Skill\n" + skill["prompt"]
-
-    agent = AgentLoop(
-        shell=shell,
-        llm_client=llm_client,
-        model=model,
-        authorizer=authorizer,
-        system_prompt=system_prompt,
-        session_logger=slog,
-        session_id=session["id"],
-    )
-
-    # Execute startup actions via liteshell
-    from lamb.aac.agent.loop import _parse_action_key, _extract_artifacts
-    for action in skill["startup_actions"]:
-        if authorizer.check(authorizer.resolve_action_key(action) or "") != "auto":
-            agent.conversation.append({"role": "user", "content":
-                f"[System: Startup action skipped because it requires authorization: {action}]"})
-            continue
-        result = await shell.execute(action)
-        # Record in tool audit
-        action_key = _parse_action_key(action)
-        agent._record_audit(action, action_key, result.success, result.elapsed_ms, result)
-        if result.success:
-            agent.conversation.append({
-                "role": "user",
-                "content": f"[System: Startup data from `{action}`]\n{_truncate_json(result.data)}",
-            })
-            slog.log_tool_call(
-                command=action,
-                success=True,
-                elapsed_ms=result.elapsed_ms,
-                data=result.data,
-            )
-        else:
-            logger.warning(f"Skill startup action failed: {action} → {result.error}")
-            slog.log_tool_call(
-                command=action,
-                success=False,
-                elapsed_ms=result.elapsed_ms,
-                error=result.error,
-            )
-
+    """Compatibility entry point using the same persistent, append-only routing."""
+    agent = _build_agent(auth, session, token=token)
+    instructions = agent.activate_skill(skill_id, context, reason="session_selection")
+    agent.conversation.append({"role": "user", "content": "[Application workflow instructions]\n" + instructions})
     return agent
 
 
