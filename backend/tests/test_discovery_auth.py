@@ -69,4 +69,18 @@ class DiscoveryAuth(unittest.TestCase):
                 r=self.client.get('/discovery',headers={'Authorization':'Bearer '+token})
                 self.assertEqual(r.status_code,401)
 
+    def test_legacy_auth_failure_does_not_log_credentials(self):
+        from lamb.owi_bridge.owi_users import OwiUserManager
+        from unittest.mock import Mock
+        manager=object.__new__(OwiUserManager)
+        manager.OWI_API_BASE_URL='http://owi.test/api/v1'
+        response=Mock(status_code=401,text='SECRET_MARKER')
+        response.request.headers={'Authorization':'Bearer SECRET_MARKER'}
+        with patch('lamb.owi_bridge.owi_users.requests.get',return_value=response), self.assertLogs('lamb.owi_bridge.owi_users',level='ERROR') as logs:
+            self.assertIsNone(manager.get_user_auth('SECRET_MARKER'))
+        self.assertNotIn('SECRET_MARKER',' '.join(logs.output))
+        with self.assertLogs('lamb.owi_bridge.owi_users',level='ERROR') as logs:
+            self.assertIsNone(manager.get_user_auth({'unexpected':'SECRET_MARKER'}))
+        self.assertNotIn('SECRET_MARKER',' '.join(logs.output))
+
 if __name__=='__main__':unittest.main()
