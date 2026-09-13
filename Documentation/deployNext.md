@@ -346,7 +346,7 @@ echo "OK: Both domains resolve to $SERVER_IP"
 
 If the server previously ran LAMB (old `docker-compose.yaml` stack), the old data lives at `/opt/lamb/lamb_v4.db`, `/opt/lamb/open-webui/backend/data/`, and `/opt/lamb/lamb-kb-server-stable/backend/data/`. The new stack uses named Docker volumes instead — the data must be copied across before launch.
 
-Follow the step-by-step guide in **`Documentation/slop-docs/migrating-to-lamb-next.md`**. The migration covers:
+Follow the step-by-step guide in **[migrating-to-lamb-next.md](./migrating-to-lamb-next.md)**. The migration covers:
 
 1. Stopping the old stack
 2. Creating named volumes with `docker compose up --no-start`

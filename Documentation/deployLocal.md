@@ -164,7 +164,11 @@ git checkout <branch>
 
 ## Phase 3: Create the `.env` File
 
-The `.env` file lives in the repo root (same directory as `docker-compose.next.yaml`).
+The `.env` file lives in the repo root (same directory as `docker-compose.next.yaml`). Start from the committed template:
+
+```bash
+cp .env.next.example .env
+```
 
 ### 3.1 — Required Variables (compose fails if missing)
 
@@ -300,7 +304,7 @@ The expected data locations inside the old project:
 
 ### 3.5.2 — Run the migration
 
-Follow the step-by-step guide in **`Documentation/slop-docs/migrating-to-lamb-next.md`**, using the paths above. The migration document covers:
+Follow the step-by-step guide in **[migrating-to-lamb-next.md](./migrating-to-lamb-next.md)**, using the paths above. The migration document covers:
 
 1. Creating named volumes with `docker compose up --no-start`
 2. Copying the LAMB database into `lamb-data`
@@ -313,9 +317,10 @@ Follow the step-by-step guide in **`Documentation/slop-docs/migrating-to-lamb-ne
 
 ### 3.5.3 — Critical gotcha
 
-**Stop the old stack first.** If the old LAMB containers are still running with bind-mounts to these data directories, the copy may produce inconsistent results. Ask the user to run this from the old project directory before migrating:
+**Stop the old stack first.** If the legacy LAMB containers (from the pre-`next` `docker-compose.yaml` stack) are still running with bind-mounts to these data directories, the copy may produce inconsistent results. Ask the user to run this from the old project directory before migrating:
 
 ```bash
+# Run in the OLD project directory (legacy stack) — not in the new install location
 docker compose -f docker-compose.yaml down
 ```
 
