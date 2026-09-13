@@ -37,3 +37,21 @@ class Documents(unittest.TestCase):
                 result=rag_processor([],assistant)
                 if expected:self.assertEqual(result['context'],expected)
                 else:self.assertNotIn('OTHER_SECRET',result['context']);self.assertEqual(result['sources'],[])
+
+class FileMutation(unittest.IsolatedAsyncioTestCase):
+ async def test_upload_rejects_path_components_before_write(self):
+  from creator_interface.main import upload_file
+  from fastapi import HTTPException,UploadFile
+  import io
+  for name in ['../8/other.txt','/tmp/other.txt','8/other.txt','8\\other.txt']:
+   with self.subTest(name=name),self.assertRaises(HTTPException) as error:
+    await upload_file(N(),UploadFile(filename=name,file=io.BytesIO(b'x')),N(user={'id':7}))
+   self.assertEqual(error.exception.status_code,400)
+ async def test_delete_resolves_owner_before_unlink(self):
+  from creator_interface.main import delete_file
+  from fastapi import HTTPException
+  with patch('lamb.uploaded_files.owned_document',side_effect=ValueError('foreign')) as owned:
+   with self.assertRaises(HTTPException) as error:
+    await delete_file(N(),'../8/other.txt',N(user={'id':7}))
+   self.assertEqual(error.exception.status_code,404)
+   owned.assert_called_once_with('../8/other.txt',7)

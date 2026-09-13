@@ -1408,6 +1408,9 @@ async def upload_file(
     try:
         creator_user = auth.user
 
+        filename = file.filename or ""
+        if not filename or Path(filename).name != filename or "\\" in filename or filename in {".", ".."}:
+            raise HTTPException(400, "Upload name must be a filename without path components")
         # Validate file extension
         file_extension = Path(file.filename).suffix.lower()
         if file_extension not in ALLOWED_EXTENSIONS:
@@ -1421,7 +1424,9 @@ async def upload_file(
         user_dir.mkdir(parents=True, exist_ok=True)
 
         # Create file path and save file
-        file_path = user_dir / file.filename
+        file_path = user_dir / filename
+        if user_dir.is_symlink() or file_path.is_symlink():
+            raise HTTPException(400, "Invalid upload path")
 
         # Save the uploaded file
         with file_path.open("wb") as buffer:
@@ -1473,16 +1478,13 @@ async def delete_file(request: Request, path: str, auth: AuthContext = Depends(g
         logger.debug(f"Received request to delete file: {path}")
         creator_user = auth.user
 
-        # Create user directory path
-        user_dir = STATIC_DIR / str(creator_user['id'])
-
-        # Full file path
-        file_path = user_dir / path
-
-        # Check if file exists
-        if not file_path.exists() or not file_path.is_file():
-            logger.error(f"File not found: {file_path}")
-            raise HTTPException(status_code=404, detail="File not found")
+        from lamb.uploaded_files import owned_document
+        # Accept a legacy bare filename or the returned owner-prefixed reference.
+        reference = path if "/" in path else f"{creator_user['id']}/{path}"
+        try:
+            file_path = owned_document(reference, creator_user['id'])
+        except ValueError:
+            raise HTTPException(404, "File not found")
 
         # Delete the file
         file_path.unlink()
