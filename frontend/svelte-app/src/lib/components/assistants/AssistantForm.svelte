@@ -1,6 +1,7 @@
 <!-- src/lib/components/assistants/AssistantForm.svelte -->
 <script>
 	import { _ } from '$lib/i18n';
+	import { validateModelSelection } from '$lib/utils/assistantModelConfig.js';
 	import { assistantConfigStore } from '$lib/stores/assistantConfigStore';
 	import { tick } from 'svelte';
 	import { get } from 'svelte/store';
@@ -213,16 +214,13 @@
 			return;
 		}
 
-		// In non-advanced mode, ensure defaults are used
-		if (form.formState === 'create' && !form.isAdvancedMode) {
-			const defaults = get(assistantConfigStore).configDefaults?.config || {};
-			form.selectedPromptProcessor = defaults.prompt_processor || (form.promptProcessors.length > 0 ? form.promptProcessors[0] : '');
-			form.selectedConnector = defaults.connector || (form.connectorsList.length > 0 ? form.connectorsList[0] : '');
-			await tick();
-			// Reset LLM if needed with the new models list
-			if (!availableModels.includes(form.selectedLlm)) {
-				form.selectedLlm = defaults.llm || (availableModels.length > 0 ? availableModels[0] : '');
-			}
+		// Validate the final visible selection; do not rewrite it after validation.
+		const modelError = validateModelSelection(form.selectedConnector, form.selectedLlm,
+			$assistantConfigStore.systemCapabilities, $assistantConfigStore.loading);
+		if (modelError) {
+			form.formError = modelError;
+			form.formLoading = false;
+			return;
 		}
 
 		const assistantDataPayload = buildAssistantPayload(form);

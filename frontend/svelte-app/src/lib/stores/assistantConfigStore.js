@@ -1,7 +1,8 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
-import { getApiUrl, getConfig } from '$lib/config';
+import { getApiUrl } from '$lib/config';
 import axios from 'axios';
+import { reconcileModelDefaults } from '$lib/utils/assistantModelConfig.js';
 
 /**
  * @typedef {Object} SystemCapabilities
@@ -38,7 +39,7 @@ const CACHE_DURATION_MS = 60 * 60 * 1000; // Cache for 1 hour
 function getUserScopedCacheKey(prefix) {
 	if (!browser) return prefix;
 	const email = localStorage.getItem('userEmail');
-	return email ? `${prefix}_${email}` : prefix;
+	return `${prefix}_v2_${getApiUrl('')}_${email || ''}`;
 }
 
 /** @type {AssistantConfigState} */
@@ -100,12 +101,7 @@ function isPlainObject(value) {
 
 async function fetchSystemCapabilities() {
 	try {
-		const config = getConfig();
-		const lambServerBase = config?.api?.lambServer;
-		if (!lambServerBase) {
-			throw new Error('Lamb server base URL (lambServer) is not configured within config.api.');
-		}
-		const capabilitiesUrl = `${lambServerBase.replace(/\/$/, '')}/lamb/v1/completions/list`;
+		const capabilitiesUrl = getApiUrl('/assistant/capabilities');
 		console.log(`assistantConfigStore: Fetching capabilities from: ${capabilitiesUrl}`);
 
 		const token = browser ? localStorage.getItem('userToken') : null;
@@ -124,12 +120,7 @@ async function fetchSystemCapabilities() {
 
 async function fetchStaticDefaults() {
 	try {
-		const config = getConfig();
-		const lambServerBase = config?.api?.lambServer;
-		if (!lambServerBase) {
-			throw new Error('Lamb server base URL (lambServer) is not configured within config.api.');
-		}
-		const defaultsUrl = `${lambServerBase.replace(/\/$/, '')}/static/json/defaults.json`;
+		const defaultsUrl = getApiUrl('').replace(/\/creator\/$/, '/static/json/defaults.json');
 		console.log(`assistantConfigStore: Fetching defaults from: ${defaultsUrl}`);
 
 		const defaultsResponse = await axios.get(defaultsUrl);
@@ -286,7 +277,7 @@ function createAssistantConfigStore() {
 				...staticConfig,
 				...(organizationOverrides || {})
 			};
-			const defaults = { config: mergedConfig };
+			const defaults = { config: reconcileModelDefaults(mergedConfig, capabilities) };
 			setCachedData(defaultsCacheKey, defaults);
 
 			set({

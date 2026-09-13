@@ -123,7 +123,7 @@ export function resetFormFieldsToDefaults(form, getAvailableModels) {
 	form.prompt_template = defaults.prompt_template || '';
 	form.RAG_Top_k = parseInt(defaults.RAG_Top_k || '3', 10) || 3;
 	form.selectedPromptProcessor = defaults.prompt_processor || (form.promptProcessors.length > 0 ? form.promptProcessors[0] : '');
-	form.selectedConnector = defaults.connector || (form.connectorsList.length > 0 ? form.connectorsList[0] : '');
+	form.selectedConnector = defaults.connector ?? '';
 	let defaultRag = normalizeRagProcessor(defaults.rag_processor);
 	form.selectedRagProcessor = defaultRag || (form.ragProcessors.length > 0 ? form.ragProcessors[0] : '');
 

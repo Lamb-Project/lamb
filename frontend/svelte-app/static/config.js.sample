@@ -20,7 +20,7 @@ window.LAMB_CONFIG = {
 		// This should match the LAMB_WEB_HOST environment variable
 		// Dev: http://localhost:9099
 		// Production: https://lamb.yourdomain.com
-		lambServer: 'http://localhost:9099',
+		// Omit lambServer to follow baseUrl (same instance, including proxies).
 
 		// Full URL to the OpenWebUI server (if applicable)
 		openWebUiServer: 'http://localhost:8080',
