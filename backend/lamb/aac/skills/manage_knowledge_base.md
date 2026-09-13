@@ -32,3 +32,5 @@ Load this skill for requests such as "what is in this KB?", "did my file finish 
 5. Report only what these responses establish. If a complete file inventory is unavailable, read `lamb docs read ui-knowledge-bases` and guide the user to the documented KB file view. Do not invent a file-list command.
 
 `lamb kb files` does not exist in the AAC shell. If a command returns "Unknown command", read its supported-command suggestions or run `lamb help`, then use a supported command. Do not ask the user to approve or repeat the nonexistent command. These inspection commands are reads and do not need write confirmation. Do not create or ingest anything just to inspect a KB, including after the user cancelled a UI upload.
+
+When an unsupported command is rejected, report that it was rejected before execution. Do not describe the failed attempt as a successfully executed command. The following supported read can proceed in the same session.

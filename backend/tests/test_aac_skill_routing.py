@@ -75,6 +75,12 @@ class Routing(unittest.IsolatedAsyncioTestCase):
             b,text,state=await r._prepare_agent_and_message(auth,session,'Más detalle')
             self.assertEqual(b.conversation,a.conversation);self.assertEqual(a.system_prompt,b.system_prompt)
             self.assertEqual(b.skill_state['skill_id'],'explain-assistant')
+            previous=json.loads(json.dumps(b.conversation))
+            session=json.loads(json.dumps({**session,'conversation':b.conversation,'skill_info':state}))
+            c,text,state=await r._prepare_agent_and_message(auth,session,'Show activity statistics for assistant 2')
+            self.assertEqual(c.skill_state['skill_id'],'inspect-activity')
+            self.assertEqual(c.conversation[:len(previous)],previous)
+            self.assertIn('Active workflow: inspect-activity',c.conversation[-1]['content'])
 
     async def test_missing_context_and_path_skill_fail_without_switch(self):
         a,p,s=agent([]);a.skill_state={'context':{}}
@@ -102,3 +108,21 @@ class Recipes(unittest.TestCase):
                             valid,error=RubricValidator.validate_criterion(criterion);self.assertTrue(valid,error)
                         rubrics+=1
         self.assertGreater(count,20);self.assertEqual(rubrics,1)
+
+
+class UserTurnSelection(unittest.TestCase):
+    def test_clear_activity_request_selected_before_first_command(self):
+        from lamb.aac.skill_routing import select_workflow
+        state={'skill_id':'manage-knowledge-base','context':{'language':'English'},'active_snapshot':'old'}
+        for text in ['For assistant 30, show saved student activity statistics and a dated timeline. Read-only.',
+                     'Muestra la actividad del asistente 30, sin cambios.',
+                     "Mostra les estadistiques de l'assistent 30, sense canvis."]:
+            selected=select_workflow(text,state)
+            self.assertEqual(selected[0],'inspect-activity');self.assertEqual(selected[1]['assistant_id'],'30')
+
+    def test_ambiguity_negation_and_followups_do_not_switch(self):
+        from lamb.aac.skill_routing import select_workflow
+        state={'skill_id':'manage-knowledge-base','context':{},'active_snapshot':'old'}
+        for text in ['Try again','Create an assistant and a rubric','Do not inspect activity for assistant 30',
+                     'Show activity for another assistant','Show activity']:
+            self.assertIsNone(select_workflow(text,state),text)

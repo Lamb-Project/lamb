@@ -410,6 +410,12 @@ async def _prepare_agent_and_message(
     if state.get("skill_id") and not state.get("active_snapshot") and not agent.pending_action:
         instructions = agent.activate_skill(state["skill_id"], state.get("context"), reason="session_selection")
         agent.conversation.append({"role": "user", "content": "[Application workflow instructions]\n" + instructions})
+    elif not agent.pending_action:
+        from lamb.aac.skill_routing import select_workflow
+        selected = select_workflow(user_message, state)
+        if selected:
+            instructions = agent.activate_skill(*selected, reason="user_turn")
+            agent.conversation.append({"role": "user", "content": "[Application workflow instructions]\n" + instructions})
     return agent, user_message, state
 
 

@@ -118,3 +118,52 @@ class SkillRouting:
         self.skill_state['last_request'] = current
         if self.session_logger:
             self.session_logger.log('request_prefix', evidence)
+
+
+def select_workflow(message, state):
+    """Conservative hints from the actual user turn only, never retrieved/tool text.
+
+    Ambiguous compound requests and missing required context fall back to the
+    catalogue and command guard. Selection itself performs no resource action.
+    """
+    import re
+    import unicodedata
+    text = ''.join(c for c in unicodedata.normalize('NFKD', message.lower()) if not unicodedata.combining(c))
+    # Quoted examples and explicit negatives should not silently change the task.
+    if re.search(r"\b(don't|do not|no|not|never|another|different|otro|otra|altre|altra)\b", text):
+        # Read-only constraints are common and do not negate the requested read.
+        text = re.sub(r'\b(do not|never) (create|edit|upload|delete|change|modify)[^.]*[.]?', '', text)
+        text = re.sub(r'\b(no writes|no changes|sin cambios|sense canvis)\b', '', text)
+        if re.search(r"\b(don't|do not|no|not|never|another|different|otro|otra|altre|altra)\b", text):
+            return None
+    context = dict(state.get('context', {}))
+    match = re.search(r'\b(?:assistant|asistente|assistent)\s+(\d+)\b', text)
+    if match:
+        context['assistant_id'] = match.group(1)
+    assistant = bool(re.search(r'\b(assistant|asistente|assistent)\b', text))
+    candidates = set()
+    if re.search(r'\b(knowledge bases?|kb|base de conocimiento|base de coneixement)\b', text):
+        candidates.add('manage-knowledge-base')
+    if re.search(r'\b(activity|analytics|statistics|timeline|actividad|activitat|estadisticas|estadistiques)\b', text):
+        candidates.add('inspect-activity')
+    if re.search(r'\b(rubric|rubrica|rubrics|rubriques)\b', text):
+        candidates.add('manage-rubric')
+    if assistant and re.search(r'\b(create|crear|crea)\b', text):
+        candidates.add('create-assistant')
+    if assistant and re.search(r'\b(explain|explica|properties|propiedades|propietats)\b', text):
+        candidates.add('explain-assistant')
+    if assistant and re.search(r'\b(improve|edit|update|mejora|mejorar|editar|millora|millorar)\b', text):
+        candidates.add('improve-assistant')
+    if (assistant or context.get('assistant_id')) and re.search(r'\b(tests?|pruebas|proves|evaluate|evaluar)\b', text):
+        candidates.add('test-and-evaluate')
+    if assistant and re.search(r'\b(chat with|talk to|hablar con|conversar)\b', text):
+        candidates.add('chat-with-assistant')
+    if len(candidates) != 1:
+        return None
+    skill_id = candidates.pop()
+    if skill_id in {'inspect-activity','explain-assistant','improve-assistant','test-and-evaluate','chat-with-assistant'} and not context.get('assistant_id'):
+        return None
+    context.setdefault('language', "the user's current conversation language")
+    if skill_id == state.get('skill_id') and context == state.get('context') and state.get('active_snapshot'):
+        return None
+    return skill_id, context

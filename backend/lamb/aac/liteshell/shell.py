@@ -95,7 +95,7 @@ def prepare_command(command_str: str, allowlist=None):
         else:
             available = sorted(k.replace('.', ' ') for k in COMMAND_REGISTRY if k.startswith(group + '.'))
             hint = f"Supported commands: {', '.join('lamb ' + k for k in available)}." if available else "Use 'lamb help' to list supported commands."
-            raise ValueError(f"Unknown command '{key.replace('.', ' ')}': this command does not exist. {hint}")
+            raise ValueError(f"Unknown command '{key.replace('.', ' ')}': this command does not exist and was not executed. {hint}")
     args, kwargs = _parse_args(arg_tokens)
     help_requested = kwargs.pop("help", kwargs.pop("h", False))
     if not help_requested:
