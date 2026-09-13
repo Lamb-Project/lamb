@@ -2,7 +2,6 @@
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { splitCanvasContent, canvasFromMessages } from '$lib/utils/aacCanvas.js';
 	import { sendMessageStream, getSession, sendMessage, attachFile } from '$lib/services/aacService';
-	import { recordTabActivity } from '$lib/stores/aacStore.svelte';
 	import { renderMarkdownWithMath } from '$lib/utils/renderMarkdown.js';
 
 	// Abort any in-flight stream when the component unmounts so the fetch
@@ -140,7 +139,6 @@
 
 		// Send the user's exact reply so resumed approvals and cancellations
 		// reach the server's confirmation classifier without a hidden prefix.
-		recordTabActivity(sessionId);
 
 		messages = [...messages, { role: 'user', content: text }];
 		inputText = '';

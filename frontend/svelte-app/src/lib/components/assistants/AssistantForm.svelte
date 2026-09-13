@@ -1,7 +1,6 @@
 <!-- src/lib/components/assistants/AssistantForm.svelte -->
 <script>
 	import { _ } from '$lib/i18n';
-	import { validateModelSelection } from '$lib/utils/assistantModelConfig.js';
 	import { assistantConfigStore } from '$lib/stores/assistantConfigStore';
 	import { tick } from 'svelte';
 	import { get } from 'svelte/store';
@@ -214,14 +213,8 @@
 			return;
 		}
 
-		// Validate the final visible selection; do not rewrite it after validation.
-		const modelError = validateModelSelection(form.selectedConnector, form.selectedLlm,
-			$assistantConfigStore.systemCapabilities, $assistantConfigStore.loading);
-		if (modelError) {
-			form.formError = modelError;
-			form.formLoading = false;
-			return;
-		}
+		// Model availability is resolved at completion time. Provider outages must
+		// not prevent editing assistant content or silently rewrite preferences.
 
 		const assistantDataPayload = buildAssistantPayload(form);
 

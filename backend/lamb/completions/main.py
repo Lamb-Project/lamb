@@ -139,7 +139,7 @@ async def create_completion(
             add_trace_metadata("assistant_name", assistant_details.name)
             add_trace_metadata("assistant_owner", assistant_details.owner)
         
-        plugin_config = parse_plugin_config(assistant_details)
+        plugin_config = resolve_completion_config(assistant_details, parse_plugin_config(assistant_details))
         logger.debug(f"Plugin config: {plugin_config}")
 
         connector = plugin_config["connector"]
@@ -321,9 +321,9 @@ def parse_plugin_config(assistant_details) -> Dict[str, str]:
 
     # Set default values if keys are missing
     defaults = {
-        "prompt_processor": "default",
-        "connector": "openai",
-        "llm": "gpt-4",
+        "prompt_processor": "simple_augment",
+        "connector": "",
+        "llm": "",
         "rag_processor": ""
     }
     
@@ -334,6 +334,22 @@ def parse_plugin_config(assistant_details) -> Dict[str, str]:
             logger.info(f"Using default {key}={defaults[key]} for assistant {assistant_details.id}")
 
     return callback
+
+def resolve_completion_config(assistant, preference):
+    from lamb.completions.org_config_resolver import OrganizationConfigResolver
+    # Debug bypass is an explicit diagnostic connector, not a fallback provider.
+    if preference.get('connector') == 'bypass':
+        return dict(preference)
+    try:
+        resolved = OrganizationConfigResolver(assistant.owner).resolve_model_for_completion(
+            preference.get('llm'), preference.get('connector'),
+            available_providers=set(load_plugins('connectors')))
+    except ValueError as error:
+        raise HTTPException(503, str(error))
+    logger.info('Completion model resolution: preferred=%s/%s effective=%s/%s',
+                preference.get('connector'), preference.get('llm'), resolved['provider'], resolved['model'])
+    return {**preference, 'connector': resolved['provider'], 'llm': resolved['model']}
+
 
 def load_and_validate_plugins(plugin_config: Dict[str, str]) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     """
@@ -468,7 +484,7 @@ async def run_lamb_assistant(
     try:
         assistant_details = get_assistant_details(assistant)
         logger.debug(f"Run assistant, details: {assistant_details}")
-        plugin_config = parse_plugin_config(assistant_details)
+        plugin_config = resolve_completion_config(assistant_details, parse_plugin_config(assistant_details))
 
         # Debug bypass: override connector to show what the LLM would see.
         # Only honored when called via the creator interface (user-authenticated).

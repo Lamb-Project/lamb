@@ -323,22 +323,9 @@ async def get_assistant_capabilities(auth: AuthContext = Depends(get_auth_contex
     return await list_processors_and_connectors(auth=auth)
 
 
-async def validate_assistant_model(metadata, owner: str):
-    """Reject unavailable model configurations before persistence (#471)."""
-    from lamb.completions.main import list_processors_and_connectors
-    from lamb.services.assistant_model_validation import validate_model_metadata
-    capabilities = await list_processors_and_connectors(
-        auth=AuthContext(user={"email": owner}, token_payload={})
-    )
-    error = validate_model_metadata(metadata, capabilities)
-    if error:
-        raise HTTPException(status_code=400, detail=error)
-
-
 REQUIRED_PLUGIN_METADATA_KEYS = (
     "prompt_processor",
     "connector",
-    "llm",
     "rag_processor",
 )
 
@@ -621,7 +608,8 @@ async def create_assistant_directly(request: Request, auth: AuthContext = Depend
         if error:
             raise HTTPException(status_code=400, detail=error)
 
-        await validate_assistant_model(new_body["api_callback"], creator_user["email"])
+        from lamb.uploaded_files import validate_file_binding
+        validate_file_binding(new_body["api_callback"], creator_user["email"])
 
         # 6. Create Assistant in DB
         assistant_id = None
@@ -1306,7 +1294,8 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         # prepare_assistant_body() sets owner to the calling user (correct for
         # create, an ownership-takeover hole on update); preserve the existing owner.
         new_body["owner"] = current.owner
-        await validate_assistant_model(new_body["api_callback"], current.owner)
+        from lamb.uploaded_files import validate_file_binding
+        validate_file_binding(new_body["api_callback"], current.owner)
 
         logger.info(f"Prepared body for update (Assistant ID {assistant_id}): {new_body}")
 

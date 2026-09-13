@@ -500,7 +500,16 @@ class AgentLoop:
                     text += delta.content
                     yield delta.content
                 for part in (getattr(delta, "tool_calls", None) or []):
-                    call = calls.setdefault(part.index, {
+                    index = getattr(part, "index", None)
+                    if index is not None:
+                        key = ("index", index)
+                    elif getattr(part, "id", None):
+                        key = next((k for k,v in calls.items() if v["id"] == part.id), ("id", part.id))
+                    elif len(calls) == 1:
+                        key = next(iter(calls))
+                    else:
+                        raise ValueError("Ambiguous streaming tool call: provider omitted both index and id")
+                    call = calls.setdefault(key, {
                         "id": "", "type": "function", "function": {"name": "", "arguments": ""}})
                     if part.id:
                         call["id"] = part.id
@@ -512,7 +521,7 @@ class AgentLoop:
         finally:
             await stream.close()
         yield {"_message": {"role": "assistant", "content": text,
-                             "tool_calls": [calls[k] for k in sorted(calls)]}}
+                             "tool_calls": list(calls.values())}}
 
     async def _run_agent_events(self, streaming: bool) -> AsyncIterator[dict | str]:
         """Shared legacy turn control; transport does not change tool semantics."""

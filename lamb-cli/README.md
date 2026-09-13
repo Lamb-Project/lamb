@@ -252,3 +252,22 @@ Permissions are enforced by the backend. The CLI stores role info locally so fut
 | 7     | Shell completions, config profiles     | Planned |
 
 See [Documentation/prd.md](Documentation/prd.md) for the full specification.
+
+### Assistant and chat compatibility notes (September 2026)
+
+Creating a RAG assistant without `--prompt-template` now supplies a template with
+`{context}` and `{user_input}` for `simple_augment`. An explicitly supplied template,
+including an empty string, is preserved. Existing assistants are not rewritten.
+Model selections are preferences: completion resolves unavailable selections against
+the assistant owner's organization defaults, without changing the saved preference.
+
+`chat --chat-id` continues only a chat owned by the caller. Permission to read a
+shared assistant's chat does not grant permission to append to that user's history.
+The server injects saved history for a request containing exactly one new message;
+a multi-message request supplies its own history. Chat's `--timeout` controls read
+inactivity (default 300 seconds); connection/pool waits are 10 seconds and writes 30.
+
+`kb upload` reports files **submitted** for ingestion. Submission is not completed
+ingestion; inspect jobs/status before querying. Rubric `--weights` accepts multiple
+named changes atomically. Valid totals must remain 100; existing invalid totals may
+be repaired incrementally, preserving criterion and level IDs.

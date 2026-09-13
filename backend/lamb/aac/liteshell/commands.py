@@ -768,8 +768,9 @@ def _apply_weights(criteria, value):
     all_weights = [c.get('weight', 0) for c in result]
     if any(type(w) not in (int, float) or not math.isfinite(w) or not 0 <= w <= 100 for w in all_weights):
         raise ValueError('Every resulting weight must be a finite percentage')
-    if not math.isclose(sum(all_weights), 100, abs_tol=0.000001):
-        raise ValueError('Resulting criterion weights must total 100')
+    original_total = sum(c.get('weight', 0) for c in criteria)
+    if math.isclose(original_total, 100, abs_tol=0.000001) and not math.isclose(sum(all_weights), 100, abs_tol=0.000001):
+        raise ValueError('Resulting criterion weights must total 100; provide all changed weights together')
     return result
 
 

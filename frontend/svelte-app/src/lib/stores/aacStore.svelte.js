@@ -17,7 +17,7 @@
 
 import { writable, get } from 'svelte/store';
 
-/** @typedef {{ id: string, title: string, assistantId: number|null, skill: string|null, lastMessageAt: number }} TabInfo */
+/** @typedef {{ id: string, title: string, assistantId: number|null, skill: string|null }} TabInfo */
 
 /** @type {import('svelte/store').Writable<TabInfo[]>} */
 export const openTabs = writable([]);
@@ -66,7 +66,7 @@ export function openTab(id, title, assistantId = null, skill = null) {
 		persist();
 		return;
 	}
-	openTabs.set([...current, { id, title, assistantId, skill, lastMessageAt: Date.now() }]);
+	openTabs.set([...current, { id, title, assistantId, skill }]);
 	activeTabId.set(id);
 	showTabs.set(true);
 	persist();
@@ -125,22 +125,4 @@ export function getActiveTabId() {
 /** @returns {boolean} */
 export function isTabsVisible() {
 	return get(showTabs);
-}
-
-/**
- * Record that a message was sent in a tab. Returns true if user was away >5 min.
- * @param {string} id
- * @returns {boolean}
- */
-export function recordTabActivity(id) {
-	const AWAY_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
-	const tabs = get(openTabs);
-	const tab = tabs.find(t => t.id === id);
-	if (!tab) return false;
-	const wasAway = (Date.now() - (tab.lastMessageAt || 0)) > AWAY_THRESHOLD_MS;
-	// Replace the tab to trigger reactivity (mutating the existing object
-	// would not notify subscribers).
-	openTabs.set(tabs.map(t => t.id === id ? { ...t, lastMessageAt: Date.now() } : t));
-	persist();
-	return wasAway;
 }

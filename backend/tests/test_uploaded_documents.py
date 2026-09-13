@@ -1,0 +1,39 @@
+import unittest,tempfile,json
+from pathlib import Path
+from types import SimpleNamespace as N
+from unittest.mock import patch,AsyncMock
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from lamb import uploaded_files as files
+from lamb.document_static import DocumentAwareStaticFiles
+from lamb.completions.rag.single_file_rag import rag_processor
+
+class Documents(unittest.TestCase):
+    def setUp(self):
+        temp=tempfile.TemporaryDirectory();self.addCleanup(temp.cleanup)
+        self.root=Path(temp.name);public=self.root/'public';(public/'7').mkdir(parents=True);(public/'8').mkdir()
+        (public/'7'/'own.txt').write_text('OWNER_SECRET');(public/'8'/'other.txt').write_text('OTHER_SECRET')
+        (public/'7'/'img').mkdir();(public/'7'/'img'/'image.txt').write_text('image')
+        patcher=patch.object(files,'ROOT',public);patcher.start();self.addCleanup(patcher.stop)
+    def test_reference_ownership_and_symlinks(self):
+        self.assertEqual(files.owned_document('7/own.txt',7).read_text(),'OWNER_SECRET')
+        (files.ROOT/'7'/'link.txt').symlink_to(files.ROOT/'8'/'other.txt')
+        for path in ['8/other.txt','7/link.txt','7/../8/other.txt','/etc/passwd','7\\own.txt']:
+            with self.subTest(path=path),self.assertRaises(ValueError):files.owned_document(path,7)
+    def test_static_requires_owner_without_breaking_generated_images(self):
+        app=FastAPI();app.mount('/static',DocumentAwareStaticFiles(directory=self.root))
+        c=TestClient(app)
+        self.assertEqual(c.get('/static/public/7/own.txt').status_code,401)
+        self.assertEqual(c.get('/static/public/7/img/image.txt').status_code,200)
+        with patch('lamb.document_static.get_auth_context',AsyncMock(return_value=N(user={'id':7}))):
+            own=c.get('/static/public/7/own.txt',headers={'Authorization':'Bearer own'})
+            self.assertEqual(own.text,'OWNER_SECRET');self.assertEqual(own.headers['cache-control'],'private, no-store')
+            self.assertEqual(c.get('/static/public/8/other.txt',headers={'Authorization':'Bearer own'}).status_code,404)
+    def test_existing_rag_record_cannot_read_other_owner(self):
+        with patch('lamb.database_manager.LambDatabaseManager') as db:
+            db.return_value.get_creator_user_by_email.return_value={'id':7}
+            for reference,expected in [('7/own.txt','OWNER_SECRET'),('8/other.txt','')]:
+                assistant=N(id=1,owner='owner@example.test',metadata=json.dumps({'file_path':reference}))
+                result=rag_processor([],assistant)
+                if expected:self.assertEqual(result['context'],expected)
+                else:self.assertNotIn('OTHER_SECRET',result['context']);self.assertEqual(result['sources'],[])

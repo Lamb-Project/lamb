@@ -99,10 +99,18 @@ class ProviderRoutingTests(unittest.TestCase):
         self.assertEqual(provider,'openai');self.assertEqual(result[1],'test-model')
         self.assertEqual(kwargs['base_url'],'http://proxy/v1')
 
-    def test_invalid_provider_never_falls_back_to_cloud(self):
-        for default, config in [({'provider':'google'}, {}), ({'provider':'ollama','model':'qwen'}, {}), ({'provider':'ollama','model':'qwen'}, {'base_url':'http://local','enabled':False}), ({'provider':'ollama'}, {'base_url':'http://local'}), ({'provider':'openai'}, {'enabled':True})]:
+    def test_incomplete_or_disabled_provider_configuration_is_rejected(self):
+        for default, config in [({'provider':'ollama','model':'qwen'}, {}), ({'provider':'ollama','model':'qwen'}, {'base_url':'http://local','enabled':False}), ({'provider':'ollama'}, {'base_url':'http://local'}), ({'provider':'openai'}, {'enabled':True})]:
             with self.subTest(default=default, config=config), self.assertRaises(HTTPException):
                 self.resolve(default,config)
+
+    def test_other_org_default_uses_only_configured_compatible_fallback(self):
+        with patch.object(r,'OrganizationConfigResolver') as resolver,patch.object(r,'AsyncOpenAI'):
+            resolver.return_value.get_global_default_model_config.return_value={'provider':'google','model':'vertex-model'}
+            resolver.return_value.resolve_model_for_completion.return_value={'provider':'openai','model':'org-fallback'}
+            resolver.return_value.get_provider_config.return_value={'enabled':True,'api_key':'org-key'}
+            self.assertEqual(r._resolve_agent_llm('owner@example.test')[1],'org-fallback')
+            resolver.return_value.resolve_model_for_completion.assert_called_once_with('vertex-model','google',available_providers={'openai','ollama'})
 
 class ConcurrentTurns(unittest.IsolatedAsyncioTestCase):
     fixture=LifecycleTests.fixture
@@ -142,6 +150,31 @@ class ConcurrentTurns(unittest.IsolatedAsyncioTestCase):
             mgr.update_conversation.assert_called_once()
             self.assertEqual((await r.send_message('s',req,auth))['response'],'done')
 
+    async def test_background_cleanup_persists_before_unlock(self):
+        a,mgr,req,auth=self.fixture()
+        async def chunks(message):
+            yield 'first'
+            yield 'second'
+        a.chat_stream=chunks
+        def persisted(*args,**kwargs):
+            with self.assertRaises(HTTPException):
+                turn_lock.TurnLock('s')
+        mgr.update_conversation.side_effect=persisted
+        with patch.object(r,'AACSessionManager',return_value=mgr),patch.object(r,'_prepare_agent_and_message',AsyncMock(return_value=(a,'hello',None))):
+            response=await r.send_message_stream('s',req,auth)
+            entered=asyncio.Event()
+            async def consumer():
+                async for chunk in response.body_iterator:
+                    entered.set()
+                    await asyncio.Event().wait()
+            task=asyncio.create_task(consumer())
+            await entered.wait();task.cancel()
+            with self.assertRaises(asyncio.CancelledError):await task
+            with self.assertRaises(HTTPException):turn_lock.TurnLock('s')
+            await response.background()
+            mgr.update_conversation.assert_called_once()
+            with turn_lock.TurnLock('s'):pass
+
     async def test_failed_agent_build_releases_lock(self):
         _,mgr,req,auth=self.fixture()
         for endpoint in [r.send_message,r.send_message_stream]:
@@ -158,6 +191,20 @@ class ConcurrentTurns(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(error.exception.status_code, 409)
                 with turn_lock.TurnLock('other'):pass
             with turn_lock.TurnLock('s'):pass
+
+    def test_colliding_sessions_share_the_lock_slot_safely(self):
+        import hashlib
+        seen={}
+        for number in range(4097):
+            session=str(number);slot=hashlib.sha256(session.encode()).hexdigest()[:3]
+            if slot in seen:
+                first,second=seen[slot],session
+                break
+            seen[slot]=session
+        with turn_lock.TurnLock(first):
+            with self.assertRaises(HTTPException):turn_lock.TurnLock(second)
+        with turn_lock.TurnLock(second):pass
+        self.assertEqual(len(list(turn_lock.LOCK_ROOT.iterdir())),1)
 
     def test_failed_file_lock_does_not_leak_process_guard(self):
         with patch.object(turn_lock.fcntl, 'flock', side_effect=OSError('failure')):

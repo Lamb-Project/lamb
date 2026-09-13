@@ -175,7 +175,7 @@ class TestService:
 
         # Call the internal completion pipeline
         from lamb.completions.main import (
-            get_assistant_details, parse_plugin_config,
+            get_assistant_details, parse_plugin_config, resolve_completion_config,
             load_and_validate_plugins, get_rag_context,
             process_completion_request, load_plugins,
         )
@@ -190,6 +190,7 @@ class TestService:
                 plugin_config["connector"] = "bypass"
                 plugin_config["llm"] = "debug-bypass"
 
+            plugin_config = resolve_completion_config(assistant_details, plugin_config)
             pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
             rag_context = await get_rag_context(
                 request_body, rag_processors,

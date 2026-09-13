@@ -163,7 +163,7 @@ export function populateFormFields(form, data, getAvailableModels, preserveDescr
 
 		const targetLlm = data.llm || metadata.llm;
 		// Evaluate availableModels AFTER selectedConnector is set
-		form.selectedLlm = selectModel(targetLlm, getAvailableModels());
+		form.selectedLlm = targetLlm || ''; // Preserve stored preference when discovery is unavailable.
 
 		const defaults = get(assistantConfigStore).configDefaults?.config || {};
 		form.ragPlaceholders = loadRagPlaceholders(defaults);

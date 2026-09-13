@@ -49,19 +49,9 @@ def rag_processor(
                 "sources": []
             }
 
-        # Construct absolute path from project's static/public folder
-        base_path = os.path.join('static', 'public')
-        full_path = os.path.join(base_path, file_path)
-        logger.debug(f"Base path: {base_path}")
-        logger.debug(f"Full path: {full_path}")
-
-        # Ensure the path doesn't escape the static/public directory
-        if '..' in file_path or not os.path.abspath(full_path).startswith(os.path.abspath(base_path)):
-            logger.error(f"Security check failed - path attempts to escape base directory: {full_path}")
-            return {
-                "context": "Error: Invalid file path",
-                "sources": []
-            }
+        from lamb.uploaded_files import document_for_owner
+        # Use the assistant owner, including shared/student execution.
+        full_path = str(document_for_owner(file_path, assistant.owner))
 
         # Check if file exists
         if not os.path.exists(full_path):

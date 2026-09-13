@@ -30,3 +30,11 @@ def test_cli_patches_weights_preserving_payload(mock_token,mock_server_url,httpx
     assert form['subject']==['Science']
     assert 'weights' not in form
     assert CRITERIA[0]['weight']==50
+
+def test_legacy_invalid_total_can_be_repaired_in_steps():
+    criteria=copy.deepcopy(CRITERIA)
+    criteria[0]['weight']=20;criteria[1]['weight']=20
+    first=_apply_weights(criteria,'{"Evidence":50}')
+    assert sum(c['weight'] for c in first)==70
+    final=_apply_weights(first,'{"Reasoning":50}')
+    assert sum(c['weight'] for c in final)==100

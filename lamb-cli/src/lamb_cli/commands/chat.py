@@ -7,6 +7,7 @@ import sys
 from typing import Optional
 
 import typer
+import httpx
 
 from lamb_cli.client import get_client
 from lamb_cli.output import print_error
@@ -100,7 +101,7 @@ def chat(
     """
     persist = not no_persist
 
-    with get_client(timeout=timeout) as client:
+    with get_client(timeout=httpx.Timeout(connect=10.0, read=float(timeout), write=30.0, pool=10.0)) as client:
         if bypass:
             if message:
                 _bypass_response(client, assistant_id, message)

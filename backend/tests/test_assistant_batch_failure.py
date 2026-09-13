@@ -26,6 +26,7 @@ class BatchFailure(unittest.IsolatedAsyncioTestCase):
         stack.enter_context(patch('lamb.services.assistant_service.AssistantService',return_value=N(get_assistant_by_id=Mock(return_value=assistant))))
         base='lamb.completions.main.'
         stack.enter_context(patch(base+'get_assistant_details',return_value=assistant))
+        stack.enter_context(patch(base+'resolve_completion_config',side_effect=lambda a,p:p))
         stack.enter_context(patch(base+'parse_plugin_config',return_value={'connector':'test','llm':'controlled','rag_processor':'no_rag','prompt_processor':'simple_augment'}))
         output={'choices':[{'message':{'content':'Completed'}}],'model':'controlled'}
         connector=AsyncMock(side_effect=[output,failure,output])

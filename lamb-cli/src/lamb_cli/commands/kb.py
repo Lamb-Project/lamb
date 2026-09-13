@@ -6,7 +6,6 @@ import os
 from typing import Optional
 
 import typer
-from rich.progress import BarColumn, Progress, TextColumn
 
 from lamb_cli.client import get_client
 from lamb_cli.config import get_output_format

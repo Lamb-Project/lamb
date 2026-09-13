@@ -268,7 +268,16 @@ async def send_message_stream(session_id: str, request: Request, auth: AuthConte
             finally:
                 lock.close()
     response.body_iterator = guarded()
-    response.background = BackgroundTask(lock.close)
+    async def finish_stream():
+        # Starlette may stop consuming while guarded is suspended at yield.
+        # Finalize persistence before making the session available again.
+        with anyio.CancelScope(shield=True):
+            try:
+                await response.body_iterator.aclose()
+                await original.aclose()
+            finally:
+                lock.close()
+    response.background = BackgroundTask(finish_stream)
     return response
 
 
@@ -422,15 +431,20 @@ def _resolve_agent_llm(user_email: str):
     default = resolver.get_global_default_model_config()
     provider = default.get("provider") or "openai"
     if provider not in {"openai", "ollama"}:
-        raise HTTPException(status_code=400, detail=f"AAC does not support provider '{provider}'")
+        try:
+            default = resolver.resolve_model_for_completion(
+                default.get("model"), provider, available_providers={"openai", "ollama"})
+            provider = default["provider"]
+        except ValueError:
+            raise HTTPException(503, "AAC needs an enabled OpenAI-compatible or Ollama provider in this organization")
     config = resolver.get_provider_config(provider)
     if not config or config.get("enabled") is False:
-        raise HTTPException(status_code=400, detail=f"No enabled {provider} provider configured for this organization")
+        raise HTTPException(status_code=503, detail=f"No enabled {provider} provider configured for this organization")
     model = default.get("model") or config.get("default_model")
     base_url = config.get("base_url")
     if provider == "ollama":
         if not base_url or not model:
-            raise HTTPException(status_code=400, detail="AAC requires an Ollama base URL and default model")
+            raise HTTPException(status_code=503, detail="AAC requires an Ollama base URL and default model")
         # Ollama's compatible endpoint accepts tools through the existing legacy loop.
         base_url = base_url.rstrip("/")
         if not base_url.endswith("/v1"):
@@ -439,7 +453,7 @@ def _resolve_agent_llm(user_email: str):
     else:
         api_key = config.get("api_key")
         if not api_key:
-            raise HTTPException(status_code=400, detail="No OpenAI API key configured for this organization")
+            raise HTTPException(status_code=503, detail="No OpenAI API key configured for this organization")
         model = model or "gpt-4o-mini"
     return AsyncOpenAI(api_key=api_key, base_url=base_url), model
 

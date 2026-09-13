@@ -159,6 +159,9 @@ def test_chat_timeout_reaches_http_transport(mock_token,mock_server_url,httpx_mo
     assert result.exit_code==0
     request=httpx_mock.get_request()
     assert request.extensions['timeout']['read']==seconds
+    assert request.extensions['timeout']['connect']==10.0
+    assert request.extensions['timeout']['pool']==10.0
+    assert request.extensions['timeout']['write']==30.0
 
 
 @pytest.mark.parametrize("value",["0","nan","inf"])

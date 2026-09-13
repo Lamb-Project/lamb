@@ -73,6 +73,20 @@ async def turn(a, streaming, text='hello'):
     return ''.join(e for e in events if isinstance(e,str))
 
 
+class MissingStreamIndexes(unittest.IsolatedAsyncioTestCase):
+    async def test_multiple_identified_calls_without_indexes(self):
+        a,p,s=agent([])
+        class Stream:
+            def __aiter__(self):
+                async def chunks():
+                    for id,name,args in [('one','lamb','{"command":"lamb help"}'),('two','lamb','{"command":"lamb kb list"}')]:
+                        yield N(choices=[N(delta=N(content=None,tool_calls=[N(index=None,id=id,function=N(name=name,arguments=args))]))])
+                return chunks()
+            async def close(self):pass
+        p.chat.completions.create=AsyncMock(return_value=Stream())
+        events=[event async for event in a._request_message([],True,True)]
+        self.assertEqual([call['id'] for call in events[-1]['_message']['tool_calls']],['one','two'])
+
 class LoopTests(unittest.IsolatedAsyncioTestCase):
     async def test_text_single_request_and_transcript(self):
         for streaming in [False, True]:

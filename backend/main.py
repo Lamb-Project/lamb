@@ -215,7 +215,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+from lamb.document_static import DocumentAwareStaticFiles
+app.mount("/static", DocumentAwareStaticFiles(directory="static"), name="static")
 
 app.mount("/lamb", lamb_app)
 app.include_router(creator_router, prefix="/creator", tags=["Creator"])

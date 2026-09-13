@@ -1,7 +1,9 @@
 """Nonblocking session turn locks shared by workers using the same SQLite directory.
 
-The OS releases locks on worker exit. Keep lock files in place: unlinking one
-while a worker holds it would let another worker lock a different inode.
+The OS releases locks on worker exit. Reuse 4096 stable lock slots to bound
+file growth. Different sessions in the same slot may briefly contend. Never
+unlink a slot while serving: a second inode would defeat mutual exclusion.
+Deploy slot-name changes only with all workers stopped.
 """
 import fcntl
 import hashlib
@@ -22,7 +24,7 @@ def _busy():
 class TurnLock:
     def __init__(self, session_id):
         LOCK_ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
-        name = hashlib.sha256(session_id.encode()).hexdigest()
+        name = hashlib.sha256(session_id.encode()).hexdigest()[:3]
         # Some mounted filesystems treat flock as process-scoped. Reserve the
         # session locally as well as across workers; neither guard alone suffices.
         self.key = (os.getpid(), str(LOCK_ROOT.resolve()), name)
