@@ -6,7 +6,7 @@ required_context: [assistant_id]
 optional_context: [language]
 ---
 
-Use the actual assistant selected by the user, or resolve it with assistant list. Ask for the intended period if needed. These are read commands; never generate chats to make a report look populated.
+The selected assistant ID is `{assistant_id}`. Use that ID for ASSISTANT_ID below. Do not ask the user to select it again or list assistants unless the user requests a different assistant. Ask for the intended period if needed. These are read commands; never generate chats to make a report look populated.
 
 ```aac-command
 lamb assistant get ASSISTANT_ID

@@ -98,6 +98,8 @@ async def create_session(
     assistant_id = body.get("assistant_id")
     skill_id = body.get("skill")
     skill_context = body.get("context", {})
+    if not isinstance(skill_context, dict):
+        raise HTTPException(status_code=400, detail="Skill context must be an object.")
 
     # If skill provides assistant_id in context, use it
     if "assistant_id" in skill_context and not assistant_id:
@@ -105,6 +107,9 @@ async def create_session(
     # And vice versa
     if assistant_id and "assistant_id" not in skill_context:
         skill_context["assistant_id"] = assistant_id
+
+    if skill_id:
+        _validate_skill_selection(skill_id, skill_context)
 
     # Generate session title — friendly format: "<SkillVerb>: <assistant_name>"
     title = ""
@@ -398,6 +403,17 @@ async def _finish_turn(mgr, agent, session_id, user_email, skill_info):
                 await agent.llm_client.close()
 
 
+def _validate_skill_selection(skill_id, context):
+    """Reject invalid selections before persisting a session or allocating clients."""
+    from lamb.aac.skill_loader import load_skill
+    if not isinstance(skill_id, str) or not isinstance(context, dict):
+        raise HTTPException(status_code=400, detail="Skill must be a name and context must be an object.")
+    try:
+        load_skill(skill_id, dict(context))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid skill selection: {exc}. Choose an available skill with its required context, or start a free-form session.") from exc
+
+
 async def _prepare_agent_and_message(
     auth: AuthContext, session: dict, user_message: str, token: str = "",
 ) -> tuple:
@@ -405,6 +421,9 @@ async def _prepare_agent_and_message(
 
     Returns: (agent, message, skill_info)
     """
+    saved = session.get("skill_info") or {}
+    if saved.get("skill_id") and not saved.get("active_snapshot") and not session.get("pending_action"):
+        _validate_skill_selection(saved["skill_id"], saved.get("context") or {})
     agent = _build_agent(auth, session, token=token)
     state = agent.skill_state
     if state.get("skill_id") and not state.get("active_snapshot") and not agent.pending_action:

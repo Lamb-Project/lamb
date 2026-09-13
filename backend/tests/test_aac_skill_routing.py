@@ -126,3 +126,9 @@ class UserTurnSelection(unittest.TestCase):
         for text in ['Try again','Create an assistant and a rubric','Do not inspect activity for assistant 30',
                      'Show activity for another assistant','Show activity']:
             self.assertIsNone(select_workflow(text,state),text)
+
+
+class SelectedActivityContext(unittest.TestCase):
+    def test_recipe_names_selected_assistant(self):
+        prompt=load_skill('inspect-activity', {'assistant_id':77})['prompt']
+        self.assertIn('selected assistant ID is `77`',prompt)

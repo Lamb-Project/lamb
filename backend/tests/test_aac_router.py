@@ -229,3 +229,35 @@ else:
         with turn_lock.TurnLock('s'):
             subprocess.run([sys.executable,'-c',script,str(turn_lock.LOCK_ROOT),'busy'],check=True)
         subprocess.run([sys.executable,'-c',script,str(turn_lock.LOCK_ROOT),'free'],check=True)
+
+
+class SkillSelectionValidation(unittest.IsolatedAsyncioTestCase):
+    async def test_invalid_selection_never_creates_session(self):
+        for body, detail in [({'skill':'manage-knowledge'}, 'not found'),
+                             ({'skill':'inspect-activity'}, 'requires context'),
+                             ({'skill':'manage-knowledge-base','context':[]}, 'object')]:
+            with self.subTest(body=body):
+                req=N(json=AsyncMock(return_value=body),headers={'content-type':'application/json'})
+                with patch.object(r,'AACSessionManager') as manager:
+                    with self.assertRaises(HTTPException) as raised:
+                        await r.create_session(req,N())
+                    self.assertEqual(raised.exception.status_code,400)
+                    self.assertIn(detail,raised.exception.detail)
+                    manager.assert_not_called()
+
+    async def test_saved_invalid_selection_fails_before_client_allocation(self):
+        for skill in ('manage-knowledge','inspect-activity'):
+            with patch.object(r,'_build_agent') as build:
+                with self.assertRaises(HTTPException) as raised:
+                    await r._prepare_agent_and_message(N(),{'skill_info':{'skill_id':skill,'context':{}}},'hello')
+                self.assertEqual(raised.exception.status_code,400)
+                build.assert_not_called()
+
+    async def test_valid_selection_preserves_required_context(self):
+        req=N(json=AsyncMock(return_value={'skill':'inspect-activity','assistant_id':25}),headers={'content-type':'application/json'})
+        manager=Mock();manager.create_session.return_value={'id':'s','created_at':'today'}
+        auth=N(user={'email':'teacher@example.test'},organization={'id':1})
+        with patch.object(r,'AACSessionManager',return_value=manager):
+            result=await r.create_session(req,auth)
+        self.assertEqual(result['skill'],'inspect-activity')
+        self.assertEqual(manager.update_conversation.call_args.kwargs['skill_info']['context']['assistant_id'],25)
