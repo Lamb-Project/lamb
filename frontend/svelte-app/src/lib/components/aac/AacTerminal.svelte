@@ -68,7 +68,7 @@
 				const session = await getSession(sessionId);
 				if (!isMounted) return;
 				const conv = (session.conversation || []).filter(
-					m => (m.role === 'user' && !(m.content || '').startsWith('[System:'))
+					m => (m.role === 'user' && !(m.content || '').startsWith('[System:') && !(m.content || '').startsWith('[Application workflow instructions]'))
 					  || (m.role === 'assistant' && m.content && !m.tool_calls)
 				).map(m => ({ role: m.role, content: m.content || '' }));
 				if (conv.length > 0) {

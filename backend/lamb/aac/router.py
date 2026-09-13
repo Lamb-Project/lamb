@@ -409,13 +409,13 @@ async def _prepare_agent_and_message(
     state = agent.skill_state
     if state.get("skill_id") and not state.get("active_snapshot") and not agent.pending_action:
         instructions = agent.activate_skill(state["skill_id"], state.get("context"), reason="session_selection")
-        agent.conversation.append({"role": "user", "content": "[Application workflow instructions]\n" + instructions})
+        agent.conversation.append({"role": "user", "content": "[System: Workflow instructions]\n" + instructions})
     elif not agent.pending_action:
         from lamb.aac.skill_routing import select_workflow
         selected = select_workflow(user_message, state)
         if selected:
             instructions = agent.activate_skill(*selected, reason="user_turn")
-            agent.conversation.append({"role": "user", "content": "[Application workflow instructions]\n" + instructions})
+            agent.conversation.append({"role": "user", "content": "[System: Workflow instructions]\n" + instructions})
     return agent, user_message, state
 
 
@@ -519,7 +519,7 @@ async def _build_agent_with_skill(
     """Compatibility entry point using the same persistent, append-only routing."""
     agent = _build_agent(auth, session, token=token)
     instructions = agent.activate_skill(skill_id, context, reason="session_selection")
-    agent.conversation.append({"role": "user", "content": "[Application workflow instructions]\n" + instructions})
+    agent.conversation.append({"role": "user", "content": "[System: Workflow instructions]\n" + instructions})
     return agent
 
 
