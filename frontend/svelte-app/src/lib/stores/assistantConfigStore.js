@@ -99,6 +99,10 @@ function isPlainObject(value) {
 	return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isAuthenticationError(error) {
+	return [401, 403].includes(error?.response?.status);
+}
+
 async function fetchSystemCapabilities() {
 	try {
 		const capabilitiesUrl = getApiUrl('/assistant/capabilities');
@@ -112,6 +116,7 @@ async function fetchSystemCapabilities() {
 		console.log('Fetched Capabilities (raw):', capabilities);
 		return capabilities;
 	} catch (error) {
+		if (isAuthenticationError(error)) throw error;
 		console.error('Error fetching system capabilities:', error);
 		// Return empty capabilities - never hardcode models that bypass org restrictions
 		return getFallbackCapabilities();
@@ -165,6 +170,7 @@ async function fetchOrganizationDefaults() {
 		);
 		return null;
 	} catch (error) {
+		if (isAuthenticationError(error)) throw error;
 		if (axios.isAxiosError?.(error)) {
 			if (error.response?.status === 404) {
 				console.info('assistantConfigStore: No organization defaults configured yet.');
@@ -288,6 +294,15 @@ function createAssistantConfigStore() {
 				lastLoadedTimestamp: Date.now()
 			});
 		} catch (err) {
+			if (isAuthenticationError(err)) {
+				localStorage.removeItem(capsCacheKey);
+				localStorage.removeItem(defaultsCacheKey);
+				set({ systemCapabilities: getFallbackCapabilities(),
+					configDefaults: { config: reconcileModelDefaults({}, {}) }, loading: false,
+					error: 'Authentication failed. Sign in again to load your organization models.',
+					lastLoadedTimestamp: null });
+				return;
+			}
 			console.error('Error in loadConfig process:', err);
 			set({
 				systemCapabilities: cachedCapabilities || getFallbackCapabilities(),

@@ -10,6 +10,7 @@ from typing import Optional
 import typer
 
 from lamb_cli.client import get_client
+from lamb_cli.errors import AuthenticationError
 from lamb_cli.config import get_output_format
 from lamb_cli.output import format_output, print_error, print_success, print_warning, stderr_console
 
@@ -62,6 +63,8 @@ def _fetch_capabilities(client) -> dict:
     """Fetch system capabilities (connectors, models, processors)."""
     try:
         return client.get("/lamb/v1/completions/list")
+    except AuthenticationError:
+        raise
     except Exception:
         return {}
 
@@ -73,6 +76,8 @@ def _fetch_defaults(client) -> dict:
         if isinstance(resp, dict):
             return resp.get("config", resp)
         return {}
+    except AuthenticationError:
+        raise
     except Exception:
         return {}
 

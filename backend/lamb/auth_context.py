@@ -28,7 +28,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from lamb.database_manager import LambDatabaseManager
@@ -408,20 +408,26 @@ async def get_auth_context(
 
 
 async def get_optional_auth_context(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_optional),
 ) -> Optional[AuthContext]:
     """Optional auth dependency — endpoints that work with or without auth.
 
-    Returns ``AuthContext`` if a valid token is provided, ``None`` otherwise.
+    Only an absent Authorization header permits anonymous access. Supplied
+    invalid credentials must fail, including malformed schemes which HTTPBearer
+    with auto_error=False otherwise treats as absent (#472).
     """
-    if credentials is None:
+    authorization = request.headers.getlist("authorization")
+    if not authorization:
         return None
+    if len(authorization) != 1 or credentials is None:
+        raise HTTPException(status_code=401, detail="Invalid authentication credentials",
+                            headers={"WWW-Authenticate": "Bearer"})
 
     ctx = _build_auth_context(credentials.credentials)
     if ctx is None:
-        # Token was provided but invalid — log but don't block
-        logger.warning("Invalid token provided to optional-auth endpoint")
-        return None
+        raise HTTPException(status_code=401, detail="Invalid or expired authentication token",
+                            headers={"WWW-Authenticate": "Bearer"})
     return ctx
 
 

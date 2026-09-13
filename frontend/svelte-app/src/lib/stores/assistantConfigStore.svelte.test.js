@@ -16,3 +16,23 @@ it('discovers models at Creator even with a conflicting explicit lambServer, and
  expect(get(assistantConfigStore).configDefaults.config.connector).toBe('ollama');
  expect(get(assistantConfigStore).configDefaults.config.llm).toBe('qwen');
 });
+it.each([401,403])('surfaces capability authentication failure %s and clears cached choices', async status => {
+ assistantConfigStore.reset();
+ axios.get.mockRejectedValue({response:{status}});
+ await assistantConfigStore.loadConfig();
+ const state=get(assistantConfigStore);
+ expect(state.error).toContain('Authentication failed');
+ expect(state.systemCapabilities.connectors).toEqual({});
+ expect(state.configDefaults.config.connector).toBe('');
+ expect(state.loading).toBe(false);
+});
+it('does not conceal an organization-default authentication failure', async () => {
+ assistantConfigStore.reset();
+ axios.get.mockImplementation(async url => {
+  if(url.endsWith('/assistant/defaults')) throw {response:{status:401}};
+  return {data:url.endsWith('/capabilities') ? {connectors:{ollama:{available_llms:['qwen']}}} : {config:{connector:'ollama',llm:'qwen'}}};
+ });
+ await assistantConfigStore.loadConfig();
+ expect(get(assistantConfigStore).error).toContain('Authentication failed');
+ expect(get(assistantConfigStore).systemCapabilities.connectors).toEqual({});
+});
