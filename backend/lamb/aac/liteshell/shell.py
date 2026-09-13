@@ -77,6 +77,31 @@ def validate_command(key, args, kwargs):
     if "rag_top_k" in kwargs and int(kwargs["rag_top_k"]) < 1:
         raise ValueError("rag_top_k must be positive")
 
+def prepare_command(command_str: str, allowlist=None):
+    """Resolve and validate without HTTP, handlers or side effects, before authorization."""
+    tokens = shlex.split(command_str.strip())
+    if tokens and tokens[0] == "lamb":
+        tokens = tokens[1:]
+    if not tokens:
+        raise ValueError("No command provided. Use 'lamb help' to list supported commands.")
+    group = tokens[0]
+    if allowlist is not None and group not in allowlist:
+        raise ValueError(f"Command '{group}' not allowed. Available: {sorted(allowlist)}")
+    key = f"{group}.{tokens[1]}" if len(tokens) > 1 and not tokens[1].startswith("-") else group
+    arg_tokens = tokens[2:] if key != group else tokens[1:]
+    if key not in COMMAND_REGISTRY:
+        if group in COMMAND_REGISTRY:
+            key, arg_tokens = group, tokens[1:]
+        else:
+            available = sorted(k.replace('.', ' ') for k in COMMAND_REGISTRY if k.startswith(group + '.'))
+            hint = f"Supported commands: {', '.join('lamb ' + k for k in available)}." if available else "Use 'lamb help' to list supported commands."
+            raise ValueError(f"Unknown command '{key.replace('.', ' ')}': this command does not exist. {hint}")
+    args, kwargs = _parse_args(arg_tokens)
+    help_requested = kwargs.pop("help", kwargs.pop("h", False))
+    if not help_requested:
+        validate_command(key, args, kwargs)
+    return key, args, kwargs, help_requested
+
 @dataclass
 class ShellResult:
     """Result of a liteshell command execution."""
@@ -158,55 +183,11 @@ class LiteShell:
         return result
 
     async def _dispatch(self, command_str: str) -> ShellResult:
-        tokens = shlex.split(command_str.strip())
-        if not tokens:
-            return ShellResult(success=False, error="Empty command")
-
-        # Strip leading "lamb" if present
-        if tokens[0] == "lamb":
-            tokens = tokens[1:]
-        if not tokens:
-            return ShellResult(success=False, error="No command after 'lamb'")
-
-        group = tokens[0]
-
-        # Check allowlist
-        if self.allowlist is not None and group not in self.allowlist:
-            return ShellResult(
-                success=False,
-                error=f"Command '{group}' not allowed. Available: {sorted(self.allowlist)}",
-            )
-
-        # Resolve command key: "assistant list" → "assistant.list"
-        if len(tokens) > 1 and not tokens[1].startswith("-"):
-            key = f"{group}.{tokens[1]}"
-            arg_tokens = tokens[2:]
-        else:
-            key = group
-            arg_tokens = tokens[1:]
-
-        handler = COMMAND_REGISTRY.get(key)
-        if not handler:
-            handler = COMMAND_REGISTRY.get(group)
-            if handler:
-                arg_tokens = tokens[1:]
-            else:
-                available = [k for k in COMMAND_REGISTRY if k.startswith(f"{group}.")]
-                if available:
-                    return ShellResult(
-                        success=False,
-                        error=f"Unknown subcommand '{key}'. Available: {available}",
-                    )
-                return ShellResult(
-                    success=False,
-                    error=f"Unknown command '{group}'. Available groups: {sorted(set(k.split('.')[0] for k in COMMAND_REGISTRY))}",
-                )
-
-        args, kwargs = _parse_args(arg_tokens)
-        if kwargs.pop("help", kwargs.pop("h", False)):
+        key, args, kwargs, help_requested = prepare_command(command_str, self.allowlist)
+        handler = COMMAND_REGISTRY[key]
+        if help_requested:
             return ShellResult(success=True, data={"command": key, "help": handler.__doc__ or "",
                 "options": COMMAND_CONTRACTS[key][2].split()})
-        validate_command(key, args, kwargs)
 
         # Build context for the handler
         ctx = CommandContext(

@@ -1,7 +1,7 @@
 ---
 id: manage-knowledge-base
 name: Manage Knowledge Base
-description: Create knowledge bases, ingest attached files and verify retrieval
+description: Create and inspect knowledge bases, check files and ingestion status, and verify retrieval
 required_context: []
 optional_context: [language]
 startup_actions:
@@ -19,3 +19,16 @@ For PDFs use `--plugin markitdown_ingest`; for UTF-8 text/Markdown use `--plugin
 Submission alone is not completed ingestion. Inspect `lamb kb jobs KB_ID`, `lamb kb status KB_ID` and `lamb kb get KB_ID` and query a distinctive fact with `lamb kb query KB_ID "question" --top-k 3`. Check source identity and actual retrieved text. Report empty/pending/error results accurately; do not loop indefinitely. Suggest a retry only after identifying the cause.
 
 For a KB-backed assistant use simple_rag or context_aware_rag with explicit collection IDs and a prompt template containing {user_input} and {context}. Single-file RAG is different: it binds one owned UTF-8 upload through --file-path; PDFs must first be ingested into a KB.
+
+
+## Inspect a knowledge base or verify a user-operated upload
+
+Load this skill for requests such as "what is in this KB?", "did my file finish ingesting?", or "check the KB after I cancelled upload".
+
+1. If the KB ID is unknown, run `lamb kb list` and identify the intended KB with the user. Never guess an ID.
+2. Run `lamb kb get KB_ID` for details and any file information returned by the service.
+3. Run `lamb kb jobs KB_ID` and `lamb kb status KB_ID` for ingestion jobs, failures and progress. Distinguish queued/running jobs from completed ingestion.
+4. When retrieval should be available, run `lamb kb query KB_ID "a distinctive question from the user's file" --top-k 3`. Inspect returned source names and text. An empty query result alone does not prove there are no files.
+5. Report only what these responses establish. If a complete file inventory is unavailable, read `lamb docs read ui-knowledge-bases` and guide the user to the documented KB file view. Do not invent a file-list command.
+
+`lamb kb files` does not exist in the AAC shell. If a command returns "Unknown command", read its supported-command suggestions or run `lamb help`, then use a supported command. Do not ask the user to approve or repeat the nonexistent command. These inspection commands are reads and do not need write confirmation. Do not create or ingest anything just to inspect a KB, including after the user cancelled a UI upload.

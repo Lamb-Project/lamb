@@ -297,3 +297,41 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class CommandPreflight(unittest.IsolatedAsyncioTestCase):
+    async def test_unknown_command_errors_then_same_turn_reads_in_both_modes(self):
+        for streaming in (False, True):
+            a,p,s=agent([message(tools=[tool('lamb kb files 14')]),
+                         message(tools=[tool('lamb kb get 14',ident='read')]),message('checked')])
+            self.assertEqual(await turn(a,streaming),'checked')
+            self.assertIsNone(a.pending_action)
+            s.execute.assert_awaited_once_with('lamb kb get 14')
+            results=[json.loads(m['content']) for m in a.conversation if m['role']=='tool']
+            self.assertFalse(results[0]['success'])
+            self.assertIn('does not exist',results[0]['error'])
+            self.assertIn('lamb kb get',results[0]['error'])
+
+    async def test_old_invalid_pending_recovers_in_same_session_without_execution(self):
+        for streaming in (False, True):
+            a,p,s=agent([message(tools=[tool('lamb kb status 14')]),message('recovered')],
+                         pending_action={'command':'lamb kb files 14','action_key':'kb.files'})
+            self.assertEqual(await turn(a,streaming,'Please check the KB again'),'recovered')
+            self.assertIsNone(a.pending_action)
+            s.execute.assert_awaited_once_with('lamb kb status 14')
+
+    async def test_invalid_write_does_not_queue_but_valid_write_still_does(self):
+        a,p,s=agent([])
+        for cmd in ['lamb kb create', 'lamb kb create test --invented x', 'lamb kb create "unterminated']:
+            result=await a._execute_tool(tool(cmd))
+            self.assertFalse(result['success'])
+            self.assertIsNone(a.pending_action)
+        result=await a._execute_tool(tool('lamb kb create valid'))
+        self.assertTrue(result['awaiting_user_confirmation'])
+        s.execute.assert_not_awaited()
+
+    async def test_write_help_does_not_queue(self):
+        a,p,s=agent([])
+        await a._execute_tool(tool('lamb kb create --help'))
+        self.assertIsNone(a.pending_action)
+        s.execute.assert_awaited_once_with('lamb kb create --help')

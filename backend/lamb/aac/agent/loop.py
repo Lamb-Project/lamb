@@ -24,7 +24,7 @@ from typing import Any, AsyncIterator
 from openai import AsyncOpenAI
 
 from lamb.aac.authorization import ActionAuthorizer, classify_user_confirmation
-from lamb.aac.liteshell.shell import LiteShell, CommandContext
+from lamb.aac.liteshell.shell import LiteShell, CommandContext, ShellResult, prepare_command
 from lamb.aac.session_logger import SessionLogger
 from lamb.logging_config import get_logger
 
@@ -587,9 +587,16 @@ class AgentLoop:
         if not isinstance(command, str) or not command.strip():
             return {"success": False, "error": "No command provided"}
 
-        # Check authorization
-        action_key = self.authorizer.resolve_action_key(command)
-        policy = self.authorizer.check(action_key) if action_key else "auto"
+        # Reject unsupported/malformed commands before they can become pending writes.
+        try:
+            action_key, _, _, help_requested = prepare_command(command, getattr(self.shell, "allowlist", None))
+        except ValueError as error:
+            result = ShellResult(False, error=str(error), command=command)
+            self._record_audit(command, None, False, 0, result)
+            if self.session_logger:
+                self.session_logger.log_tool_call(command=command, success=False, elapsed_ms=0, error=result.error)
+            return result.to_dict()
+        policy = "auto" if help_requested else self.authorizer.check(action_key)
 
         # Self-referencing commands: inject current session_id
         if action_key == "session.rename" and self.session_id and "--session" not in command:
@@ -680,6 +687,16 @@ class AgentLoop:
         None if the message is unrelated to the pending action.
         """
         action = self.pending_action
+        # Older sessions may already contain an unsupported proposal. Recover on
+        # the next message without executing it or requiring meaningless approval.
+        try:
+            prepare_command(action["command"], getattr(self.shell, "allowlist", None))
+        except ValueError as error:
+            self.pending_action = None
+            result = ShellResult(False, error=str(error), command=action["command"])
+            self._record_audit(action["command"], action.get("action_key"), False, 0, result)
+            self.conversation.append({"role": "user", "content": f"[System: Removed invalid pending action; nothing executed. {error}]"})
+            return None
         classification = classify_user_confirmation(user_message)
 
         if classification == "approve":
