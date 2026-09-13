@@ -15,6 +15,9 @@ answers:
   - "how do I export an assistant"
 ---
 
+For verified 0.7 UI steps and screenshots, read `lamb docs read ui-assistants`. Prefer that guide for button locations and user-operated actions.
+
+
 ## Creating an Assistant
 
 1. Go to Learning Assistants > + Create Assistant

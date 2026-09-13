@@ -12,20 +12,23 @@ answers:
   - "how much do tests cost"
 ---
 
+For verified 0.7 UI steps and screenshots, read `lamb docs read ui-testing`. Prefer that guide for button locations and user-operated actions.
+
+
 ## Direct Chat
 
 Click the "Chat with [name]" tab on the assistant detail page. Type messages and see responses. Quick way to check behavior.
 
 ## Debug Mode (Bypass)
 
-Shows exactly what the AI model would receive — full system prompt, retrieved KB content, assembled prompt — without calling the model. **Zero token cost.**
+Shows exactly what the AI model would receive — full system prompt, retrieved KB content, assembled prompt — without calling the model. No completion-model call; retrieval may still involve other services.
 
 Use bypass to verify:
 - Is `{context}` populated with relevant content? If empty, RAG is broken.
 - Is the prompt template correctly assembled?
 - Are the right KB documents being retrieved?
 
-**Always run bypass before real tests** to avoid wasting tokens on a broken pipeline.
+**Use bypass when inspecting prompt/context assembly** to avoid wasting tokens on a broken pipeline.
 
 ## Test Scenarios
 
@@ -35,7 +38,7 @@ The Tests tab lets you create structured test cases and run them systematically.
 
 Click + Add Scenario:
 - **Title** — descriptive name (e.g., "Basic question about topic X")
-- **Type** — Normal, Edge case, or Adversarial
+- **Type** — Normal, Multi-turn, or Adversarial
 - **Message** — the test question
 - **Expected behavior** — what a good response should include
 

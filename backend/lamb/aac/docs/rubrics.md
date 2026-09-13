@@ -8,6 +8,9 @@ answers:
   - "how does rubric evaluation work"
 ---
 
+For verified 0.7 UI steps and screenshots, read `lamb docs read ui-rubrics`. Prefer that guide for button locations and user-operated actions.
+
+
 ## What is EvaluAItor?
 
 EvaluAItor is LAMB's rubric-based evaluation system. You define criteria with performance levels, and the AI assistant evaluates student submissions against them. Useful for:

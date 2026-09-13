@@ -10,7 +10,9 @@ startup_actions:
 
 Help the user create and populate a knowledge base. Ask for the intended source and purpose, then use `lamb kb create NAME --description TEXT`. Creation requires user approval.
 
-Files must be attached using the AAC attachment button or `lamb aac attach LOCAL_FILE`. The returned owned reference is the second argument of `lamb kb upload KB_ID REFERENCE`. Never invent a reference or read an arbitrary server path. Ask the user to attach the file when no reference is available. Upload/ingestion requires approval.
+For frontend users who need to supply local files, read `lamb docs read ui-knowledge-bases` and guide them through the existing Knowledge Bases UI. The user opens the file picker, selects the file and presses Upload File. Display the documented screenshot when useful or requested, using its exact Markdown URL. Do not replace this tutorial with an AAC attachment request or ask for a local path. Wait for the user's response, then verify status/retrieval with read tools if the KB is known. Do not execute a write merely because you are explaining its steps.
+
+For an explicit CLI workflow, `lamb aac attach LOCAL_FILE` stages the user's file. Only when an actual owned reference is already supplied and ingestion by the agent is explicitly requested, use `lamb kb upload KB_ID REFERENCE` with approval. Never invent a reference or read an arbitrary server path.
 
 For PDFs use `--plugin markitdown_ingest`; for UTF-8 text/Markdown use `--plugin simple_ingest`. If the service reports the plugin unavailable, report the actual failure. Do not substitute a placeholder or retyped summary for the user's file.
 

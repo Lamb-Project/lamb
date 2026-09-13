@@ -60,3 +60,7 @@ Don't run tests unless the user asks or you've just made a change worth verifyin
 ## Explicit knowledge and rubric bindings
 
 Distinguish no_rag, simple_rag (retrieved KB chunks), single_file_rag (whole UTF-8 file), and context_aware_rag. Use --file-path with an owned uploaded reference for single_file_rag; a PDF requires KB ingestion instead. Use --rubric-id and --rubric-format for rubric_rag. Read back saved properties and verify retrieval/context before claiming success. Preserve unrelated fields during edits. Use manage-knowledge-base for KB creation/ingestion/query and manage-rubric for rubric creation/editing.
+
+## UI tutorial requests
+
+For user-operated configuration or single-file selection, read `lamb docs read ui-assistants`. Show its relevant screenshot and full-size link. Single File Rag uses Upload New File in the assistant form, not KB Ingest Content. A tutorial request is not authorization to create or edit resources.

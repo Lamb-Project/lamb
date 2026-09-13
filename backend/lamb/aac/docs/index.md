@@ -1,7 +1,7 @@
 ---
 title: LAMB Documentation Index
 description: Agent-readable index of all LAMB platform documentation
-version: "0.6"
+version: "0.7"
 ---
 
 # LAMB Documentation
@@ -23,3 +23,12 @@ Use `lamb docs read <topic> --section "heading"` to read a subsection.
 | collaboration | collaboration.md | Sharing assistants, KBs, and templates with other educators | sharing, shared-with-me, organization, permissions |
 | troubleshooting | troubleshooting.md | Common problems and solutions for assistants, RAG, publishing, and access | errors, empty-context, rag-broken, cant-publish, no-share-tab, students-cant-access |
 | glossary | glossary.md | Definitions of key LAMB terms | terms, definitions, vocabulary |
+
+## Illustrated UI tutorials
+
+Read these pages for existing UI actions. Show only the relevant steps/images and let the user operate the controls.
+
+- `ui-knowledge-bases`: read with `lamb docs read ui-knowledge-bases`.
+- `ui-assistants`: read with `lamb docs read ui-assistants`.
+- `ui-testing`: read with `lamb docs read ui-testing`.
+- `ui-rubrics`: read with `lamb docs read ui-rubrics`.

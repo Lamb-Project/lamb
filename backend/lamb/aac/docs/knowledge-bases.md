@@ -15,6 +15,9 @@ answers:
   - "what formats are supported"
 ---
 
+For verified 0.7 UI steps and screenshots, read `lamb docs read ui-knowledge-bases`. Prefer that guide for button locations and user-operated actions.
+
+
 ## What is RAG?
 
 Retrieval-Augmented Generation (RAG) makes your assistant answer using your own documents instead of just its training data. When a student asks a question:
@@ -34,7 +37,7 @@ Go to Sources of Knowledge > Knowledge Bases > Create Knowledge Base. Give it a 
 Click View on a KB. The detail page has three tabs:
 
 ### Files Tab
-Upload documents by drag-and-drop or file picker. Supported formats:
+The Files tab lists uploaded files and their processing status. Upload files from **Ingest Content**, using the file chooser and a suitable available plugin. Common source formats include:
 - PDF (textbooks, articles, handouts)
 - Markdown / plain text (lecture notes, study guides)
 - Word documents (course materials)
