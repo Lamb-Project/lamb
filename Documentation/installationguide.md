@@ -23,6 +23,18 @@ llm keys get openai
 
 ---
 
+### Conventions
+
+`$LAMB_PROJECT_PATH` is the directory where the repository is installed (for example `/opt/lamb`). Export it before you begin:
+
+```bash
+export LAMB_PROJECT_PATH=/opt/lamb
+```
+
+> This is the **manual, non-Docker** installation path. For the recommended Docker setup, see [deployLocal.md](./deployLocal.md).
+
+---
+
 ### Step 1: Initial Directory Setup
 
 First, create and set permissions for the main project directory.

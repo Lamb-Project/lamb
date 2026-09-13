@@ -4,7 +4,7 @@
 **Last Updated:** March 31, 2026
 **Reading Time:** ~40 minutes
 
-> This is the streamlined architecture guide. For deep implementation details, see [lamb_architecture.md](./lamb_architecture.md). For quick navigation, see [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md).
+> This is the canonical architecture guide. For quick navigation, see [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md). A longer, more detailed architecture document lives in the private enterprise repository.
 
 ---
 
@@ -822,7 +822,7 @@ LAMB supports three types of LTI integration:
 2. **Legacy Student LTI** — Students access a single published assistant via LTI
 3. **LTI Creator** — Educators access the Creator Interface via LTI (new in v2.1)
 
-> For full details, see [lti_landscape.md](./lti_landscape.md) and [projects/lti_unified_activity_design.md](./projects/lti_unified_activity_design.md).
+> Full design details (`lti_landscape.md`, `projects/lti_unified_activity_design.md`) live in the private enterprise repository.
 
 #### 8.2.1 Unified LTI (Multi-Assistant Activities) — Recommended
 
@@ -1016,7 +1016,7 @@ Educator clicks LTI link in LMS
 - `GET /creator/analytics/assistant/{id}/stats`
 - `GET /creator/analytics/assistant/{id}/timeline`
 
-> See [chat_analytics_project.md](./chat_analytics_project.md) for implementation details.
+> Implementation details are documented in `chat_analytics_project.md` in the private enterprise repository.
 
 ### 8.5 User Blocking
 
@@ -1085,7 +1085,7 @@ The admin user management panel identifies users by type with color-coded badges
 
 **CLI:** `lamb aac start|sessions|get|delete|message|chat|history`
 
-> For full design details, see [lamb-agent-assisted-creator.md](./projects/lamb-agent-assisted-creator.md) and [aac-backlog.md](./projects/aac-backlog.md).
+> Full design details (`projects/lamb-agent-assisted-creator.md`, `projects/aac-backlog.md`) live in the private enterprise repository.
 
 ### 8.8 Assistant Test Scenarios & Evaluation
 
@@ -1582,7 +1582,7 @@ npm run dev
 | `LLM_MAX_CONNECTIONS` | Max connections per client pool | `50` |
 | `OLLAMA_REQUEST_TIMEOUT` | Ollama request timeout (seconds) | `120` |
 
-> See [ENVIRONMENT_VARIABLES.md](../backend/ENVIRONMENT_VARIABLES.md) for complete list.
+> See [.env.next.example](../.env.next.example) for the complete list of environment variables.
 
 ### 10.4 Database Migrations
 
@@ -1914,14 +1914,18 @@ API_LOG_LEVEL=DEBUG
 
 | Document | Purpose |
 |----------|---------|
-| [new_lamb_auth_tldr.md](./new_lamb_auth_tldr.md) | **AuthContext TL;DR** — quick reference for the new auth system |
 | [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md) | Quick navigation guide |
-| [lamb_architecture.md](./lamb_architecture.md) | Full detailed reference |
-| [chat_analytics_project.md](./chat_analytics_project.md) | Analytics implementation |
-| [ENVIRONMENT_VARIABLES.md](../backend/ENVIRONMENT_VARIABLES.md) | All env vars |
-| [prd.md](./prd.md) | Product requirements |
+| [.env.next.example](../.env.next.example) | All environment variables |
+| [deployLocal.md](./deployLocal.md) | Local Docker deployment |
+| [deployNext.md](./deployNext.md) | Production deployment (Hetzner) |
+| [migrating-to-lamb-next.md](./migrating-to-lamb-next.md) | Migrate from the legacy Docker stack |
 | [deployment.apache.md](./deployment.apache.md) | Apache deployment |
-| [features/](./features/) | Detailed feature documentation |
+| [deployment.nginx.md](./deployment.nginx.md) | Nginx deployment |
+| [svelte-refactoring.md](./svelte-refactoring.md) | Frontend refactoring guide |
+
+> Design docs, product requirements and detailed feature documentation
+> (`lamb_architecture.md`, `prd.md`, `lti_landscape.md`, `chat_analytics_project.md`,
+> `new_lamb_auth_tldr.md`, `projects/`, `features/`) live in the private enterprise repository.
 
 ---
 

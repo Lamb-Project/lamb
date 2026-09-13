@@ -21,9 +21,11 @@ This index helps you find exactly what you need in the LAMB documentation. Start
 
 | Goal | Document | Section |
 |------|----------|---------|
-| Quick start with Docker | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §10 Development |
-| Configure environment variables | [../backend/ENVIRONMENT_VARIABLES.md](../backend/ENVIRONMENT_VARIABLES.md) | Full doc |
-| Deploy to production | [deployment.apache.md](./deployment.apache.md) | Full doc |
+| Quick start with Docker | [deployLocal.md](./deployLocal.md) | Full doc |
+| Configure environment variables | [.env.next.example](../.env.next.example) | Full template |
+| Deploy to production (Hetzner) | [deployNext.md](./deployNext.md) | Full doc |
+| Deploy behind Apache / Nginx | [deployment.apache.md](./deployment.apache.md) / [deployment.nginx.md](./deployment.nginx.md) | Full doc |
+| Migrate from the legacy Docker stack | [migrating-to-lamb-next.md](./migrating-to-lamb-next.md) | Full doc |
 
 ### Work with the Backend
 
@@ -58,15 +60,15 @@ This index helps you find exactly what you need in the LAMB documentation. Start
 ```
 Documentation/
 ├── DOCUMENTATION_INDEX.md      ← YOU ARE HERE
-├── README.md                   ← Docs landing page
 ├── lamb_architecture_v2.md     ← Single canonical architecture reference
 │
-├── installationguide.md        ← Installation instructions
-├── deployment.md               ← General deployment guide
-├── deployLocal.md              ← Local Docker deployment
-├── deployNext.md               ← Hetzner autonomous deployment
+├── installationguide.md        ← Manual (non-Docker) installation
+├── deployLocal.md              ← Local Docker deployment (docker-compose.next.yaml)
+├── deployNext.md               ← Production deployment (Hetzner, autonomous)
+├── migrating-to-lamb-next.md   ← Migrate from the legacy Docker stack
 ├── deployment.apache.md        ← Apache reverse proxy config
 ├── deployment.nginx.md         ← Nginx reverse proxy config
+├── svelte-refactoring.md       ← Frontend refactoring guide
 │
 └── (all other docs moved to private enterprise repo)
 ```
@@ -307,10 +309,8 @@ Browser → Creator Interface API (/creator) → LAMB Core API (/lamb/v1) → Da
 | Document | Purpose | When to Use |
 |----------|---------|-------------|
 | `lamb_architecture_v2.md` | **Primary reference** | Start here for any task |
-| `lamb_architecture.md` | Full detailed reference | Deep implementation details |
-| `lamb_architecture_small.md` | Legacy condensed | Deprecated, use v2 |
 
 ---
 
-*Last Updated: February 13, 2026*
+*Last Updated: September 13, 2026*
 

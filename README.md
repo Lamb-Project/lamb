@@ -81,7 +81,9 @@ LAMB features a modular, extensible architecture:
 
 For the easiest setup experience, we recommend using Docker Compose to run all LAMB services:
 
-📘 **[Docker Installation Guide](Documentation/deployment.md)** - One-command deployment with all services configured
+📘 **[Docker Installation Guide](Documentation/deployLocal.md)** - One-command deployment with all services configured
+
+Migrating from the old (pre-`next`) Docker stack? See **[Migrating to lamb.next](Documentation/migrating-to-lamb-next.md)**.
 
 ### Alternative: Manual Installation
 
@@ -91,11 +93,12 @@ For development or custom deployments:
 
 ### Quick Overview
 
-LAMB requires four main services:
+LAMB runs these main services:
 1. **Open WebUI Server** (port 8080) - Model management interface
 2. **LAMB Knowledge Base Server** (port 9090) - Document processing and vector search
-3. **LAMB Backend Server** (port 9099) - Core API and business logic
-4. **Frontend Application** (port 5173) - Web interface
+3. **LAMB Backend Server** (port 9099) - Core API and business logic (also serves the built frontend)
+4. **Library Manager** (port 9091) - Document repository (optional; `DISABLE`d by default)
+5. **Frontend dev server** (port 5173) - Vite dev server, used only when developing without Docker
 
 ## 📖 Documentation
 
@@ -111,22 +114,27 @@ Comprehensive documentation is available in the [`/Documentation`](Documentation
 
 - [Documentation Index](Documentation/DOCUMENTATION_INDEX.md) — start here
 - [Architecture Reference](Documentation/lamb_architecture_v2.md)
-- [Installation Guide](Documentation/installationguide.md)
-- [Deployment Guide](Documentation/deployment.md)
+- [Installation Guide (manual, no Docker)](Documentation/installationguide.md)
+- [Local Docker Deployment](Documentation/deployLocal.md)
+- [Production Deployment (Hetzner)](Documentation/deployNext.md)
 
 ## 🗂️ Project Structure
 
 ```
 lamb/
-├── backend/               # FastAPI backend server
-│   ├── lamb/             # Core LAMB functionality
-│   ├── creator_interface/# Assistant creation interface
-│   └── utils/            # Utility functions
-├── frontend/             # Svelte 5 frontend
-│   └── svelte-app/      # Main web application
-├── lamb-kb-server/       # Knowledge base server
-├── Documentation/        # Project documentation
-└── docker-compose.yaml   # Container orchestration
+├── backend/                  # FastAPI backend server
+│   ├── lamb/                 # Core LAMB functionality
+│   ├── creator_interface/    # Assistant creation interface
+│   └── utils/                # Utility functions
+├── frontend/                 # Svelte 5 frontend
+│   └── svelte-app/           # Main web application
+├── lamb-kb-server-stable/    # Knowledge base server
+├── library-manager/          # Document repository service
+├── lamb-cli/                 # Command-line client
+├── open-webui/               # Vendored Open WebUI snapshot
+├── Documentation/            # Project documentation
+├── docker-compose.next.yaml  # Container orchestration
+└── Caddyfile.next            # Reverse proxy (production TLS)
 ```
 
 ## 🤝 Contributing
