@@ -7,6 +7,7 @@
     import { createSession, getSessions } from '$lib/services/aacService';
     import AacTerminal from './AacTerminal.svelte';
     let history = $state(false);
+    let historyLoading = $state(false);
     let sessions = $state([]);
     let error = $state('');
     let creating = $state(false);
@@ -31,9 +32,10 @@
         finally { creating = false; }
     }
     async function showHistory() {
-        history = true; error = '';
+        history = true; error = ''; historyLoading = true;
         try { sessions = await getSessions(); }
         catch (e) { error = e.message; }
+        finally { historyLoading = false; }
     }
     function resume(s) {
         if (showSession(s.id, s.title, s.assistant_id, s.skill_id)) history = false;
@@ -55,10 +57,11 @@
     <section class="history">
         <div class="history-heading"><h2>Conversation history</h2><button onclick={() => history = false}>Back</button></div>
         <input aria-label="Search conversations" placeholder="Search conversations" bind:value={filter} />
+        {#if historyLoading}<p role="status">Loading conversations…</p>{/if}
         {#each sessions.filter(s => (s.title || '').toLowerCase().includes(filter.toLowerCase())) as s}
             <button class="history-item" onclick={() => resume(s)}><strong>{s.title || 'Conversation'}</strong><small>{s.updated_at?.slice(0, 16).replace('T', ' ')}</small></button>
         {/each}
-        {#if !sessions.length}<p>No saved conversations yet.</p>{/if}
+        {#if !historyLoading && !sessions.length}<p>No saved conversations yet.</p>{/if}
     </section>
     {/if}
     <div class="terminal" class:hidden={history}>
