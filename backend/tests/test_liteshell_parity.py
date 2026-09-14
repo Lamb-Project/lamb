@@ -36,6 +36,17 @@ class Operations(unittest.IsolatedAsyncioTestCase):
                 s.execute.assert_awaited_once_with(f'lamb assistant {command} 42')
                 self.assertIsNone(a.pending_action)
 
+    async def test_natural_refusal_clears_pending_without_execution(self):
+        from lamb.aac.authorization import classify_user_confirmation
+        for text in ('No, do not publish it.', 'Do not publish it.', "Don't publish it.", 'No, gracias.'):
+            self.assertEqual(classify_user_confirmation(text),'reject',text)
+            a,p,s=agent([message(tools=[tool('lamb assistant publish 42')]),message('Confirm?'),message('Cancelled')])
+            await a.chat('Publish it');await a.chat(text)
+            s.execute.assert_not_awaited();self.assertIsNone(a.pending_action)
+        self.assertEqual(classify_user_confirmation('Yes, publish it.'),'approve')
+        for text in ('Yes, no.', 'Yes, do not publish it.'):
+            self.assertEqual(classify_user_confirmation(text),'other')
+
     async def test_publish_unpublish_request_and_failure_contract(self):
         for verb,published in [('publish',True),('unpublish',False)]:
             s,h=authoring.Authoring().shell();h.put.return_value={'publish_status':published}

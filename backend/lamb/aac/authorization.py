@@ -89,7 +89,7 @@ _APPROVAL_PHRASES = {
 }
 
 _REJECTION_WORDS = {
-    "no", "n", "nope", "nah", "cancel", "stop", "abort", "reject", "rejected",
+    "not", "no", "n", "nope", "nah", "cancel", "stop", "abort", "reject", "rejected",
     "don't", "dont", "negative", "wait",
     "cancela", "para", "detente",
     "cancel·la", "atura",
@@ -138,7 +138,7 @@ def classify_user_confirmation(message: str) -> str:
     is probably saying something more nuanced.
     """
     text = message.strip().rstrip("!.,;:").lower()
-    words = text.split()
+    words = [word.strip("!.,;:?") for word in text.split()]
 
     # Empty
     if not words:
@@ -149,8 +149,13 @@ def classify_user_confirmation(message: str) -> str:
         return "other"
 
     # Contradictory short replies must never approve a pending write.
-    if any(w in _APPROVAL_WORDS for w in words) and any(w in _REJECTION_WORDS for w in words):
+    approval_signals = [w for i,w in enumerate(words) if w in _APPROVAL_WORDS
+                        and not (w == "do" and i + 1 < len(words) and words[i + 1] == "not")]
+    if approval_signals and any(w in _REJECTION_WORDS for w in words):
         return "other"
+
+    if words[:2] == ["do", "not"]:
+        return "reject"
 
     # Check exact phrase match first
     if text in _APPROVAL_PHRASES:
@@ -160,7 +165,7 @@ def classify_user_confirmation(message: str) -> str:
 
     # Check if first word is a strong signal
     first = words[0]
-    if first in _APPROVAL_WORDS:
+    if first in approval_signals:
         return "approve"
     if first in _REJECTION_WORDS:
         return "reject"
@@ -168,7 +173,7 @@ def classify_user_confirmation(message: str) -> str:
     # Check if any word is a strong approval/rejection signal (for short messages)
     if len(words) <= 4:
         for w in words:
-            if w in _APPROVAL_WORDS:
+            if w in approval_signals:
                 return "approve"
         for w in words:
             if w in _REJECTION_WORDS:
