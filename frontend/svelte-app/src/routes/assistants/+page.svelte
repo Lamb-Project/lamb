@@ -1531,7 +1531,7 @@
                     <strong class="font-bold">{currentLocale ? $_('assistants.detail.configErrorTitle', { default: 'Configuration Error:' }) : 'Configuration Error:'}</strong>
                     <span class="block sm:inline">{configError} - {currentLocale ? $_('assistants.chatDisabled') : 'Chat functionality is disabled.'}</span>
                 </div>
-            {:else if lambServerUrl && userToken}
+            {:else if userToken}
                 <!-- Header for Chat View (Optional: can add title or keep it clean) -->
                 <div class="px-6 py-4 border-b border-gray-200">
                      <h2 class="text-xl font-semibold text-gray-800">
