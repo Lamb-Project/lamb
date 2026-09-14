@@ -1,4 +1,5 @@
 <script>
+  import { sidebarOpen } from '$lib/stores/aacStore.svelte';
   import { user } from '$lib/stores/userStore';
   import { clearCurrentSession, ensureProfileLoaded } from '$lib/session/sessionManager';
   import { onMount } from 'svelte';
@@ -75,8 +76,8 @@
 
 <nav class="bg-white shadow">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="flex justify-between h-16">
-      <div class="flex">
+    <div class="flex flex-wrap justify-between min-h-16 gap-y-2 py-1">
+      <div class="flex flex-wrap">
         <!-- Logo -->
         <div class="flex-shrink-0 flex items-center">
           <div class="flex items-center space-x-2">
@@ -174,6 +175,7 @@
       <!-- User info and Language selector section -->
       <div class="flex items-center gap-3">
         {#if $user.isLoggedIn}
+          <button class="rounded bg-[#173f64] text-white px-3 py-2 text-xs font-semibold whitespace-nowrap" onclick={() => sidebarOpen.set(true)} aria-label="Open LAMB AGENT">LAMB AGENT</button>
           <!-- Username -->
           <span class="text-sm font-medium text-gray-600 hidden sm:block">{$user.name || $user.email || ''}</span>
         {/if}

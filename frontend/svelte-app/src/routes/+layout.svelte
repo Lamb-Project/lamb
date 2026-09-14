@@ -7,7 +7,7 @@
 	import Nav from '$lib/components/Nav.svelte';
 	import Footer from '$lib/components/Footer.svelte';
 	import AacSidebar from '$lib/components/aac/AacSidebar.svelte';
-	import { sidebarOpen } from '$lib/stores/aacStore.svelte';
+	import { sidebarOpen, sidebarWidth, sidebarMobile } from '$lib/stores/aacStore.svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { markWorkspaceDirty, clearWorkspaceDirty } from '$lib/services/frontendManage';
 	afterNavigate(clearWorkspaceDirty);
@@ -92,6 +92,7 @@
 </script>
 
 <div class="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
+	<div class="lamb-workspace" class:agent-open={$sidebarOpen && !!$user.token} style:--aac-width={$sidebarWidth + "px"} inert={$sidebarOpen && $sidebarMobile && !!$user.token}>
 	<Nav />
 
 
@@ -110,9 +111,12 @@
 	</main>
 
 	<Footer />
+	</div>
 	{#if sessionReady && $user.token}<AacSidebar />{/if}
 </div>
 
 <style>
-@media (min-width: 1100px) { main.aac-workspace { padding-right: 460px; } }
+.lamb-workspace { min-height: 100vh; display: flex; flex-direction: column; min-width: 0; width: 100%; }
+.lamb-workspace main { min-width: 0; overflow-x: auto; }
+@media (min-width: 920px) { .lamb-workspace.agent-open { width: calc(100% - var(--aac-width)); } }
 </style>

@@ -1,4 +1,5 @@
 /** Finite frontend command vocabulary. No model-provided URLs or DOM selectors. */
+import { frontendDestination } from '$lib/stores/aacStore.svelte';
 import { goto } from '$app/navigation';
 import { base } from '$app/paths';
 import { apiJson } from '$lib/services/apiClient';
@@ -30,7 +31,10 @@ export async function applyFrontendAction(action, signal) {
         for (let i = 0; i < 80; i++) {
             if (signal?.aborted) return { status: 'failed', reason: 'Turn ended before navigation was confirmed' };
             const current = workspaceContext();
-            if (current.resource === action.resource && current.id === String(action.id) && current.tab === action.tab) return { status: 'opened', ...current };
+            if (current.resource === action.resource && current.id === String(action.id) && current.tab === action.tab) {
+                frontendDestination.set(current);
+                return { status: 'opened', ...current };
+            }
             await new Promise(resolve => setTimeout(resolve, 100));
         }
         return { status: 'failed', reason: 'The requested resource/tab did not finish loading' };

@@ -11,10 +11,10 @@ describe('persistent AAC sidebar', () => {
     it('hides without removing the terminal or losing the session', async () => {
         showSession('existing');
         render(Sidebar);
-        await fireEvent.click(screen.getByRole('button', { name: 'Hide AAC' }));
+        await fireEvent.click(screen.getByRole('button', { name: 'Hide LAMB AGENT' }));
         expect(get(activeTabId)).toBe('existing');
         expect(document.querySelector('.terminal')).not.toBeNull();
-        await fireEvent.click(screen.getByRole('button', { name: 'Open AAC' }));
+        await fireEvent.click(screen.getByRole('button', { name: 'Open LAMB AGENT' }));
         expect(get(sidebarOpen)).toBe(true);
     });
     it('starts a new session without archiving the old one', async () => {
@@ -32,18 +32,40 @@ describe('persistent AAC sidebar', () => {
         await fireEvent.click(await screen.findByRole('button', { name: 'My saved conversation' }));
         expect(get(activeTabId)).toBe('saved');
     });
-    it('keeps multiline drafts on Enter and sends on Ctrl+Enter', async () => {
+    it('keeps multiline drafts on Shift+Enter and sends on Enter', async () => {
         showSession('draft-session');render(Sidebar);
         const input = screen.getByRole('textbox', {name: 'Message AAC'});
         expect(input.tagName).toBe('TEXTAREA');
         await fireEvent.input(input, {target: {value: 'First line\nSecond line'}});
-        await fireEvent.keyDown(input, {key: 'Enter'});
+        await fireEvent.keyDown(input, {key: 'Enter', shiftKey: true});
         expect(sendMessageStream).not.toHaveBeenCalled();
         expect(input.value).toBe('First line\nSecond line');
-        await fireEvent.keyDown(input, {key: 'Enter', ctrlKey: true});
+        await fireEvent.keyDown(input, {key: 'Enter'});
         await waitFor(() => expect(sendMessageStream).toHaveBeenCalledOnce());
         expect(sendMessageStream.mock.calls[0][1]).toBe('First line\nSecond line');
         expect(screen.queryByTitle('Attach source file')).toBeNull();
+    });
+
+    it('stops the active request and retains partial output', async () => {
+        sendMessageStream.mockImplementationOnce((id,text,chunk,done,error,status,signal) => {
+            chunk('Partial answer');
+            return new Promise(resolve => signal.addEventListener('abort', resolve, {once:true}));
+        });
+        showSession('stop-session');render(Sidebar);
+        const input=screen.getByRole('textbox',{name:'Message AAC'});
+        await fireEvent.input(input,{target:{value:'Explain this'}});
+        await fireEvent.keyDown(input,{key:'Enter'});
+        await fireEvent.click(await screen.findByRole('button',{name:'Stop response'}));
+        await waitFor(()=>expect(screen.getByRole('button',{name:'Send'})).not.toBeNull());
+        expect(screen.getByText('Partial answer')).not.toBeNull();
+        expect(screen.getByRole('status').textContent).toContain('Response stopped');
+    });
+    it('does not send while composing text with an IME', async () => {
+        showSession('ime-session');render(Sidebar);
+        const input=screen.getByRole('textbox',{name:'Message AAC'});
+        await fireEvent.input(input,{target:{value:'test'}});
+        await fireEvent.keyDown(input,{key:'Enter',isComposing:true});
+        expect(sendMessageStream).not.toHaveBeenCalled();
     });
 
 });

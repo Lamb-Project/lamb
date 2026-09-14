@@ -16,6 +16,8 @@ The loop:
 from __future__ import annotations
 
 import json
+import anyio
+from contextlib import aclosing
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -460,19 +462,22 @@ class AgentLoop(SkillRouting):
         if self.pending_action:
             result_text = await self._resolve_pending_action(user_message)
             if result_text is not None:
-                async for event in self._run_agent_loop_stream():
-                    yield event
+                async with aclosing(self._run_agent_loop_stream()) as events:
+                    async for event in events:
+                        yield event
                 return
 
         if self.session_logger:
             self.session_logger.log_user_message(user_message)
         self.conversation.append({"role": "user", "content": user_message})
-        async for event in self._run_agent_loop_stream():
-            yield event
+        async with aclosing(self._run_agent_loop_stream()) as events:
+            async for event in events:
+                yield event
 
     async def _run_agent_loop_stream(self) -> AsyncIterator[dict | str]:
-        async for event in self._run_agent_events(streaming=True):
-            yield event
+        async with aclosing(self._run_agent_events(streaming=True)) as events:
+            async for event in events:
+                yield event
 
     async def _request_message(self, messages: list[dict], tools_enabled: bool,
                                streaming: bool) -> AsyncIterator[dict | str]:
@@ -528,11 +533,43 @@ class AgentLoop(SkillRouting):
                         if part.function.arguments:
                             call["function"]["arguments"] += part.function.arguments
         finally:
-            await stream.close()
+            with anyio.CancelScope(shield=True):
+                await stream.close()
         yield {"_message": {"role": "assistant", "content": text,
                              "tool_calls": list(calls.values())}}
 
     async def _run_agent_events(self, streaming: bool) -> AsyncIterator[dict | str]:
+        """Preserve interrupted output and keep tool-call history resumable."""
+        partial = ''
+        completed = False
+        start = len(self.conversation)
+        events = self._generate_agent_events(streaming)
+        try:
+            async for event in events:
+                if isinstance(event, str):
+                    partial += event
+                elif event.get('status') in ('thinking', 'tool', 'tool_done'):
+                    partial = ''
+                yield event
+            completed = True
+        finally:
+            with anyio.CancelScope(shield=True):
+                await events.aclose()
+            if not completed:
+                messages = self.conversation[start:]
+                answered = {m.get('tool_call_id') for m in messages if m.get('role') == 'tool'}
+                for message in messages:
+                    for call in message.get('tool_calls', []):
+                        if call['id'] not in answered:
+                            self.conversation.append({'role': 'tool', 'tool_call_id': call['id'], 'content': json.dumps({
+                                'success': False, 'interrupted': True,
+                                'error': 'Turn interrupted. Execution outcome may be unknown. Read back state before retrying a write.'})})
+                            answered.add(call['id'])
+                last = self.conversation[-1] if self.conversation else {}
+                if partial and not (last.get('role') == 'assistant' and last.get('content') == partial):
+                    self.conversation.append({'role': 'assistant', 'content': partial})
+
+    async def _generate_agent_events(self, streaming: bool) -> AsyncIterator[dict | str]:
         """Shared legacy turn control; transport does not change tool semantics."""
         tool_rounds = 0
         while True:
@@ -540,11 +577,12 @@ class AgentLoop(SkillRouting):
             tools_enabled = tool_rounds < self.max_tool_rounds and not self.pending_action
             messages = [{"role": "system", "content": self.system_prompt}] + self.conversation
             message = None
-            async for event in self._request_message(messages, tools_enabled, streaming):
-                if isinstance(event, dict) and "_message" in event:
-                    message = event["_message"]
-                else:
-                    yield event
+            async with aclosing(self._request_message(messages, tools_enabled, streaming)) as events:
+                async for event in events:
+                    if isinstance(event, dict) and "_message" in event:
+                        message = event["_message"]
+                    else:
+                        yield event
             if message is None:
                 raise ValueError("Provider returned no assistant message")
             calls = message.pop("tool_calls", [])
@@ -733,7 +771,13 @@ class AgentLoop(SkillRouting):
         if classification == "approve":
             # Execute the queued command
             self.pending_action = None
-            result = await self.shell.execute(action["command"])
+            try:
+                result = await self.shell.execute(action["command"])
+            except BaseException:
+                self.conversation.append({"role": "user", "content": user_message})
+                self.conversation.append({"role": "user", "content":
+                    "[System: Approved action interrupted. Outcome may be unknown. Read back state before retrying: " + action['command'] + "]"})
+                raise
             self._record_audit(action["command"], action.get("action_key"), result.success, result.elapsed_ms, result)
 
             if self.session_logger:

@@ -80,6 +80,8 @@ class AACSessionManager:
                 session["pending_action"] = None
                 session["skill_info"] = None
                 session["tool_audit"] = []
+            from lamb.aac.previews import preview
+            session.update(preview(session.get('title'), session.get('conversation', [])))
             return session
         finally:
             conn.close()
@@ -99,6 +101,7 @@ class AACSessionManager:
             sessions = []
             for row in cursor.fetchall():
                 s = dict(zip(columns, row))
+                messages = []
                 # Extract stats from conversation envelope
                 tool_calls = 0
                 tool_errors = 0
@@ -118,6 +121,8 @@ class AACSessionManager:
                     turn_count = sum(1 for m in messages if m.get("role") == "user")
                 except Exception:
                     pass
+                from lamb.aac.previews import preview
+                s.update(preview(s.get("title"), messages))
                 s.pop("conversation", None)  # don't send full conversation in list
                 s["tool_calls"] = tool_calls
                 s["tool_errors"] = tool_errors

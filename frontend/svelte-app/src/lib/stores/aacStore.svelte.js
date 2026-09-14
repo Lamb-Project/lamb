@@ -130,6 +130,9 @@ export function isTabsVisible() {
 
 // Sidebar state is independent of route and open-session history.
 export const sidebarOpen = writable(false);
+export const sidebarWidth = writable(440);
+export const sidebarMobile = writable(false);
+export const frontendDestination = writable(null);
 export const sidebarBusy = writable(false);
 export const startupSessions = writable(new Set());
 export function showSession(id, title = 'Conversation', assistantId = null, skill = null, startup = false) {
@@ -141,6 +144,6 @@ export function showSession(id, title = 'Conversation', assistantId = null, skil
 }
 export function resetSidebar() {
     sidebarOpen.set(false); sidebarBusy.set(false); openTabs.set([]); activeTabId.set(null);
-    startupSessions.set(new Set());
+    startupSessions.set(new Set()); frontendDestination.set(null);
     if (typeof window !== 'undefined') sessionStorage.removeItem('aac_tabs');
 }

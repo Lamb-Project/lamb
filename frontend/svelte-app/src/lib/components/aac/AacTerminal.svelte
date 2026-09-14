@@ -1,6 +1,6 @@
 <script>
 	import { onMount, onDestroy, tick } from 'svelte';
-	import { sidebarBusy, startupSessions } from '$lib/stores/aacStore.svelte';
+	import { sidebarBusy, startupSessions, openTabs } from '$lib/stores/aacStore.svelte';
 	import { splitCanvasContent, canvasFromMessages } from '$lib/utils/aacCanvas.js';
 	import { sendMessageStream, getSession, sendMessage } from '$lib/services/aacService';
 	import { renderMarkdownWithMath } from '$lib/utils/renderMarkdown.js';
@@ -26,6 +26,22 @@
 
 	/** @type {string} */
 	let statusText = $state('');
+    let sessionTitle = $state('New conversation');
+    let stopped = $state(false);
+    async function refreshSessionInfo() {
+        try {
+            const session = await getSession(sessionId);
+            if(!isMounted)return;
+            sessionTitle=session.title || 'New conversation';
+            openTabs.update(tabs=>tabs.map(t=>t.id===sessionId?{...t,title:sessionTitle}:t));
+        } catch (_) { /* transcript remains usable if metadata refresh fails */ }
+    }
+    function stopResponse() {
+        stopped=true;
+        statusText='Stopped';
+        streamAbort?.abort();
+    }
+
 
 	/** @type {boolean} */
 	let darkMode = $state(false);
@@ -44,6 +60,8 @@
 
 	// Derive the latest canvas from the transcript, never mutate state while rendering.
 	let dismissedCanvas = $state(null);
+    let canvasDialog = $state(null);
+    function expandCanvas() { canvasDialog?.showModal(); canvasDialog?.querySelector("[data-canvas-back]")?.focus(); }
 	let latestCanvas = $derived(canvasFromMessages(messages));
 	let canvasData = $derived(latestCanvas?.key === dismissedCanvas ? null : latestCanvas);
 
@@ -70,6 +88,7 @@
 			try {
 				const session = await getSession(sessionId);
 				if (!isMounted) return;
+                sessionTitle=session.title || 'New conversation';
 				const conv = (session.conversation || []).filter(
 					m => (m.role === 'user' && !(m.content || '').startsWith('[System:') && !(m.content || '').startsWith('[Application workflow instructions]'))
 					  || (m.role === 'assistant' && m.content && !m.tool_calls)
@@ -93,6 +112,7 @@
 
 	async function triggerSkillStartup() {
 		loading = true;
+        stopped = false;
 		let streamIdx = messages.length;
 		messages = [...messages, { role: 'assistant', content: '' }];
 		await tick();
@@ -109,7 +129,7 @@
 					messages = messages;
 					scrollToBottom();
 				},
-				(stats) => { lastStats = stats; statusText = ''; },
+				(stats) => { lastStats = stats; statusText = ''; void refreshSessionInfo(); },
 				(err) => { messages[streamIdx] = { role: 'system', content: `Error: ${err}` }; messages = messages; },
 				(status) => {
 					if (status.status === 'thinking') statusText = '🧠 Thinking...';
@@ -146,6 +166,7 @@
 		messages = [...messages, { role: 'user', content: text }];
 		inputText = '';
 		loading = true;
+        stopped = false;
 		lastStats = null;
 
 		await tick();
@@ -171,6 +192,7 @@
 				},
 				(stats) => {
 					lastStats = stats;
+                    void refreshSessionInfo();
 					statusText = '';
 				},
 				(err) => {
@@ -216,7 +238,7 @@
 	});
 
 	function handleKeydown(e) {
-		if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) {
+		if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
 			e.preventDefault();
 			handleSend();
 		}
@@ -244,11 +266,10 @@
 	}
 </script>
 
-<div class="flex flex-col lg:flex-row h-full gap-0">
+<div class="flex flex-col h-full min-h-0 gap-0">
 <!-- Terminal panel -->
 <div
-	class="flex flex-col font-mono text-sm rounded-lg border overflow-hidden transition-all duration-200
-	       {canvasData ? 'lg:w-[55%] h-[60%] lg:h-full' : 'w-full h-full'}"
+	class="flex flex-col font-sans text-sm rounded-lg border overflow-hidden w-full h-full min-h-0"
 	class:bg-gray-900={darkMode}
 	class:text-green-400={darkMode}
 	class:border-gray-700={darkMode}
@@ -264,7 +285,7 @@
 		class:border-gray-300={!darkMode}
 		class:bg-gray-100={!darkMode}
 	>
-		<span class="opacity-60">AAC Agent — Session {sessionId.slice(0, 8)}...</span>
+		<span class="opacity-60 truncate" title={sessionTitle}>{sessionTitle}</span>
 		<div class="flex gap-2 items-center">
 			{#if lastStats}
 				<button
@@ -316,7 +337,7 @@
 					<hr class="border-t-2" class:border-blue-400={darkMode} class:border-blue-300={!darkMode}>
 					<div class="flex gap-2 py-2.5 px-2 rounded" class:bg-gray-800={darkMode} class:bg-blue-50={!darkMode}>
 						<span class="shrink-0 font-bold" class:text-cyan-400={darkMode} class:text-blue-600={!darkMode}>$</span>
-						<span class="font-semibold" class:text-gray-100={darkMode} class:text-gray-800={!darkMode}>{msg.content}</span>
+						<span style="white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0" class="font-semibold" class:text-gray-100={darkMode} class:text-gray-800={!darkMode}>{msg.content}</span>
 					</div>
 					<hr class="border-t-2" class:border-blue-400={darkMode} class:border-blue-300={!darkMode}>
 				</div>
@@ -331,6 +352,10 @@
 			{/if}
 		{/each}
 
+        {#if canvasData}
+        <button class="canvas-preview" onclick={expandCanvas}><strong>{canvasData.title || 'Canvas'}</strong><span>Expand canvas</span></button>
+        {/if}
+        {#if stopped}<p role="status" class="text-sm">Response stopped. Completed actions are kept.</p>{/if}
 		{#if loading && statusText}
 			<div class="pl-2 opacity-60 text-xs" class:text-yellow-400={darkMode} class:text-gray-500={!darkMode}>
 				{statusText}
@@ -357,10 +382,13 @@
             disabled={loading}
             rows="3"
             aria-label="Message AAC"
-            title="Enter for a new line; Ctrl+Enter or ⌘+Enter to send"
+            title="Enter to send; Shift+Enter for a new line"
             placeholder={loading ? 'Waiting for agent...' : 'Type a message...'}
             class="flex-1 min-w-0 resize-y min-h-[76px] max-h-[240px] bg-transparent outline-none placeholder:opacity-40"
         ></textarea>
+        {#if loading}
+        <button onclick={stopResponse} class="px-3 py-2 rounded border border-red-300 text-red-700" aria-label="Stop response">Stop</button>
+        {:else}
 		<button
 			onclick={handleSend}
 			disabled={loading || !inputText.trim()}
@@ -372,29 +400,34 @@
 		>
 			Send
 		</button>
+        {/if}
 	</div>
 </div>
-<!-- Canvas panel (side panel for structured content) -->
 {#if canvasData}
-	<div class="lg:w-[45%] w-full h-[40%] lg:h-full flex flex-col border rounded-lg overflow-hidden lg:ml-2 mt-2 lg:mt-0
-	            {darkMode ? 'bg-gray-800 border-gray-700 text-gray-200' : 'bg-white border-gray-300 text-gray-800'}">
-		<div class="flex items-center justify-between px-4 py-2 border-b
-		            {darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'}">
-			<h3 class="text-sm font-semibold truncate">{canvasData.title || 'Canvas'}</h3>
-			<button
-				onclick={() => dismissedCanvas = latestCanvas?.key}
-				class="text-xs opacity-50 hover:opacity-100 transition-opacity"
-				title="Close canvas"
-			>✕</button>
-		</div>
-		<div class="flex-1 overflow-y-auto px-4 py-3 aac-md font-sans text-sm leading-relaxed">
-			{@html renderMarkdown(canvasData.content)}
-		</div>
-	</div>
+<dialog bind:this={canvasDialog} class="canvas-dialog" aria-label={canvasData.title || 'Canvas'}>
+    <div class="canvas-heading">
+        <h2>{canvasData.title || 'Canvas'}</h2>
+        {#if loading}<button onclick={stopResponse}>Stop response</button>{/if}
+        <button onclick={() => canvasDialog.close()} data-canvas-back>Back to conversation</button>
+    </div>
+    <p class="canvas-caption">Agent canvas</p>
+    <div class="canvas-body aac-md">{@html renderMarkdown(canvasData.content)}</div>
+</dialog>
 {/if}
 </div>
 
 <style>
+    .canvas-preview { display: flex; justify-content: space-between; gap: 12px; width: 100%; padding: 14px; border: 1px solid #b3cce5; border-radius: 10px; background: #edf5fd; color: #173f64; text-align: left; }
+    .canvas-preview span { flex-shrink: 0; }
+    .canvas-dialog { position: fixed; inset: 0; margin: auto; width: min(960px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid #bcccdc; border-radius: 12px; background: white; color: #172b40; }
+    .canvas-dialog::backdrop { background: #0c213b88; }
+    .canvas-heading { display: flex; align-items: center; gap: 16px; padding: 16px; border-bottom: 1px solid #d6e0ea; position: sticky; top: 0; background: white; }
+    .canvas-heading h2 { flex: 1; font-weight: 600; overflow-wrap: anywhere; }
+    .canvas-heading button { border: 1px solid #94aec7; padding: 8px; border-radius: 6px; }
+    .canvas-caption { padding: 8px 20px 0; font-size: 12px; color: #62758a; }
+    .canvas-body { overflow: auto; padding: 20px; }
+    @media (max-width: 919px) { .canvas-dialog { width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; } }
+
 	/* Markdown rendering inside the terminal */
 	:global(.aac-md table) {
 		border-collapse: collapse;
