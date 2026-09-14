@@ -32,4 +32,18 @@ describe('persistent AAC sidebar', () => {
         await fireEvent.click(await screen.findByRole('button', { name: 'My saved conversation' }));
         expect(get(activeTabId)).toBe('saved');
     });
+    it('keeps multiline drafts on Enter and sends on Ctrl+Enter', async () => {
+        showSession('draft-session');render(Sidebar);
+        const input = screen.getByRole('textbox', {name: 'Message AAC'});
+        expect(input.tagName).toBe('TEXTAREA');
+        await fireEvent.input(input, {target: {value: 'First line\nSecond line'}});
+        await fireEvent.keyDown(input, {key: 'Enter'});
+        expect(sendMessageStream).not.toHaveBeenCalled();
+        expect(input.value).toBe('First line\nSecond line');
+        await fireEvent.keyDown(input, {key: 'Enter', ctrlKey: true});
+        await waitFor(() => expect(sendMessageStream).toHaveBeenCalledOnce());
+        expect(sendMessageStream.mock.calls[0][1]).toBe('First line\nSecond line');
+        expect(screen.queryByTitle('Attach source file')).toBeNull();
+    });
+
 });

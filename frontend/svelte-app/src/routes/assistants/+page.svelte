@@ -1050,26 +1050,7 @@
             </button>
         {/each}
 
-        <!-- AAC skill launch buttons (separator + buttons) -->
-        {#if isOwner}
-            <span class="border-l border-gray-300 mx-2 h-6 self-center"></span>
-            <button
-                onclick={() => launchAacSkill('explain-assistant')}
-                disabled={aacLaunching}
-                class="py-1.5 px-3 text-xs font-medium rounded-md bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 disabled:opacity-50 disabled:cursor-wait"
-                title="Let the AI agent explain how this assistant works"
-            >
-                {aacLaunching ? '⏳' : '🔍'} Agent Explain
-            </button>
-            <button
-                onclick={() => launchAacSkill('improve-assistant')}
-                disabled={aacLaunching}
-                class="py-1.5 px-3 text-xs font-medium rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 disabled:opacity-50 disabled:cursor-wait"
-                title="Let the AI agent suggest improvements"
-            >
-                {aacLaunching ? '⏳' : '✨'} Agent Improve
-            </button>
-        {/if}
+
     </div>
 
     <!-- Wrapper for Detail Content -->

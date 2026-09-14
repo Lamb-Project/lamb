@@ -2,7 +2,7 @@
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { sidebarBusy, startupSessions } from '$lib/stores/aacStore.svelte';
 	import { splitCanvasContent, canvasFromMessages } from '$lib/utils/aacCanvas.js';
-	import { sendMessageStream, getSession, sendMessage, attachFile } from '$lib/services/aacService';
+	import { sendMessageStream, getSession, sendMessage } from '$lib/services/aacService';
 	import { renderMarkdownWithMath } from '$lib/utils/renderMarkdown.js';
 
 	// Abort any in-flight stream when the component unmounts so the fetch
@@ -33,7 +33,7 @@
 	/** @type {HTMLElement|null} */
 	let scrollContainer = null;
 
-	/** @type {HTMLInputElement|null} */
+	/** @type {HTMLTextAreaElement|null} */
 	let inputEl = null;
 
 	/** @type {Object|null} */
@@ -138,7 +138,7 @@
 
 	async function handleSend() {
 		const text = inputText.trim();
-		if (!text || loading || attaching) return;
+		if (!text || loading) return;
 
 		// Send the user's exact reply so resumed approvals and cancellations
 		// reach the server's confirmation classifier without a hidden prefix.
@@ -209,23 +209,6 @@
 		inputEl?.focus();
 	}
 
-    let attachmentInput;
-    let attaching = $state(false);
-    async function handleAttachment(event) {
-        const file = event.target.files?.[0];
-        if (!file) return;
-        attaching = true;
-        try {
-            const uploaded = await attachFile(file);
-            if (isMounted) inputText = `${inputText}${inputText ? '\n' : ''}Attached file: ${uploaded.name} (reference: ${uploaded.path}). `;
-        } catch (e) {
-            if (isMounted) messages = [...messages, {role:'system', content:`File upload failed: ${e.message}`}];
-        } finally {
-            if (isMounted) attaching = false;
-            event.target.value = '';
-        }
-    }
-
 	onDestroy(() => {
 		isMounted = false;
 		streamAbort?.abort();
@@ -233,7 +216,7 @@
 	});
 
 	function handleKeydown(e) {
-		if (e.key === 'Enter' && !e.shiftKey) {
+		if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) {
 			e.preventDefault();
 			handleSend();
 		}
@@ -367,20 +350,20 @@
 		class:border-gray-300={!darkMode}
 		class:bg-gray-100={!darkMode}
 	>
-		<span class="opacity-60" class:text-cyan-400={darkMode} class:text-blue-600={!darkMode}>$</span>
-        <input type="file" accept=".txt,.md,.json,.pdf" bind:this={attachmentInput} onchange={handleAttachment} class="hidden" aria-label="Attach source file" />
-        <button onclick={() => attachmentInput?.click()} disabled={loading || attaching} title="Attach source file">{attaching ? 'Uploading...' : 'Attach'}</button>
-		<input
-			bind:this={inputEl}
-			bind:value={inputText}
-			onkeydown={handleKeydown}
-			disabled={loading}
-			placeholder={loading ? 'Waiting for agent...' : 'Type a message...'}
-			class="flex-1 bg-transparent outline-none placeholder:opacity-40"
-		/>
+        <textarea
+            bind:this={inputEl}
+            bind:value={inputText}
+            onkeydown={handleKeydown}
+            disabled={loading}
+            rows="3"
+            aria-label="Message AAC"
+            title="Enter for a new line; Ctrl+Enter or ⌘+Enter to send"
+            placeholder={loading ? 'Waiting for agent...' : 'Type a message...'}
+            class="flex-1 min-w-0 resize-y min-h-[76px] max-h-[240px] bg-transparent outline-none placeholder:opacity-40"
+        ></textarea>
 		<button
 			onclick={handleSend}
-			disabled={loading || attaching || !inputText.trim()}
+			disabled={loading || !inputText.trim()}
 			class="px-2 py-0.5 rounded text-xs transition-opacity"
 			class:opacity-60={loading || !inputText.trim()}
 			class:hover:opacity-100={!loading && inputText.trim()}
