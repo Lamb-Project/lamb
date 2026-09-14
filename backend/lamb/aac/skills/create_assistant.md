@@ -59,7 +59,7 @@ An empty template is valid for no_rag but does not inject RAG context. For a cus
 Do NOT run debug/bypass after creation just to "verify" — for non-RAG assistants it returns
 the raw prompt assembly which is expected and not useful to show the user. Just offer a real test.
 
-Default model: use `lamb assistant config` to pick the org default.
+Model discovery: run `lamb assistant config`. `global_default_model` is the configured org default; `global_default_available` says whether discovery lists it. `capabilities.connectors` lists models currently reported available. `defaults.connector` and `defaults.llm` are the reconciled new-assistant form choice. `form_defaults` are raw saved form values and may be stale: never call them the global default. If discovery is empty or fails, report that models could not be verified; do not invent availability or infer licensing. Answer model questions directly from this tool, not guessed documentation topics. Listing models is read-only and needs no confirmation.
 If RAG is enabled, ALWAYS include --rag-processor and --rag-collections in the create command.
 ALWAYS include --connector (from the organization configuration) and --prompt-processor simple_augment.
 
@@ -75,7 +75,7 @@ For user-operated configuration or single-file selection, read `lamb docs read u
 
 ## Validated creation recipes
 
-First run `lamb assistant config`. Use the organization's configured PROVIDER and MODEL, not a guessed model name. Replace uppercase placeholders with user-approved content and verified returned IDs. Select ONE mode. These examples use simple_augment; do not mix file, KB and rubric bindings.
+First run `lamb assistant config`. Use the returned reconciled `defaults.connector` and `defaults.llm` for PROVIDER and MODEL, unless the user selects another listed model. Never use raw `form_defaults` as the organization default. Replace uppercase placeholders with user-approved content and verified returned IDs. Select ONE mode. These examples use simple_augment; do not mix file, KB and rubric bindings.
 
 ```aac-command
 lamb assistant create NAME --description "Approved purpose" --system-prompt "Approved assistant instructions" --connector PROVIDER --llm MODEL --prompt-processor simple_augment --rag-processor no_rag --prompt-template "{user_input}"

@@ -128,7 +128,14 @@ async def assistant_get(ctx: "CommandContext", args: list[str], kwargs: dict) ->
 @register("assistant.config")
 async def assistant_config(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Show available connectors, models, and processors."""
-    return _unwrap(await ctx.http.get("/creator/assistant/defaults"))
+    capabilities = _unwrap(await ctx.http.get("/creator/assistant/capabilities"))
+    raw = _unwrap(await ctx.http.get("/creator/assistant/defaults"))
+    form_defaults = raw.get("config", raw)
+    return {"capabilities": capabilities,
+            "defaults": {**form_defaults, **capabilities.get("model_defaults", {"connector": "", "llm": ""})},
+            "form_defaults": form_defaults,
+            "global_default_model": capabilities.get("global_default_model", {}),
+            "global_default_available": capabilities.get("global_default_available", False)}
 
 
 @register("assistant.debug")

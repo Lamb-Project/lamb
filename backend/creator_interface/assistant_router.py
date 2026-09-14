@@ -320,7 +320,12 @@ def sanitize_filename(filename: str) -> str:
 async def get_assistant_capabilities(auth: AuthContext = Depends(get_auth_context)):
     """Use the same authenticated Creator instance for discovery and writes."""
     from lamb.completions.main import list_processors_and_connectors
-    return await list_processors_and_connectors(auth=auth)
+    from lamb.assistant_model_config import model_configuration
+    from lamb.completions.org_config_resolver import OrganizationConfigResolver
+    capabilities = await list_processors_and_connectors(auth=auth)
+    configured = OrganizationConfigResolver(auth.user['email']).get_global_default_model_config()
+    defaults = (auth.organization.get('config') or {}).get('assistant_defaults') or {}
+    return {**capabilities, **model_configuration(capabilities, defaults, configured)}
 
 
 REQUIRED_PLUGIN_METADATA_KEYS = (

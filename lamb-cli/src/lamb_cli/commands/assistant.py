@@ -62,7 +62,7 @@ def _parse_metadata(data: dict) -> dict:
 def _fetch_capabilities(client) -> dict:
     """Fetch system capabilities (connectors, models, processors)."""
     try:
-        return client.get("/lamb/v1/completions/list")
+        return client.get("/creator/assistant/capabilities")
     except AuthenticationError:
         raise
     except Exception:
@@ -129,7 +129,7 @@ def _interactive_wizard(client) -> dict:
     Returns a dict with: connector, llm, prompt_processor, rag_processor, vision, image_generation.
     """
     capabilities = _fetch_capabilities(client)
-    defaults = _fetch_defaults(client)
+    defaults = {**_fetch_defaults(client), **capabilities.get("model_defaults", {})}
 
     # Extract available options
     connectors_data = capabilities.get("connectors", {})
@@ -480,12 +480,16 @@ def show_config(
     fmt = output or get_output_format()
     with get_client() as client:
         capabilities = _fetch_capabilities(client)
-        defaults = _fetch_defaults(client)
+        form_defaults = _fetch_defaults(client)
+        defaults = {**form_defaults, **capabilities.get("model_defaults", {"connector": "", "llm": ""})}
+        configuration = {"capabilities": capabilities, "defaults": defaults, "form_defaults": form_defaults,
+                         "global_default_model": capabilities.get("global_default_model", {}),
+                         "global_default_available": capabilities.get("global_default_available", False)}
 
     if fmt == "json":
         from lamb_cli.output import print_json
 
-        print_json({"capabilities": capabilities, "defaults": defaults})
+        print_json(configuration)
         return
 
     stderr_console.print("\n[bold]Connectors & Models[/bold]")
@@ -503,7 +507,11 @@ def show_config(
         stderr_console.print(f"  {rp}")
 
     if defaults:
-        stderr_console.print("\n[bold]Organization Defaults[/bold]")
+        global_default = configuration["global_default_model"]
+        stderr_console.print(f"\n[bold]Configured organization default[/bold]: {global_default.get('provider', '')}/{global_default.get('model', '')}")
+        if not configuration['global_default_available']:
+            stderr_console.print("Not reported available by current discovery; this does not establish provider reachability.")
+        stderr_console.print("\n[bold]New-assistant form defaults[/bold]")
         for key in ("connector", "llm", "prompt_processor", "rag_processor"):
             val = defaults.get(key, "")
             if val:
