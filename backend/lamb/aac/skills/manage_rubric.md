@@ -29,3 +29,10 @@ lamb rubric get RUBRIC_ID
 Keep the returned RUBRIC_ID and compare title, metadata, criterion/level IDs, scores and weights. A validation failure creates no successful rubric; correct the reported missing/invalid fields before asking for a new write. For UI instructions load `lamb docs read ui-rubrics` and guide the user's actual form actions instead of creating a second rubric behind the UI.
 
 For W13 activate create-assistant with the saved rubric ID and its rubric_rag recipe. Read back the binding, then use test-and-evaluate with strong, weak and partial submissions. After an approved rubric edit, inspect actual debug context and run the same submission again to establish whether the new rubric is being used. Report observed behavior, not an assumed live/snapshot contract.
+
+
+## Guided workspace handover
+
+After a rubric create/edit and readback, or a request to view it, run `frontend-manage open rubric RUBRIC_ID`. Use the exact returned UUID. This opens the actual rubric editor without changing it. After binding a rubric to an assistant, read back the assistant and open `frontend-manage open assistant ASSISTANT_ID --tab properties`.
+
+Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.

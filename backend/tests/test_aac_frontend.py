@@ -26,6 +26,32 @@ class FrontendTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse((await s.execute('frontend-manage open assistant 80')).success)
         s.frontend.assert_not_awaited()
 
+    async def test_guided_destinations_and_permission_failures(self):
+        rubric = '12345678-1234-4234-8234-123456789012'
+        cases = [
+            ('assistants', {'resource': 'assistants', 'id': '', 'tab': ''}, None),
+            ('assistant-create', {'resource': 'assistant-create', 'id': '', 'tab': ''}, None),
+            ('assistant 80 --tab activity', {'resource': 'assistant', 'id': '80', 'tab': 'activity'}, '/creator/assistant/get_assistant/80'),
+            ('assistant 80 --tab edit', {'resource': 'assistant', 'id': '80', 'tab': 'edit'}, '/creator/assistant/get_assistant/80'),
+            (f'rubric {rubric}', {'resource': 'rubric', 'id': rubric, 'tab': 'view'}, f'/creator/rubrics/{rubric}'),
+        ]
+        for command, target, path in cases:
+            with self.subTest(command=command):
+                s,h=Authoring().shell()
+                s.frontend=AsyncMock(return_value={'status':'opened', **target})
+                self.assertTrue((await s.execute('frontend-manage open '+command)).success)
+                s.frontend.assert_awaited_once_with({'operation':'open', **target})
+                if path:
+                    h.get.assert_awaited_once_with(path)
+                    h.get.side_effect=ValueError('403');s.frontend.reset_mock()
+                    self.assertFalse((await s.execute('frontend-manage open '+command)).success)
+                    s.frontend.assert_not_awaited()
+                else:
+                    h.get.assert_not_awaited()
+        for target in ('assistants 1', 'assistant-create --tab tests', 'rubric ../file', 'rubric 1', f'rubric {rubric} --tab delete', 'assistant 1 --tab publish'):
+            with self.subTest(target=target), self.assertRaises(ValueError):
+                prepare_command('frontend-manage open '+target)
+
     async def test_shared_mailbox_isolation_expiry_and_single_ack(self):
         with tempfile.TemporaryDirectory() as directory:
             db=SimpleNamespace(table_prefix='',get_connection=lambda:sqlite3.connect(directory+'/test.db'))

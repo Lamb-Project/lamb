@@ -867,11 +867,12 @@ async def frontend_current(ctx, args, kwargs):
 
 @register("frontend-manage.open")
 async def frontend_open(ctx, args, kwargs):
-    """Open assistant ID --tab properties|tests|chat or kb ID --tab files|ingest|query. Waits for browser acknowledgement."""
+    """Open assistants, assistant-create, assistant ID --tab properties|tests|chat|activity|edit, kb ID --tab files|ingest|query, or rubric UUID. Waits for the browser."""
     from lamb.aac.frontend import destination
     target = destination(args, kwargs)
     if ctx.frontend is None:
         raise ValueError('No connected frontend for this turn. Guide the user; do not claim navigation.')
-    path = f"/creator/assistant/get_assistant/{target['id']}" if target['resource'] == 'assistant' else f"/creator/knowledgebases/kb/{target['id']}"
-    await ctx.http.get(path)  # normal caller resource permissions, before emitting an action
+    paths = {'assistant': '/creator/assistant/get_assistant/', 'kb': '/creator/knowledgebases/kb/', 'rubric': '/creator/rubrics/'}
+    if target['resource'] in paths:
+        await ctx.http.get(paths[target['resource']] + target['id'])  # normal caller resource permissions, before emitting an action
     return await ctx.frontend({'operation': 'open', **target})

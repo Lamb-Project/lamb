@@ -38,3 +38,10 @@ When an unsupported command is rejected, report that it was rejected before exec
 ## Show the user the workspace
 
 After creating the KB, use `frontend-manage open kb KB_ID --tab ingest` before explaining the user-operated upload. Later use files or query to show the result. This requires a connected frontend. Claim navigation only after an opened result. A blocked/unavailable result means guide the user instead; do not retry automatically.
+
+
+## Guided workspace handover
+
+After creating and reading back a KB, run `frontend-manage open kb KB_ID --tab files`. If the next requested action is file ingestion, open `frontend-manage open kb KB_ID --tab ingest` instead and use the illustrated tutorial for the user-operated file selection and ingestion. For user-operated querying open `frontend-manage open kb KB_ID --tab query`. Opening Query does not execute a query.
+
+Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.

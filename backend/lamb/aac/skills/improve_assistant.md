@@ -84,3 +84,10 @@ Deletion is separate from improvement. Only for an explicit deletion request, id
 lamb assistant delete ASSISTANT_ID
 ```
 Do not recreate or delete an assistant as a workaround for an edit failure.
+
+
+## Guided workspace handover
+
+After an approved edit and saved-state readback, run `frontend-manage open assistant ASSISTANT_ID --tab properties`. If the user wants to edit manually, run `frontend-manage open assistant ASSISTANT_ID --tab edit`; opening the form does not edit or save anything.
+
+Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.

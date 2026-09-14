@@ -382,6 +382,7 @@
 	{:else if !form.configInitialized}
 		<p class="text-center text-gray-600 py-10">{$_('assistants.initializingForm', { default: 'Initializing form...' })}</p>
 	{:else}
+		<span hidden data-aac-resource={assistant?.id ? "assistant" : "assistant-create"} data-aac-id={assistant?.id || ""} data-aac-tab={assistant?.id ? "edit" : ""}></span>
 		<!-- Form starts here -->
 		<form
 			onsubmit={handleSubmit}

@@ -19,3 +19,10 @@ lamb analytics chat-detail ASSISTANT_ID CHAT_ID
 Read returned chat IDs before requesting details. Optional filters supported by stats/timeline: --start-date and --end-date. Chats additionally support --user-id, --search, --page and --per-page. Use the same date bounds for comparable counts. Timeline period is day, week or month. Page through chats when a complete list is requested, stopping at an empty/short page; never report one page length as the total. Prefer returned statistics for totals and explain differences in scope.
 
 Report actual counts, time range, saved messages and what those establish. Empty activity is not a failed assistant. A direct AAC completion or debug/bypass call need not produce student analytics; persisted student chats or --persist chats are distinct. State missing activity or inaccessible records accurately. Do not circumvent forbidden/foreign access by trying alternative users or identifiers. For real conversation activate chat-with-assistant; for test results activate test-and-evaluate, since test runs are not student chats.
+
+
+## Guided workspace handover
+
+After inspecting activity, run `frontend-manage open assistant ASSISTANT_ID --tab activity`. Explain actual returned counts and date ranges; this navigation opens the Activity view with its default filters, not necessarily the filters used in your commands.
+
+Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.

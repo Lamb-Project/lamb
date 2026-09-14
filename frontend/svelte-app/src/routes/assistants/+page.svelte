@@ -384,7 +384,7 @@
             const idParam = currentPage.url.searchParams.get('id');
             const requestedAacTab = currentPage.url.searchParams.get("aacTab");
             const aacRequest = currentPage.url.searchParams.get("aacRequest") || "";
-            if (["properties", "tests", "chat"].includes(requestedAacTab)) detailSubView = requestedAacTab;
+            if (["properties", "tests", "chat", "activity", "edit"].includes(requestedAacTab)) detailSubView = requestedAacTab === "activity" ? "analytics" : requestedAacTab;
             const startInEditParam = currentPage.url.searchParams.get('startInEdit');
             console.log(`[+page.svelte] URL Params: view=${viewParam}, id=${idParam}, startInEdit=${startInEditParam}`);
             
@@ -416,7 +416,7 @@
                     // Set the view to detail if not already there
                     if (currentView !== 'detail') {
                         currentView = 'detail';
-                        detailSubView = ['properties', 'tests', 'chat'].includes(requestedAacTab) ? requestedAacTab : 'properties'; // URL-selected workspace tab
+                        detailSubView = ['properties', 'tests', 'chat', 'activity', 'edit'].includes(requestedAacTab) ? (requestedAacTab === 'activity' ? 'analytics' : requestedAacTab) : 'properties'; // URL-selected workspace tab
                     }
                     
                     // Fetch only if the ID is different from the currently loaded one
@@ -888,7 +888,7 @@
     });
 
 </script>
-{#if selectedAssistantData && !loadingDetail && !detailError && currentView === 'detail' && detailSubView !== 'tests'}
+{#if selectedAssistantData && !loadingDetail && !detailError && currentView === 'detail' && !['tests', 'analytics', 'edit', 'chat'].includes(detailSubView)}
 <span hidden data-aac-resource="assistant" data-aac-id={selectedAssistantData.id} data-aac-tab={detailSubView}></span>
 {/if}
 
@@ -972,10 +972,12 @@
 {#if currentView === 'list'}
     <div class="mt-6">
         <div class="bg-white shadow rounded-lg p-4 border border-gray-200">
+            {#key $page.url.searchParams.get('aacRequest')}
             <AssistantsList
                on:delete={handleDeleteRequest}
                on:export={handleExportRequest}
             />
+            {/key}
         </div>
     </div>
 {:else if currentView === 'create'}
@@ -1536,6 +1538,7 @@
                         {currentLocale ? $_('assistants.detail.chatTitle', { default: 'Chat' }) : 'Chat'}
                      </h2>
                 </div>
+                <span hidden data-aac-resource="assistant" data-aac-id={selectedAssistantData.id} data-aac-tab="chat"></span>
                 <ChatInterface 
                     apiUrl={lambServerUrl} 
                     userToken={userToken} 
@@ -1549,7 +1552,9 @@
         {:else if detailSubView === 'analytics'}
             <!-- Analytics Tab Content -->
             <div class="px-6 py-4">
+                {#key selectedAssistantData.id + ':' + $page.url.searchParams.get('aacRequest')}
                 <ChatAnalytics assistant={selectedAssistantData} />
+                {/key}
             </div>
         {:else if detailSubView === 'tests'}
             <!-- Tests Tab -->

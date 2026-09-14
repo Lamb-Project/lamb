@@ -5,17 +5,32 @@ import time
 import uuid
 from lamb.database_manager import LambDatabaseManager
 
-TABS = {'assistant': ('properties', 'tests', 'chat'), 'kb': ('files', 'ingest', 'query')}
+TABS = {'assistant': ('properties', 'tests', 'chat', 'activity', 'edit'), 'kb': ('files', 'ingest', 'query'), 'rubric': ('view',)}
+PAGES = {'assistants', 'assistant-create'}
 
 
 def destination(args, kwargs):
+    if len(args) == 1 and args[0] in PAGES:
+        if 'tab' in kwargs:
+            raise ValueError('List and creation destinations do not accept --tab')
+        return {'resource': args[0], 'id': '', 'tab': ''}
+    if len(args) != 2 or args[0] not in TABS:
+        raise ValueError('Use frontend-manage open assistants|assistant-create, or assistant|kb|rubric ID [--tab TAB]')
     kind, resource_id = args
-    if kind not in TABS or not resource_id.isdecimal() or int(resource_id) < 1:
-        raise ValueError('Use frontend-manage open assistant|kb POSITIVE_ID [--tab TAB]')
+    if kind == 'rubric':
+        try:
+            resource_id = str(uuid.UUID(resource_id))
+        except ValueError:
+            raise ValueError('Rubric ID must be a UUID') from None
+    elif not resource_id.isascii() or not resource_id.isdecimal() or int(resource_id) < 1:
+        raise ValueError('Assistant and KB IDs must be positive integers')
+    else:
+        resource_id = str(int(resource_id))
     tab = kwargs.get('tab', TABS[kind][0])
     if tab not in TABS[kind]:
         raise ValueError(f'Unsupported {kind} tab. Available: {", ".join(TABS[kind])}')
-    return {'resource': kind, 'id': str(int(resource_id)), 'tab': tab}
+    return {'resource': kind, 'id': resource_id, 'tab': tab}
+
 
 
 class Mailbox:

@@ -29,6 +29,8 @@
 
 <div class="min-h-screen bg-gray-50">
   <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    {#key rubricId + ':' + $page.url.searchParams.get('aacRequest')}
     <RubricEditor {rubricId} />
+    {/key}
   </div>
 </div>

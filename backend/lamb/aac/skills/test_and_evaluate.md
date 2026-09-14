@@ -113,3 +113,10 @@ SCENARIO_ID and RUN_ID must come from actual responses. Check saved expected_beh
 ## Show the user the workspace
 
 After creating or running tests, use `frontend-manage open assistant ASSISTANT_ID --tab tests` to show the results. This requires a connected frontend. Claim navigation only after an opened result. A blocked/unavailable result means guide the user instead; do not retry automatically.
+
+
+## Guided workspace handover
+
+After creating scenarios, executing tests or saving evaluations, run `frontend-manage open assistant ASSISTANT_ID --tab tests` and identify the actual saved scenarios/results. The view refreshes on each navigation. Do not claim a failed test or pending evaluation passed. Opening Tests alone never executes or evaluates tests.
+
+Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.

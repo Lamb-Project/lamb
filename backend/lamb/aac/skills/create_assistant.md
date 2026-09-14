@@ -90,3 +90,10 @@ Create requires confirmation. Keep the returned assistant ID. Read back `lamb as
 ## Show the user the workspace
 
 After successful creation and readback, use `frontend-manage open assistant ASSISTANT_ID --tab properties` to show the result. This requires a connected frontend. Claim navigation only after an opened result. A blocked/unavailable result means guide the user instead; do not retry automatically.
+
+
+## Guided workspace handover
+
+If the user asks to open the creation form, run `frontend-manage open assistant-create` immediately, then explain fields only as needed. Do not start the creation interview or issue a create command for a navigation-only request. For the assistant list run `frontend-manage open assistants`. After an approved creation, read back the saved assistant and run `frontend-manage open assistant ASSISTANT_ID --tab properties`.
+
+Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.

@@ -22,7 +22,7 @@ logger = get_logger(__name__, component="AAC")
 # Explicit supported shell surface. Unsupported CLI options fail instead of being ignored.
 # key: (minimum positional arguments, maximum, accepted option names)
 COMMAND_CONTRACTS = {
-    "frontend-manage.current": (0, 0, ""), "frontend-manage.open": (2, 2, "tab"),
+    "frontend-manage.current": (0, 0, ""), "frontend-manage.open": (1, 2, "tab"),
     "kb.jobs": (1, 1, ""), "kb.status": (1, 1, ""),
     "kb.create": (1, 1, "description d"),
     "kb.upload": (2, 2, "plugin"),

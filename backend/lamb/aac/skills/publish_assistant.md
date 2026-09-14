@@ -22,3 +22,10 @@ lamb assistant get ASSISTANT_ID
 ```
 
 Offer “Publish this assistant in LAMB” for execution, and “Guide me through adding it to my LMS” for instructions. Do not say publishing is UI-only. Provide the illustrated UI alternative if the user prefers doing it manually.
+
+
+## Guided workspace handover
+
+After an approved publish/unpublish and verified saved status, run `frontend-manage open assistant ASSISTANT_ID --tab properties`. Explain its published state and available integration details. Opening this view does not configure an external LMS.
+
+Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.

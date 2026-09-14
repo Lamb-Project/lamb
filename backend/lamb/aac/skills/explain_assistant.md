@@ -54,3 +54,10 @@ Summarize saved name, description, prompts, connector/model preference, RAG proc
 lamb assistant debug ASSISTANT_ID --message "A representative question"
 ```
 Debug shows assembled input, not an assistant answer or a quality evaluation. On missing/forbidden resources stop and ask the user to select an accessible assistant. For an edit, activate improve-assistant; for actual conversation, chat-with-assistant.
+
+
+## Guided workspace handover
+
+After inspecting the selected assistant, run `frontend-manage open assistant ASSISTANT_ID --tab properties` and explain the saved properties beside that view.
+
+Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.

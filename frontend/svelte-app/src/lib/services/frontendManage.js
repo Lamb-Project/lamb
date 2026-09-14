@@ -2,11 +2,14 @@
 import { goto } from '$app/navigation';
 import { base } from '$app/paths';
 import { apiJson } from '$lib/services/apiClient';
-export const tabs = { assistant: ['properties', 'tests', 'chat'], kb: ['files', 'ingest', 'query'] };
+export const tabs = { assistant: ['properties', 'tests', 'chat', 'activity', 'edit'], kb: ['files', 'ingest', 'query'], rubric: ['view'] };
 let dirty = false;
 export function markWorkspaceDirty() { dirty = true; }
 export function clearWorkspaceDirty() { dirty = false; }
 export function destinationUrl(target) {
+    if (['assistants', 'assistant-create'].includes(target.resource) && target.id === '' && target.tab === '') return `${base}/assistants?view=${target.resource === 'assistants' ? 'list' : 'create'}`;
+    if (target.resource === 'rubric' && target.tab === 'view' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(target.id)) return `${base}/evaluaitor/${target.id}?aacTab=view`;
+    if (target.resource === 'rubric') throw new Error('Unsupported rubric destination');
     if (!tabs[target.resource]?.includes(target.tab) || !/^[1-9]\d*$/.test(String(target.id))) throw new Error('Unsupported frontend destination');
     const route = target.resource === 'assistant' ? 'assistants' : 'knowledgebases';
     return `${base}/${route}?view=detail&id=${target.id}&aacTab=${target.tab}`;
