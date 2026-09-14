@@ -31,7 +31,9 @@ class FrontendTests(unittest.IsolatedAsyncioTestCase):
             db=SimpleNamespace(table_prefix='',get_connection=lambda:sqlite3.connect(directory+'/test.db'))
             box=Mailbox(db);other=Mailbox(db)
             a=box.create('s','owner','channel',{'operation':'open','id':'80'})
-            self.assertEqual(other.pending('s','owner','channel')[0], {'action_id':a,'operation':'open','id':'80'})
+            pending=other.pending('s','owner','channel')[0]
+            self.assertEqual({k:v for k,v in pending.items() if k!='expires'}, {'action_id':a,'operation':'open','id':'80'})
+            self.assertGreater(pending['expires'],0)
             self.assertEqual(other.pending('s','foreign','channel'),[])
             for session,owner,channel in [('wrong','owner','channel'),('s','foreign','channel'),('s','owner','wrong')]:
                 self.assertFalse(other.acknowledge(a,session,owner,channel,{'status':'current'}))

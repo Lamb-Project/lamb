@@ -37,9 +37,9 @@ class Mailbox:
 
     def pending(self, session, owner, channel):
         with self.db.get_connection() as c:
-            rows = c.execute(f'SELECT id,payload FROM {self.table} WHERE session=? AND owner=? AND channel=? AND expires>? AND result IS NULL',
+            rows = c.execute(f'SELECT id,payload,expires FROM {self.table} WHERE session=? AND owner=? AND channel=? AND expires>? AND result IS NULL',
                              (session, owner, channel, time.time())).fetchall()
-        return [{'action_id': r[0], **json.loads(r[1])} for r in rows]
+        return [{'action_id': r[0], 'expires': r[2], **json.loads(r[1])} for r in rows]
 
     def acknowledge(self, action, session, owner, channel, result):
         with self.db.get_connection() as c:

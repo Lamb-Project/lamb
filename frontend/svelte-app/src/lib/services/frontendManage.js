@@ -16,10 +16,11 @@ export function workspaceContext() {
     return { route: window.location.pathname, ...(el ? { resource: el.dataset.aacResource, id: el.dataset.aacId, tab: el.dataset.aacTab } : {}) };
 }
 export async function applyFrontendAction(action, signal) {
+    if (action.expires && action.expires * 1000 <= Date.now()) return { status: 'failed', reason: 'Frontend action expired' };
     if (signal?.aborted) return { status: 'failed', reason: 'Turn ended' };
     if (action.operation === 'current') return { status: 'current', ...workspaceContext() };
     if (action.operation !== 'open') return { status: 'failed', reason: 'Unsupported frontend operation' };
-    if (dirty) return { status: 'blocked', reason: 'The workspace has unsaved input. Finish saving or navigate manually before asking again.' };
+    if (dirty) return { status: 'blocked', reason: 'The workspace has input changes. Finish your edits and navigate manually; AAC will not move this page.' };
     try {
         const url = destinationUrl(action) + `&aacRequest=${encodeURIComponent(action.action_id || crypto.randomUUID())}`;
         await goto(url, { keepFocus: true });

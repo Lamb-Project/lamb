@@ -12,6 +12,10 @@ describe('frontend navigation contract', () => {
         expect(destinationUrl({ resource: 'kb', id: '15', tab: 'ingest' })).toBe('/knowledgebases?view=detail&id=15&aacTab=ingest');
         for (const target of [{ resource: 'url', id: '1', tab: 'tests' }, { resource: 'assistant', id: '../1', tab: 'tests' }, { resource: 'assistant', id: '1', tab: 'delete' }]) expect(() => destinationUrl(target)).toThrow();
     });
+    it('does not execute an expired browser action', async () => {
+        expect((await applyFrontendAction({ operation: 'open', resource: 'assistant', id: '80', tab: 'tests', expires: 1 })).status).toBe('failed');
+        expect(goto).not.toHaveBeenCalled();
+    });
     it('blocks unsaved input without navigating', async () => {
         markWorkspaceDirty();
         expect((await applyFrontendAction({ operation: 'open', resource: 'assistant', id: '80', tab: 'tests' })).status).toBe('blocked');
