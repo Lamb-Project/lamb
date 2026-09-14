@@ -57,6 +57,14 @@ class StopTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Outcome may be unknown',a.conversation[-1]['content'])
         self.assertEqual(len(p.calls),0)
 
+    async def test_provider_close_failure_still_preserves_partial(self):
+        a,p,s=agent([message('Partial response')])
+        stream=a.chat_stream('hello')
+        await anext(stream);text=await anext(stream)
+        p.streams[0].close=AsyncMock(side_effect=RuntimeError('close failed'))
+        with self.assertRaisesRegex(RuntimeError,'close failed'):await stream.aclose()
+        self.assertEqual(a.conversation[-1],{'role':'assistant','content':text})
+
     async def test_completed_turn_does_not_duplicate_text(self):
         a,p,s=agent([message('Complete')])
         _=[e async for e in a.chat_stream('hi')]

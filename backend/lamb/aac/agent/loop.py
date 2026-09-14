@@ -553,21 +553,23 @@ class AgentLoop(SkillRouting):
                 yield event
             completed = True
         finally:
-            with anyio.CancelScope(shield=True):
-                await events.aclose()
-            if not completed:
-                messages = self.conversation[start:]
-                answered = {m.get('tool_call_id') for m in messages if m.get('role') == 'tool'}
-                for message in messages:
-                    for call in message.get('tool_calls', []):
-                        if call['id'] not in answered:
-                            self.conversation.append({'role': 'tool', 'tool_call_id': call['id'], 'content': json.dumps({
-                                'success': False, 'interrupted': True,
-                                'error': 'Turn interrupted. Execution outcome may be unknown. Read back state before retrying a write.'})})
-                            answered.add(call['id'])
-                last = self.conversation[-1] if self.conversation else {}
-                if partial and not (last.get('role') == 'assistant' and last.get('content') == partial):
-                    self.conversation.append({'role': 'assistant', 'content': partial})
+            try:
+                with anyio.CancelScope(shield=True):
+                    await events.aclose()
+            finally:
+                if not completed:
+                    messages = self.conversation[start:]
+                    answered = {m.get('tool_call_id') for m in messages if m.get('role') == 'tool'}
+                    for message in messages:
+                        for call in message.get('tool_calls', []):
+                            if call['id'] not in answered:
+                                self.conversation.append({'role': 'tool', 'tool_call_id': call['id'], 'content': json.dumps({
+                                    'success': False, 'interrupted': True,
+                                    'error': 'Turn interrupted. Execution outcome may be unknown. Read back state before retrying a write.'})})
+                                answered.add(call['id'])
+                    last = self.conversation[-1] if self.conversation else {}
+                    if partial and not (last.get('role') == 'assistant' and last.get('content') == partial):
+                        self.conversation.append({'role': 'assistant', 'content': partial})
 
     async def _generate_agent_events(self, streaming: bool) -> AsyncIterator[dict | str]:
         """Shared legacy turn control; transport does not change tool semantics."""
