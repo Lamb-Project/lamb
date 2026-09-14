@@ -1,4 +1,5 @@
 <script>
+    import { showSession, sidebarBusy } from '$lib/stores/aacStore.svelte';
     import AssistantsList from '$lib/components/AssistantsList.svelte';
     import AssistantForm from '$lib/components/assistants/AssistantForm.svelte'; 
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
@@ -57,6 +58,7 @@
     /** @type {string | null | undefined} */
     let currentLocale = $state(null);
     /** @type {any | null} */ // Revert to 'any' as workaround for persistent type issues
+    let lastAacRequest = '';
     let selectedAssistantData = $state(null);
     /** @type {number | null} */
     let lastAttemptedId = $state(null); // Correct Svelte 5 rune syntax
@@ -87,7 +89,7 @@
      * @param {string} skill
      */
     async function launchAacSkill(skill) {
-        if (!selectedAssistantData?.id || aacLaunching) return;
+        if (!selectedAssistantData?.id || aacLaunching || $sidebarBusy) return;
         aacLaunching = true;
         try {
             const lang = currentLocale === 'ca' ? 'Catalan' : currentLocale === 'es' ? 'Spanish' : currentLocale === 'eu' ? 'Basque' : 'English';
@@ -101,7 +103,7 @@
             activeAacSessionId = session.id;
             aacFirstMessage = '';
             aacSkillStartup = true;
-            detailSubView = 'aac';
+            showSession(session.id, title, selectedAssistantData.id, skill, true);
         } catch (e) {
             console.error('AAC launch error:', e);
             detailError = `Agent error: ${e.message}`;
@@ -317,7 +319,7 @@
                 selectedAssistantData = fullAssistantData;
                 console.log("Assigned selectedAssistantData:", selectedAssistantData);
                 // Update URL (remove startInEdit param if it was there) - this is fine now
-                goto(`${base}/assistants?view=detail&id=${id}`, { replaceState: true, noScroll: true });
+                goto(`${base}/assistants?view=detail&id=${id}&aacTab=${$page.url.searchParams.get("aacTab") || "properties"}&aacRequest=${$page.url.searchParams.get("aacRequest") || ""}`, { replaceState: true, noScroll: true });
             } else {
                 detailError = $_('assistant_not_found', { values: { id } });
                 console.error(detailError);
@@ -380,6 +382,9 @@
             console.log("Page store updated:", currentPage.url.searchParams.toString());
             const viewParam = currentPage.url.searchParams.get('view');
             const idParam = currentPage.url.searchParams.get('id');
+            const requestedAacTab = currentPage.url.searchParams.get("aacTab");
+            const aacRequest = currentPage.url.searchParams.get("aacRequest") || "";
+            if (["properties", "tests", "chat"].includes(requestedAacTab)) detailSubView = requestedAacTab;
             const startInEditParam = currentPage.url.searchParams.get('startInEdit');
             console.log(`[+page.svelte] URL Params: view=${viewParam}, id=${idParam}, startInEdit=${startInEditParam}`);
             
@@ -411,11 +416,12 @@
                     // Set the view to detail if not already there
                     if (currentView !== 'detail') {
                         currentView = 'detail';
-                        detailSubView = 'properties'; // Reset subview when entering detail
+                        detailSubView = ['properties', 'tests', 'chat'].includes(requestedAacTab) ? requestedAacTab : 'properties'; // URL-selected workspace tab
                     }
                     
                     // Fetch only if the ID is different from the currently loaded one
-                    if (selectedAssistantData?.id !== assistantId.toString()) {
+                    if (selectedAssistantData?.id !== assistantId.toString() || aacRequest !== lastAacRequest) {
+                        lastAacRequest = aacRequest;
                         console.log(`[+page.svelte] Fetching detail for new ID: ${assistantId}`); 
                         fetchAssistantDetail(assistantId); // Call without edit flag
                     } else {
@@ -882,6 +888,10 @@
     });
 
 </script>
+{#if selectedAssistantData && !loadingDetail && !detailError && currentView === 'detail' && detailSubView !== 'tests'}
+<span hidden data-aac-resource="assistant" data-aac-id={selectedAssistantData.id} data-aac-tab={detailSubView}></span>
+{/if}
+
 
 <h1 class="text-3xl font-bold mb-4 text-brand">{currentLocale ? $_('assistants.title') : 'Learning Assistants'}</h1>
 
@@ -1562,22 +1572,14 @@
             </div>
         {:else if detailSubView === 'tests'}
             <!-- Tests Tab -->
+            {#key selectedAssistantData.id + ':' + $page.url.searchParams.get('aacRequest')}
             <AssistantTests
                 assistantId={selectedAssistantData.id}
                 onLaunchSkill={(skill) => launchAacSkill(skill)}
             />
-        {:else if detailSubView === 'aac' && activeAacSessionId}
-            <!-- AAC Agent Terminal — key forces remount on session/startup change -->
-            {#key `${activeAacSessionId}-${aacSkillStartup}`}
-            <div class="h-[700px]">
-                <AacTerminal
-                    sessionId={activeAacSessionId}
-                    firstMessage={aacFirstMessage}
-                    resumed={!aacFirstMessage && !aacSkillStartup}
-                    skillStartup={aacSkillStartup}
-                />
-            </div>
             {/key}
+        {:else if detailSubView === 'aac' && activeAacSessionId}
+            <div class="p-6"><button onclick={() => showSession(activeAacSessionId)}>Open this conversation in AAC</button></div>
         {/if}
     {/if}
     </div> <!-- Closes Wrapper for Detail Content -->

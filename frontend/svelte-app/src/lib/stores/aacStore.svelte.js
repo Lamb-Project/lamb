@@ -126,3 +126,21 @@ export function getActiveTabId() {
 export function isTabsVisible() {
 	return get(showTabs);
 }
+
+
+// Sidebar state is independent of route and open-session history.
+export const sidebarOpen = writable(false);
+export const sidebarBusy = writable(false);
+export const startupSessions = writable(new Set());
+export function showSession(id, title = 'Conversation', assistantId = null, skill = null, startup = false) {
+    if (get(sidebarBusy) && id !== get(activeTabId)) return false;
+    if (startup) startupSessions.update(ids => new Set([...ids, id]));
+    openTab(id, title, assistantId, skill);
+    sidebarOpen.set(true);
+    return true;
+}
+export function resetSidebar() {
+    sidebarOpen.set(false); sidebarBusy.set(false); openTabs.set([]); activeTabId.set(null);
+    startupSessions.set(new Set());
+    if (typeof window !== 'undefined') sessionStorage.removeItem('aac_tabs');
+}

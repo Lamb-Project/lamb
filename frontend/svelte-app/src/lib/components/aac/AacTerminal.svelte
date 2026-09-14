@@ -1,5 +1,6 @@
 <script>
 	import { onMount, onDestroy, tick } from 'svelte';
+	import { sidebarBusy, startupSessions } from '$lib/stores/aacStore.svelte';
 	import { splitCanvasContent, canvasFromMessages } from '$lib/utils/aacCanvas.js';
 	import { sendMessageStream, getSession, sendMessage, attachFile } from '$lib/services/aacService';
 	import { renderMarkdownWithMath } from '$lib/utils/renderMarkdown.js';
@@ -21,6 +22,7 @@
 
 	/** @type {boolean} */
 	let loading = $state(false);
+	$effect(() => { sidebarBusy.set(loading); });
 
 	/** @type {string} */
 	let statusText = $state('');
@@ -56,6 +58,7 @@
 		}
 
 		if (skillStartup) {
+            startupSessions.update(ids => { const next = new Set(ids); next.delete(sessionId); return next; });
 			// New skill session — trigger startup stream immediately
 			await triggerSkillStartup();
 		} else if (firstMessage) {

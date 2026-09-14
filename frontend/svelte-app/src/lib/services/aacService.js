@@ -1,3 +1,4 @@
+import { serveFrontend } from '$lib/services/frontendManage';
 import { apiFetch, apiJson } from '$lib/services/apiClient';
 
 /**
@@ -94,12 +95,18 @@ export async function sendMessage(sessionId, message) {
  * @param {AbortSignal} [signal] - abort signal to cancel the stream
  */
 export async function sendMessageStream(sessionId, message, onChunk, onDone, onError, onStatus, signal) {
+    const frontendChannel = crypto.randomUUID();
+    const frontendAbort = new AbortController();
+    const abortFrontend = () => frontendAbort.abort();
+    signal?.addEventListener('abort', abortFrontend, { once: true });
+    void serveFrontend(sessionId, frontendChannel, frontendAbort.signal);
+    try {
 	let res;
 	try {
 		res = await apiFetch(`/aac/sessions/${sessionId}/message/stream`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ message }),
+			body: JSON.stringify({ message, frontend_channel: frontendChannel }),
 			signal,
 		});
 	} catch (e) {
@@ -154,6 +161,11 @@ export async function sendMessageStream(sessionId, message, onChunk, onDone, onE
 		try { await reader.cancel(); } catch (_) { /* already closed */ }
 		reader.releaseLock();
 	}
+    } finally {
+        frontendAbort.abort();
+        signal?.removeEventListener('abort', abortFrontend);
+    }
+
 }
 
 /**

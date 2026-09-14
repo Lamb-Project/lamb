@@ -855,3 +855,23 @@ async def kb_jobs(ctx, args, kwargs):
 async def kb_status(ctx, args, kwargs):
     """Inspect ingestion status and failures: kb status KB_ID."""
     return await ctx.http.get(f'/creator/knowledgebases/kb/{args[0]}/ingestion-status')
+
+
+@register("frontend-manage.current")
+async def frontend_current(ctx, args, kwargs):
+    """Read the connected browser's current workspace; unavailable without a frontend turn."""
+    if ctx.frontend is None:
+        raise ValueError('No connected frontend for this turn. Guide the user; do not claim navigation.')
+    return await ctx.frontend({'operation': 'current'})
+
+
+@register("frontend-manage.open")
+async def frontend_open(ctx, args, kwargs):
+    """Open assistant ID --tab properties|tests|chat or kb ID --tab files|ingest|query. Waits for browser acknowledgement."""
+    from lamb.aac.frontend import destination
+    target = destination(args, kwargs)
+    if ctx.frontend is None:
+        raise ValueError('No connected frontend for this turn. Guide the user; do not claim navigation.')
+    path = f"/creator/assistant/get_assistant/{target['id']}" if target['resource'] == 'assistant' else f"/creator/knowledgebases/kb/{target['id']}"
+    await ctx.http.get(path)  # normal caller resource permissions, before emitting an action
+    return await ctx.frontend({'operation': 'open', **target})

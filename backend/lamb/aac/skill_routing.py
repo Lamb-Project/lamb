@@ -8,7 +8,7 @@ import json
 
 from lamb.aac.skill_loader import list_skills, load_skill
 
-BOOTSTRAP = {'help', 'skill.list', 'skill.load', 'docs.index', 'docs.read',
+BOOTSTRAP = {'frontend-manage.current', 'frontend-manage.open', 'help', 'skill.list', 'skill.load', 'docs.index', 'docs.read',
              'assistant.list', 'assistant.list-shared', 'assistant.list-published',
              'assistant.config', 'kb.list', 'rubric.list', 'rubric.list-public',
              'template.list', 'template.get', 'session.rename'}

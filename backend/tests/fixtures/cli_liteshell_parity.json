@@ -5638,6 +5638,16 @@
       1,
       1,
       "period start_date end_date"
+    ],
+    "frontend-manage.current": [
+      0,
+      0,
+      ""
+    ],
+    "frontend-manage.open": [
+      2,
+      2,
+      "tab"
     ]
   },
   "dispositions": {
@@ -5761,6 +5771,8 @@
     "assistant.list-shared",
     "docs.index",
     "docs.read",
+    "frontend-manage.current",
+    "frontend-manage.open",
     "help",
     "session.rename",
     "skill.list",

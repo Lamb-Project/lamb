@@ -146,7 +146,11 @@
 
     // Ingestion state
     /** @type {'files' | 'ingest' | 'query'} */
-    let activeTab = $state('files'); // New state for tabs: 'files' or 'ingest' or 'query'
+    let activeTab = $state('files');
+    $effect(() => {
+        const tab = $page.url.searchParams.get('aacTab');
+        if (kb && ['files', 'ingest', 'query'].includes(tab)) selectTab(tab);
+    }); // New state for tabs: 'files' or 'ingest' or 'query'
     /** @type {IngestionPlugin[]} */
     let plugins = $state([]);
     let loadingPlugins = $state(false);
@@ -1056,6 +1060,10 @@
     }
 
 </script>
+{#if kb && !loading && !error}
+<span hidden data-aac-resource="kb" data-aac-id={kbId} data-aac-tab={activeTab}></span>
+{/if}
+
 
 <div class="bg-white shadow overflow-hidden sm:rounded-lg">
     <!-- Loading state -->

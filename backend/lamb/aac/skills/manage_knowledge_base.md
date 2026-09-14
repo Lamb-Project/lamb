@@ -34,3 +34,7 @@ Load this skill for requests such as "what is in this KB?", "did my file finish 
 `lamb kb files` does not exist in the AAC shell. If a command returns "Unknown command", read its supported-command suggestions or run `lamb help`, then use a supported command. Do not ask the user to approve or repeat the nonexistent command. These inspection commands are reads and do not need write confirmation. Do not create or ingest anything just to inspect a KB, including after the user cancelled a UI upload.
 
 When an unsupported command is rejected, report that it was rejected before execution. Do not describe the failed attempt as a successfully executed command. The following supported read can proceed in the same session.
+
+## Show the user the workspace
+
+After creating the KB, use `frontend-manage open kb KB_ID --tab ingest` before explaining the user-operated upload. Later use files or query to show the result. This requires a connected frontend. Claim navigation only after an opened result. A blocked/unavailable result means guide the user instead; do not retry automatically.

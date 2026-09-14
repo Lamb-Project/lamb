@@ -1,0 +1,58 @@
+import asyncio
+import sqlite3
+import tempfile
+import unittest
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+from lamb.aac.frontend import Mailbox, FrontendBridge
+from lamb.aac.liteshell.shell import prepare_command
+from tests.test_aac_authoring import Authoring
+
+class FrontendTests(unittest.IsolatedAsyncioTestCase):
+    async def test_contract_and_absent_browser(self):
+        for command in ('frontend-manage open assistant 80 --tab properties', 'frontend-manage open kb 15 --tab ingest', 'frontend-manage current'):
+            prepare_command(command)
+            s,h=Authoring().shell();r=await s.execute(command)
+            self.assertFalse(r.success);self.assertIn('No connected frontend',r.error);h.get.assert_not_awaited()
+        for command in ('frontend-manage open assistant 1 --tab delete', 'frontend-manage open kb ../x', 'frontend-manage open url 1', 'frontend-manage open assistant 0', 'frontend-manage open assistant 1 --url https://example.com'):
+            with self.subTest(command=command), self.assertRaises(ValueError):prepare_command(command)
+
+    async def test_permission_before_browser_and_actual_ack(self):
+        s,h=Authoring().shell();s.frontend=AsyncMock(return_value={'status':'opened','resource':'assistant','id':'80','tab':'tests'})
+        self.assertTrue((await s.execute('frontend-manage open assistant 80 --tab tests')).success)
+        h.get.assert_awaited_once_with('/creator/assistant/get_assistant/80')
+        s.frontend.assert_awaited_once_with({'operation':'open','resource':'assistant','id':'80','tab':'tests'})
+        h.get.side_effect=ValueError('403');s.frontend.reset_mock()
+        self.assertFalse((await s.execute('frontend-manage open assistant 80')).success)
+        s.frontend.assert_not_awaited()
+
+    async def test_shared_mailbox_isolation_expiry_and_single_ack(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db=SimpleNamespace(table_prefix='',get_connection=lambda:sqlite3.connect(directory+'/test.db'))
+            box=Mailbox(db);other=Mailbox(db)
+            a=box.create('s','owner','channel',{'operation':'open','id':'80'})
+            self.assertEqual(other.pending('s','owner','channel')[0], {'action_id':a,'operation':'open','id':'80'})
+            self.assertEqual(other.pending('s','foreign','channel'),[])
+            for session,owner,channel in [('wrong','owner','channel'),('s','foreign','channel'),('s','owner','wrong')]:
+                self.assertFalse(other.acknowledge(a,session,owner,channel,{'status':'current'}))
+            self.assertTrue(other.acknowledge(a,'s','owner','channel',{'status':'current'}))
+            self.assertFalse(other.acknowledge(a,'s','owner','channel',{'status':'current'}))
+            self.assertEqual(box.result(a),{'status':'current'})
+            b=box.create('s','owner','channel',{'operation':'current'})
+            box.expire('s','owner','channel')
+            self.assertEqual(box.pending('s','owner','channel'),[])
+            self.assertFalse(box.acknowledge(b,'s','owner','channel',{'status':'current'}))
+            self.assertIsNone(box.result(b))
+
+    async def test_bridge_waits_and_reports_failure_instead_of_success(self):
+        payload={'operation':'open','resource':'assistant','id':'80','tab':'tests'}
+        for result in ({'status':'blocked','reason':'Unsaved'}, {'status':'opened','resource':'assistant','id':'81','tab':'tests'}, {'status':'current'}):
+            with patch('lamb.aac.frontend.Mailbox') as factory:
+                factory.return_value.result.return_value=result
+                bridge=FrontendBridge('s','owner','00000000-0000-4000-8000-000000000001')
+                with self.assertRaises(ValueError):await bridge.request(payload)
+                bridge.close();factory.return_value.expire.assert_called_once()
+        with patch('lamb.aac.frontend.Mailbox') as factory,patch('lamb.aac.frontend.asyncio.sleep',new_callable=AsyncMock):
+            factory.return_value.result.return_value=None
+            bridge=FrontendBridge('s','owner','00000000-0000-4000-8000-000000000001')
+            with self.assertRaisesRegex(ValueError,'timed out'):await bridge.request(payload)

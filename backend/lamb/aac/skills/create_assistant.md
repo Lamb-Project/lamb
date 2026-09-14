@@ -86,3 +86,7 @@ lamb assistant create NAME --description "Approved assessment purpose" --system-
 ```
 
 Create requires confirmation. Keep the returned assistant ID. Read back `lamb assistant get ASSISTANT_ID` and compare every requested setting. Do not create twice after an unclear response; inspect the list first. For single-file frontend selection, show the ui-assistants guide and let the user choose/upload through the form; let the user finish saving the binding in the form, then inspect the assistant; never invent a reference or use --file-path in liteshell. For KB setup activate manage-knowledge-base, and for a missing rubric activate manage-rubric. Return to this recipe after that prerequisite exists. A readback proves configuration, not behavior: use chat-with-assistant and test-and-evaluate for real responses and saved tests.
+
+## Show the user the workspace
+
+After successful creation and readback, use `frontend-manage open assistant ASSISTANT_ID --tab properties` to show the result. This requires a connected frontend. Claim navigation only after an opened result. A blocked/unavailable result means guide the user instead; do not retry automatically.

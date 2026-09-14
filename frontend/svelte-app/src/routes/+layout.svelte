@@ -6,7 +6,11 @@
 	import { base } from '$app/paths';
 	import Nav from '$lib/components/Nav.svelte';
 	import Footer from '$lib/components/Footer.svelte';
-	import GlobalAacTabBar from '$lib/components/aac/GlobalAacTabBar.svelte';
+	import AacSidebar from '$lib/components/aac/AacSidebar.svelte';
+	import { sidebarOpen } from '$lib/stores/aacStore.svelte';
+	import { afterNavigate } from '$app/navigation';
+	import { markWorkspaceDirty, clearWorkspaceDirty } from '$lib/services/frontendManage';
+	afterNavigate(clearWorkspaceDirty);
 	import { replaceSessionWithToken } from '$lib/session/sessionManager';
 	import { get } from 'svelte/store';
 	import { user } from '$lib/stores/userStore';
@@ -89,9 +93,9 @@
 
 <div class="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
 	<Nav />
-	<GlobalAacTabBar />
 
-	<main class="w-full mx-auto py-6 sm:px-6 lg:px-8 flex-grow">
+
+	<main oninputcapture={markWorkspaceDirty} class="w-full mx-auto py-6 sm:px-6 lg:px-8 flex-grow" class:aac-workspace={$sidebarOpen && !!$user.token}>
 		{#if sessionError}
 			<div class="max-w-md mx-auto mt-12 bg-red-50 border border-red-200 rounded-lg p-6 text-center">
 				<h2 class="text-lg font-semibold text-red-800">Unable to start session</h2>
@@ -106,4 +110,9 @@
 	</main>
 
 	<Footer />
+	{#if sessionReady && $user.token}<AacSidebar />{/if}
 </div>
+
+<style>
+@media (min-width: 1100px) { main.aac-workspace { padding-right: 460px; } }
+</style>

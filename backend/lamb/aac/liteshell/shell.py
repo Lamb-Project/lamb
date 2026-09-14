@@ -22,6 +22,7 @@ logger = get_logger(__name__, component="AAC")
 # Explicit supported shell surface. Unsupported CLI options fail instead of being ignored.
 # key: (minimum positional arguments, maximum, accepted option names)
 COMMAND_CONTRACTS = {
+    "frontend-manage.current": (0, 0, ""), "frontend-manage.open": (2, 2, "tab"),
     "kb.jobs": (1, 1, ""), "kb.status": (1, 1, ""),
     "kb.create": (1, 1, "description d"),
     "kb.upload": (2, 2, "plugin"),
@@ -100,6 +101,9 @@ def validate_command(key, args, kwargs):
             raise ValueError(f"Missing value for {option}")
     if kwargs.get("output", kwargs.get("o", "json")) != "json":
         raise ValueError("The AAC shell returns structured JSON; use -o json")
+    if key == "frontend-manage.open":
+        from lamb.aac.frontend import destination
+        destination(args, kwargs)
     if key.startswith("analytics."):
         if int(args[0]) < 1:
             raise ValueError("assistant_id must be positive")
@@ -174,6 +178,7 @@ class LiteShell:
     user_email: str
     organization_id: int
     user_id: int = 0
+    frontend: Any = None
     allowlist: set[str] | None = None
     history: list[ShellResult] = field(default_factory=list)
     _http_client: Any = field(default=None, repr=False)
@@ -231,6 +236,7 @@ class LiteShell:
             user_email=self.user_email,
             organization_id=self.organization_id,
             user_id=self.user_id,
+            frontend=self.frontend,
         )
 
         # Local commands are sync, HTTP commands are async
@@ -258,6 +264,7 @@ class CommandContext:
     user_email: str
     organization_id: int
     user_id: int = 0
+    frontend: Any = None
 
 
 def _parse_args(tokens: list[str]) -> tuple[list[str], dict[str, Any]]:

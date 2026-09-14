@@ -109,3 +109,7 @@ lamb test evaluations ASSISTANT_ID
 ```
 
 SCENARIO_ID and RUN_ID must come from actual responses. Check saved expected_behavior, actual output, effective model, run status and evaluation verdict. Use bad or mixed for unmet/partly met expectations; never record good merely because execution succeeded. For a batch, inspect every returned run, including failures; do not substitute bypass after a real run fails. Summaries report stored counts and identify unevaluated runs. For initial quality testing, propose a deliberately unmet expectation and explain its purpose before creating it. After an approved assistant edit, rerun the same scenario and compare actual evidence.
+
+## Show the user the workspace
+
+After creating or running tests, use `frontend-manage open assistant ASSISTANT_ID --tab tests` to show the results. This requires a connected frontend. Claim navigation only after an opened result. A blocked/unavailable result means guide the user instead; do not retry automatically.

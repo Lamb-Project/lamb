@@ -17,7 +17,7 @@
 	/** @type {Array} */
 	let evaluations = $state([]);
 
-	let loading = $state(false);
+	let loading = $state(true);
 	let running = $state(false);
 	let error = $state('');
 
@@ -159,6 +159,8 @@
 		mixed: { label: '🤔 Mixed', color: 'bg-yellow-100 text-yellow-700' },
 	};
 </script>
+{#if !loading && !error}<span hidden data-aac-resource="assistant" data-aac-id={assistantId} data-aac-tab="tests"></span>{/if}
+
 
 <div class="px-6 py-4 space-y-6">
 	{#if error}

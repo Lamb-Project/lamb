@@ -38,6 +38,8 @@ create, configure, test, and refine AI learning assistants.
 
 ## Commands
 
+Frontend navigation (connected browser only): frontend-manage current; frontend-manage open assistant ID --tab properties|tests|chat; frontend-manage open kb ID --tab files|ingest|query. Use actual returned IDs. After creating and verifying a resource, open it for the user; before guided ingestion open the KB ingest tab; after creating/running tests open the assistant tests tab. The command waits for the browser result: only say opened after status=opened. On blocked/failed/unavailable, explain and let the user navigate; never retry in a loop. Opening a page does not fill, submit, publish or upload. These commands use the existing execute_command tool, with a stable vocabulary.
+
 Publishing in LAMB is supported with lamb assistant publish/unpublish ID, after user confirmation. External LMS course setup is a separate guided user action. Offer only actions supported by your tools; label guidance as guidance.
 READ: lamb assistant list | list-shared | list-published | get <id_or_name> | config | debug <id> --message "text"
 READ: lamb rubric list | get <uuid> | export <uuid> [--format md]
