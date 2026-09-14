@@ -15,6 +15,7 @@ BOOTSTRAP = {'help', 'skill.list', 'skill.load', 'docs.index', 'docs.read',
 READ_ASSISTANT = {'assistant.get', 'assistant.debug'}
 CAPABILITIES = {
     'create-assistant': READ_ASSISTANT | {'assistant.create'},
+    'publish-assistant': READ_ASSISTANT | {'assistant.publish', 'assistant.unpublish'},
     'improve-assistant': READ_ASSISTANT | {'assistant.update'},
     'explain-assistant': READ_ASSISTANT,
     'chat-with-assistant': READ_ASSISTANT | {'assistant.chat'},
@@ -51,7 +52,7 @@ def command_context(key, args, kwargs, state):
     context.setdefault('language', "the user's current conversation language")
     if key.startswith(('assistant.', 'analytics.', 'test.')) and args:
         if key in {'test.run-detail', 'test.evaluate'}:
-            index = 1 if key == 'test.run-detail' else 2
+            index = 1 if key == 'test.run-detail' or (len(args) == 3 and args[2] in {'good','bad','mixed'}) else 2
             value = args[index] if len(args) > index else kwargs.get('assistant', kwargs.get('a'))
         elif key == 'assistant.create':
             value = None
@@ -158,6 +159,8 @@ def select_workflow(message, state):
         candidates.add('test-and-evaluate')
     if assistant and re.search(r'\b(chat with|talk to|hablar con|conversar)\b', text):
         candidates.add('chat-with-assistant')
+    if re.search(r'\b(publish|unpublish|publicar|publica|despublicar)\b', text) and context.get('assistant_id'):
+        candidates.add('publish-assistant')
     if len(candidates) != 1:
         return None
     skill_id = candidates.pop()

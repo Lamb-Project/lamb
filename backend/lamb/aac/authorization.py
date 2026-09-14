@@ -64,6 +64,8 @@ DEFAULT_POLICY: dict[str, str] = {
     # Writes — ask by default
     "assistant.create": "ask",
     "assistant.update": "ask",
+    "assistant.publish": "ask",
+    "assistant.unpublish": "ask",
     "assistant.delete": "ask",
 }
 

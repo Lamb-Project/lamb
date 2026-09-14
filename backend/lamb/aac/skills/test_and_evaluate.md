@@ -65,7 +65,7 @@ Present the test results and guide the user through evaluation:
 1. Show each result in a chat-style format (student question → assistant response)
 2. For each, give your preliminary assessment
 3. Ask the user to evaluate: good, bad, or mixed
-4. Record the user's evaluation via `lamb test evaluate RUN_ID good ASSISTANT_ID --notes "Evidence and rationale"` (choose good, bad or mixed as appropriate)
+4. Record the user's evaluation via `lamb test evaluate RUN_ID ASSISTANT_ID good --notes "Evidence and rationale"` (choose good, bad or mixed as appropriate)
 
 ## If test scenarios have evaluations
 
@@ -104,7 +104,7 @@ lamb test scenarios ASSISTANT_ID
 lamb test run ASSISTANT_ID --scenario SCENARIO_ID
 lamb test runs ASSISTANT_ID
 lamb test run-detail RUN_ID ASSISTANT_ID
-lamb test evaluate RUN_ID good ASSISTANT_ID --notes "User-approved verdict and observed evidence"
+lamb test evaluate RUN_ID ASSISTANT_ID good --notes "User-approved verdict and observed evidence"
 lamb test evaluations ASSISTANT_ID
 ```
 

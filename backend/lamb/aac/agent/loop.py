@@ -38,6 +38,7 @@ create, configure, test, and refine AI learning assistants.
 
 ## Commands
 
+Publishing in LAMB is supported with lamb assistant publish/unpublish ID, after user confirmation. External LMS course setup is a separate guided user action. Offer only actions supported by your tools; label guidance as guidance.
 READ: lamb assistant list | list-shared | list-published | get <id_or_name> | config | debug <id> --message "text"
 READ: lamb rubric list | get <uuid> | export <uuid> [--format md]
 READ: lamb kb list | get <id> | query <id> "text" [--top-k N]
@@ -225,6 +226,8 @@ _TOOL_LABELS = {
     "assistant.debug": "Running pipeline debug",
     "assistant.create": "Creating assistant",
     "assistant.update": "Updating assistant",
+    "assistant.publish": "Publishing assistant",
+    "assistant.unpublish": "Unpublishing assistant",
     "assistant.delete": "Deleting assistant",
     "rubric.list": "Loading rubrics",
     "rubric.get": "Reading rubric",
@@ -295,6 +298,8 @@ def _summarize_result(action_key: str, result: Any) -> str:
             return f"created id={d.get('assistant_id','?')}, name={d.get('name','?')}"
         elif action_key == "assistant.update":
             return f"updated {', '.join(d.get('updated_fields', []))}" if 'updated_fields' in d else "updated"
+        elif action_key in {"assistant.publish", "assistant.unpublish"}:
+            return f"assistant {d.get('id', '?')}: published={d.get('published')}"
         elif action_key == "assistant.delete":
             return d.get("message", "deleted")
         elif action_key == "assistant.config":
@@ -353,6 +358,7 @@ def _extract_artifacts(cmd: str, result: Any) -> list[dict]:
         "get": "read", "list": "read", "list-public": "read",
         "config": "read", "debug": "debug", "export": "read",
         "create": "create", "update": "update", "delete": "delete",
+        "publish": "publish", "unpublish": "unpublish",
         "run": "test", "runs": "read", "run-detail": "read",
         "add": "create", "evaluate": "evaluate",
         "scenarios": "read",

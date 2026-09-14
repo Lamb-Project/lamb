@@ -74,10 +74,20 @@ async def _resolve_kb_ids(ctx: "CommandContext", collections: str) -> str:
 # Assistant commands (async HTTP → /creator/assistant/*)
 # ---------------------------------------------------------------------------
 
+def _list_params(kwargs, limit=50, **extra):
+    params = {"limit": int(kwargs.get("limit", kwargs.get("l", limit))), "offset": int(kwargs.get("offset", 0)), **extra}
+    if params['limit'] < 1 or params['offset'] < 0:
+        raise ValueError("limit must be positive and offset nonnegative")
+    for key, alias in (("search", "s"), ("subject", "subject")):
+        if key in kwargs or alias in kwargs:
+            params[key] = kwargs.get(key, kwargs.get(alias))
+    return params
+
+
 @register("assistant.list")
 async def assistant_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List all assistants for the current user."""
-    return _unwrap(await ctx.http.get("/creator/assistant/get_assistants", params={"limit": 100}))
+    return _unwrap(await ctx.http.get("/creator/assistant/get_assistants", params=_list_params(kwargs)))
 
 
 @register("assistant.list-shared")
@@ -247,6 +257,25 @@ async def assistant_update(ctx: "CommandContext", args: list[str], kwargs: dict)
     return _unwrap(await ctx.http.put(f"/creator/assistant/update_assistant/{assistant_id}", json=body))
 
 
+async def _publish_assistant(ctx, args, published):
+    data = _unwrap(await ctx.http.put(f"/creator/assistant/publish/{args[0]}", json={"publish_status": published}))
+    if isinstance(data, dict) and data.get("success") is False:
+        raise ValueError(data.get("error", "Publication failed"))
+    return {"id": args[0], "published": published, "response": data}
+
+
+@register("assistant.publish")
+async def assistant_publish(ctx, args, kwargs):
+    """Publish an owned assistant in LAMB; does not configure an external LMS."""
+    return await _publish_assistant(ctx, args, True)
+
+
+@register("assistant.unpublish")
+async def assistant_unpublish(ctx, args, kwargs):
+    """Unpublish an owned assistant in LAMB."""
+    return await _publish_assistant(ctx, args, False)
+
+
 @register("assistant.delete")
 async def assistant_delete(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Delete (soft-delete) an assistant."""
@@ -262,7 +291,7 @@ async def assistant_delete(ctx: "CommandContext", args: list[str], kwargs: dict)
 @register("rubric.list")
 async def rubric_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List your rubrics."""
-    result = _unwrap(await ctx.http.get("/creator/rubrics", params={"limit": 100}))
+    result = _unwrap(await ctx.http.get("/creator/rubrics", params=_list_params(kwargs, tab="my")))
     if isinstance(result, dict) and "rubrics" in result:
         return result["rubrics"]
     return result
@@ -271,7 +300,7 @@ async def rubric_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> A
 @register("rubric.list-public")
 async def rubric_list_public(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List public rubrics (templates)."""
-    result = _unwrap(await ctx.http.get("/creator/rubrics/public", params={"limit": 100}))
+    result = _unwrap(await ctx.http.get("/creator/rubrics", params=_list_params(kwargs, tab="templates")))
     if isinstance(result, dict) and "rubrics" in result:
         return result["rubrics"]
     return result
@@ -321,7 +350,7 @@ async def kb_get(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
 @register("template.list")
 async def template_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List your prompt templates."""
-    return _unwrap(await ctx.http.get("/creator/prompt-templates/list"))
+    return _unwrap(await ctx.http.get("/creator/prompt-templates/list", params=_list_params(kwargs)))
 
 
 @register("template.get")
@@ -368,8 +397,8 @@ async def test_add(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
         f"/creator/assistant/{assistant_id}/tests/scenarios",
         json={
             "title": title,
-            "message": message,
-            "description": kwargs.get("description", ""),
+            "messages": [{"role": "user", "content": message}],
+            "description": kwargs.get("description", kwargs.get("d", "")),
             "scenario_type": kwargs.get("type", kwargs.get("t", "single_turn")),
             "expected_behavior": kwargs.get("expected", kwargs.get("e", "")),
         },
@@ -397,7 +426,7 @@ async def test_runs(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any
     """List test runs for an assistant."""
     if not args:
         raise ValueError("Usage: lamb test runs <assistant_id>")
-    return _unwrap(await ctx.http.get(f"/creator/assistant/{args[0]}/tests/runs"))
+    return _unwrap(await ctx.http.get(f"/creator/assistant/{args[0]}/tests/runs", params={"limit": _list_params(kwargs, limit=20)["limit"]}))
 
 
 @register("test.run-detail")
@@ -415,14 +444,17 @@ async def test_run_detail(ctx: "CommandContext", args: list[str], kwargs: dict) 
 async def test_evaluate(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Record an evaluation for a test run."""
     if len(args) < 2:
-        raise ValueError("Usage: lamb test evaluate <run_id> <verdict: good|bad|mixed> [<assistant_id>]")
+        raise ValueError("Usage: lamb test evaluate <run_id> <assistant_id> <verdict: good|bad|mixed>")
     run_id = args[0]
-    verdict = args[1]
+    # Canonical CLI order is RUN_ID ASSISTANT_ID VERDICT. Retain the old
+    # AAC order for already-saved recipes and conversations.
+    canonical = len(args) == 3 and args[2] in ("good", "bad", "mixed")
+    verdict = args[2] if canonical else args[1]
     if verdict not in ("good", "bad", "mixed"):
         raise ValueError("Verdict must be 'good', 'bad', or 'mixed'")
-    assistant_id = args[2] if len(args) > 2 else kwargs.get("assistant", kwargs.get("a", ""))
+    assistant_id = args[1] if canonical else (args[2] if len(args) > 2 else kwargs.get("assistant", kwargs.get("a", "")))
     if not assistant_id:
-        raise ValueError("Usage: lamb test evaluate <run_id> <verdict> <assistant_id>")
+        raise ValueError("Usage: lamb test evaluate <run_id> <assistant_id> <verdict>")
     return _unwrap(await ctx.http.post(
         f"/creator/assistant/{assistant_id}/tests/runs/{run_id}/evaluate",
         json={

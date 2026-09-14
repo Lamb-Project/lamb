@@ -92,7 +92,7 @@ class Authoring(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(r.success,r.error)
         body=h.post.call_args.kwargs['json']
         self.assertEqual(body['expected_behavior'],'COBALT-742, not a guessed code')
-        self.assertEqual(body['message'],'What code?')
+        self.assertEqual(body['messages'],[{'role':'user','content':'What code?'}])
         self.assertEqual(body['title'],'Station code')
 
     async def test_rubric_weight_patch_preserves_ids_and_rejects_invalid_updates(self):
