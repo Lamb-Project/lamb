@@ -34,7 +34,7 @@ describe('persistent AAC sidebar', () => {
     });
     it('keeps multiline drafts on Shift+Enter and sends on Enter', async () => {
         showSession('draft-session');render(Sidebar);
-        const input = screen.getByRole('textbox', {name: 'Message AAC'});
+        const input = screen.getByRole('textbox', {name: 'Message LAMB AGENT'});
         expect(input.tagName).toBe('TEXTAREA');
         await fireEvent.input(input, {target: {value: 'First line\nSecond line'}});
         await fireEvent.keyDown(input, {key: 'Enter', shiftKey: true});
@@ -52,7 +52,7 @@ describe('persistent AAC sidebar', () => {
             return new Promise(resolve => signal.addEventListener('abort', resolve, {once:true}));
         });
         showSession('stop-session');render(Sidebar);
-        const input=screen.getByRole('textbox',{name:'Message AAC'});
+        const input=screen.getByRole('textbox',{name:'Message LAMB AGENT'});
         await fireEvent.input(input,{target:{value:'Explain this'}});
         await fireEvent.keyDown(input,{key:'Enter'});
         await fireEvent.click(await screen.findByRole('button',{name:'Stop response'}));
@@ -62,7 +62,7 @@ describe('persistent AAC sidebar', () => {
     });
     it('does not send while composing text with an IME', async () => {
         showSession('ime-session');render(Sidebar);
-        const input=screen.getByRole('textbox',{name:'Message AAC'});
+        const input=screen.getByRole('textbox',{name:'Message LAMB AGENT'});
         await fireEvent.input(input,{target:{value:'test'}});
         await fireEvent.keyDown(input,{key:'Enter',isComposing:true});
         expect(sendMessageStream).not.toHaveBeenCalled();

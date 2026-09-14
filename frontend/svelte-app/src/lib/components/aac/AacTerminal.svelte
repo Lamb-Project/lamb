@@ -381,7 +381,7 @@
             onkeydown={handleKeydown}
             disabled={loading}
             rows="3"
-            aria-label="Message AAC"
+            aria-label="Message LAMB AGENT"
             title="Enter to send; Shift+Enter for a new line"
             placeholder={loading ? 'Waiting for agent...' : 'Type a message...'}
             class="flex-1 min-w-0 resize-y min-h-[76px] max-h-[240px] bg-transparent outline-none placeholder:opacity-40"
