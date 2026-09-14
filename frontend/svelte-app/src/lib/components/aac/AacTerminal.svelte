@@ -32,7 +32,7 @@
         try {
             const session = await getSession(sessionId);
             if(!isMounted)return;
-            sessionTitle=session.title || 'New conversation';
+            sessionTitle=session.display_title || session.title || 'New conversation';
             openTabs.update(tabs=>tabs.map(t=>t.id===sessionId?{...t,title:sessionTitle}:t));
         } catch (_) { /* transcript remains usable if metadata refresh fails */ }
     }
@@ -88,7 +88,7 @@
 			try {
 				const session = await getSession(sessionId);
 				if (!isMounted) return;
-                sessionTitle=session.title || 'New conversation';
+                sessionTitle=session.display_title || session.title || 'New conversation';
 				const conv = (session.conversation || []).filter(
 					m => (m.role === 'user' && !(m.content || '').startsWith('[System:') && !(m.content || '').startsWith('[Application workflow instructions]'))
 					  || (m.role === 'assistant' && m.content && !m.tool_calls)

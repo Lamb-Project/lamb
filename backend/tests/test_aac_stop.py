@@ -73,7 +73,8 @@ class StopTests(unittest.IsolatedAsyncioTestCase):
 class PreviewTests(unittest.TestCase):
     def test_extractive_titles_hide_internal_messages_and_preserve_renames(self):
         messages=[{'role':'user','content':'[System: private instructions]'}, {'role':'user','content':'Create an arithmetic tutor'}, {'role':'assistant','content':'Saved the tutor.'}]
-        self.assertEqual(preview('LAMB Helper',messages)['title'],'Create an arithmetic tutor')
+        self.assertEqual(preview('LAMB Helper',messages)['display_title'],'Create an arithmetic tutor')
         self.assertNotIn('private',preview('',messages)['summary'])
         self.assertEqual(preview('My own title',messages)['title'],'My own title')
+        self.assertEqual(preview('LAMB Helper',messages)['title'],'LAMB Helper')
         self.assertEqual(len(messages),3)

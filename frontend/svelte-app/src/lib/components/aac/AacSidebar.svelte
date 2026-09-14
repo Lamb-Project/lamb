@@ -98,7 +98,7 @@
         finally { historyLoading = false; }
     }
     function resume(s) {
-        if (showSession(s.id, s.title, s.assistant_id, s.skill_id)) history = false;
+        if (showSession(s.id, s.display_title || s.title, s.assistant_id, s.skill_id)) history = false;
     }
 </script>
 
@@ -126,8 +126,8 @@
         <div class="history-heading"><h2>Conversation history</h2><button onclick={() => history = false}>Back</button></div>
         <input aria-label="Search conversations" placeholder="Search conversations" bind:value={filter} />
         {#if historyLoading}<p role="status">Loading conversations…</p>{/if}
-        {#each sessions.filter(s => `${s.title || ''} ${s.summary || ''}`.toLowerCase().includes(filter.toLowerCase())) as s}
-            <button class="history-item" onclick={() => resume(s)}><strong>{s.title || 'Conversation'}</strong>{#if s.summary}<span class="summary">{s.summary}</span>{/if}<small>{s.updated_at?.slice(0, 16).replace('T', ' ')}</small></button>
+        {#each sessions.filter(s => `${s.display_title || s.title || ''} ${s.summary || ''}`.toLowerCase().includes(filter.toLowerCase())) as s}
+            <button class="history-item" onclick={() => resume(s)}><strong>{s.display_title || s.title || 'Conversation'}</strong>{#if s.summary}<span class="summary">{s.summary}</span>{/if}<small>{s.updated_at?.slice(0, 16).replace('T', ' ')}</small></button>
         {/each}
         {#if !historyLoading && !sessions.length}<p>No saved conversations yet.</p>{/if}
     </section>

@@ -11,6 +11,7 @@ def clean(text, limit):
     return text if len(text) <= limit else text[:limit-1].rsplit(' ', 1)[0] + '…'
 
 def preview(title, messages):
+    stored_title = title
     requests = [m.get('content', '') for m in messages if m.get('role') == 'user'
                 and isinstance(m.get('content'), str)
                 and not m['content'].startswith(('[System:', '[Application workflow instructions]'))]
@@ -24,4 +25,4 @@ def preview(title, messages):
     if answers and substantive:
         latest = clean(answers[-1], 200)
         if latest and latest not in parts: parts.append(latest)
-    return {'title': title, 'summary': ' · '.join(parts), 'summary_type': 'extractive'}
+    return {'title': stored_title, 'display_title': title, 'summary': ' · '.join(parts), 'summary_type': 'extractive'}
