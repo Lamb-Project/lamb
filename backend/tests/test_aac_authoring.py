@@ -53,19 +53,12 @@ class Authoring(unittest.IsolatedAsyncioTestCase):
             target=Path(temp)/'7'/'linked.md';target.symlink_to(files.owned_file(result['path'],7))
             with self.assertRaises(ValueError):files.owned_file('7/linked.md',7)
 
-    async def test_upload_uses_owned_bytes_and_propagates_failure(self):
-        with tempfile.TemporaryDirectory() as temp,patch.object(files,'ROOT',Path(temp)):
-            (Path(temp)/'7').mkdir();(Path(temp)/'7'/'doc.pdf').write_bytes(b'%PDF-test')
-            s,h=self.shell()
-            async def post(path,**kw):
-                self.assertEqual(kw['files']['file'][1].read(),b'%PDF-test')
-                self.assertEqual(kw['data']['plugin_name'],'markitdown_ingest')
-                return {'job_id':'j1'}
-            h.post.side_effect=post
-            result=await s.execute('lamb kb upload 3 7/doc.pdf');self.assertTrue(result.success);self.assertTrue(result.data['verification_required'])
-            h.post.side_effect=ValueError('API error (403)')
-            self.assertFalse((await s.execute('lamb kb upload 3 7/doc.pdf')).success)
-            with self.assertRaises(HTTPException):await validate_file('7/doc.pdf',N(user={'id':7}))
+    async def test_upload_is_rejected_before_http_even_for_owned_reference(self):
+        s,h=self.shell()
+        result=await s.execute('lamb kb upload 3 7/doc.pdf')
+        self.assertFalse(result.success)
+        self.assertIn('Hold your horses', result.error)
+        h.post.assert_not_awaited()
 
     async def test_file_binding_requires_validation(self):
         s,h=self.shell();h.get.side_effect=ValueError('Not owned')

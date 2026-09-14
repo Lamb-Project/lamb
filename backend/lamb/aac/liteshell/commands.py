@@ -751,15 +751,9 @@ async def kb_create(ctx, args, kwargs):
 
 @register("kb.upload")
 async def kb_upload(ctx, args, kwargs):
-    """Ingest an owned uploaded-file reference: kb upload KB_ID USER_ID/FILE [--plugin NAME]. Read KB details and query to verify readiness; submission is not success."""
-    from lamb.aac.files import owned_file
-    path = owned_file(args[1], ctx.user_id)
-    plugin = kwargs.get('plugin', 'markitdown_ingest' if path.suffix.lower() == '.pdf' else 'simple_ingest')
-    with path.open('rb') as handle:
-        result = await ctx.http.post(f'/creator/knowledgebases/kb/{args[0]}/plugin-ingest-file',
-            data={'plugin_name': plugin}, files={'file': (path.name, handle, 'application/octet-stream')})
-    return {'ingestion_response': _unwrap(result), 'verification_required': True,
-            'next_step': 'Inspect kb get, then kb query for a distinctive fact from this file.'}
+    """Unavailable in frontend liteshell: show the KB upload UI guide and let the user select the file."""
+    from lamb.aac.liteshell.shell import FILESYSTEM_MESSAGE
+    raise ValueError(FILESYSTEM_MESSAGE)
 
 
 @register("kb.query")

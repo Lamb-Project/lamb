@@ -59,7 +59,7 @@ Don't run tests unless the user asks or you've just made a change worth verifyin
 
 ## Explicit knowledge and rubric bindings
 
-Distinguish no_rag, simple_rag (retrieved KB chunks), single_file_rag (whole UTF-8 file), and context_aware_rag. Use --file-path with an owned uploaded reference for single_file_rag; a PDF requires KB ingestion instead. Use --rubric-id and --rubric-format for rubric_rag. Read back saved properties and verify retrieval/context before claiming success. Preserve unrelated fields during edits. Use manage-knowledge-base for KB creation/ingestion/query and manage-rubric for rubric creation/editing.
+Distinguish no_rag, simple_rag (retrieved KB chunks), single_file_rag (whole UTF-8 file), and context_aware_rag. For single_file_rag, show the illustrated assistant UI guide and let the user select and bind the file in the form. The --file-path option is unavailable in frontend liteshell; a PDF requires user-operated KB ingestion instead. Use --rubric-id and --rubric-format for rubric_rag. Read back saved properties and verify retrieval/context before claiming success. Preserve unrelated fields during edits. Use manage-knowledge-base for KB creation/ingestion/query and manage-rubric for rubric creation/editing.
 
 ## UI tutorial requests
 

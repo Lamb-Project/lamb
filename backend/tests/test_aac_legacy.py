@@ -214,7 +214,10 @@ class ShellTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set(COMMAND_REGISTRY),set(COMMAND_CONTRACTS))
         for key in COMMAND_REGISTRY:
             result=await self.shell.execute('lamb '+key.replace('.',' ')+' --help')
-            self.assertTrue(result.success,key)
+            if key == 'kb.upload':
+                self.assertFalse(result.success);self.assertIn('Hold your horses', result.error)
+            else:
+                self.assertTrue(result.success,key)
 
     async def test_invalid_commands_rejected_without_http(self):
         for cmd in ['', 'lamb', 'unknown', 'lamb assistant missing', 'lamb assistant get',

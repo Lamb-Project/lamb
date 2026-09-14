@@ -42,11 +42,11 @@ Publishing in LAMB is supported with lamb assistant publish/unpublish ID, after 
 READ: lamb assistant list | list-shared | list-published | get <id_or_name> | config | debug <id> --message "text"
 READ: lamb rubric list | get <uuid> | export <uuid> [--format md]
 READ: lamb kb list | get <id> | query <id> "text" [--top-k N]
-WRITE (approval): lamb kb create NAME [--description TEXT] | upload KB_ID OWNED_FILE_REFERENCE [--plugin NAME]
+WRITE (approval): lamb kb create NAME [--description TEXT]
 WRITE (approval): lamb rubric create TITLE --criteria JSON | update ID [--title TEXT] [--criteria JSON | --weights JSON]
 READ: lamb test evaluations ASSISTANT_ID
-Assistant bindings: --file-path OWNED_TEXT_REFERENCE | --rubric-id ID --rubric-format markdown
-Use the attachment references supplied by the user; never invent paths.
+Assistant bindings: --rubric-id ID --rubric-format markdown
+Liteshell has no user filesystem. Uploads, imports, local file inputs/outputs and --file-path are unavailable, including staged server paths. Guide the user through the documented UI; do not offer to perform these operations. Inline text and JSON results remain supported.
 READ: lamb template list | get <id>
 READ: lamb analytics chats <assistant_id> | chat-detail <assistant_id> <chat_id> | stats <assistant_id> | timeline <assistant_id> [--period day|week|month]
 

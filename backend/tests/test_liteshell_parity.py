@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock,patch
 from types import SimpleNamespace as N
 from fastapi import HTTPException
-from lamb.aac.liteshell.shell import COMMAND_CONTRACTS,prepare_command
+from lamb.aac.liteshell.shell import COMMAND_CONTRACTS,prepare_command,FILESYSTEM_COMMANDS,FILESYSTEM_OPTIONS
 from lamb.aac.liteshell.commands import COMMAND_REGISTRY
 from lamb.aac.authorization import ActionAuthorizer
 from lamb.aac.skill_routing import DEFAULT_SKILL,BOOTSTRAP,command_context
@@ -21,10 +21,30 @@ class Surface(unittest.TestCase):
             self.assertIn(k,BOOTSTRAP|set(DEFAULT_SKILL))
         for k in m['cli']:
             if k not in COMMAND_REGISTRY:
-                with self.subTest(command=k),self.assertRaisesRegex(ValueError,'does not exist and was not executed'):
+                with self.subTest(command=k),self.assertRaisesRegex(ValueError,'Hold your horses' if k in FILESYSTEM_COMMANDS else 'does not exist and was not executed'):
                     prepare_command('lamb '+k.replace('.',' '))
 
 class Operations(unittest.IsolatedAsyncioTestCase):
+    async def test_filesystem_preflight_blocks_all_known_commands_and_option_aliases(self):
+        commands=['lamb '+k.replace('.', ' ')+' 42 /tmp/input' for k in FILESYSTEM_COMMANDS]
+        commands += ['lamb '+k.replace('.', ' ')+' 42 '+('-' if len(o)==1 else '--')+o.replace('_','-')+' /tmp/input'
+                     for k,opts in FILESYSTEM_OPTIONS.items() for o in opts]
+        for command in commands:
+            with self.subTest(command=command):
+                s,h=authoring.Authoring().shell()
+                result=await s.execute(command)
+                self.assertFalse(result.success);self.assertIn('Hold your horses',result.error)
+                h.get.assert_not_awaited();h.post.assert_not_awaited();h.put.assert_not_awaited()
+                for stream in (False,True):
+                    a,p,s=agent([message(tools=[tool(command)]),message('Use the UI')])
+                    await turn(a,stream)
+                    s.execute.assert_not_awaited();self.assertIsNone(a.pending_action)
+
+    async def test_file_free_options_remain_available(self):
+        for command in ('lamb rubric export 42 -f json', 'lamb assistant create tutor -s hello',
+                        'lamb test add 42 Test -m hello', 'lamb docs read ui-knowledge-bases'):
+            prepare_command(command)
+
     async def test_publication_requires_confirmation_plain_and_stream(self):
         for stream in (False,True):
             for command in ('publish','unpublish'):

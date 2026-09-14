@@ -53,6 +53,37 @@ COMMAND_CONTRACTS = {
 }
 
 
+
+# User-local paths are unavailable in frontend AAC, even if a staged server path exists.
+FILESYSTEM_COMMANDS = {"aac.attach", "kb.upload", "library.upload", "library.import",
+                       "rubric.import", "user.bulk-import"}
+FILESYSTEM_OPTIONS = {
+    "assistant.create": {"system_prompt_file", "file_path"},
+    "assistant.update": {"file_path"},
+    "assistant.export": {"output_file", "f"},
+    "library.export": {"output_file", "f"},
+    "org.export": {"output_file", "f"},
+    "rubric.export": {"file"},
+    "rubric.generate": {"save_to"},
+    "template.export": {"file", "f"},
+    "test.add": {"messages_file", "f"},
+}
+FILESYSTEM_MESSAGE = (
+    "Hold your horses: you are in liteshell, not a terminal on the user's computer. "
+    "This filesystem operation is unavailable here and was not executed. "
+    "Do not invent a path, retry a server path, or ask for approval to run it. "
+    "Explain the limitation to the user and show the relevant illustrated UI guide; "
+    "the user must select, upload, import or download the file in the UI. "
+    "For text input, use a supported inline option instead. "
+    "Library-backed virtual files are planned for LAMB 1.0 and are not available here."
+)
+
+
+def reject_filesystem_operation(key, kwargs):
+    if key in FILESYSTEM_COMMANDS or set(kwargs) & FILESYSTEM_OPTIONS.get(key, set()):
+        raise ValueError(FILESYSTEM_MESSAGE)
+
+
 def validate_command(key, args, kwargs):
     minimum, maximum, options = COMMAND_CONTRACTS[key]
     if not minimum <= len(args) <= maximum:
@@ -90,6 +121,8 @@ def prepare_command(command_str: str, allowlist=None):
         raise ValueError(f"Command '{group}' not allowed. Available: {sorted(allowlist)}")
     key = f"{group}.{tokens[1]}" if len(tokens) > 1 and not tokens[1].startswith("-") else group
     arg_tokens = tokens[2:] if key != group else tokens[1:]
+    _, preliminary_options = _parse_args(arg_tokens)
+    reject_filesystem_operation(key, preliminary_options)
     if key not in COMMAND_REGISTRY:
         if group in COMMAND_REGISTRY:
             key, arg_tokens = group, tokens[1:]
