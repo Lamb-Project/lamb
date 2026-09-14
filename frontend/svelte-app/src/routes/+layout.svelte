@@ -7,10 +7,10 @@
 	import Nav from '$lib/components/Nav.svelte';
 	import Footer from '$lib/components/Footer.svelte';
 	import AacSidebar from '$lib/components/aac/AacSidebar.svelte';
-	import { sidebarOpen, sidebarWidth, sidebarMobile } from '$lib/stores/aacStore.svelte';
+	import { sidebarOpen, sidebarWidth, sidebarMobile, frontendDestination } from '$lib/stores/aacStore.svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { markWorkspaceDirty, clearWorkspaceDirty } from '$lib/services/frontendManage';
-	afterNavigate(clearWorkspaceDirty);
+	afterNavigate(() => { clearWorkspaceDirty(); frontendDestination.set(null); });
 	import { replaceSessionWithToken } from '$lib/session/sessionManager';
 	import { get } from 'svelte/store';
 	import { user } from '$lib/stores/userStore';

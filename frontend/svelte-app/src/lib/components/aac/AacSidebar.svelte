@@ -45,7 +45,13 @@
         if (event.key in steps) { event.preventDefault(); setWidth($sidebarWidth + steps[event.key]); }
         else if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); setWidth(event.key === 'Home' ? limits.min : limits.max); }
     }
-    function hide() { sidebarOpen.set(false); }
+    function hide() {
+        sidebarOpen.set(false);
+        void tick().then(() => {
+            const target = opener?.isConnected && opener !== document.body && !panel?.contains(opener) ? opener : document.querySelector('[aria-label="Open LAMB AGENT"]');
+            target?.focus();
+        });
+    }
     function panelKeys(event) {
         if (panel?.querySelector('dialog[open]')) return;
         if (event.key === 'Escape') { event.preventDefault(); hide(); }
