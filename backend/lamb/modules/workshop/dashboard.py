@@ -1,6 +1,6 @@
 """Workshop dashboard — instructor-facing reuse.
 
-Phase 3 aligns the interface; Phase 6 details the teacher dashboard UI.
+Basic stats today; the full teacher dashboard UI is detailed separately.
 """
 
 import logging

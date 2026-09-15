@@ -6,13 +6,21 @@ tenants' data, or touch other students' work.
 
 Document/KB attachment (content ingestion) is wired in a later phase; those
 routes validate scope + quota and return an accepted reference.
+
+- GET /sessions/{session_id}          — restore build progress after reload
+- POST /sessions/{session_id}/assistant/{assistant_id}/chat — streamed chat
+  with observability + tool_event SSE frames (same SSE dialect the rest of
+  LAMB emits).
 """
 
+import json
 import logging
 from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Header
+from fastapi.responses import StreamingResponse
 
+from lamb.completions.tools.definitions import WORKSHOP_TOOLS
 from lamb.database_manager import LambDatabaseManager
 from lamb.lamb_classes import Assistant
 
@@ -56,6 +64,63 @@ def _verify_assistant_ownership(assistant_id: int, principal: Dict[str, Any]) ->
         raise HTTPException(status_code=403, detail="Cross-tenant access denied")
 
 
+def _resolve_tool_definitions(tools: Any) -> Any:
+    """Complete name-only tool definitions against the canonical schema.
+    
+    Definitions that already carry a schema are passed through untouched;
+    unknown tool names are dropped.
+    """
+    if not tools:
+        return None
+
+    resolved = []
+    for tool in tools:
+        fn = (tool or {}).get("function") or {}
+        name = fn.get("name")
+        if not name:
+            continue
+        # Already fully specified — keep it as-is.
+        if fn.get("parameters"):
+            resolved.append(tool)
+            continue
+        canonical = WORKSHOP_TOOLS.get(name)
+        if canonical:
+            resolved.append(canonical)
+    return resolved or None
+
+
+@router.get("/sessions/{session_id}")
+async def get_workshop_session(session_id: str, token: str = Header(...)):
+    """Return the workshop session record so the frontend can restore progress.
+
+    build_state is persisted per step; a page reload re-hydrates the
+    5-step wizard from this payload instead of losing the student's work.
+    """
+    _verify_workshop_principal(session_id, token)
+
+    session = _db_manager.get_workshop_session_by_id(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # build_state is stored as JSON text; hand back a parsed object.
+    try:
+        build_state = json.loads(session.get("build_state") or "{}")
+    except (json.JSONDecodeError, TypeError):
+        build_state = {}
+
+    return {
+        "session_id": session.get("id"),
+        "activity_id": session.get("activity_id"),
+        "assistant_id": session.get("assistant_id"),
+        "status": session.get("status"),
+        "saved_chat": session.get("saved_chat"),
+        "reflection": session.get("reflection"),
+        "build_state": build_state,
+        "created_at": session.get("created_at"),
+        "updated_at": session.get("updated_at"),
+    }
+
+
 @router.post("/sessions/{session_id}/assistant")
 async def create_workshop_assistant(
     session_id: str,
@@ -91,9 +156,66 @@ async def create_workshop_assistant(
     )
     assistant_id = _db_manager.add_assistant(assistant)
     if not assistant_id:
-        raise HTTPException(status_code=500, detail="Failed to create assistant")
+        # UNIQUE(org, name, owner) collision: an assistant with the same name
+        # already exists for this student (e.g. re-create after a timeout, or
+        # parallel tabs). Be idempotent — reuse the existing assistant instead
+        # of returning a 500. (#workshop-P4)
+        existing = _db_manager.find_assistant_by_owner_name_org(
+            owner=owner_email,
+            name=assistant.name,
+            org_id=principal.get("organization_id"),
+        )
+        if existing:
+            assistant_id = existing.get("id")
+        if not assistant_id:
+            raise HTTPException(status_code=500, detail="Failed to create assistant")
 
     _db_manager.update_workshop_session_assistant(session_id, assistant_id)
+
+    return {"success": True, "assistant_id": assistant_id}
+
+
+@router.patch("/sessions/{session_id}/assistant/{assistant_id}")
+async def update_workshop_assistant(
+    session_id: str,
+    assistant_id: int,
+    body: Dict[str, Any],
+    token: str = Header(...),
+):
+    """Update the student's workshop assistant (e.g. the step-1 instructions).
+
+    The wizard creates the assistant on first completion of step 1, but the
+    student can go back and edit the "Instructions" afterwards. With only a
+    create endpoint, those edits were never persisted to ``system_prompt``, so
+    the observability panel (and the LLM) saw an empty system prompt. This
+    route closes that gap: it updates the fields the wizard owns on an
+    assistant the student already created.
+    """
+    principal = _verify_workshop_principal(session_id, token)
+    _verify_assistant_ownership(assistant_id, principal)
+
+    existing = _db_manager.get_assistant_by_id(assistant_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Assistant not found")
+
+    updated = Assistant(
+        name=body.get("name", existing.name),
+        description=body.get("description", existing.description),
+        owner=existing.owner,
+        api_callback=body.get("api_callback", existing.metadata),
+        system_prompt=body.get("system_prompt", existing.system_prompt),
+        prompt_template=body.get("prompt_template", existing.prompt_template),
+        organization_id=existing.organization_id,
+        # Deprecated fields — always empty strings, kept for DB compatibility.
+        pre_retrieval_endpoint="",
+        post_retrieval_endpoint="",
+        RAG_endpoint="",
+        RAG_Top_k=body.get("rag_top_k", existing.RAG_Top_k),
+        RAG_collections=body.get("rag_collections", existing.RAG_collections),
+    )
+
+    if not _db_manager.update_assistant(assistant_id, updated):
+        raise HTTPException(status_code=500, detail="Failed to update assistant")
 
     return {"success": True, "assistant_id": assistant_id}
 
@@ -111,7 +233,7 @@ async def attach_workshop_document(
     """
     principal = _verify_workshop_principal(session_id, token)
     _verify_assistant_ownership(assistant_id, principal)
-    return {"success": True, "document_id": None, "status": "pending_phase4"}
+    return {"success": True, "document_id": None, "status": "pending"}
 
 
 @router.post("/sessions/{session_id}/assistant/{assistant_id}/kb")
@@ -127,7 +249,47 @@ async def connect_workshop_kb(
     """
     principal = _verify_workshop_principal(session_id, token)
     _verify_assistant_ownership(assistant_id, principal)
-    return {"success": True, "kb_id": body.get("kb_id"), "status": "pending_phase4"}
+    return {"success": True, "kb_id": body.get("kb_id"), "status": "pending"}
+
+
+@router.post("/sessions/{session_id}/assistant/{assistant_id}/chat")
+async def chat_with_workshop_assistant(
+    session_id: str,
+    assistant_id: int,
+    body: Dict[str, Any],
+    token: str = Header(...),
+):
+    """Streamed chat with the student's workshop assistant (observability + tools).
+
+    The student principal is verified (header token), the assistant must belong
+    to this student (ownership check), then we delegate to the standard
+    completion pipeline (``run_lamb_assistant``) which emits the same SSE
+    dialect the rest of LAMB emits: ``choices[].delta.content`` chunks,
+    ``{"type":"tool_event", ...}`` frames from the ToolLoop, and
+    ``{"type":"observability", ...}`` injected right before ``[DONE]``.
+    """
+    principal = _verify_workshop_principal(session_id, token)
+    _verify_assistant_ownership(assistant_id, principal)
+
+    from lamb.completions.main import run_lamb_assistant
+
+    completion_request = {
+        "messages": body.get("messages", []),
+        "stream": True,
+        "observability": body.get("observability", True),
+        "tools": _resolve_tool_definitions(body.get("tools")),
+        "tool_choice": body.get("tool_choice", "auto"),
+    }
+
+    response = await run_lamb_assistant(
+        request=completion_request,
+        assistant=assistant_id,
+        headers=None,
+    )
+    if isinstance(response, StreamingResponse):
+        return response
+    # Non-streaming fallback (shouldn't happen with stream=True) — pass through.
+    return response
 
 
 @router.post("/sessions/{session_id}/submit")
@@ -136,7 +298,7 @@ async def submit_workshop(
     body: Dict[str, Any],
     token: str = Header(...),
 ):
-    """Submit the workshop — serialize session + reflection (Phase 5 consumes)."""
+    """Submit the workshop — serialize session + reflection (consumed by grading)."""
     _verify_workshop_principal(session_id, token)
 
     _db_manager.submit_workshop_session(

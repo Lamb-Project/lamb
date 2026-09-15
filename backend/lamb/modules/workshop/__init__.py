@@ -14,7 +14,7 @@ class WorkshopModule:
 
     # ── Contract (aligned with #277 ActivityModule) ──
     def get_migrations(self):
-        """Return migrations owned by this module (Phase 4 may register)."""
+        """Return migrations owned by this module (may register later)."""
         return []
 
     def get_routers(self) -> list:
@@ -44,7 +44,7 @@ class WorkshopModule:
         return workshop_dashboard_stats(ctx)
 
     def launch_user(self, ctx):
-        """Launch a user into the workshop (Phase 4)."""
+        """Launch a user into the workshop."""
         from .service import initialize_workshop_workspace
         return initialize_workshop_workspace(ctx)
 
@@ -53,7 +53,7 @@ class WorkshopModule:
         return workshop_dashboard_stats(activity)
 
     def get_frontend_build_path(self):
-        """Frontend SPA mount path (Phase 4)."""
+        """Frontend SPA mount path."""
         return "/m/workshop/"
 
 

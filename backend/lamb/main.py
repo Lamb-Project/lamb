@@ -20,7 +20,7 @@ from .simple_lti.simple_lti_main import router as simple_lti_router
 from .completions.main import router as completions_router
 from .mcp_router import router as mcp_router  # MCP protocol - KEEP (used by frontend for external MCP clients)
 from .lti_router import router as lti_router  # Unified LTI activity endpoint
-from .modules.workshop import module as workshop_module  # Workshop module (Phase 3)
+from .modules.workshop import module as workshop_module  # Workshop module
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -86,7 +86,7 @@ app.include_router(simple_lti_router)
 app.include_router(completions_router, prefix="/v1/completions")
 app.include_router(mcp_router, prefix="/v1/mcp")  # MCP protocol - KEEP (used by frontend)
 
-# Workshop module routers (Phase 3) — mounted under /v1/workshop
+# Workshop module routers — mounted under /v1/workshop
 for ws_router in workshop_module.get_routers():
     app.include_router(ws_router, prefix="/v1")
 

@@ -8588,6 +8588,40 @@ class LambDatabaseManager:
     # Workshop session accessors (lti_workshop_sessions)
     # =========================================================================
 
+    def find_assistant_by_owner_name_org(
+        self,
+        owner: str,
+        name: str,
+        org_id: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Look up an existing assistant by (owner, name, org) — for idempotent create.
+
+        Workshop students create one assistant per session; if a create retries
+        after a UNIQUE(org, name, owner) collision we reuse the existing row.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                query = (
+                    f"SELECT * FROM {self.table_prefix}assistants "
+                    f"WHERE owner = ? AND name = ? AND organization_id = ? "
+                    f"LIMIT 1"
+                )
+                cursor.execute(query, (owner, name, org_id))
+                row = cursor.fetchone()
+                if row:
+                    columns = [col[0] for col in cursor.description]
+                    return dict(zip(columns, row))
+                return None
+        except sqlite3.Error as e:
+            logger.error(f"Error finding assistant by owner/name/org: {e}")
+            return None
+        finally:
+            connection.close()
+
     def get_workshop_session_by_id(self, session_id: str) -> Optional[Dict[str, Any]]:
         """Fetch a workshop session record by id, or None."""
         connection = self.get_connection()

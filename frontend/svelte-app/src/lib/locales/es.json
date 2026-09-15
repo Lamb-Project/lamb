@@ -1020,5 +1020,30 @@
       "zipTooLarge": "El archivo ZIP supera el límite de 500 MB.",
       "importFailed": "La importación ha fallado. Inténtalo de nuevo."
     }
+  },
+  "workshop": {
+    "title": "Taller de IA",
+    "step1": "Instrucciones",
+    "step2": "Adjuntar documento",
+    "step3": "Conectar base de conocimiento",
+    "step4": "Añadir herramienta",
+    "step5": "Probar y reflexionar",
+    "instructionsPlaceholder": "Escribe qué debe hacer tu asistente y cómo responder...",
+    "attachDoc": "Adjuntar un documento",
+    "connectKb": "Conectar una base de conocimiento",
+    "addTool": "Añadir una herramienta",
+    "calculator": "Calculadora",
+    "kbQuery": "Consulta de base de conocimiento",
+    "sandbox": "Ejecución en sandbox (no disponible)",
+    "testChat": "Prueba tu asistente",
+    "reflection": "Reflexiona sobre tu diseño",
+    "submit": "Enviar taller",
+    "next": "Siguiente",
+    "back": "Atrás",
+    "observabilityTitle": "Qué recibió tu asistente",
+    "systemInstructions": "Instrucciones activas",
+    "retrievedContext": "Contexto recuperado",
+    "finalMessages": "Mensajes enviados al LLM",
+    "toolTimeline": "Llamadas a herramientas"
   }
 }

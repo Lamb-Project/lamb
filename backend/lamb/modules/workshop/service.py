@@ -81,7 +81,7 @@ def initialize_workshop_workspace(ctx: Dict[str, Any]) -> Optional[Dict[str, Any
         "session_id": session.get("id"),
     }
 
-    # Redirect target for the workshop wizard (Phase 4 serves this SPA).
+    # Redirect target for the workshop build wizard (a static SPA serves this).
     token = _create_workshop_token(principal)
     redirect = (
         f"{public_base}/m/workshop/{activity['id']}?token={token}"

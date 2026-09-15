@@ -1016,5 +1016,30 @@
       "zipTooLarge": "ZIP fitxategiak 500 MB-ko muga gainditzen du.",
       "importFailed": "Inportazioak huts egin du. Saiatu berriro."
     }
+  },
+  "workshop": {
+    "title": "IA Tailerra",
+    "step1": "Argibideak",
+    "step2": "Dokumentua erantsi",
+    "step3": "Ezagutza-basea konektatu",
+    "step4": "Tresna gehitu",
+    "step5": "Probatu eta hausnartu",
+    "instructionsPlaceholder": "Idatzi zure laguntzaileak zer egin behar duen eta nola erantzun...",
+    "attachDoc": "Dokumentu bat erantsi",
+    "connectKb": "Ezagutza-base bat konektatu",
+    "addTool": "Tresna bat gehitu",
+    "calculator": "Kalkulagailua",
+    "kbQuery": "Ezagutza-basearen kontsulta",
+    "sandbox": "Sandbox exekuzioa (erabilgarri ez)",
+    "testChat": "Probatu zure laguntzailea",
+    "reflection": "Hausnartu zure diseinuaz",
+    "submit": "Tailerra bidali",
+    "next": "Hurrengoa",
+    "back": "Atzera",
+    "observabilityTitle": "Zure laguntzaileak zer jaso duen",
+    "systemInstructions": "Indarrean dauden argibideak",
+    "retrievedContext": "Berreskuratutako testuingurua",
+    "finalMessages": "LLMra bidalitako mezuak",
+    "toolTimeline": "Tresna-deiak"
   }
 }

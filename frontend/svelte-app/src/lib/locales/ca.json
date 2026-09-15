@@ -1009,5 +1009,30 @@
       "zipTooLarge": "El fitxer ZIP supera el límit de 500 MB.",
       "importFailed": "La importació ha fallat. Torna-ho a provar."
     }
+  },
+  "workshop": {
+    "title": "Taller d'IA",
+    "step1": "Instruccions",
+    "step2": "Adjunta un document",
+    "step3": "Connecta la base de coneixement",
+    "step4": "Afegeix una eina",
+    "step5": "Prova i reflexiona",
+    "instructionsPlaceholder": "Escriu què ha de fer el teu assistent i com respondre...",
+    "attachDoc": "Adjunta un document",
+    "connectKb": "Connecta una base de coneixement",
+    "addTool": "Afegeix una eina",
+    "calculator": "Calculadora",
+    "kbQuery": "Consulta de base de coneixement",
+    "sandbox": "Execució sandbox (no disponible)",
+    "testChat": "Prova el teu assistent",
+    "reflection": "Reflexiona sobre el teu disseny",
+    "submit": "Envia el taller",
+    "next": "Següent",
+    "back": "Enrere",
+    "observabilityTitle": "Què ha rebut el teu assistent",
+    "systemInstructions": "Instruccions actives",
+    "retrievedContext": "Context recuperat",
+    "finalMessages": "Missatges enviats a l'LLM",
+    "toolTimeline": "Crides a eines"
   }
 }

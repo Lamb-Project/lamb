@@ -1,5 +1,5 @@
 """
-Tests for workshop restricted-creator authorization (core of Phase 3).
+Tests for workshop restricted-creator authorization (core of the workshop).
 """
 
 from unittest.mock import MagicMock, patch
@@ -142,6 +142,63 @@ class TestRestrictedOwnership:
                 session_id="ws-1", assistant_id=7, body={"title": "Doc"},
                 token="tok")
         assert exc.value.status_code == 403
+
+
+class TestRestrictedUpdateAssistant:
+    """Workshop student can edit the assistant they created (e.g. instructions)."""
+
+    def _own_assistant(self, **overrides):
+        opts = dict(
+            id=7, name="My Assistant", description="",
+            owner="student@lamb-lti.local", api_callback="{}",
+            system_prompt="old", prompt_template="{user_input}",
+            organization_id=10, RAG_Top_k=3, RAG_collections="[]",
+            pre_retrieval_endpoint="", post_retrieval_endpoint="", RAG_endpoint="",
+        )
+        opts.update(overrides)
+        return Assistant(**opts)
+
+    @pytest.mark.asyncio
+    @patch("lamb.auth.decode_token")
+    @patch("lamb.modules.workshop.routers._db_manager")
+    async def test_update_system_prompt_persisted(self, mock_db, mock_decode):
+        mock_decode.return_value = _token_payload(session_id="ws-1", org_id=10)
+        mock_db.get_assistant_by_id.return_value = self._own_assistant()
+        mock_db.update_assistant.return_value = True
+
+        result = await routers.update_workshop_assistant(
+            session_id="ws-1",
+            assistant_id=7,
+            body={"system_prompt": "Be a helpful tutor."},
+            token="tok",
+        )
+        assert result["success"] is True
+        assert result["assistant_id"] == 7
+
+        updated = mock_db.update_assistant.call_args[0][1]
+        assert isinstance(updated, Assistant)
+        assert updated.system_prompt == "Be a helpful tutor."
+        # Unrelated fields preserved from the existing record.
+        assert updated.owner == "student@lamb-lti.local"
+        assert updated.organization_id == 10
+
+    @pytest.mark.asyncio
+    @patch("lamb.auth.decode_token")
+    @patch("lamb.modules.workshop.routers._db_manager")
+    async def test_cannot_edit_others_assistant(self, mock_db, mock_decode):
+        mock_decode.return_value = _token_payload(session_id="ws-1", org_id=10)
+        mock_db.get_assistant_by_id.return_value = self._own_assistant(
+            owner="someone@test.com")
+
+        with pytest.raises(HTTPException) as exc:
+            await routers.update_workshop_assistant(
+                session_id="ws-1",
+                assistant_id=7,
+                body={"system_prompt": "hi"},
+                token="tok",
+            )
+        assert exc.value.status_code == 403
+        mock_db.update_assistant.assert_not_called()
 
 
 class TestConsent:

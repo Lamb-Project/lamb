@@ -41,5 +41,14 @@ window.LAMB_CONFIG = {
     enableOpenWebUi: true,
     enableDebugMode: true,
     enableLibraries: true
-  }
+  },
+
+  // AI Workshop wizard — connector + LLM used to build the student's assistant.
+  // Set per deployment so the model is not hardcoded in the frontend code.
+  // If you leave this block out, the wizard uses a built-in fallback
+  // (ollama / qwen3.5:9b).
+  // workspace: {
+  //   connector: 'ollama',
+  //   llm: 'qwen3.5:9b'
+  // }
 };

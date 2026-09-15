@@ -12,7 +12,16 @@
 	import { user } from '$lib/stores/userStore';
 
 	let { children } = $props();
-	let sessionReady = $state(!$page.url.searchParams.get('token'));
+
+	// Workshop build-wizard tokens (`/m/workshop/*?token=…`) are student
+	// principal JWTs, NOT creator session tokens. The root layout must not
+	// bootstrap a creator session from them — that would eat the token from the
+	// URL and drop the student into the login page (#workshop-P4).
+	const isWorkshopPath = () =>
+		browser && $page.url.pathname.startsWith(base + '/m/workshop/');
+	let sessionReady = $state(
+		!$page.url.searchParams.get('token') || isWorkshopPath()
+	);
 	let processingToken = $state(false);
 	let processedToken = $state(/** @type {string | null} */ (null));
 	let sessionError = $state(/** @type {string | null} */ (null));
@@ -20,6 +29,12 @@
 	/** @param {URL} url */
 	async function handleTokenLogin(url) {
 		if (!browser) return;
+
+		// Workshop URLs carry their own student token — skip creator bootstrap.
+		if (url.pathname.startsWith(base + '/m/workshop/')) {
+			sessionReady = true;
+			return;
+		}
 
 		const token = url.searchParams.get('token');
 		if (!token) {

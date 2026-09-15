@@ -1006,5 +1006,30 @@
       "zipTooLarge": "ZIP file exceeds 500 MB limit.",
       "importFailed": "Import failed. Please try again."
     }
+  },
+  "workshop": {
+    "title": "AI Workshop",
+    "step1": "Instructions",
+    "step2": "Attach Document",
+    "step3": "Connect Knowledge Base",
+    "step4": "Add Tool",
+    "step5": "Test & Reflect",
+    "instructionsPlaceholder": "Write what your assistant should do and how to answer...",
+    "attachDoc": "Attach a document",
+    "connectKb": "Connect a knowledge base",
+    "addTool": "Add a tool",
+    "calculator": "Calculator",
+    "kbQuery": "Knowledge Base Query",
+    "sandbox": "Sandbox Execution (unavailable)",
+    "testChat": "Test your assistant",
+    "reflection": "Reflect on your design",
+    "submit": "Submit workshop",
+    "next": "Next",
+    "back": "Back",
+    "observabilityTitle": "What your assistant received",
+    "systemInstructions": "Active instructions",
+    "retrievedContext": "Retrieved context",
+    "finalMessages": "Messages sent to LLM",
+    "toolTimeline": "Tool calls"
   }
 }

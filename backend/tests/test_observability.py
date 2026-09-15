@@ -242,6 +242,7 @@ async def test_observability_payload_has_all_fields(
         "messages": [{"role": "user", "content": "Hi"}],
         "observability": True,
         "stream": True,
+        "tools": [{"type": "function", "function": {"name": "calculator"}}],
     }
 
     response = await run_lamb_assistant(request=request_body, assistant=1)
@@ -265,9 +266,20 @@ async def test_observability_payload_has_all_fields(
         "rag_context",
         "retrieved_sources",
         "final_llm_messages",
+        "tools",
+        "request_body",
     ]
     for field in required_payload_fields:
         assert field in payload, f"Missing payload field: {field}"
+
+    # tools should echo the request tools
+    assert payload["tools"] == request_body["tools"]
+
+    # request_body reconstructs the full request shape: model + tools + messages
+    rb = payload["request_body"]
+    assert rb["model"] == "gpt-4"
+    assert rb["tools"] == request_body["tools"]
+    assert rb["messages"] == payload["final_llm_messages"]
 
 
 # ---------------------------------------------------------------------------

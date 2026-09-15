@@ -288,6 +288,24 @@ def build_observability_payload(
                 "content": s.get("content", "")[:500],
             })
 
+    tools = request.get("tools") or []
+
+    # The assistant's configured model, mirroring parse_plugin_config defaults.
+    model = "gpt-4"
+    try:
+        callback = json.loads(assistant_details.metadata or "{}")
+        model = callback.get("llm") or model
+    except Exception:
+        pass
+
+    # Reconstruct the shape of the actual request body sent to the LLM:
+    # model + tools + messages in one object (OpenAI-compatible).
+    request_body = {
+        "model": model,
+        "tools": tools,
+        "messages": messages,
+    }
+
     return {
         "type": "observability",
         "data": {
@@ -297,6 +315,8 @@ def build_observability_payload(
             "rag_context": rag_context.get("context", "") if rag_context else "",
             "retrieved_sources": sources,
             "final_llm_messages": messages,
+            "tools": tools,
+            "request_body": request_body,
         }
     }
 
