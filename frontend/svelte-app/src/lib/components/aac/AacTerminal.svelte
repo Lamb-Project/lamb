@@ -22,7 +22,8 @@
 
 	/** @type {boolean} */
 	let loading = $state(false);
-	$effect(() => { sidebarBusy.set(loading); });
+	let historyLoading = $state(resumed && !firstMessage && !skillStartup);
+	$effect(() => { sidebarBusy.set(loading || historyLoading); });
 
 	/** @type {string} */
 	let statusText = $state('');
@@ -131,6 +132,8 @@
 				if (!isMounted) return;
 				if (e instanceof Error && e.message.startsWith('Session expired')) return;
 				messages = [{ role: 'system', content: `Error loading session: ${e.message}` }];
+			} finally {
+				if (isMounted) historyLoading = false;
 			}
 		}
 
@@ -184,7 +187,7 @@
 
 	async function handleSend() {
 		const text = inputText.trim();
-		if (!text || loading) return;
+		if (!text || loading || historyLoading) return;
 
 		// Send the user's exact reply so resumed approvals and cancellations
 		// reach the server's confirmation classifier without a hidden prefix.
@@ -397,11 +400,11 @@
             bind:this={inputEl}
             bind:value={inputText}
             onkeydown={handleKeydown}
-            disabled={loading}
+            disabled={loading || historyLoading}
             rows="3"
             aria-label="Message LAMB AGENT"
             title="Enter to send; Shift+Enter for a new line"
-            placeholder={loading ? 'Waiting for agent...' : 'Type a message...'}
+            placeholder={historyLoading ? 'Loading conversation...' : loading ? 'Waiting for agent...' : 'Type a message...'}
             class="flex-1 min-w-0 resize-y min-h-[76px] max-h-[240px] bg-transparent outline-none placeholder:opacity-40"
         ></textarea>
         {#if loading}
@@ -409,7 +412,7 @@
         {:else}
 		<button
 			onclick={handleSend}
-			disabled={loading || !inputText.trim()}
+			disabled={loading || historyLoading || !inputText.trim()}
 			class="px-2 py-0.5 rounded text-xs transition-opacity"
 			class:opacity-60={loading || !inputText.trim()}
 			class:hover:opacity-100={!loading && inputText.trim()}

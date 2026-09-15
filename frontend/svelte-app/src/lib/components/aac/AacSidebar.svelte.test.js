@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 vi.mock('$lib/services/aacService', () => ({ createSession: vi.fn(), getSessions: vi.fn(), getSession: vi.fn().mockResolvedValue({ conversation: [] }), sendMessageStream: vi.fn(), attachFile: vi.fn(), sendMessage: vi.fn() }));
-import { createSession, getSessions, sendMessageStream } from '$lib/services/aacService';
+import { createSession, getSessions, getSession, sendMessageStream } from '$lib/services/aacService';
 import { sidebarOpen, sidebarBusy, activeTabId, resetSidebar, showSession } from '$lib/stores/aacStore.svelte';
 import Sidebar from './AacSidebar.svelte';
 
@@ -17,10 +17,28 @@ describe('persistent AAC sidebar', () => {
         await fireEvent.click(screen.getByRole('button', { name: 'Open LAMB AGENT' }));
         expect(get(sidebarOpen)).toBe(true);
     });
+    it('waits for resumed history before sending so it cannot overwrite streamed output', async () => {
+        let resolveHistory;
+        getSession.mockImplementationOnce(() => new Promise(resolve => { resolveHistory=resolve; }));
+        showSession('history-race');render(Sidebar);
+        const input=screen.getByRole('textbox',{name:'Message LAMB AGENT'});
+        expect(input.disabled).toBe(true);
+        await fireEvent.input(input,{target:{value:'New question'}});
+        await fireEvent.keyDown(input,{key:'Enter'});
+        expect(sendMessageStream).not.toHaveBeenCalled();
+        resolveHistory({conversation:[{role:'assistant',content:'Saved answer'}]});
+        await waitFor(()=>expect(input.disabled).toBe(false));
+        sendMessageStream.mockImplementationOnce(async (id,text,chunk) => { chunk('Fresh answer'); });
+        await fireEvent.keyDown(input,{key:'Enter'});
+        await waitFor(()=>expect(screen.getByText('Fresh answer')).not.toBeNull());
+        expect(screen.getByText('Saved answer')).not.toBeNull();
+        expect(sendMessageStream).toHaveBeenCalledOnce();
+    });
     it('starts a new session without archiving the old one', async () => {
         createSession.mockResolvedValue({ id: 'new-session', title: 'New helper' });
         showSession('old-session');
         render(Sidebar);
+        await waitFor(() => expect(screen.getByRole('button', { name: 'New conversation' }).disabled).toBe(false));
         await fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
         await waitFor(() => expect(get(activeTabId)).toBe('new-session'));
         expect(createSession).toHaveBeenCalledOnce();
