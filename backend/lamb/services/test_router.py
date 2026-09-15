@@ -94,6 +94,13 @@ async def update_scenario(
     auth.require_assistant_access(assistant_id, level="owner")
     body = await request.json()
     svc = TestService()
+    scenario = svc.get_scenario(scenario_id)
+    if not scenario or scenario["assistant_id"] != assistant_id:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    if not isinstance(body, dict) or not body:
+        raise HTTPException(status_code=400, detail="Provide scenario fields to update")
+    if "title" in body and (not isinstance(body["title"], str) or not body["title"].strip()):
+        raise HTTPException(status_code=400, detail="Title is required")
     if not svc.update_scenario(scenario_id, body):
         raise HTTPException(status_code=404, detail="Scenario not found")
     return {"success": True}
@@ -108,6 +115,9 @@ async def delete_scenario(
     """Delete a test scenario."""
     auth.require_assistant_access(assistant_id, level="owner")
     svc = TestService()
+    scenario = svc.get_scenario(scenario_id)
+    if not scenario or scenario["assistant_id"] != assistant_id:
+        raise HTTPException(status_code=404, detail="Scenario not found")
     if not svc.delete_scenario(scenario_id):
         raise HTTPException(status_code=404, detail="Scenario not found")
     return {"success": True}

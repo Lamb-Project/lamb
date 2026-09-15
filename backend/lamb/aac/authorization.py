@@ -56,6 +56,7 @@ DEFAULT_POLICY: dict[str, str] = {
     # Test commands — auto (low risk, user explicitly requests tests)
     "test.scenarios": "auto",
     "test.add": "auto",
+    "test.update": "ask",
     "test.run": "auto",
     "test.runs": "auto",
     "test.run-detail": "auto",

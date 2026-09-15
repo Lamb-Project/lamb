@@ -405,6 +405,24 @@ async def test_add(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     ))
 
 
+@register("test.update")
+async def test_update(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+    """Patch explicitly supplied scenario fields; keep scenario identity and history."""
+    body = {}
+    for field, names in {"title":("title",), "description":("description","d"),
+                         "expected_behavior":("expected","e"), "scenario_type":("type","t")}.items():
+        for name in names:
+            if name in kwargs:
+                body[field] = kwargs[name]
+                break
+    if "message" in kwargs or "m" in kwargs:
+        body["messages"] = [{"role":"user","content":kwargs.get("message",kwargs.get("m"))}]
+    if not body:
+        raise ValueError("Provide at least one field to update")
+    return _unwrap(await ctx.http.put(
+        f"/creator/assistant/{args[0]}/tests/scenarios/{args[1]}", json=body))
+
+
 @register("test.run")
 async def test_run(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Run test scenarios through the real completion pipeline."""

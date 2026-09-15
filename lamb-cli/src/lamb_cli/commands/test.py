@@ -125,6 +125,32 @@ def add_scenario(
         print_json(data)
 
 
+@app.command("update")
+def update_scenario(
+    assistant_id: int = typer.Argument(..., help="Assistant ID."),
+    scenario_id: str = typer.Argument(..., help="Existing scenario ID."),
+    title: Optional[str] = typer.Option(None, "--title", help="New title."),
+    message: Optional[str] = typer.Option(None, "--message", "-m", help="Replace messages with one user message."),
+    description: Optional[str] = typer.Option(None, "--description", "-d", help="New description; empty clears it."),
+    expected: Optional[str] = typer.Option(None, "--expected", "-e", help="New expected behavior; empty clears it."),
+    scenario_type: Optional[str] = typer.Option(None, "--type", "-t", help="New scenario type."),
+    output: str = typer.Option(None, "-o", "--output", help="Output format."),
+) -> None:
+    """Edit a saved scenario, preserving fields omitted from the command."""
+    body = {k:v for k,v in {"title":title,"description":description,
+        "expected_behavior":expected,"scenario_type":scenario_type}.items() if v is not None}
+    if message is not None:
+        body["messages"] = [{"role":"user","content":message}]
+    if not body:
+        print_error("Provide at least one field to update.")
+        raise typer.Exit(1)
+    with get_client() as client:
+        data = client.put(f"/creator/assistant/{assistant_id}/tests/scenarios/{scenario_id}", json=body)
+    print_success(f"Scenario updated: {scenario_id}")
+    if (output or get_output_format()) == "json":
+        print_json(data)
+
+
 @app.command("scenario-detail")
 def get_scenario(
     scenario_id: str = typer.Argument(..., help="Scenario ID."),

@@ -48,3 +48,16 @@ def test_attach_json(httpx_mock,mock_token,tmp_path):
     file=tmp_path/'source.md';file.write_text('fact')
     httpx_mock.add_response(json={'path':'7/abc.md','name':'source.md','size':4})
     result=runner.invoke(app,['aac','attach',str(file),'-o','json']);assert result.exit_code==0;assert json.loads(result.stdout)['path']=='7/abc.md'
+
+
+def test_scenario_update_sends_only_requested_fields(httpx_mock,mock_token):
+    httpx_mock.add_response(method='PUT',json={'success':True})
+    result=runner.invoke(app,['test','update','1','s','--expected','','-o','json'])
+    assert result.exit_code==0,result.output
+    request=httpx_mock.get_request()
+    assert request.url.path=='/creator/assistant/1/tests/scenarios/s'
+    assert json.loads(request.content)=={'expected_behavior':''}
+
+
+def test_scenario_update_requires_a_field(mock_token):
+    assert runner.invoke(app,['test','update','1','s']).exit_code!=0

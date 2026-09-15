@@ -41,8 +41,8 @@ def apply_ui_language(agent, code):
 
 TURN_INSTRUCTIONS = {
     'en': 'The session language is English. Reply to the user in English for this turn, even if their message is in another language.',
-    'es': 'El idioma de esta sesión es español. Responde al usuario en español en este turno, aunque su mensaje esté en otro idioma.',
-    'ca': 'La llengua d’aquesta sessió és el català. Respon a l’usuari en català en aquest torn, encara que el seu missatge sigui en una altra llengua.',
+    'es': 'El idioma de esta sesión es español. Responde al usuario en español en este turno, aunque su mensaje esté en otro idioma. Traduce también los encabezados y opciones: usa «¿Qué hacemos ahora?» en vez de «Next?» y «Otra cosa: dime» en vez de «Other — tell me».',
+    'ca': 'La llengua d’aquesta sessió és el català. Respon a l’usuari en català en aquest torn, encara que el seu missatge sigui en una altra llengua. Tradueix també els encapçalaments i les opcions: «Què fem ara?» en lloc de «Next?».',
     'eu': 'The session language is Basque (Euskara). Reply to the user in Basque for this turn, even if their message is in another language.',
 }
 

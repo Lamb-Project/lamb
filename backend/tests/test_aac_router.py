@@ -260,4 +260,4 @@ class SkillSelectionValidation(unittest.IsolatedAsyncioTestCase):
         with patch.object(r,'AACSessionManager',return_value=manager):
             result=await r.create_session(req,auth)
         self.assertEqual(result['skill'],'inspect-activity')
-        self.assertEqual(manager.update_conversation.call_args.kwargs['skill_info']['context']['assistant_id'],25)
+        self.assertEqual(manager.update_conversation.call_args.kwargs['skill_info']['context']['assistant_id'],'25')

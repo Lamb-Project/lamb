@@ -117,6 +117,9 @@ async def create_session(
     if assistant_id and "assistant_id" not in skill_context:
         skill_context["assistant_id"] = assistant_id
 
+    from lamb.aac.skill_routing import normalize_context
+    skill_context = normalize_context(skill_context)
+
     if skill_id:
         _validate_skill_selection(skill_id, skill_context)
 
@@ -579,6 +582,8 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
         if session.get("assistant_id"):
             state["context"].setdefault("assistant_id", session["assistant_id"])
         slog.log("skill_routing_initialized", {"legacy_session": bool(session.get("conversation"))})
+    from lamb.aac.skill_routing import normalize_context
+    state['context'] = normalize_context(state.get('context'))
     agent.system_prompt = state["system_prompt"]
     agent.skill_state = state
 

@@ -132,3 +132,16 @@ class SelectedActivityContext(unittest.TestCase):
     def test_recipe_names_selected_assistant(self):
         prompt=load_skill('inspect-activity', {'assistant_id':77})['prompt']
         self.assertIn('selected assistant ID is `77`',prompt)
+
+
+class ContextIdentityTests(unittest.TestCase):
+    def test_integer_session_target_matches_cli_target_without_reloading(self):
+        from lamb.aac.skill_routing import select_workflow
+        a,_,_=agent([])
+        a.skill_state={'context':{'assistant_id':25,'language':'English'}}
+        a.activate_skill('explain-assistant')
+        count=len(a.skill_state['snapshots'])
+        a.skill_state['context']['assistant_id']=25  # legacy persisted JSON
+        self.assertIsNone(a.required_skill('assistant.get',['25'],{}))
+        self.assertIsNone(select_workflow('explain assistant 25',a.skill_state))
+        self.assertEqual(len(a.skill_state['snapshots']),count)

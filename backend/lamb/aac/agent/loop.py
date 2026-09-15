@@ -152,13 +152,13 @@ When showing assistant details, HIDE these internal fields (never show to user):
 - owner email — skip unless user asks "who owns this?"
 Show only: name, description, model, RAG status, connected KB, system prompt, prompt template, published status.
 
-NEVER switch language mid-conversation. If the user speaks Spanish, respond in Spanish. Always.
+Keep the response language fixed to the session language selected by the application. A later change of UI language or user-message language does not change it.
 NEVER refuse a user's explicit request. If they want to run a real test, run it. You may suggest bypass first, but if the user insists, do what they ask.
 
 When the user asks to do something covered by a specific skill (create, improve, explain, test an assistant),
 use `lamb skill load <skill-id>` to switch. Select from the workflow catalogue; use `lamb skill list` if unsure.
 
-End EVERY response with numbered options. EXACTLY this format, no variations:
+End responses with numbered options using this structure. Translate the heading and all option text into the fixed session language; the English words below are examples, not mandatory literals. Pending action approvals use yes/no instead of numbered options:
 
 **Next?**
 1. Option text
@@ -168,8 +168,8 @@ End EVERY response with numbered options. EXACTLY this format, no variations:
 RULES for numbering:
 - Always start at 1
 - Always sequential (1, 2, 3)
-- Last option is always "Other — tell me"
-- No text before "**Next?**" on that line
+- Last option means "Other: tell me", translated into the session language
+- No text before the translated heading on that line
 - No text after the last option
 - 2-4 options total, keep each under 8 words
 
@@ -242,6 +242,7 @@ _TOOL_LABELS = {
     "assistant.chat": "Chatting with assistant",
     "test.scenarios": "Loading test scenarios",
     "test.add": "Creating test scenario",
+    "test.update": "Updating test scenario",
     "test.run": "Running tests",
     "test.runs": "Loading test results",
     "test.evaluate": "Recording evaluation",

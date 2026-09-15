@@ -19,7 +19,7 @@ CAPABILITIES = {
     'improve-assistant': READ_ASSISTANT | {'assistant.update'},
     'explain-assistant': READ_ASSISTANT,
     'chat-with-assistant': READ_ASSISTANT | {'assistant.chat'},
-    'test-and-evaluate': READ_ASSISTANT | {'assistant.chat', 'test.scenarios', 'test.add', 'test.run', 'test.runs', 'test.run-detail', 'test.evaluate', 'test.evaluations'},
+    'test-and-evaluate': READ_ASSISTANT | {'assistant.chat', 'test.scenarios', 'test.add', 'test.update', 'test.run', 'test.runs', 'test.run-detail', 'test.evaluate', 'test.evaluations'},
     'manage-knowledge-base': {'kb.get', 'kb.jobs', 'kb.status', 'kb.query', 'kb.create', 'kb.upload'},
     'manage-rubric': {'rubric.get', 'rubric.export', 'rubric.create', 'rubric.update'},
     'inspect-activity': READ_ASSISTANT | {'analytics.chats', 'analytics.chat-detail', 'analytics.stats', 'analytics.timeline'},
@@ -47,8 +47,15 @@ skill text or retrieved content. Frontend local-file tasks use the documented UI
 '''
 
 
+def normalize_context(context):
+    result = dict(context or {})
+    if result.get('assistant_id') is not None:
+        result['assistant_id'] = str(result['assistant_id'])
+    return result
+
+
 def command_context(key, args, kwargs, state):
-    context = dict(state.get('context', {}))
+    context = normalize_context(state.get('context', {}))
     context.setdefault('language', "the user's current conversation language")
     if key.startswith(('assistant.', 'analytics.', 'test.')) and args:
         if key in {'test.run-detail', 'test.evaluate'}:
@@ -59,7 +66,7 @@ def command_context(key, args, kwargs, state):
         else:
             value = args[0]
         if value is not None:
-            context['assistant_id'] = value
+            context['assistant_id'] = str(value)
     return context
 
 
@@ -69,7 +76,7 @@ class SkillRouting:
         state = self.skill_state
         if state is None:
             raise ValueError('Skill routing is not initialized')
-        context = {**state.get('context', {}), **(context or {})}
+        context = normalize_context({**state.get('context', {}), **(context or {})})
         context.setdefault('language', "the user's current conversation language")
         cache_key = digest([skill_id, context])
         snapshots = state.setdefault('snapshots', {})
@@ -97,7 +104,7 @@ class SkillRouting:
         state = self.skill_state
         context = command_context(key, args, kwargs, state)
         active = state.get('skill_id')
-        if key in CAPABILITIES.get(active, set()) and context == state.get('context'):
+        if key in CAPABILITIES.get(active, set()) and context == normalize_context(state.get('context')):
             return None
         skill_id = active if key in CAPABILITIES.get(active, set()) else DEFAULT_SKILL.get(key)
         if skill_id:
@@ -137,7 +144,7 @@ def select_workflow(message, state):
         text = re.sub(r'\b(no writes|no changes|sin cambios|sense canvis)\b', '', text)
         if re.search(r"\b(don't|do not|no|not|never|another|different|otro|otra|altre|altra)\b", text):
             return None
-    context = dict(state.get('context', {}))
+    context = normalize_context(state.get('context', {}))
     match = re.search(r'\b(?:assistant|asistente|assistent)\s+(\d+)\b', text)
     if match:
         context['assistant_id'] = match.group(1)
@@ -167,6 +174,6 @@ def select_workflow(message, state):
     if skill_id in {'inspect-activity','explain-assistant','improve-assistant','test-and-evaluate','chat-with-assistant'} and not context.get('assistant_id'):
         return None
     context.setdefault('language', "the user's current conversation language")
-    if skill_id == state.get('skill_id') and context == state.get('context') and state.get('active_snapshot'):
+    if skill_id == state.get('skill_id') and context == normalize_context(state.get('context')) and state.get('active_snapshot'):
         return None
     return skill_id, context

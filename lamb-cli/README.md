@@ -271,3 +271,15 @@ inactivity (default 300 seconds); connection/pool waits are 10 seconds and write
 ingestion; inspect jobs/status before querying. Rubric `--weights` accepts multiple
 named changes atomically. Valid totals must remain 100; existing invalid totals may
 be repaired incrementally, preserving criterion and level IDs.
+
+### Edit a saved test scenario
+
+```bash
+lamb test update ASSISTANT_ID SCENARIO_ID --expected "Revised expectation" -o json
+lamb test scenarios ASSISTANT_ID -o json
+lamb test run ASSISTANT_ID --scenario SCENARIO_ID -o json
+```
+
+Only supplied fields change. Optional inline fields are `--title`, `--description`, `--message` (replaces the message list with one user message), and `--type`. An empty `--expected ""` clears the expectation. Scenario IDs, previous runs and evaluations are retained. At least one field is required.
+
+The same update command is available in AAC liteshell and requires confirmation. The API verifies assistant ownership and that the scenario belongs to that assistant.

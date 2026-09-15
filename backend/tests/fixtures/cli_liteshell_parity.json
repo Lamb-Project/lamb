@@ -5416,6 +5416,119 @@
           "is_flag": false
         }
       ]
+    },
+    "test.update": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "scenario_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "scenario_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "title",
+          "kind": "TyperOption",
+          "opts": [
+            "--title"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "message",
+          "kind": "TyperOption",
+          "opts": [
+            "--message",
+            "-m"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "description",
+          "kind": "TyperOption",
+          "opts": [
+            "--description",
+            "-d"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "expected",
+          "kind": "TyperOption",
+          "opts": [
+            "--expected",
+            "-e"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "scenario_type",
+          "kind": "TyperOption",
+          "opts": [
+            "--type",
+            "-t"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
     }
   },
   "shell_contracts": {
@@ -5648,6 +5761,11 @@
       1,
       2,
       "tab"
+    ],
+    "test.update": [
+      2,
+      2,
+      "title message m description d type t expected e"
     ]
   },
   "dispositions": {
@@ -5762,7 +5880,8 @@
     "user.list": "not exposed: account/organization administration",
     "user.reset-password": "not exposed: account/organization administration",
     "user.update": "not exposed: account/organization administration",
-    "whoami": "gap: educator command missing from liteshell"
+    "whoami": "gap: educator command missing from liteshell",
+    "test.update": "supported"
   },
   "shell_only": [
     "assistant.chat",

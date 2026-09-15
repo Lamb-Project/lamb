@@ -80,6 +80,18 @@ Analyze the evaluation patterns and suggest improvements:
 3. Propose concrete changes (one at a time)
 4. After each change, offer to re-run the tests to see if quality improved
 
+## Edit an existing scenario
+
+Read `lamb test scenarios ASSISTANT_ID` and identify the exact scenario ID.
+Use `lamb test update ASSISTANT_ID SCENARIO_ID --expected "new expectation"`
+after showing the requested change; the tool queues exact-action confirmation.
+Optional inline fields: `--title`, `--description`, `--message` (replaces the
+messages with one user turn), `--type`. Omitted fields, scenario ID, previous
+runs and evaluations remain unchanged. Empty `--expected ""` clears it.
+Do not create a replacement or invent a UI editor. Read the scenario back, then
+run only the affected case with `lamb test run ASSISTANT_ID --scenario SCENARIO_ID`.
+Read the saved result and evaluate that run explicitly.
+
 ## Critical rules
 
 **Present options after every action.** Always end with numbered choices

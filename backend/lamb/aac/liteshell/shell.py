@@ -42,6 +42,7 @@ COMMAND_CONTRACTS = {
     "rubric.get": (1, 1, ""), "rubric.export": (1, 1, "format f"),
     "kb.list": (0, 0, ""), "kb.get": (1, 1, ""),
     "template.list": (0, 0, "limit l offset"), "template.get": (1, 1, ""),
+    "test.update": (2, 2, "title message m description d type t expected e"),
     "test.scenarios": (1, 1, ""), "test.add": (1, 2, "title message m description d type t expected e"),
     "test.run": (1, 1, "bypass b scenario s"), "test.runs": (1, 1, "limit l"),
     "test.run-detail": (1, 2, "assistant a"), "test.evaluate": (2, 3, "assistant a notes n"),
@@ -89,6 +90,8 @@ def validate_command(key, args, kwargs):
     minimum, maximum, options = COMMAND_CONTRACTS[key]
     if not minimum <= len(args) <= maximum:
         raise ValueError(f"{key} expects {minimum}..{maximum} positional arguments")
+    if key == "test.update" and not (set(kwargs) & set(options.split())):
+        raise ValueError("Provide at least one field to update")
     allowed = set(options.split()) | {"output", "o"}
     unknown = set(kwargs) - allowed
     if unknown:
