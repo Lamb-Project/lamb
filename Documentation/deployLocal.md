@@ -383,6 +383,33 @@ On Windows with Docker Desktop:
 
 ---
 
+### 4.5 — Development Overlay (Hot Reload)
+
+For source development, layer `docker-compose.next.dev.yaml` on top of the
+base stack:
+
+```bash
+docker compose \
+  -f docker-compose.next.yaml \
+  -f docker-compose.next.dev.yaml \
+  up -d
+```
+
+The overlay bind-mounts each Python service independently, runs Uvicorn with
+`--reload`, and adds the Vite frontend at `http://localhost:5173`. The base
+stack's named data volumes are reused unchanged. When Python dependency files
+change, rebuild the affected image with `up -d --build`. When `package.json`
+changes, restart `frontend-dev` so its startup `npm install` runs again.
+
+Stop the development stack without deleting data:
+
+```bash
+docker compose \
+  -f docker-compose.next.yaml \
+  -f docker-compose.next.dev.yaml \
+  down
+```
+
 ## Phase 5: Verify the Deployment
 
 ### 5.1 — Check Container Status
@@ -616,13 +643,18 @@ WEBUI_SECRET_KEY=
 
 **Docker compose files:**
 - `docker-compose.next.yaml` — Main stack (CPU-only by default, safe for all platforms)
+- `docker-compose.next.dev.yaml` — Development overlay (source bind mounts, Python reload, and Vite on port 5173)
 - `docker-compose.next.gpu.yaml` — GPU override (CUDA hosts only; enables CUDA PyTorch build + `--gpus=all` for `openwebui` and `ollama`)
+- `docker-compose.next.prod.yaml` — Production overlay (Caddy and TLS)
 
 **Docker volumes:**
 - `lamb-data` — LAMB database and uploads
 - `kb-data` — KB server database and vector store
 - `kb-static` — KB server static files
 - `openwebui-data` — OpenWebUI database and configuration
+- `library-manager-data` — Library Manager database and imported documents
+- `frontend-node-modules` — Frontend development dependencies (development overlay only)
+- `frontend-npm-cache` — npm download cache (development overlay only)
 - `ollama-data` — Ollama models (only with Ollama profile)
 
 ---

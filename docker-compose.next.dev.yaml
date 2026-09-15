@@ -1,0 +1,110 @@
+# Development overlay for docker-compose.next.yaml.
+#
+# Usage:
+#   docker compose \
+#     -f docker-compose.next.yaml \
+#     -f docker-compose.next.dev.yaml \
+#     up -d
+#
+# The base stack remains production-like. This overlay only adds source bind
+# mounts, reload commands, and the Vite development server.
+
+services:
+  lamb:
+    environment:
+      DEV_MODE: "true"
+      GLOBAL_LOG_LEVEL: ${GLOBAL_LOG_LEVEL:-INFO}
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - type: bind
+        source: ./backend
+        target: /app/backend
+    command:
+      - uvicorn
+      - main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "9099"
+      - --forwarded-allow-ips
+      - "*"
+      - --reload
+      - --reload-dir
+      - /app/backend
+
+  kb:
+    environment:
+      GLOBAL_LOG_LEVEL: ${GLOBAL_LOG_LEVEL:-INFO}
+      KB_LOG_LEVEL: ${KB_LOG_LEVEL:-INFO}
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - type: bind
+        source: ./lamb-kb-server-stable/backend
+        target: /app/backend
+    command:
+      - uvicorn
+      - main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "9090"
+      - --forwarded-allow-ips
+      - "*"
+      - --reload
+      - --reload-dir
+      - /app/backend
+
+  library-manager:
+    environment:
+      GLOBAL_LOG_LEVEL: ${GLOBAL_LOG_LEVEL:-INFO}
+      LM_LOG_LEVEL: ${LM_LOG_LEVEL:-INFO}
+      PYTHONDONTWRITEBYTECODE: "1"
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - type: bind
+        source: ./library-manager/backend
+        target: /app
+    command:
+      - uvicorn
+      - main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "9091"
+      - --reload
+      - --reload-dir
+      - /app
+
+  frontend-dev:
+    image: node:20-alpine
+    working_dir: /app
+    init: true
+    environment:
+      HOST: 0.0.0.0
+      PROXY_TARGET: http://lamb:9099
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - type: bind
+        source: ./frontend/svelte-app
+        target: /app
+      - frontend-node-modules:/app/node_modules
+      - frontend-npm-cache:/root/.npm
+    ports:
+      - "5173:5173"
+    depends_on:
+      lamb:
+        condition: service_healthy
+    command: >
+      sh -lc "test -f static/config.js || cp static/config.js.sample static/config.js;
+      npm install --prefer-offline --no-audit --no-fund &&
+      npm run dev -- --host 0.0.0.0"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:5173"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+
+volumes:
+  frontend-node-modules:
+  frontend-npm-cache:

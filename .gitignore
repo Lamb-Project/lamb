@@ -209,3 +209,6 @@ frontend/svelte-app/static/img/*
 # Agent-readable illustrated end-user guides.
 !backend/lamb/aac/docs/
 !backend/lamb/aac/docs/ui-*.md
+
+
+developer-workflow-site/

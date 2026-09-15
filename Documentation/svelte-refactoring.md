@@ -193,19 +193,28 @@ The application runs in Docker containers. For testing and refactoring, ensure t
 | `library-manager` | 9091 | Document repository (optional) |
 | `ollama` | 11434 | Local LLM inference (opt-in via `--profile ollama`) |
 
-The Vite dev server (port **5173**) is NOT a compose service. Run it separately from `frontend/svelte-app/` when you need hot reload.
+The Vite dev server (port **5173**) is provided by `docker-compose.next.dev.yaml`. The overlay also bind-mounts each Python service separately and enables Uvicorn reload without changing the production-like base stack.
 
 #### Starting the Development Environment
 
 ```bash
 # From repository root (requires a .env — see Documentation/deployLocal.md)
-docker compose -f docker-compose.next.yaml up -d
+docker compose \
+  -f docker-compose.next.yaml \
+  -f docker-compose.next.dev.yaml \
+  up -d
 
-# Or start specific services
-docker compose -f docker-compose.next.yaml up -d lamb kb
+# Follow development logs
+docker compose \
+  -f docker-compose.next.yaml \
+  -f docker-compose.next.dev.yaml \
+  logs -f
 
-# Frontend dev server with hot reload (separate terminal)
-cd frontend/svelte-app && npm run dev -- --host 0.0.0.0
+# Stop development services while preserving data
+docker compose \
+  -f docker-compose.next.yaml \
+  -f docker-compose.next.dev.yaml \
+  down
 ```
 
 #### URLs for Testing

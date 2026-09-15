@@ -98,7 +98,7 @@ LAMB runs these main services:
 2. **LAMB Knowledge Base Server** (port 9090) - Document processing and vector search
 3. **LAMB Backend Server** (port 9099) - Core API and business logic (also serves the built frontend)
 4. **Library Manager** (port 9091) - Document repository (optional; `DISABLE`d by default)
-5. **Frontend dev server** (port 5173) - Vite dev server, used only when developing without Docker
+5. **Frontend dev server** (port 5173) - Vite with hot reload, enabled by the development Compose overlay
 
 ## 📖 Documentation
 
@@ -133,8 +133,9 @@ lamb/
 ├── lamb-cli/                 # Command-line client
 ├── open-webui/               # Vendored Open WebUI snapshot
 ├── Documentation/            # Project documentation
-├── docker-compose.next.yaml  # Container orchestration
-└── Caddyfile.next            # Reverse proxy (production TLS)
+├── docker-compose.next.yaml      # Container orchestration
+├── docker-compose.next.dev.yaml  # Development overlay with hot reload
+└── Caddyfile.next                # Reverse proxy (production TLS)
 ```
 
 ## 🤝 Contributing
@@ -272,4 +273,3 @@ As signatories to the manifesto, LAMB's core team members are committed to advan
 ---
 
 **LAMB** - Empowering educators to create intelligent, privacy-respecting AI assistants for enhanced learning experiences.
-
