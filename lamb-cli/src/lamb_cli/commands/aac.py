@@ -104,11 +104,16 @@ def start_session(
         body["assistant_id"] = assistant_id
     if skill:
         body["skill"] = skill
-        context: dict = {}
-        if assistant_id is not None:
-            context["assistant_id"] = assistant_id
-        if language:
-            context["language"] = language
+    context: dict = {}
+    if assistant_id is not None:
+        context["assistant_id"] = assistant_id
+    if language:
+        context["language"] = language
+        locales = {"english": "en", "spanish": "es", "catalan": "ca", "basque": "eu",
+                   "en": "en", "es": "es", "ca": "ca", "eu": "eu"}
+        if language.lower() in locales:
+            body["ui_language"] = locales[language.lower()]
+    if context:
         body["context"] = context
 
     err_console.print("[dim]Starting session...[/dim]")

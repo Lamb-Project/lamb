@@ -81,3 +81,15 @@ def test_skill_start_json_remains_machine_readable(httpx_mock,mock_token,extra):
     result=runner.invoke(app,['aac','start','--skill','test-and-evaluate','--assistant','42','-o','json'])
     assert result.exit_code==0,result.output
     assert json.loads(result.stdout)==response
+
+@pytest.mark.parametrize('skill',[None,'chat-with-assistant'])
+def test_session_creation_sends_language_and_link_with_or_without_skill(httpx_mock,mock_token,skill):
+    httpx_mock.add_response(json={'id':'new-session'})
+    args=['aac','start','--assistant','89','--language','Spanish','-o','json']
+    if skill: args+=['--skill',skill]
+    result=runner.invoke(app,args)
+    assert result.exit_code==0,result.output
+    body=json.loads(httpx_mock.get_request().content)
+    assert body['ui_language']=='es'
+    assert body['context']=={'assistant_id':89,'language':'Spanish'}
+    assert body.get('skill')==skill

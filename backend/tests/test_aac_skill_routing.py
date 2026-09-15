@@ -11,6 +11,20 @@ from lamb.aac.skill_loader import load_skill,SKILLS_DIR
 from lamb.evaluaitor.rubric_validator import RubricValidator
 
 class Routing(unittest.IsolatedAsyncioTestCase):
+    async def test_freeform_linked_context_reaches_both_transports_once(self):
+        for streaming in (False,True):
+            a,p,s=agent([message('first'),message('second')])
+            a.skill_state={'context':{'assistant_id':89}}
+            a.conversation=[{'role':'user','content':'Existing history'}]
+            await turn(a,streaming)
+            prefix=list(a.conversation)
+            await turn(a,streaming)
+            notices=[m for m in a.conversation if m.get('content','').startswith('[System: Selected assistant context]')]
+            self.assertEqual(len(notices),1)
+            self.assertIn('"assistant_id": "89"',notices[0]['content'])
+            self.assertEqual(a.conversation[:len(prefix)],prefix)
+            self.assertEqual(a.skill_state['announced_assistant_id'],'89')
+
     async def test_guard_supplies_recipe_before_action_plain_and_stream(self):
         for streaming in (False,True):
             a,p,s=agent([message(tools=[tool('lamb kb get 14')]),message(tools=[tool('lamb kb get 14')]),message('done')])

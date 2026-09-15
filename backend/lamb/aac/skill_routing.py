@@ -71,6 +71,22 @@ def command_context(key, args, kwargs, state):
 
 
 class SkillRouting:
+    def announce_linked_context(self):
+        """Expose a free-form session's linked target once, preserving prior bytes."""
+        state = self.skill_state
+        if not state or state.get('active_snapshot'):
+            return
+        context = normalize_context(state.get('context'))
+        target = context.get('assistant_id')
+        if not target or state.get('announced_assistant_id') == target:
+            return
+        self.conversation.append({'role': 'user', 'content':
+            '[System: Selected assistant context]\n' +
+            json.dumps({'assistant_id': target}) + '\n' +
+            'This session is linked to the selected assistant. Use this ID for "this assistant" or "linked assistant". '
+            'Load the necessary workflow and read this assistant directly; do not ask which one or list the inventory.'})
+        state['announced_assistant_id'] = target
+
     def activate_skill(self, skill_id, context=None, reason='explicit'):
         """Render once and retain snapshots. Caller appends the returned text once."""
         state = self.skill_state
