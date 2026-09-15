@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
 import { locale } from '$lib/i18n';
-import { serveFrontend } from '$lib/services/frontendManage';
+import { serveFrontendAction } from '$lib/services/frontendManage';
 import { apiFetch, apiJson } from '$lib/services/apiClient';
 
 /**
@@ -101,7 +101,7 @@ export async function sendMessageStream(sessionId, message, onChunk, onDone, onE
     const frontendAbort = new AbortController();
     const abortFrontend = () => frontendAbort.abort();
     signal?.addEventListener('abort', abortFrontend, { once: true });
-    void serveFrontend(sessionId, frontendChannel, frontendAbort.signal);
+    const seenActions = new Set();
     try {
 	let res;
 	try {
@@ -132,12 +132,16 @@ export async function sendMessageStream(sessionId, message, onChunk, onDone, onE
 	let buffer = '';
 	let completed = false;
 	let failed = false;
-	function consume(line) {
+	async function consume(line) {
 		if (!line.startsWith('data:')) return;
 		const payload = line.slice(5).trim();
 		if (payload === '[DONE]') { completed = true; return; }
 		let data;
 		try { data = JSON.parse(payload); } catch (_) { return; }
+        if (data.frontend_action && !seenActions.has(data.frontend_action.action_id)) {
+            seenActions.add(data.frontend_action.action_id);
+            await serveFrontendAction(sessionId, frontendChannel, data.frontend_action, frontendAbort.signal);
+        }
 		if (data.content) onChunk(data.content);
 		if (data.status) onStatus?.(data);
 		if (data.error) { failed = true; onError?.(data.error); }
@@ -150,9 +154,9 @@ export async function sendMessageStream(sessionId, message, onChunk, onDone, onE
 			buffer += decoder.decode(value, { stream: !done });
 			const lines = buffer.split('\n');
 			buffer = lines.pop() || '';
-			for (const line of lines) consume(line);
+			for (const line of lines) await consume(line);
 			if (done) {
-				if (buffer) consume(buffer);
+				if (buffer) await consume(buffer);
 				if (!completed && !failed) onError?.('Response interrupted. Please try again.');
 				break;
 			}

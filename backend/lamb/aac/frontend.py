@@ -3,6 +3,8 @@ import asyncio
 import json
 import time
 import uuid
+from contextlib import closing, suppress
+from functools import lru_cache
 from lamb.database_manager import LambDatabaseManager
 
 TABS = {'assistant': ('properties', 'tests', 'chat', 'activity', 'edit'), 'kb': ('files', 'ingest', 'query'), 'rubric': ('view',)}
@@ -37,7 +39,7 @@ class Mailbox:
     def __init__(self, db=None):
         self.db = db or LambDatabaseManager()
         self.table = f'{self.db.table_prefix}aac_frontend_actions'
-        with self.db.get_connection() as c:
+        with closing(self.db.get_connection()) as c, c:
             c.execute(f'''CREATE TABLE IF NOT EXISTS {self.table}
                 (id TEXT PRIMARY KEY, session TEXT, owner TEXT, channel TEXT,
                  expires REAL, payload TEXT, result TEXT)''')
@@ -45,39 +47,90 @@ class Mailbox:
 
     def create(self, session, owner, channel, payload, ttl=25):
         action = str(uuid.uuid4())
-        with self.db.get_connection() as c:
+        with closing(self.db.get_connection()) as c, c:
+            c.execute(f'DELETE FROM {self.table} WHERE expires < ?', (time.time()-60,))
             c.execute(f'INSERT INTO {self.table} VALUES (?,?,?,?,?,?,NULL)',
                       (action, session, owner, channel, time.time()+ttl, json.dumps(payload)))
         return action
 
-    def pending(self, session, owner, channel):
-        with self.db.get_connection() as c:
-            rows = c.execute(f'SELECT id,payload,expires FROM {self.table} WHERE session=? AND owner=? AND channel=? AND expires>? AND result IS NULL',
-                             (session, owner, channel, time.time())).fetchall()
-        return [{'action_id': r[0], 'expires': r[2], **json.loads(r[1])} for r in rows]
+    def claim(self, action, session, owner, channel):
+        # One-shot, server-clock freshness check before the browser navigates.
+        with closing(self.db.get_connection()) as c, c:
+            return c.execute(f"UPDATE {self.table} SET result=? WHERE id=? AND session=? AND owner=? AND channel=? AND expires>? AND result IS NULL",
+                             ('"claimed"', action, session, owner, channel, time.time()+10)).rowcount == 1
 
     def acknowledge(self, action, session, owner, channel, result):
-        with self.db.get_connection() as c:
-            return c.execute(f'UPDATE {self.table} SET result=? WHERE id=? AND session=? AND owner=? AND channel=? AND expires>? AND result IS NULL',
+        with closing(self.db.get_connection()) as c, c:
+            return c.execute(f'UPDATE {self.table} SET result=? WHERE id=? AND session=? AND owner=? AND channel=? AND expires>? AND result=\'"claimed"\'',
                              (json.dumps(result), action, session, owner, channel, time.time())).rowcount == 1
 
     def result(self, action):
-        with self.db.get_connection() as c:
+        with closing(self.db.get_connection()) as c, c:
             row = c.execute(f'SELECT result FROM {self.table} WHERE id=? AND expires>?', (action, time.time())).fetchone()
-        return json.loads(row[0]) if row and row[0] else None
+        result = json.loads(row[0]) if row and row[0] else None
+        return None if result == 'claimed' else result
 
     def expire(self, session, owner, channel):
-        with self.db.get_connection() as c:
+        with closing(self.db.get_connection()) as c, c:
             c.execute(f'UPDATE {self.table} SET expires=0 WHERE session=? AND owner=? AND channel=?', (session, owner, channel))
+
+
+@lru_cache(maxsize=1)
+def get_mailbox():
+    """One wrapper per worker; connections remain operation-scoped, never shared."""
+    return Mailbox()
+
+
+async def stream_with_frontend(source, bridge):
+    """Pump model and tool events while a tool waits for a browser acknowledgement."""
+    queue = asyncio.Queue(maxsize=8)
+    end = object()
+    if bridge:
+        bridge.emit = queue.put
+
+    async def produce():
+        try:
+            try:
+                async for event in source:
+                    await queue.put(event)
+            finally:
+                await source.aclose()
+        except BaseException as exc:
+            if asyncio.current_task().cancelling():
+                raise
+            await queue.put(exc)
+        await queue.put(end)
+
+    task = asyncio.create_task(produce())
+    try:
+        while True:
+            event = await queue.get()
+            if event is end:
+                break
+            if isinstance(event, BaseException):
+                raise event
+            yield event
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        if bridge:
+            bridge.emit = None
 
 
 class FrontendBridge:
     def __init__(self, session, owner, channel):
         self.session, self.owner, self.channel = session, owner, str(uuid.UUID(channel))
-        self.box = Mailbox()
+        self.box = get_mailbox()
+        self.emit = None
+        self.has_actions = False
 
     async def request(self, payload):
+        if self.emit is None:
+            raise ValueError('No connected frontend stream; navigation is not available.')
         action = self.box.create(self.session, self.owner, self.channel, payload)
+        self.has_actions = True
+        await self.emit({'frontend_action': {'action_id': action, **payload}})
         for _ in range(100):
             result = self.box.result(action)
             if result is not None:
@@ -91,4 +144,5 @@ class FrontendBridge:
         raise ValueError('Frontend acknowledgement timed out; navigation is not confirmed. Do not claim the page opened.')
 
     def close(self):
-        self.box.expire(self.session, self.owner, self.channel)
+        if self.has_actions:
+            self.box.expire(self.session, self.owner, self.channel)

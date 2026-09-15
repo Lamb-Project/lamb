@@ -29,6 +29,27 @@ class Documents(unittest.TestCase):
             own=c.get('/static/public/7/own.txt',headers={'Authorization':'Bearer own'})
             self.assertEqual(own.text,'OWNER_SECRET');self.assertEqual(own.headers['cache-control'],'private, no-store')
             self.assertEqual(c.get('/static/public/8/other.txt',headers={'Authorization':'Bearer own'}).status_code,404)
+    def test_case_variants_cannot_bypass_document_authentication(self):
+        # Separate directories also exercise this on case-sensitive Linux CI.
+        for spelling in ('public', 'Public', 'PUBLIC'):
+            directory = self.root / spelling / '7'
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / 'own.txt').write_text('OWNER_SECRET')
+        app = FastAPI()
+        app.mount('/static', DocumentAwareStaticFiles(directory=self.root))
+        client = TestClient(app)
+        for spelling in ('public', 'Public', 'PUBLIC', '%50ublic'):
+            for method in (client.get, client.head):
+                with self.subTest(spelling=spelling, method=method.__name__):
+                    url = f'/static/{spelling}/7/own.txt'
+                    self.assertEqual(method(url).status_code, 401)
+                    with patch('lamb.document_static.get_auth_context', AsyncMock(return_value=N(user={'id':8}))):
+                        self.assertEqual(method(url, headers={'Authorization':'Bearer other'}).status_code, 404)
+                    with patch('lamb.document_static.get_auth_context', AsyncMock(return_value=N(user={'id':7}))):
+                        response = method(url, headers={'Authorization':'Bearer own'})
+                        self.assertEqual(response.status_code, 200)
+                        self.assertEqual(response.headers['cache-control'], 'private, no-store')
+
     def test_existing_rag_record_cannot_read_other_owner(self):
         with patch('lamb.database_manager.LambDatabaseManager') as db:
             db.return_value.get_creator_user_by_email.return_value={'id':7}

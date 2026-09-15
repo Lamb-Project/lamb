@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$app/paths', () => ({ base: '' }));
 vi.mock('$lib/services/apiClient', () => ({ apiJson: vi.fn() }));
+import { apiJson } from '$lib/services/apiClient';
 import { goto } from '$app/navigation';
-import { destinationUrl, applyFrontendAction, markWorkspaceDirty, clearWorkspaceDirty } from './frontendManage';
+import { destinationUrl, applyFrontendAction, serveFrontendAction, markWorkspaceDirty, clearWorkspaceDirty } from './frontendManage';
 
 describe('frontend navigation contract', () => {
     beforeEach(() => { document.body.innerHTML = ''; clearWorkspaceDirty(); vi.clearAllMocks(); });
@@ -30,9 +31,17 @@ describe('frontend navigation contract', () => {
         }
         for (const target of [{resource:'assistant-create',id:'1',tab:''}, {resource:'rubric',id:'../../x',tab:'view'}]) expect(() => destinationUrl(target)).toThrow();
     });
-    it('does not execute an expired browser action', async () => {
-        expect((await applyFrontendAction({ operation: 'open', resource: 'assistant', id: '80', tab: 'tests', expires: 1 })).status).toBe('failed');
+    it('requires a server claim before navigation, regardless of browser clock', async () => {
+        const action={operation:'open',resource:'assistant',id:'80',tab:'tests',action_id:'a',expires:1};
+        apiJson.mockRejectedValueOnce(new Error('409 expired'));
+        await serveFrontendAction('s','c',action);
         expect(goto).not.toHaveBeenCalled();
+        document.body.innerHTML='<main><span data-aac-resource="assistant" data-aac-id="80" data-aac-tab="tests"></span></main>';
+        apiJson.mockResolvedValue({success:true,valid_for_ms:5000});
+        await serveFrontendAction('s','c',action);
+        expect(goto).toHaveBeenCalledOnce();
+        expect(apiJson.mock.lastCall[0]).toBe('/aac/sessions/s/frontend/a');
+        expect(JSON.parse(apiJson.mock.lastCall[1].body)).toMatchObject({channel:'c',status:'opened'});
     });
     it('blocks unsaved input without navigating', async () => {
         markWorkspaceDirty();

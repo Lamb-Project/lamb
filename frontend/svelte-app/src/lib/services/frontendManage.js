@@ -20,7 +20,6 @@ export function workspaceContext() {
     return { route: window.location.pathname, ...(el ? { resource: el.dataset.aacResource, id: el.dataset.aacId, tab: el.dataset.aacTab } : {}) };
 }
 export async function applyFrontendAction(action, signal) {
-    if (action.expires && action.expires * 1000 <= Date.now()) return { status: 'failed', reason: 'Frontend action expired' };
     if (signal?.aborted) return { status: 'failed', reason: 'Turn ended' };
     if (action.operation === 'current') return { status: 'current', ...workspaceContext() };
     if (action.operation !== 'open') return { status: 'failed', reason: 'Unsupported frontend operation' };
@@ -40,21 +39,18 @@ export async function applyFrontendAction(action, signal) {
         return { status: 'failed', reason: 'The requested resource/tab did not finish loading' };
     } catch (_) { return { status: 'failed', reason: 'Unable to open the requested resource' }; }
 }
-/** Poll only for this live turn. Never replay a session transcript. */
-export async function serveFrontend(sessionId, channel, signal) {
-    const seen = new Set();
-    while (!signal.aborted) {
-        try {
-            const actions = await apiJson(`/aac/sessions/${sessionId}/frontend?channel=${channel}`, { signal });
-            for (const action of actions) {
-                if (signal.aborted || seen.has(action.action_id)) continue;
-                seen.add(action.action_id);
-                const result = await applyFrontendAction(action, signal);
-                if (!signal.aborted) await apiJson(`/aac/sessions/${sessionId}/frontend/${action.action_id}`, {
-                    method: 'POST', body: JSON.stringify({ channel, ...result }), signal,
-                });
-            }
-        } catch (_) { if (signal.aborted) return; }
-        await new Promise(resolve => setTimeout(resolve, 400));
-    }
+/** Live stream events only. A server-side claim rejects expired or replayed actions. */
+export async function serveFrontendAction(sessionId, channel, action, signal) {
+    if (signal?.aborted) return;
+    try {
+        const started = performance.now();
+        const grant = await apiJson(`/aac/sessions/${sessionId}/frontend/${action.action_id}/claim`, {
+            method: 'POST', body: JSON.stringify({ channel }), signal,
+        });
+        if (signal?.aborted || grant?.valid_for_ms !== 5000 || performance.now() - started >= grant.valid_for_ms) return;
+        const result = await applyFrontendAction(action, signal);
+        if (!signal?.aborted) await apiJson(`/aac/sessions/${sessionId}/frontend/${action.action_id}`, {
+            method: 'POST', body: JSON.stringify({ channel, ...result }), signal,
+        });
+    } catch (_) { /* No confirmed ack: the server reports an unconfirmed action. */ }
 }

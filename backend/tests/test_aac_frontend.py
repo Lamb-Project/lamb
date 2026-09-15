@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
-from lamb.aac.frontend import Mailbox, FrontendBridge
+from lamb.aac.frontend import Mailbox, FrontendBridge, stream_with_frontend
 from lamb.aac.liteshell.shell import prepare_command
 from tests.test_aac_authoring import Authoring
 
@@ -57,30 +57,95 @@ class FrontendTests(unittest.IsolatedAsyncioTestCase):
             db=SimpleNamespace(table_prefix='',get_connection=lambda:sqlite3.connect(directory+'/test.db'))
             box=Mailbox(db);other=Mailbox(db)
             a=box.create('s','owner','channel',{'operation':'open','id':'80'})
-            pending=other.pending('s','owner','channel')[0]
-            self.assertEqual({k:v for k,v in pending.items() if k!='expires'}, {'action_id':a,'operation':'open','id':'80'})
-            self.assertGreater(pending['expires'],0)
-            self.assertEqual(other.pending('s','foreign','channel'),[])
             for session,owner,channel in [('wrong','owner','channel'),('s','foreign','channel'),('s','owner','wrong')]:
+                self.assertFalse(other.claim(a,session,owner,channel))
                 self.assertFalse(other.acknowledge(a,session,owner,channel,{'status':'current'}))
+            self.assertTrue(other.claim(a,'s','owner','channel'))
+            self.assertFalse(other.claim(a,'s','owner','channel'))
+            self.assertIsNone(box.result(a))
             self.assertTrue(other.acknowledge(a,'s','owner','channel',{'status':'current'}))
             self.assertFalse(other.acknowledge(a,'s','owner','channel',{'status':'current'}))
             self.assertEqual(box.result(a),{'status':'current'})
             b=box.create('s','owner','channel',{'operation':'current'})
             box.expire('s','owner','channel')
-            self.assertEqual(box.pending('s','owner','channel'),[])
+            self.assertFalse(other.claim(b,'s','owner','channel'))
             self.assertFalse(box.acknowledge(b,'s','owner','channel',{'status':'current'}))
             self.assertIsNone(box.result(b))
 
     async def test_bridge_waits_and_reports_failure_instead_of_success(self):
         payload={'operation':'open','resource':'assistant','id':'80','tab':'tests'}
         for result in ({'status':'blocked','reason':'Unsaved'}, {'status':'opened','resource':'assistant','id':'81','tab':'tests'}, {'status':'current'}):
-            with patch('lamb.aac.frontend.Mailbox') as factory:
+            with patch('lamb.aac.frontend.get_mailbox') as factory:
                 factory.return_value.result.return_value=result
                 bridge=FrontendBridge('s','owner','00000000-0000-4000-8000-000000000001')
+                bridge.emit=AsyncMock()
                 with self.assertRaises(ValueError):await bridge.request(payload)
                 bridge.close();factory.return_value.expire.assert_called_once()
-        with patch('lamb.aac.frontend.Mailbox') as factory,patch('lamb.aac.frontend.asyncio.sleep',new_callable=AsyncMock):
+        with patch('lamb.aac.frontend.get_mailbox') as factory,patch('lamb.aac.frontend.asyncio.sleep',new_callable=AsyncMock):
             factory.return_value.result.return_value=None
             bridge=FrontendBridge('s','owner','00000000-0000-4000-8000-000000000001')
+            bridge.emit=AsyncMock()
             with self.assertRaisesRegex(ValueError,'timed out'):await bridge.request(payload)
+
+    async def test_stream_delivers_action_while_tool_waits_then_ack_on_another_connection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db=SimpleNamespace(table_prefix='', get_connection=lambda:sqlite3.connect(directory+'/test.db'))
+            box=Mailbox(db); other=Mailbox(db)
+            with patch('lamb.aac.frontend.get_mailbox', return_value=box):
+                bridge=FrontendBridge('s','owner','00000000-0000-4000-8000-000000000001')
+            payload={'operation':'open','resource':'assistant','id':'80','tab':'tests'}
+            async def model():
+                result=await bridge.request(payload)
+                yield {'content': result['status']}
+            events=stream_with_frontend(model(), bridge)
+            event=await asyncio.wait_for(anext(events), 1)
+            action=event['frontend_action']['action_id']
+            self.assertTrue(other.claim(action,'s','owner',bridge.channel))
+            self.assertTrue(other.acknowledge(action,'s','owner',bridge.channel,{'status':'opened',**payload}))
+            self.assertEqual(await asyncio.wait_for(anext(events),1), {'content':'opened'})
+            await events.aclose()
+            bridge.close()
+
+    async def test_consumer_close_cancels_waiting_tool_and_finalizes_source(self):
+        closed=asyncio.Event()
+        with patch('lamb.aac.frontend.get_mailbox') as factory:
+            factory.return_value.result.return_value=None
+            bridge=FrontendBridge('s','owner','00000000-0000-4000-8000-000000000001')
+            async def model():
+                try:
+                    await bridge.request({'operation':'current'})
+                    yield 'unexpected'
+                finally:
+                    closed.set()
+            events=stream_with_frontend(model(),bridge)
+            self.assertIn('frontend_action',await asyncio.wait_for(anext(events),1))
+            await asyncio.wait_for(events.aclose(),1)
+            self.assertTrue(closed.is_set())
+            self.assertIsNone(bridge.emit)
+
+    async def test_connections_closed_and_expiry_uses_server_clock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            connections=[]
+            def connect():
+                c=sqlite3.connect(directory+'/test.db');connections.append(c);return c
+            box=Mailbox(SimpleNamespace(table_prefix='',get_connection=connect))
+            action=box.create('s','owner','c',{},ttl=-1)
+            self.assertFalse(box.claim(action,'s','owner','c'))
+            self.assertFalse(box.acknowledge(action,'s','owner','c',{'status':'current'}))
+            self.assertIsNone(box.result(action))
+            box.expire('s','owner','c')
+            for c in connections:
+                with self.assertRaises(sqlite3.ProgrammingError):c.execute('SELECT 1')
+
+    async def test_source_cancel_and_close_error_propagate_without_hanging(self):
+        for error in (asyncio.CancelledError(), RuntimeError('close failed')):
+            async def source():
+                try:
+                    yield 'start'
+                finally:
+                    raise error
+            events=stream_with_frontend(source(), None)
+            self.assertEqual(await asyncio.wait_for(anext(events),1),'start')
+            with self.assertRaises(type(error)):
+                await asyncio.wait_for(anext(events),1)
+            await events.aclose()

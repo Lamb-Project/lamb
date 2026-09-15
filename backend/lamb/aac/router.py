@@ -250,28 +250,25 @@ def _lock_owned_session(session_id, auth):
     return TurnLock(session_id)
 
 
-def _frontend_owner(session_id, auth):
-    if not AACSessionManager().get_session(session_id, auth.user["email"]):
-        raise HTTPException(404, "Session not found")
-
-
-@router.get("/sessions/{session_id}/frontend")
-async def frontend_pending(session_id: str, channel: str, auth: AuthContext = Depends(get_auth_context)):
-    from lamb.aac.frontend import Mailbox
-    _frontend_owner(session_id, auth)
-    return Mailbox().pending(session_id, auth.user["email"], channel)
+@router.post("/sessions/{session_id}/frontend/{action_id}/claim")
+async def frontend_claim(session_id: str, action_id: str, request: Request, auth: AuthContext = Depends(get_auth_context)):
+    from lamb.aac.frontend import get_mailbox
+    body = await request.json()
+    channel = body.get('channel', '') if isinstance(body, dict) else ''
+    if not isinstance(channel, str) or not get_mailbox().claim(action_id, session_id, auth.user['email'], channel):
+        raise HTTPException(409, 'Expired, duplicate or mismatched frontend action')
+    return {'success': True, 'valid_for_ms': 5000}
 
 
 @router.post("/sessions/{session_id}/frontend/{action_id}")
 async def frontend_ack(session_id: str, action_id: str, request: Request, auth: AuthContext = Depends(get_auth_context)):
-    from lamb.aac.frontend import Mailbox
-    _frontend_owner(session_id, auth)
+    from lamb.aac.frontend import get_mailbox
     body = await request.json()
     if not isinstance(body, dict) or body.get('status') not in ('opened', 'current', 'blocked', 'failed'):
         raise HTTPException(400, 'Invalid frontend acknowledgement')
     # Only bounded, known fields enter tool results. Never ingest page HTML or form values.
     result = {k: str(body[k])[:300] for k in ('status', 'reason', 'route', 'resource', 'id', 'tab') if k in body}
-    if not Mailbox().acknowledge(action_id, session_id, auth.user['email'], str(body.get('channel', '')), result):
+    if not get_mailbox().acknowledge(action_id, session_id, auth.user['email'], str(body.get('channel', '')), result):
         raise HTTPException(409, 'Expired, duplicate or mismatched frontend action')
     return {'success': True}
 
@@ -404,8 +401,10 @@ async def _send_message_stream(
         agent.shell.frontend = bridge.request
 
     async def generate():
+        from lamb.aac.frontend import stream_with_frontend
+        events = stream_with_frontend(agent.chat_stream(user_message), bridge)
         try:
-            async for event in agent.chat_stream(user_message):
+            async for event in events:
                 if isinstance(event, dict):
                     yield f"data: {json.dumps(event)}\n\n"
                 else:
@@ -415,9 +414,15 @@ async def _send_message_stream(
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
         finally:
-            if bridge:
-                bridge.close()
-            await _finish_turn(mgr, agent, session_id, auth.user["email"], skill_info)
+            with anyio.CancelScope(shield=True):
+                try:
+                    await events.aclose()
+                finally:
+                    try:
+                        if bridge:
+                            bridge.close()
+                    finally:
+                        await _finish_turn(mgr, agent, session_id, auth.user["email"], skill_info)
         stats = agent.get_stats()
         if agent.session_logger:
             agent.session_logger.log("turn_complete", stats)

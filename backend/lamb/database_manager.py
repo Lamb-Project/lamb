@@ -25,6 +25,7 @@ from dotenv import load_dotenv
 from .owi_bridge.owi_users import OwiUserManager
 import jwt
 import config
+import threading
 from lamb.logging_config import get_logger
 
 
@@ -38,6 +39,8 @@ class LambDatabaseManager:
     # LambDatabaseManager() per-request; running sync on every instantiation would
     # overwrite user-saved provider config (e.g. custom base_url/api_key) with .env defaults.
     _system_org_initialized = False
+    _ready_databases = set()
+    _initialization_lock = threading.RLock()
 
     def __init__(self):
         try:
@@ -54,14 +57,15 @@ class LambDatabaseManager:
                 self.create_database_and_tables()
                 logger.info(f"Created database at: {self.db_path}")
 
-            # Configure database optimizations
-            self._configure_database_optimizations()
-            
-            # Run migrations via the version-tracked MigrationRunner.
-            # The schema_version table ensures each migration only runs once
-            # across all workers/processes — safe to call on every instantiation.
-            from .migrations import MigrationRunner
-            MigrationRunner(self).apply_all()
+            # Persistent schema setup runs once per database per worker, not on
+            # every session lookup. Replacing a database requires stopped workers.
+            key = (os.getpid(), os.path.realpath(self.db_path), self.table_prefix)
+            with self._initialization_lock:
+                if key not in self._ready_databases:
+                    self._configure_database_optimizations()
+                    from .migrations import MigrationRunner
+                    MigrationRunner(self).apply_all()
+                    self._ready_databases.add(key)
 
             # Initialize system organization AFTER migrations so that
             # Creator_users columns (enabled, password_hash, role) exist.

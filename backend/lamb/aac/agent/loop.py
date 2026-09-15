@@ -712,7 +712,11 @@ class AgentLoop(SkillRouting):
             }
 
         # policy == "auto" — execute directly
-        result = await self.shell.execute(command)
+        try:
+            result = await self.shell.execute(command)
+        except BaseException:
+            self._record_interrupted(command, action_key)
+            raise
         self._record_audit(command, action_key, result.success, result.elapsed_ms, result)
         if self.session_logger:
             self.session_logger.log_tool_call(
@@ -778,6 +782,7 @@ class AgentLoop(SkillRouting):
             try:
                 result = await self.shell.execute(action["command"])
             except BaseException:
+                self._record_interrupted(action["command"], action.get("action_key"))
                 self.conversation.append({"role": "user", "content": user_message})
                 self.conversation.append({"role": "user", "content":
                     "[System: Approved action interrupted. Outcome may be unknown. Read back state before retrying: " + action['command'] + "]"})
@@ -822,6 +827,12 @@ class AgentLoop(SkillRouting):
             # The agent will respond to whatever the user said, and the
             # pending action remains for the next turn
             return None
+
+    def _record_interrupted(self, command, action_key):
+        result = ShellResult(False, error='Interrupted; outcome unknown. Read back state before retrying.', command=command)
+        self._record_audit(command, action_key, False, 0, result)
+        self.tool_audit[-1]['outcome'] = 'unknown'
+        self.tool_audit[-1]['interrupted'] = True
 
     def _record_audit(
         self, command: str, action_key: str | None,

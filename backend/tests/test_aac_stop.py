@@ -33,6 +33,8 @@ class StopTests(unittest.IsolatedAsyncioTestCase):
         task.cancel()
         with self.assertRaises(asyncio.CancelledError):await task
         s.execute.assert_awaited_once()
+        self.assertEqual(a.tool_audit[-1]["outcome"], "unknown")
+        self.assertTrue(a.tool_audit[-1]["interrupted"])
         results=[m for m in a.conversation if m['role']=='tool']
         self.assertEqual({m['tool_call_id'] for m in results},{'first','second'})
         self.assertTrue(all(json.loads(m['content'])['interrupted'] for m in results))
@@ -54,6 +56,8 @@ class StopTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(started.wait(),2);task.cancel()
         with self.assertRaises(asyncio.CancelledError):await task
         self.assertIsNone(a.pending_action)
+        self.assertEqual(a.tool_audit[-1]['outcome'], 'unknown')
+        self.assertIn('Interrupted', a.tool_audit[-1]['summary'])
         self.assertIn('Outcome may be unknown',a.conversation[-1]['content'])
         self.assertEqual(len(p.calls),0)
 

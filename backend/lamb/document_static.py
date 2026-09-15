@@ -10,7 +10,7 @@ from lamb.uploaded_files import owned_document
 class DocumentAwareStaticFiles(StaticFiles):
     async def get_response(self,path,scope):
         parts=PurePosixPath(path).parts
-        private=len(parts)==3 and parts[0]=='public' and parts[1].isdigit()
+        private=len(parts)==3 and parts[0].casefold()=='public' and parts[1].isdigit()
         if private:
             credentials=await HTTPBearer(auto_error=False)(Request(scope))
             if credentials is None:

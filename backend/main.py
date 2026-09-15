@@ -65,6 +65,8 @@ async def lifespan(app: FastAPI):
         from lamb.migrations import MigrationRunner
         db = LambDatabaseManager()
         MigrationRunner(db).apply_all()
+        from lamb.aac.frontend import get_mailbox
+        get_mailbox()
         logger.info("Database migrations checked/applied successfully")
     except Exception as e:
         logger.error(f"Failed to run database migrations: {e}")
