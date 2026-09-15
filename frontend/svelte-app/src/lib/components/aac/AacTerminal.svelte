@@ -373,10 +373,10 @@
         {/if}
         {#if stopped}<p role="status" class="text-sm">Response stopped. Completed actions are kept.</p>{/if}
 		{#if loading && statusText}
-			<div class="pl-2 opacity-60 text-xs" class:text-yellow-400={darkMode} class:text-gray-500={!darkMode}>
+			<div class="pl-2 text-xs" class:text-yellow-300={darkMode} class:text-gray-600={!darkMode}>
                 <span role="status" aria-live="polite">{statusText}</span>
                 <span aria-hidden="true" class="ml-2 tabular-nums">{activitySeconds}s</span>
-                {#if lastActivity}<div class="mt-1 text-xs opacity-75">{lastActivity}</div>{/if}
+                {#if lastActivity}<div class="mt-1 text-xs">{lastActivity}</div>{/if}
 			</div>
 		{:else if loading}
 			<div class="pl-2 opacity-60 animate-pulse">
