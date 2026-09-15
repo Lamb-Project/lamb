@@ -234,6 +234,11 @@ async def _read_user_message(request):
     user_message = body.get("message") if isinstance(body, dict) else None
     if not isinstance(user_message, str) or not user_message.strip():
         raise HTTPException(status_code=400, detail="Message is required")
+    from lamb.aac.language import validate_ui_language
+    try:
+        validate_ui_language(body)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     return user_message.strip()
 
 
@@ -339,6 +344,8 @@ async def _send_message(
 
     # Build agent — handle skill startup if needed
     agent, user_message, skill_info = await _prepare_agent_and_message(auth, session, user_message, token=bearer_token)
+    from lamb.aac.language import apply_ui_language
+    apply_ui_language(agent, (await request.json()).get('ui_language'))
 
     # Run agent loop
     try:
@@ -383,6 +390,8 @@ async def _send_message_stream(
     auth_header = request.headers.get("authorization", "")
     bearer_token = auth_header.removeprefix("Bearer ").strip() if auth_header.startswith("Bearer") else ""
     agent, user_message, skill_info = await _prepare_agent_and_message(auth, session, user_message, token=bearer_token)
+    from lamb.aac.language import apply_ui_language
+    apply_ui_language(agent, (await request.json()).get('ui_language'))
 
     from lamb.aac.frontend import FrontendBridge
     body = await request.json()

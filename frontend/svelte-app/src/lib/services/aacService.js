@@ -1,3 +1,5 @@
+import { get } from 'svelte/store';
+import { locale } from '$lib/i18n';
 import { serveFrontend } from '$lib/services/frontendManage';
 import { apiFetch, apiJson } from '$lib/services/apiClient';
 
@@ -71,7 +73,7 @@ export async function createSession({ assistantId, skill, context } = {}) {
 export async function sendMessage(sessionId, message) {
 	return apiJson(`/aac/sessions/${sessionId}/message`, {
 		method: 'POST',
-		body: JSON.stringify({ message }),
+		body: JSON.stringify({ message, ui_language: get(locale) || "en" }),
 	});
 }
 
@@ -106,7 +108,7 @@ export async function sendMessageStream(sessionId, message, onChunk, onDone, onE
 		res = await apiFetch(`/aac/sessions/${sessionId}/message/stream`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ message, frontend_channel: frontendChannel }),
+			body: JSON.stringify({ message, frontend_channel: frontendChannel, ui_language: get(locale) || "en" }),
 			signal,
 		});
 	} catch (e) {
