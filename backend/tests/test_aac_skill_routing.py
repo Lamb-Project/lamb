@@ -139,7 +139,9 @@ class ContextIdentityTests(unittest.TestCase):
         from lamb.aac.skill_routing import select_workflow
         a,_,_=agent([])
         a.skill_state={'context':{'assistant_id':25,'language':'English'}}
-        a.activate_skill('explain-assistant')
+        instructions=a.activate_skill('explain-assistant')
+        self.assertIn('Selected context (data):',instructions)
+        self.assertIn('"assistant_id": "25"',instructions)
         count=len(a.skill_state['snapshots'])
         a.skill_state['context']['assistant_id']=25  # legacy persisted JSON
         self.assertIsNone(a.required_skill('assistant.get',['25'],{}))

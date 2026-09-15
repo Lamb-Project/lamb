@@ -96,6 +96,11 @@ class SkillRouting:
         return (f"Active workflow: {snapshot['id']} (version {snapshot['version'][:12]}). "
                 f"This supersedes the previous active workflow {previous or 'none'}. "
                 "Continue the user's task without a new greeting. No action has been executed or approved.\n"
+                + "Selected context (data): " + json.dumps(
+                    {key: context[key] for key in ('assistant_id', 'language') if key in context},
+                    ensure_ascii=False) + "\n"
+                + "Use the selected assistant_id wherever the recipe says ASSISTANT_ID. "
+                  "If it is supplied, read that assistant directly instead of asking which one or listing the inventory.\n"
                 + snapshot['prompt'])
 
     def required_skill(self, key, args, kwargs):
