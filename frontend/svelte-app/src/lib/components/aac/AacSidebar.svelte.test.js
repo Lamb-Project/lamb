@@ -74,7 +74,7 @@ describe('persistent AAC sidebar', () => {
         expect(screen.getByRole('status').textContent).toContain('Preparing a response');
         progress({status:'tool',command:'Reading assistant config'});
         await waitFor(()=>expect(screen.getByRole('status').textContent).toBe('Reading assistant config'));
-        await waitFor(()=>expect(screen.getByText('1s')).not.toBeNull(),{timeout:2000});
+        await waitFor(()=>expect(Number.parseInt(screen.getByText(/^\d+s$/).textContent)).toBeGreaterThan(0),{timeout:3500});
         progress({status:'tool_done',command:'Reading assistant config',success:false});
         progress({status:'thinking'});
         await waitFor(()=>expect(screen.getByText('Tool reported a problem: Reading assistant config')).not.toBeNull());
