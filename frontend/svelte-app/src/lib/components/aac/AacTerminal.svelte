@@ -374,7 +374,7 @@
         {#if canvasData}
         <button class="canvas-preview" onclick={expandCanvas}><strong>{canvasData.title || 'Canvas'}</strong><span>Expand canvas</span></button>
         {/if}
-        {#if stopped}<p role="status" class="text-sm">Response stopped. Completed actions are kept.</p>{/if}
+        {#if stopped}<p role="status" class="text-sm">Stopped receiving the response. An action may still finish on the server; check its result before retrying.</p>{/if}
 		{#if loading && statusText}
 			<div class="pl-2 text-xs" class:text-yellow-300={darkMode} class:text-gray-600={!darkMode}>
                 <span role="status" aria-live="polite">{statusText}</span>

@@ -4,9 +4,6 @@ name: Test & Evaluate
 description: Generate test scenarios, run them, evaluate results, and suggest improvements
 required_context: [assistant_id]
 optional_context: [language]
-startup_actions:
-  - "lamb assistant get {assistant_id}"
-  - "lamb test scenarios {assistant_id}"
 ---
 
 # Skill: Test & Evaluate

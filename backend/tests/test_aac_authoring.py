@@ -17,7 +17,7 @@ class Authoring(unittest.IsolatedAsyncioTestCase):
 
     async def test_new_write_policies(self):
         a=ActionAuthorizer()
-        for name in ['kb.create','kb.upload','rubric.create','rubric.update']:self.assertEqual(a.check(name),'ask')
+        for name in ['kb.create','rubric.create','rubric.update']:self.assertEqual(a.check(name),'ask')
         for name in ['kb.query','test.evaluations']:self.assertEqual(a.check(name),'auto')
 
     async def test_kb_create_query_evaluations(self):

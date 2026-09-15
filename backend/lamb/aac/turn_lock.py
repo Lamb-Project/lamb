@@ -19,7 +19,7 @@ _guard = threading.Lock()
 _active = set()
 
 def _busy():
-    return HTTPException(status_code=409, detail='A turn is already running for this AAC session. Wait for it to finish before retrying.')
+    return HTTPException(status_code=409, detail='Another turn is running for this session or a session sharing its lock slot. Wait for it to finish before retrying.')
 
 class TurnLock:
     def __init__(self, session_id):

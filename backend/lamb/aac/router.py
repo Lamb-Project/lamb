@@ -201,13 +201,15 @@ async def list_sessions(auth: AuthContext = Depends(get_auth_context)):
 async def get_session(
     session_id: str,
     auth: AuthContext = Depends(get_auth_context),
+    diagnostics: bool = False,
 ):
     """Get session details including conversation history."""
     mgr = AACSessionManager()
     session = mgr.get_session(session_id, auth.user["email"])
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    return session
+    from lamb.aac.session_guidance import browser_session
+    return session if diagnostics else browser_session(session)
 
 
 @router.delete("/sessions/{session_id}")
@@ -486,20 +488,26 @@ async def _prepare_agent_and_message(
 
     Returns: (agent, message, skill_info)
     """
-    saved = session.get("skill_info") or {}
-    if saved.get("skill_id") and not saved.get("active_snapshot") and not session.get("pending_action"):
-        _validate_skill_selection(saved["skill_id"], saved.get("context") or {})
     agent = _build_agent(auth, session, token=token)
     state = agent.skill_state
-    if state.get("skill_id") and not state.get("active_snapshot") and not agent.pending_action:
-        instructions = agent.activate_skill(state["skill_id"], state.get("context"), reason="session_selection")
-        agent.conversation.append({"role": "user", "content": "[System: Workflow instructions]\n" + instructions})
-    elif not agent.pending_action:
-        from lamb.aac.skill_routing import select_workflow
-        selected = select_workflow(user_message, state)
-        if selected:
-            instructions = agent.activate_skill(*selected, reason="user_turn")
+    try:
+        if state.get("skill_id") and not state.get("active_snapshot") and not agent.pending_action:
+            instructions = agent.activate_skill(state["skill_id"], state.get("context"), reason="session_selection")
             agent.conversation.append({"role": "user", "content": "[System: Workflow instructions]\n" + instructions})
+        elif not agent.pending_action:
+            from lamb.aac.skill_routing import select_workflow
+            selected = select_workflow(user_message, state)
+            if selected:
+                instructions = agent.activate_skill(*selected, reason="user_turn")
+                agent.conversation.append({"role": "user", "content": "[System: Workflow instructions]\n" + instructions})
+    except ValueError as exc:
+        # An existing session must survive a retired or renamed recipe. New
+        # invalid selections are still rejected by the creation endpoint.
+        logger.warning("Recovering unavailable saved AAC workflow: %s", exc)
+        state['skill_id'] = None
+        state.pop('active_snapshot', None)
+        from lamb.aac.session_guidance import guidance_notice
+        agent.conversation.append({'role': 'assistant', 'content': guidance_notice(state, 'unavailable')})
     return agent, user_message, state
 
 
@@ -532,7 +540,8 @@ def _resolve_agent_llm(user_email: str):
         api_key = config.get("api_key")
         if not api_key:
             raise HTTPException(status_code=503, detail="No OpenAI API key configured for this organization")
-        model = model or "gpt-4o-mini"
+        if not model:
+            raise HTTPException(503, "AAC requires a configured default model; ask the organization administrator")
     return AsyncOpenAI(api_key=api_key, base_url=base_url), model
 
 
@@ -574,21 +583,20 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
 
     # Pin the rendered prefix for this session. Skill transitions append to history.
     state = dict(session.get("skill_info") or {})
-    if "system_prompt" not in state:
-        agent.load_skills(SKILLS_DIR)
-        state["system_prompt"] = agent.system_prompt
-        state["routing_version"] = 1
-        state.setdefault("context", {})
-        if session.get("assistant_id"):
-            state["context"].setdefault("assistant_id", session["assistant_id"])
-        slog.log("skill_routing_initialized", {"legacy_session": bool(session.get("conversation"))})
+    from lamb.aac.session_guidance import refresh_guidance
+    notice = refresh_guidance(agent, state, session, SKILLS_DIR)
+    state.setdefault("context", {})
+    if session.get("assistant_id"):
+        state["context"].setdefault("assistant_id", session["assistant_id"])
     from lamb.aac.skill_routing import normalize_context
     state['context'] = normalize_context(state.get('context'))
     agent.system_prompt = state["system_prompt"]
     agent.skill_state = state
 
     # Restore state from session
-    agent.conversation = session.get("conversation", [])
+    agent.conversation = list(session.get("conversation", []))
+    if notice:
+        agent.conversation.append({"role": "assistant", "content": notice})
     agent.pending_action = session.get("pending_action")
     agent.tool_audit = session.get("tool_audit", [])
 

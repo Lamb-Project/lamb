@@ -43,6 +43,19 @@ describe('frontend navigation contract', () => {
         expect(apiJson.mock.lastCall[0]).toBe('/aac/sessions/s/frontend/a');
         expect(JSON.parse(apiJson.mock.lastCall[1].body)).toMatchObject({channel:'c',status:'opened'});
     });
+    it('ignores filters and queries, but retains real edits until saved or discarded', async () => {
+        document.body.innerHTML='<main><input id="search"><form data-aac-transient><textarea id="query"></textarea></form><form id="edit"><input id="name"></form><form id="second"><input id="other"></form><span data-aac-resource="assistant" data-aac-id="80" data-aac-tab="tests"></span></main>';
+        const action={operation:'open',resource:'assistant',id:'80',tab:'tests'};
+        for(const id of ['search','query']) markWorkspaceDirty({target:document.getElementById(id)});
+        expect((await applyFrontendAction(action)).status).toBe('opened');
+        markWorkspaceDirty({target:document.getElementById('name')});
+        markWorkspaceDirty({target:document.getElementById('other')});
+        expect((await applyFrontendAction(action)).status).toBe('blocked');
+        clearWorkspaceDirty(document.getElementById('edit'));
+        expect((await applyFrontendAction(action)).status).toBe('blocked');
+        document.getElementById('second').remove();
+        expect((await applyFrontendAction(action)).status).toBe('opened');
+    });
     it('blocks unsaved input without navigating', async () => {
         markWorkspaceDirty();
         expect((await applyFrontendAction({ operation: 'open', resource: 'assistant', id: '80', tab: 'tests' })).status).toBe('blocked');

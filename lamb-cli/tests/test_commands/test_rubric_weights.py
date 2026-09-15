@@ -38,3 +38,13 @@ def test_legacy_invalid_total_can_be_repaired_in_steps():
     assert sum(c['weight'] for c in first)==70
     final=_apply_weights(first,'{"Reasoning":50}')
     assert sum(c['weight'] for c in final)==100
+
+
+def test_broken_total_only_allows_single_partial_patch():
+    from lamb_cli.commands.rubric import _apply_weights
+    import pytest
+    criteria=[{'name':'a','weight':20},{'name':'b','weight':20},{'name':'c','weight':20}]
+    assert _apply_weights(criteria,'{"a":30}')[0]['weight']==30
+    for value in ['{"a":30,"b":30}', '{"a":20,"b":20,"c":20}']:
+        with pytest.raises(ValueError):_apply_weights(criteria,value)
+    with pytest.raises(ValueError):_apply_weights([{'name':'a','weight':20}],'{"a":50}')

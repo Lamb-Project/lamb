@@ -22,7 +22,7 @@ logger = get_logger(__name__, component="AAC")
 DEFAULT_POLICY: dict[str, str] = {
     "frontend-manage.current": "auto", "frontend-manage.open": "auto",
     "kb.jobs": "auto", "kb.status": "auto",
-    "kb.create": "ask", "kb.upload": "ask", "kb.query": "auto",
+    "kb.create": "ask", "kb.query": "auto",
     "rubric.create": "ask", "rubric.update": "ask", "test.evaluations": "auto",
     "analytics.chats": "auto",
     "analytics.chat-detail": "auto",

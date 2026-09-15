@@ -4,8 +4,6 @@ name: Manage Knowledge Base
 description: Create and inspect knowledge bases, check files and ingestion status, and verify retrieval
 required_context: []
 optional_context: [language]
-startup_actions:
-  - "lamb kb list"
 ---
 
 Help the user create and populate a knowledge base. Ask for the intended source and purpose, then use `lamb kb create NAME --description TEXT`. Creation requires user approval.

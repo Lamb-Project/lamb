@@ -5547,11 +5547,6 @@
       1,
       "description d"
     ],
-    "kb.upload": [
-      2,
-      2,
-      "plugin"
-    ],
     "kb.query": [
       2,
       2,
@@ -5600,12 +5595,12 @@
     "assistant.create": [
       1,
       1,
-      "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format file_path"
+      "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format"
     ],
     "assistant.update": [
       1,
       1,
-      "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format file_path"
+      "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format"
     ],
     "assistant.publish": [
       1,

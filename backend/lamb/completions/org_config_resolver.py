@@ -217,37 +217,39 @@ class OrganizationConfigResolver:
         """Resolve preferences against enabled org configuration, never a live model probe.
 
         Installed/enabled connectors supplied by the caller bound the fallback set.
-        Omitted model catalogs permit the configured default only. Explicit empty
-        catalogs disable model selection. Stored assistant preferences are untouched.
+        Empty or omitted catalogs are unknown, not an explicit disable. A nonempty
+        catalog remains an allowlist. Stored assistant preferences are untouched.
         """
-        def models(provider):
+        def config_for(provider):
             if not provider or (available_providers is not None and provider not in available_providers):
-                return []
+                return {}
             config = self.get_provider_config(provider)
-            if not config or not config.get('enabled', True):
-                return []
-            catalog = config.get('models')
-            if catalog is None:
-                catalog = [config['default_model']] if config.get('default_model') else []
-            return catalog
+            return config if config and config.get('enabled', True) else {}
 
-        if requested_model and requested_model in models(requested_provider):
-            return {'provider': requested_provider, 'model': requested_model}
+        def allowed(provider, model):
+            config = config_for(provider)
+            catalog = config.get('models')
+            return bool(config and model and (not catalog or model in catalog))
+
+        def select(provider, model):
+            if (provider, model) != (requested_provider, requested_model):
+                logger.warning('Using organization model fallback: %s/%s', provider, model)
+            return {'provider': provider, 'model': model}
+
+        if allowed(requested_provider, requested_model):
+            return select(requested_provider, requested_model)
         default = self.get_global_default_model_config()
-        if default.get('model') and default['model'] in models(default.get('provider')):
-            return {'provider': default['provider'], 'model': default['model']}
-        if models(requested_provider):
-            config = self.get_provider_config(requested_provider)
-            model = config.get('default_model')
-            return {'provider': requested_provider,
-                    'model': model if model in models(requested_provider) else models(requested_provider)[0]}
+        if allowed(default.get('provider'), default.get('model')):
+            return select(default['provider'], default['model'])
         providers = self.organization.get('config', {}).get('setups', {}).get(self.setup_name, {}).get('providers', {})
-        for provider in providers:
-            catalog = models(provider)
+        for provider in dict.fromkeys([requested_provider, *providers]):
+            config = config_for(provider)
+            catalog = config.get('models') or []
+            model = config.get('default_model')
+            if allowed(provider, model):
+                return select(provider, model)
             if catalog:
-                config = self.get_provider_config(provider)
-                model = config.get('default_model')
-                return {'provider': provider, 'model': model if model in catalog else catalog[0]}
+                return select(provider, catalog[0])
         raise ValueError('No enabled model and connector configured for this organization')
 
     def _load_from_env(self, provider: str) -> Dict[str, Any]:

@@ -733,7 +733,7 @@ class AgentLoop(SkillRouting):
                 error=result.error,
             )
 
-        # Special handling for skill.load — build a rich result with skill prompt + startup data
+        # Special handling for skill.load — return the skill prompt to legacy direct callers
         # The actual injection happens through the normal tool result flow (no direct conversation manipulation)
         if action_key == "skill.load" and result.success and isinstance(result.data, dict):
             skill_data = result.data
@@ -747,17 +747,6 @@ class AgentLoop(SkillRouting):
                 f"CONTINUE responding in the SAME LANGUAGE you were using before. Do NOT switch to English."
             )
             parts.append(f"\n--- SKILL INSTRUCTIONS ---\n{skill_data.get('prompt', '')}")
-
-            # Run startup actions and collect results
-            for action in skill_data.get("startup_actions", []):
-                if self.authorizer.check(self.authorizer.resolve_action_key(action) or "") != "auto":
-                    parts.append(f"\n[Startup skipped: {action}] Requires explicit authorization.")
-                    continue
-                startup_result = await self.shell.execute(action)
-                startup_key = _parse_action_key(action)
-                self._record_audit(action, startup_key, startup_result.success, startup_result.elapsed_ms, startup_result)
-                if startup_result.success:
-                    parts.append(f"\n[Startup: {action}]\n{json.dumps(startup_result.data, default=str, ensure_ascii=False)[:3000]}")
 
             return {"success": True, "data": "\n".join(parts)}
 

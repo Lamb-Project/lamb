@@ -4,9 +4,25 @@ import { goto } from '$app/navigation';
 import { base } from '$app/paths';
 import { apiJson } from '$lib/services/apiClient';
 export const tabs = { assistant: ['properties', 'tests', 'chat', 'activity', 'edit'], kb: ['files', 'ingest', 'query'], rubric: ['view'] };
-let dirty = false;
-export function markWorkspaceDirty() { dirty = true; }
-export function clearWorkspaceDirty() { dirty = false; }
+const dirtyForms = new Set();
+let manualDirty = false;
+export function markWorkspaceDirty(event) {
+    if (!event) { manualDirty = true; return; }
+    const target = event.target;
+    if (!target?.matches?.('input, textarea, select') || target.disabled || target.readOnly) return;
+    const form = target.closest('form, [data-aac-edit-form]');
+    if (form && !form.matches('[data-aac-transient], [role="search"]')) dirtyForms.add(form);
+}
+export function clearWorkspaceDirty(form) {
+    if (form) dirtyForms.delete(form);
+    else { dirtyForms.clear(); manualDirty = false; }
+}
+function hasUnsavedChanges() {
+    for (const form of dirtyForms) {
+        if (!form.isConnected || form.closest('dialog:not([open]), [hidden]')) dirtyForms.delete(form);
+    }
+    return manualDirty || dirtyForms.size > 0;
+}
 export function destinationUrl(target) {
     if (['assistants', 'assistant-create'].includes(target.resource) && target.id === '' && target.tab === '') return `${base}/assistants?view=${target.resource === 'assistants' ? 'list' : 'create'}`;
     if (target.resource === 'rubric' && target.tab === 'view' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(target.id)) return `${base}/evaluaitor/${target.id}?aacTab=view`;
@@ -23,7 +39,7 @@ export async function applyFrontendAction(action, signal) {
     if (signal?.aborted) return { status: 'failed', reason: 'Turn ended' };
     if (action.operation === 'current') return { status: 'current', ...workspaceContext() };
     if (action.operation !== 'open') return { status: 'failed', reason: 'Unsupported frontend operation' };
-    if (dirty) return { status: 'blocked', reason: 'The workspace has input changes. Finish your edits and navigate manually; AAC will not move this page.' };
+    if (hasUnsavedChanges()) return { status: 'blocked', reason: 'The workspace has input changes. Finish your edits and navigate manually; AAC will not move this page.' };
     try {
         const url = destinationUrl(action) + `&aacRequest=${encodeURIComponent(action.action_id || crypto.randomUUID())}`;
         await goto(url, { keepFocus: true });

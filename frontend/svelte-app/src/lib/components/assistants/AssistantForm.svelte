@@ -1,5 +1,6 @@
 <!-- src/lib/components/assistants/AssistantForm.svelte -->
 <script>
+ import { clearWorkspaceDirty } from '$lib/services/frontendManage';
 	import { _ } from '$lib/i18n';
 	import { assistantConfigStore } from '$lib/stores/assistantConfigStore';
 	import { tick } from 'svelte';
@@ -202,6 +203,7 @@
 	 */
 	async function handleSubmit(event) {
 		event.preventDefault();
+        const submittedForm = event.currentTarget;
 		form.formError = '';
 		form.successMessage = '';
 		form.formLoading = true;
@@ -222,6 +224,7 @@
 			if (form.formState === 'edit' && form.initialAssistantData?.id) {
 				await updateAssistant(form.initialAssistantData.id.toString(), assistantDataPayload);
 				form.successMessage = 'Assistant updated successfully!';
+                clearWorkspaceDirty(submittedForm);
 				form.formDirty = false;
 
 				form.initialAssistantData = {
@@ -237,6 +240,7 @@
 					throw new Error('Create assistant response did not include an assistant_id.');
 				}
 				form.successMessage = 'Assistant created successfully!';
+                clearWorkspaceDirty(submittedForm);
 				form.formDirty = false;
 
 				onFormSuccess({ assistantId: createResponse.assistant_id });

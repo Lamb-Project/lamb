@@ -4,9 +4,6 @@ name: Improve Assistant
 description: Review and suggest improvements
 required_context: [assistant_id]
 optional_context: [language]
-startup_actions:
-  - "lamb assistant get {assistant_id}"
-  - "lamb assistant config"
 ---
 
 # Skill: Improve Assistant

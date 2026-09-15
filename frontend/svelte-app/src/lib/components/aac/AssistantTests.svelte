@@ -190,7 +190,7 @@
 			</div>
 
 			{#if showAddForm}
-				<div class="bg-gray-50 border rounded-lg p-4 mb-4 space-y-3">
+				<div data-aac-edit-form class="bg-gray-50 border rounded-lg p-4 mb-4 space-y-3">
 					<input bind:value={newTitle} placeholder="Title (e.g., 'Basic question about topic')"
 						class="w-full px-3 py-2 border rounded text-sm" />
 					<textarea bind:value={newMessage} placeholder="Student message / test prompt"

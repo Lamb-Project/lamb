@@ -175,6 +175,35 @@ class ConcurrentTurns(unittest.IsolatedAsyncioTestCase):
             mgr.update_conversation.assert_called_once()
             with turn_lock.TurnLock('s'):pass
 
+    async def test_asgi_disconnect_persists_before_unlock(self):
+        for spec in ['2.0', '2.4']:
+            with self.subTest(spec=spec):
+                a, mgr, req, auth = self.fixture()
+                disconnected = asyncio.Event()
+                async def chunks(message):
+                    yield 'first'
+                    await asyncio.sleep(0.02)
+                    yield 'second'
+                async def receive():
+                    await disconnected.wait()
+                    return {'type': 'http.disconnect'}
+                async def send(message):
+                    if message['type'] == 'http.response.body':
+                        if disconnected.is_set():
+                            raise OSError('client disconnected')
+                        disconnected.set()
+                def persisted(*args, **kwargs):
+                    with self.assertRaises(HTTPException):
+                        turn_lock.TurnLock('s')
+                a.chat_stream = chunks
+                mgr.update_conversation.side_effect = persisted
+                with patch.object(r, 'AACSessionManager', return_value=mgr), patch.object(r, '_prepare_agent_and_message', AsyncMock(return_value=(a, 'hello', None))):
+                    response = await r.send_message_stream('s', req, auth)
+                    await asyncio.wait_for(response({'type': 'http', 'asgi': {'spec_version': spec}}, receive, send), 2)
+                mgr.update_conversation.assert_called_once()
+                with turn_lock.TurnLock('s'):
+                    pass
+
     async def test_failed_agent_build_releases_lock(self):
         _,mgr,req,auth=self.fixture()
         for endpoint in [r.send_message,r.send_message_stream]:
@@ -245,13 +274,14 @@ class SkillSelectionValidation(unittest.IsolatedAsyncioTestCase):
                     self.assertIn(detail,raised.exception.detail)
                     manager.assert_not_called()
 
-    async def test_saved_invalid_selection_fails_before_client_allocation(self):
-        for skill in ('manage-knowledge','inspect-activity'):
-            with patch.object(r,'_build_agent') as build:
-                with self.assertRaises(HTTPException) as raised:
-                    await r._prepare_agent_and_message(N(),{'skill_info':{'skill_id':skill,'context':{}}},'hello')
-                self.assertEqual(raised.exception.status_code,400)
-                build.assert_not_called()
+    async def test_saved_invalid_selection_recovers_after_client_allocation(self):
+        for skill in ('manage-knowledge', 'inspect-activity'):
+            agent=N(skill_state={'skill_id':skill,'context':{}}, pending_action=None,
+                activate_skill=Mock(side_effect=ValueError('unavailable')), conversation=[])
+            with patch.object(r,'_build_agent',return_value=agent):
+                result,message,state=await r._prepare_agent_and_message(N(),{},'hello')
+            self.assertIsNone(state['skill_id'])
+            self.assertIn('unavailable',result.conversation[-1]['content'])
 
     async def test_valid_selection_preserves_required_context(self):
         req=N(json=AsyncMock(return_value={'skill':'inspect-activity','assistant_id':25}),headers={'content-type':'application/json'})

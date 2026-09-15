@@ -1,4 +1,5 @@
 <script>
+ import { clearWorkspaceDirty } from '$lib/services/frontendManage';
   import { createEventDispatcher } from 'svelte';
   import { _, locale } from '$lib/i18n';
   import { createRubric, updateRubric } from '$lib/services/rubricService';
@@ -58,7 +59,9 @@
   });
 
   // Handle form submission
-  async function handleSubmit() {
+  async function handleSubmit(event) {
+    event?.preventDefault();
+    const submittedForm = event?.currentTarget;
     if (isSubmitting) return;
 
     isSubmitting = true;
@@ -89,6 +92,7 @@
         result = await updateRubric(rubric.rubricId, rubricData, rubric.owner_email);
       }
 
+      clearWorkspaceDirty(submittedForm);
       success = localeLoaded ? $_('rubrics.form.successMessage', { default: 'Rubric saved successfully!' }) : 'Rubric saved successfully!';
 
       // Dispatch success event

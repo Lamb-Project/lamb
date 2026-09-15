@@ -40,8 +40,7 @@
     "admin": "Administrazioa",
     "orgAdmin": "Erakunde Admin",
     "sources": "Ezagutza Iturriak",
-    "rubrics": "Ebaluazio-eskalak",
-    "agent": "Agentea"
+    "rubrics": "Ebaluazio-eskalak"
   },
   "assistants": {
     "title": "Ikaskuntza Laguntzaileak",

@@ -4,8 +4,6 @@ name: LAMB Helper
 description: Answer questions about the LAMB platform, guide educators through features
 required_context: []
 optional_context: [language]
-startup_actions:
-  - "lamb docs index"
 ---
 
 # Skill: LAMB Helper

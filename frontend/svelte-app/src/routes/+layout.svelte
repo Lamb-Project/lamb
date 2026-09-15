@@ -96,7 +96,7 @@
 	<Nav />
 
 
-	<main oninputcapture={markWorkspaceDirty} class="w-full mx-auto py-6 sm:px-6 lg:px-8 flex-grow" class:aac-workspace={$sidebarOpen && !!$user.token}>
+	<main oninputcapture={markWorkspaceDirty} onchangecapture={markWorkspaceDirty} class="w-full mx-auto py-6 sm:px-6 lg:px-8 flex-grow" class:aac-workspace={$sidebarOpen && !!$user.token}>
 		{#if sessionError}
 			<div class="max-w-md mx-auto mt-12 bg-red-50 border border-red-200 rounded-lg p-6 text-center">
 				<h2 class="text-lg font-semibold text-red-800">Unable to start session</h2>

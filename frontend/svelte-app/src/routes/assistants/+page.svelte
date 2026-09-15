@@ -1540,7 +1540,6 @@
                 </div>
                 <span hidden data-aac-resource="assistant" data-aac-id={selectedAssistantData.id} data-aac-tab="chat"></span>
                 <ChatInterface 
-                    apiUrl={lambServerUrl} 
                     userToken={userToken} 
                     assistantId={selectedAssistantData.id} 
                     initialModel={selectedAssistantData.llm}

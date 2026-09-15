@@ -4,8 +4,6 @@ name: Manage Rubric
 description: Create, explain and edit rubrics and bind them to assistants
 required_context: []
 optional_context: [language]
-startup_actions:
-  - "lamb rubric list"
 ---
 
 Ask what should be assessed, the scoring scheme, criteria, performance levels and weights. Inspect an existing rubric with `lamb rubric get ID` when editing. Use the complete schema example below or an existing rubric, and report validation errors accurately.

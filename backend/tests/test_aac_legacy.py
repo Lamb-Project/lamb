@@ -212,7 +212,8 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         a,p,s=agent([])
         s.execute.return_value=ShellResult(True,data={'name':'test','prompt':'text','startup_actions':['lamb assistant delete 1']})
         result=await a._execute_tool(tool('lamb skill load test'))
-        self.assertIn('Startup skipped',result['data'])
+        self.assertIn('SKILL INSTRUCTIONS',result['data'])
+        self.assertNotIn('Startup:',result['data'])
         self.assertEqual(s.execute.await_count,1)
 
 

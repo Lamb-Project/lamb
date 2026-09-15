@@ -169,14 +169,12 @@ async def assistant_create(ctx: "CommandContext", args: list[str], kwargs: dict)
     if not args:
         raise ValueError("Usage: lamb assistant create <name> [--system-prompt ...] [--llm ...]")
     name = args[0]
-    if kwargs.get("file_path"):
-        await ctx.http.get("/creator/aac/files/validate", params={"reference":kwargs["file_path"]})
     if kwargs.get("rubric_id"):
         await ctx.http.get(f"/creator/rubrics/{kwargs['rubric_id']}")
 
     metadata: dict[str, Any] = {}
     for key in ("llm", "connector", "prompt_processor", "rag_processor",
-                "rubric_id", "rubric_format", "file_path"):
+                "rubric_id", "rubric_format"):
         if key in kwargs:
             metadata[key] = kwargs[key]
 
@@ -203,8 +201,6 @@ async def assistant_update(ctx: "CommandContext", args: list[str], kwargs: dict)
     if not args:
         raise ValueError("Usage: lamb assistant update <id> [--name ...] [--system-prompt ...]")
     assistant_id = args[0]
-    if kwargs.get("file_path"):
-        await ctx.http.get("/creator/aac/files/validate", params={"reference":kwargs["file_path"]})
     if kwargs.get("rubric_id"):
         await ctx.http.get(f"/creator/rubrics/{kwargs['rubric_id']}")
 
@@ -249,7 +245,7 @@ async def assistant_update(ctx: "CommandContext", args: list[str], kwargs: dict)
         existing_meta = raw_meta
 
     for key in ("llm", "connector", "prompt_processor", "rag_processor",
-                "rubric_id", "rubric_format", "file_path"):
+                "rubric_id", "rubric_format"):
         if key in kwargs:
             existing_meta[key] = kwargs[key]
     body["metadata"] = json.dumps(existing_meta)
@@ -574,7 +570,6 @@ def skill_load(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
         "skill_id": skill_id,
         "name": skill["metadata"].get("name", skill_id),
         "prompt": skill["prompt"],
-        "startup_actions": skill["startup_actions"],
     }
 
 
@@ -767,13 +762,6 @@ async def kb_create(ctx, args, kwargs):
         'name': args[0], 'description': kwargs.get('description', kwargs.get('d', ''))}))
 
 
-@register("kb.upload")
-async def kb_upload(ctx, args, kwargs):
-    """Unavailable in frontend liteshell: show the KB upload UI guide and let the user select the file."""
-    from lamb.aac.liteshell.shell import FILESYSTEM_MESSAGE
-    raise ValueError(FILESYSTEM_MESSAGE)
-
-
 @register("kb.query")
 async def kb_query(ctx, args, kwargs):
     """Query actual KB content: kb query KB_ID TEXT [--top-k N] [--threshold N] [--plugin NAME]."""
@@ -820,7 +808,8 @@ def _apply_weights(criteria, value):
     if any(type(w) not in (int, float) or not math.isfinite(w) or not 0 <= w <= 100 for w in all_weights):
         raise ValueError('Every resulting weight must be a finite percentage')
     original_total = sum(c.get('weight', 0) for c in criteria)
-    if math.isclose(original_total, 100, abs_tol=0.000001) and not math.isclose(sum(all_weights), 100, abs_tol=0.000001):
+    incremental_repair = len(weights) == 1 and len(criteria) > 1 and not math.isclose(original_total, 100, abs_tol=0.000001)
+    if not incremental_repair and not math.isclose(sum(all_weights), 100, abs_tol=0.000001):
         raise ValueError('Resulting criterion weights must total 100; provide all changed weights together')
     return result
 

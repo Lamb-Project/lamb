@@ -68,7 +68,6 @@ def load_skill(
     Returns:
         {
             "prompt": str,              # Composed prompt text for the LLM
-            "startup_actions": [str],   # Liteshell commands to run on startup
             "metadata": dict,           # Skill frontmatter
         }
 
@@ -94,9 +93,8 @@ def load_skill(
     # Resolve includes (with loop prevention)
     full_body = _resolve_includes(body, meta.get("includes", []), loaded=set())
 
-    # Substitute context variables in body and startup actions
+    # Substitute context variables in the body
     prompt = _substitute(full_body, context)
-    startup_actions = [_substitute(cmd, context) for cmd in meta.get("startup_actions", [])]
 
     # Append language directive
     language = context.get("language", "English")
@@ -104,7 +102,6 @@ def load_skill(
 
     return {
         "prompt": prompt,
-        "startup_actions": startup_actions,
         "metadata": meta,
     }
 

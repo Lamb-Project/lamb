@@ -4,10 +4,6 @@ name: Create New Assistant
 description: Guide through creating a new assistant
 required_context: []
 optional_context: [language]
-startup_actions:
-  - "lamb assistant config"
-  - "lamb kb list"
-  - "lamb rubric list"
 ---
 
 # Skill: Create New Assistant

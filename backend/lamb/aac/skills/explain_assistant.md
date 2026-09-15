@@ -4,8 +4,6 @@ name: Explain Configuration
 description: Show how the assistant works internally
 required_context: [assistant_id]
 optional_context: [language]
-startup_actions:
-  - "lamb assistant get {assistant_id}"
 ---
 
 # Skill: Explain Assistant

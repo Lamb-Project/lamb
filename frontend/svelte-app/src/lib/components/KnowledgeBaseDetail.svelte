@@ -1,4 +1,6 @@
 <script>
+ import { clearWorkspaceDirty } from '$lib/services/frontendManage';
+ let ingestionForm;
     import { onMount } from 'svelte';
     import { getKnowledgeBaseDetails, getIngestionPlugins, uploadFileWithPlugin, runBaseIngestionPlugin, deleteKnowledgeBaseFile, listIngestionJobs, retryIngestionJob, cancelIngestionJob, getIngestionJobStatus, getIngestionConfig } from '$lib/services/knowledgeBaseService';
     import { _ } from '$lib/i18n';
@@ -917,6 +919,7 @@
             const result = await uploadFileWithPlugin(kbId, selectedFile, selectedPlugin.name, pluginParams);
             console.log('Upload result:', result);
             uploadSuccess = true;
+            clearWorkspaceDirty(ingestionForm);
             selectedFile = null;
             resetFileInput();
             resetPluginParams();
@@ -954,6 +957,7 @@
             const result = await runBaseIngestionPlugin(kbId, selectedPlugin.name, pluginParams);
             console.log('Base ingestion result:', result);
             uploadSuccess = true;
+            clearWorkspaceDirty(ingestionForm);
             resetPluginParams();
             await loadKnowledgeBase(kbId);
         } catch (err) {
@@ -1370,7 +1374,7 @@
                                 <!-- ... no plugins message ... -->
                             {:else}
                                 <!-- Ingestion Form -->
-                                <form onsubmit={(e) => { e.preventDefault(); handleSubmitIngestion(); }} class="space-y-6">
+                                <form bind:this={ingestionForm} onsubmit={(e) => { e.preventDefault(); handleSubmitIngestion(); }} class="space-y-6">
                                     <!-- File selection (required for file-ingest, optional for other plugins that support file input) -->
                                     {#if pluginCanUseFileUpload(selectedPlugin)}
                                         <div>
@@ -1645,7 +1649,7 @@
                                 {$_('knowledgeBases.detail.query.title', { default: 'Query Knowledge Base' })}
                             </h3>
                             
-                            <form onsubmit={(e) => { e.preventDefault(); handleQuerySubmit(); }} class="space-y-4">
+                            <form data-aac-transient onsubmit={(e) => { e.preventDefault(); handleQuerySubmit(); }} class="space-y-4">
                                 <div>
                                     <label for="query-text" class="block text-sm font-medium text-gray-700">
                                         {$_('knowledgeBases.detail.query.inputLabel', { default: 'Enter your query:' })}

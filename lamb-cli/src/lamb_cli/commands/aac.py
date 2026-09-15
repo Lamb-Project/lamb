@@ -187,7 +187,7 @@ def get_session(
     """Get session details."""
     fmt = output or get_output_format()
     with get_client() as client:
-        data = client.get(f"/creator/aac/sessions/{session_id}")
+        data = client.get(f"/creator/aac/sessions/{session_id}", params={"diagnostics": "true"})
     if fmt == "json":
         print_json(data)
     else:
@@ -311,7 +311,7 @@ def show_history(
     """Show the conversation history for a session."""
     fmt = output or get_output_format()
     with get_client() as client:
-        data = client.get(f"/creator/aac/sessions/{session_id}")
+        data = client.get(f"/creator/aac/sessions/{session_id}", params={"diagnostics": "true"})
     conversation = data.get("conversation", [])
     if fmt == "json":
         print_json(conversation)
@@ -330,7 +330,7 @@ def show_tools(
     """Show the tool audit log for a session."""
     fmt = output or get_output_format()
     with get_client() as client:
-        data = client.get(f"/creator/aac/sessions/{session_id}")
+        data = client.get(f"/creator/aac/sessions/{session_id}", params={"diagnostics": "true"})
     audit = data.get("tool_audit", [])
     title = data.get("title", "")
     created = data.get("created_at", "")[:10]
@@ -398,7 +398,7 @@ def _show_history(session_id: str) -> None:
     """Helper for interactive mode."""
     try:
         with get_client() as client:
-            data = client.get(f"/creator/aac/sessions/{session_id}")
+            data = client.get(f"/creator/aac/sessions/{session_id}", params={"diagnostics": "true"})
         _print_conversation(data.get("conversation", []))
     except Exception as e:
         print_error(str(e))
@@ -408,7 +408,7 @@ def _show_session(session_id: str) -> None:
     """Helper for interactive mode."""
     try:
         with get_client() as client:
-            data = client.get(f"/creator/aac/sessions/{session_id}")
+            data = client.get(f"/creator/aac/sessions/{session_id}", params={"diagnostics": "true"})
         s = _enrich_session(data)
         console.print(f"  Turns: [cyan]{s['_turn_count']}[/cyan]")
         console.print(f"  Status: [cyan]{s.get('status', '?')}[/cyan]")

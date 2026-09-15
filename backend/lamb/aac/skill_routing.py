@@ -20,7 +20,7 @@ CAPABILITIES = {
     'explain-assistant': READ_ASSISTANT,
     'chat-with-assistant': READ_ASSISTANT | {'assistant.chat'},
     'test-and-evaluate': READ_ASSISTANT | {'assistant.chat', 'test.scenarios', 'test.add', 'test.update', 'test.run', 'test.runs', 'test.run-detail', 'test.evaluate', 'test.evaluations'},
-    'manage-knowledge-base': {'kb.get', 'kb.jobs', 'kb.status', 'kb.query', 'kb.create', 'kb.upload'},
+    'manage-knowledge-base': {'kb.get', 'kb.jobs', 'kb.status', 'kb.query', 'kb.create'},
     'manage-rubric': {'rubric.get', 'rubric.export', 'rubric.create', 'rubric.update'},
     'inspect-activity': READ_ASSISTANT | {'analytics.chats', 'analytics.chat-detail', 'analytics.stats', 'analytics.timeline'},
 }
@@ -94,7 +94,7 @@ class SkillRouting:
             raise ValueError('Skill routing is not initialized')
         context = normalize_context({**state.get('context', {}), **(context or {})})
         context.setdefault('language', "the user's current conversation language")
-        cache_key = digest([skill_id, context])
+        cache_key = digest([skill_id, context, state.get("policy_version")])
         snapshots = state.setdefault('snapshots', {})
         if cache_key not in snapshots:
             skill = load_skill(skill_id, dict(context))

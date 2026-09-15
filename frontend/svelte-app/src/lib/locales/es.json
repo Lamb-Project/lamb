@@ -44,8 +44,7 @@
     "admin": "Administración",
     "orgAdmin": "Admin Org",
     "sources": "Fuentes de Conocimiento",
-    "rubrics": "Rúbricas",
-    "agent": "Agente"
+    "rubrics": "Rúbricas"
   },
   "assistants": {
     "title": "Asistentes de Aprendizaje",

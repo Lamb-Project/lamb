@@ -76,7 +76,7 @@ describe('persistent AAC sidebar', () => {
         await fireEvent.click(await screen.findByRole('button',{name:'Stop response'}));
         await waitFor(()=>expect(screen.getByRole('button',{name:'Send'})).not.toBeNull());
         expect(screen.getByText('Partial answer')).not.toBeNull();
-        expect(screen.getByRole('status').textContent).toContain('Response stopped');
+        expect(screen.getByRole('status').textContent).toContain('Stopped receiving the response');
     });
     it('shows real tool activity, retains its result during thinking and clears it for the next turn', async () => {
         let progress, finish;
