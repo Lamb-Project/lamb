@@ -26,6 +26,37 @@
 
 	/** @type {string} */
 	let statusText = $state('');
+    let lastActivity = $state('');
+    let activityStarted = $state(0);
+    let activitySeconds = $state(0);
+    $effect(() => {
+        if (!loading) return;
+        const timer = setInterval(() => {
+            activitySeconds = Math.floor((Date.now() - activityStarted) / 1000);
+        }, 1000);
+        return () => clearInterval(timer);
+    });
+    function beginProgress() {
+        lastActivity = '';
+        updateProgress({status: 'thinking'});
+    }
+    function updateProgress(event) {
+        if (stopped) return;
+        activityStarted = Date.now();
+        activitySeconds = 0;
+        if (event.status === 'thinking') {
+            statusText = lastActivity ? 'Reviewing the tool result…' : 'Preparing a response…';
+        } else if (event.status === 'tool') {
+            statusText = event.command || 'Using a tool…';
+        } else if (event.status === 'tool_done') {
+            lastActivity = `${event.success ? 'Tool completed' : 'Tool reported a problem'}: ${event.command || 'Command'}`;
+            statusText = 'Reviewing the tool result…';
+        } else if (event.status === 'responding') {
+            statusText = '';
+        }
+        scrollToBottom();
+    }
+
     let sessionTitle = $state('New conversation');
     let stopped = $state(false);
     async function refreshSessionInfo() {
@@ -113,6 +144,7 @@
 	async function triggerSkillStartup() {
 		loading = true;
         stopped = false;
+        beginProgress();
 		let streamIdx = messages.length;
 		messages = [...messages, { role: 'assistant', content: '' }];
 		await tick();
@@ -131,13 +163,7 @@
 				},
 				(stats) => { lastStats = stats; statusText = ''; void refreshSessionInfo(); },
 				(err) => { messages[streamIdx] = { role: 'system', content: `Error: ${err}` }; messages = messages; },
-				(status) => {
-					if (status.status === 'thinking') statusText = '🧠 Thinking...';
-					else if (status.status === 'tool') statusText = `⚡ ${status.command || 'Running'}...`;
-					else if (status.status === 'tool_done') statusText = `${status.success ? '✓' : '✗'} ${status.command || 'Done'}`;
-					else if (status.status === 'responding') statusText = '';
-					scrollToBottom();
-				},
+				updateProgress,
 				streamAbort.signal,
 			);
 		} catch (e) {
@@ -167,6 +193,7 @@
 		inputText = '';
 		loading = true;
         stopped = false;
+        beginProgress();
 		lastStats = null;
 
 		await tick();
@@ -200,18 +227,7 @@
 					messages[streamIdx] = { role: 'system', content: `Error: ${err}` };
 					messages = messages;
 				},
-				(status) => {
-					if (status.status === 'thinking') {
-						statusText = '🧠 Thinking...';
-					} else if (status.status === 'tool') {
-						statusText = `⚡ ${status.command || 'Running command'}...`;
-					} else if (status.status === 'tool_done') {
-						statusText = `${status.success ? '✓' : '✗'} ${status.command || 'Done'}`;
-					} else if (status.status === 'responding') {
-						statusText = '';
-					}
-					scrollToBottom();
-				},
+				updateProgress,
 				streamAbort.signal,
 			);
 		} catch (e) {
@@ -358,7 +374,9 @@
         {#if stopped}<p role="status" class="text-sm">Response stopped. Completed actions are kept.</p>{/if}
 		{#if loading && statusText}
 			<div class="pl-2 opacity-60 text-xs" class:text-yellow-400={darkMode} class:text-gray-500={!darkMode}>
-				{statusText}
+                <span role="status" aria-live="polite">{statusText}</span>
+                <span aria-hidden="true" class="ml-2 tabular-nums">{activitySeconds}s</span>
+                {#if lastActivity}<div class="mt-1 text-xs opacity-75">{lastActivity}</div>{/if}
 			</div>
 		{:else if loading}
 			<div class="pl-2 opacity-60 animate-pulse">

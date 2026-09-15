@@ -60,6 +60,35 @@ describe('persistent AAC sidebar', () => {
         expect(screen.getByText('Partial answer')).not.toBeNull();
         expect(screen.getByRole('status').textContent).toContain('Response stopped');
     });
+    it('shows real tool activity, retains its result during thinking and clears it for the next turn', async () => {
+        let progress, finish;
+        sendMessageStream.mockImplementationOnce((id,text,chunk,done,error,status) => {
+            progress=status;
+            return new Promise(resolve => { finish=resolve; });
+        });
+        showSession('progress-session');render(Sidebar);
+        const input=screen.getByRole('textbox',{name:'Message LAMB AGENT'});
+        await fireEvent.input(input,{target:{value:'Check my assistant'}});
+        await fireEvent.keyDown(input,{key:'Enter'});
+        await waitFor(()=>expect(progress).toBeTypeOf('function'));
+        expect(screen.getByRole('status').textContent).toContain('Preparing a response');
+        progress({status:'tool',command:'Reading assistant config'});
+        await waitFor(()=>expect(screen.getByRole('status').textContent).toBe('Reading assistant config'));
+        await waitFor(()=>expect(screen.getByText('1s')).not.toBeNull(),{timeout:2000});
+        progress({status:'tool_done',command:'Reading assistant config',success:false});
+        progress({status:'thinking'});
+        await waitFor(()=>expect(screen.getByText('Tool reported a problem: Reading assistant config')).not.toBeNull());
+        expect(screen.getByRole('status').textContent).toContain('Reviewing the tool result');
+        finish();
+        await waitFor(()=>expect(screen.getByRole('button',{name:'Send'})).not.toBeNull());
+        expect(screen.queryByText('Tool reported a problem: Reading assistant config')).toBeNull();
+        sendMessageStream.mockImplementationOnce((id,text,chunk,done,error,status,signal)=>new Promise(resolve=>signal.addEventListener('abort',resolve,{once:true})));
+        await fireEvent.input(input,{target:{value:'Next request'}});
+        await fireEvent.keyDown(input,{key:'Enter'});
+        await waitFor(()=>expect(screen.getByRole('status').textContent).toContain('Preparing a response'));
+        expect(screen.queryByText('Tool reported a problem: Reading assistant config')).toBeNull();
+        await fireEvent.click(screen.getByRole('button',{name:'Stop response'}));
+    });
     it('does not send while composing text with an IME', async () => {
         showSession('ime-session');render(Sidebar);
         const input=screen.getByRole('textbox',{name:'Message LAMB AGENT'});
