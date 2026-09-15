@@ -85,6 +85,10 @@ Analyze the evaluation patterns and suggest improvements:
 Read `lamb test scenarios ASSISTANT_ID` and identify the exact scenario ID.
 Use `lamb test update ASSISTANT_ID SCENARIO_ID --expected "new expectation"`
 after showing the requested change; the tool queues exact-action confirmation.
+When the user supplies the scenario and new value, call this command in that
+same turn to stage it. A prose proposal alone does not create a pending action.
+The command does not save before confirmation: wait for the harness approval,
+then read back its result. Do not ask for a separate preliminary approval.
 Optional inline fields: `--title`, `--description`, `--message` (replaces the
 messages with one user turn), `--type`. Omitted fields, scenario ID, previous
 runs and evaluations remain unchanged. Empty `--expected ""` clears it.

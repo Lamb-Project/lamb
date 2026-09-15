@@ -154,6 +154,7 @@ def select_workflow(message, state):
     if match:
         context['assistant_id'] = match.group(1)
     assistant = bool(re.search(r'\b(assistant|asistente|assistent)\b', text))
+    scenario = bool(re.search(r'\b(scenarios?|escenarios?|escenaris?)\b', text))
     candidates = set()
     if re.search(r'\b(knowledge bases?|kb|base de conocimiento|base de coneixement)\b', text):
         candidates.add('manage-knowledge-base')
@@ -165,9 +166,9 @@ def select_workflow(message, state):
         candidates.add('create-assistant')
     if assistant and re.search(r'\b(explain|explica|properties|propiedades|propietats)\b', text):
         candidates.add('explain-assistant')
-    if assistant and re.search(r'\b(improve|edit|update|mejora|mejorar|editar|millora|millorar)\b', text):
+    if assistant and not scenario and re.search(r'\b(improve|edit|update|mejora|mejorar|editar|millora|millorar)\b', text):
         candidates.add('improve-assistant')
-    if (assistant or context.get('assistant_id')) and re.search(r'\b(tests?|pruebas|proves|evaluate|evaluar)\b', text):
+    if (assistant or context.get('assistant_id')) and (scenario or re.search(r'\b(tests?|pruebas|proves|evaluate|evaluar)\b', text)):
         candidates.add('test-and-evaluate')
     if assistant and re.search(r'\b(chat with|talk to|hablar con|conversar)\b', text):
         candidates.add('chat-with-assistant')

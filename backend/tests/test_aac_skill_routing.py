@@ -120,6 +120,16 @@ class UserTurnSelection(unittest.TestCase):
             selected=select_workflow(text,state)
             self.assertEqual(selected[0],'inspect-activity');self.assertEqual(selected[1]['assistant_id'],'30')
 
+    def test_scenario_update_does_not_select_assistant_improvement(self):
+        from lamb.aac.skill_routing import select_workflow
+        state={'skill_id':'improve-assistant','context':{'assistant_id':87},'active_snapshot':'old'}
+        for text in ['Propose the same expected-only update again for assistant 87 scenario abc: expected Tuesday. Do not change other fields.',
+                     'Edit scenario abc for assistant 87 using test-and-evaluate.',
+                     'Editar el escenario abc del asistente 87.']:
+            self.assertEqual(select_workflow(text,state)[0],'test-and-evaluate',text)
+        selected=select_workflow('Update the description of assistant 87',{'context':{'assistant_id':87}})
+        self.assertEqual(selected[0],'improve-assistant')
+
     def test_ambiguity_negation_and_followups_do_not_switch(self):
         from lamb.aac.skill_routing import select_workflow
         state={'skill_id':'manage-knowledge-base','context':{},'active_snapshot':'old'}
