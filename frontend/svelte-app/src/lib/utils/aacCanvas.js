@@ -1,7 +1,7 @@
 /** Parse complete directives; hide unfinished canvas markup while streaming. */
 export function splitCanvasContent(text = '') {
  const events = [];
- const clean = text.replace(/<<<CANVAS(?:\s+title="([^"]*)")?>>>([\s\S]*?)<<<END_CANVAS>>>|<<<CANVAS_CLEAR>>>/g, (all, title, content, offset) => {
+ const clean = text.replace(/<<<CANVAS(?:\s+title="([^"]*)")?>{1,3}([\s\S]*?)<<<END_CANVAS>>>|<<<CANVAS_CLEAR>>>/g, (all, title, content, offset) => {
   events.push(all === '<<<CANVAS_CLEAR>>>' ? null : {title: title || '', content: content.trim(), offset});
   return '';
  }).replace(/<<<CANVAS[\s\S]*$/, '').trim();

@@ -112,7 +112,7 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
     async def test_provider_ignoring_cap_cannot_execute(self):
         for streaming in [False,True]:
             a,p,s=agent([message(tools=[tool()])],max_tool_rounds=0)
-            self.assertIn('No further tools',await turn(a,streaming))
+            self.assertIn('tool limit',await turn(a,streaming))
             s.execute.assert_not_awaited()
             self.assertFalse(any('tool_calls' in m for m in a.conversation))
 
@@ -123,6 +123,18 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
             await turn(a,streaming)
             self.assertEqual(s.execute.await_count,2)
             self.assertEqual([x['tool_call_id'] for x in a.conversation if x['role']=='tool'],['a','b'])
+
+    async def test_ignored_no_tools_asks_for_actual_pending_approval(self):
+        for streaming in [False, True]:
+            a,p,s=agent([message(tools=[tool('lamb assistant create two')])],
+                         pending_action={'command':'lamb assistant create one','action_key':'assistant.create'})
+            a.skill_state={'ui_language':'es'}
+            reply=await turn(a,streaming)
+            self.assertIn('Responde sí o no',reply)
+            self.assertIn('lamb assistant create one',reply)
+            self.assertNotIn('lamb assistant create two',reply)
+            self.assertEqual(a.pending_action['command'],'lamb assistant create one')
+            s.execute.assert_not_awaited()
 
     async def test_multiple_writes_keep_first_pending_action(self):
         for streaming in [False,True]:

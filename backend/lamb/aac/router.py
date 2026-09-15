@@ -95,11 +95,20 @@ async def create_session(
     to send a message first — the agent leads.
     """
     body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    from lamb.aac.language import validate_ui_language, LANGUAGES
+    try:
+        validate_ui_language(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    ui_language = body.get('ui_language')
     assistant_id = body.get("assistant_id")
     skill_id = body.get("skill")
     skill_context = body.get("context", {})
     if not isinstance(skill_context, dict):
         raise HTTPException(status_code=400, detail="Skill context must be an object.")
+
+    if ui_language:
+        skill_context['language'] = LANGUAGES[ui_language]
 
     # If skill provides assistant_id in context, use it
     if "assistant_id" in skill_context and not assistant_id:
@@ -159,13 +168,14 @@ async def create_session(
         "created_at": session["created_at"],
     }
 
-    # If skill, store skill_info so the first message triggers startup
-    if skill_id:
+    # Persist creation language even for a free-form session before its first turn.
+    if skill_id or ui_language:
         mgr.update_conversation(
             session_id=session["id"],
             user_email=auth.user["email"],
             conversation=[],
-            skill_info={"skill_id": skill_id, "context": skill_context, "started": False},
+            skill_info={"skill_id": skill_id, "context": skill_context, "started": False,
+                        **({"ui_language": ui_language} if ui_language else {})},
         )
 
     return result

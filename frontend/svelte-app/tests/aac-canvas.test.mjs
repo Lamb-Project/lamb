@@ -9,3 +9,8 @@ test('last canvas wins across and within messages',()=>{assert.equal(canvasFromM
 test('incomplete streamed canvas stays hidden and preserves previous',()=>{assert.equal(splitCanvasContent('text <<<CANVAS title="x">>>partial').text,'text');assert.equal(canvasFromMessages([a(canvas('Old','x')),a('<<<CANVAS')]).title,'Old');});
 test('user directives cannot alter canvas',()=>{assert.equal(canvasFromMessages([{role:'user',content:canvas('Bad','x')}]),null);});
 test('clear and replace in same message follows order',()=>{assert.equal(canvasFromMessages([a('<<<CANVAS_CLEAR>>>'+canvas('Next','n'))]).title,'Next');assert.equal(canvasFromMessages([a(canvas('Next','n')+'<<<CANVAS_CLEAR>>>')]),null);});
+test('Qwen single-chevron opener still renders a completed guide',()=>{
+ const result=splitCanvasContent('Guide <<<CANVAS title="Upload">\n![Step](/img/aac-tutorials/kb-ingest.png)\n<<<END_CANVAS>>> Next');
+ assert.equal(result.text,'Guide  Next');assert.equal(result.events[0].title,'Upload');
+ assert.match(result.events[0].content,/kb-ingest.png/);
+});

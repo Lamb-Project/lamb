@@ -51,7 +51,7 @@ export async function getSession(sessionId) {
  */
 export async function createSession({ assistantId, skill, context } = {}) {
 	/** @type {Object} */
-	const body = {};
+	const body = { ui_language: get(locale) || "en" };
 	if (assistantId != null) body.assistant_id = assistantId;
 	if (skill) {
 		body.skill = skill;

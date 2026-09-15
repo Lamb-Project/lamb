@@ -23,8 +23,8 @@ class LanguageTests(unittest.TestCase):
         apply_ui_language(agent,None)
         self.assertEqual(agent.conversation,saved)
         apply_ui_language(agent,'en')
-        self.assertEqual(agent.conversation[:-1],saved)
-        self.assertEqual(agent.skill_state['context']['language'],'English')
+        self.assertEqual(agent.conversation,saved)
+        self.assertEqual(agent.skill_state['context']['language'],'Spanish')
 
     def test_turn_reminder_follows_user_text_without_rewriting_it(self):
         original=[{'role':'user','content':'sí'}]
@@ -71,3 +71,22 @@ class LanguageRouteTests(unittest.IsolatedAsyncioTestCase):
                     a.chat.assert_awaited_once_with('sí')
             self.assertEqual(mgr.update_conversation.call_args.kwargs['skill_info']['ui_language'],'es')
             self.assertEqual(a.pending_action,{'command':'lamb assistant update 1'})
+
+class CreationLanguageTests(unittest.IsolatedAsyncioTestCase):
+    async def test_creation_persists_frontend_language_with_and_without_skill(self):
+        from unittest.mock import Mock
+        for skill in [None, 'about-lamb']:
+            mgr=Mock();mgr.create_session.return_value={'id':'new','created_at':'now'}
+            req=N(json=AsyncMock(return_value={'ui_language':'es','skill':skill}),headers={'content-type':'application/json'})
+            auth=N(user={'email':'teacher@example.test'},organization={'id':1})
+            with patch.object(r,'AACSessionManager',return_value=mgr):
+                await r.create_session(req,auth)
+            state=mgr.update_conversation.call_args.kwargs['skill_info']
+            self.assertEqual(state['ui_language'],'es')
+            agent=N(skill_state=state,conversation=[])
+            apply_ui_language(agent,'en')
+            self.assertEqual(agent.skill_state['context']['language'],'Spanish')
+            prefix=copy.deepcopy(agent.conversation)
+            resumed=N(skill_state=copy.deepcopy(agent.skill_state),conversation=copy.deepcopy(prefix))
+            apply_ui_language(resumed,'en')
+            self.assertEqual(resumed.conversation,prefix)

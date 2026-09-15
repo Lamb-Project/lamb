@@ -5,7 +5,7 @@ vi.mock('$lib/services/apiClient',()=>({apiJson:vi.fn(),apiFetch:vi.fn()}));
 import {serveFrontendAction} from '$lib/services/frontendManage';
 import {locale} from '$lib/i18n';
 import {apiFetch,apiJson} from '$lib/services/apiClient';
-import {sendMessage,sendMessageStream} from './aacService';
+import {createSession,sendMessage,sendMessageStream} from './aacService';
 describe('AAC language metadata',()=>{
  it('reads the current UI locale for each normal or startup turn and preserves exact user text',async()=>{
   for(const language of ['es','en','ca','eu']){
@@ -31,4 +31,11 @@ it('dispatches live navigation once without starting a polling side channel',asy
  expect(serveFrontendAction.mock.calls[0][2]).toEqual(action);
  expect(apiJson).not.toHaveBeenCalled();
  expect(chunks).toHaveBeenCalledWith('done');
+});
+
+it('captures the UI language when creating both free-form and skill sessions',async()=>{
+ for(const params of [{},{skill:'about-lamb'}]) {
+  locale.set('es');await createSession(params);
+  expect(JSON.parse(apiJson.mock.lastCall[1].body).ui_language).toBe('es');
+ }
 });

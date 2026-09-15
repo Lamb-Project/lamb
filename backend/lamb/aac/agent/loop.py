@@ -614,7 +614,11 @@ class AgentLoop(SkillRouting):
             # A provider that ignores the no-tools request must not execute more work.
             text = message["content"]
             if calls:
-                text = "No further tools were executed. The tool limit was reached or an action awaits confirmation."
+                if self.pending_action:
+                    from lamb.aac.language import confirmation_fallback
+                    text = confirmation_fallback(self)
+                else:
+                    text = "This turn reached its tool limit. No additional action was executed. Ask me to continue from the saved results."
                 yield text
             elif not streaming:
                 yield text
