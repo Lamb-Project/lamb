@@ -540,6 +540,8 @@ class AgentLoop(SkillRouting):
 
     async def _run_agent_events(self, streaming: bool) -> AsyncIterator[dict | str]:
         """Preserve interrupted output and keep tool-call history resumable."""
+        from lamb.aac.language import append_turn_language
+        append_turn_language(self)
         partial = ''
         completed = False
         start = len(self.conversation)

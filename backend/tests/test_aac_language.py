@@ -4,7 +4,7 @@ import unittest
 from types import SimpleNamespace as N
 from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
-from lamb.aac.language import apply_ui_language, validate_ui_language
+from lamb.aac.language import apply_ui_language, validate_ui_language, append_turn_language
 from tests import test_aac_router as lifecycle
 from lamb.aac import router as r
 
@@ -25,6 +25,17 @@ class LanguageTests(unittest.TestCase):
         apply_ui_language(agent,'en')
         self.assertEqual(agent.conversation[:-1],saved)
         self.assertEqual(agent.skill_state['context']['language'],'English')
+
+    def test_turn_reminder_follows_user_text_without_rewriting_it(self):
+        original=[{'role':'user','content':'sí'}]
+        agent=N(conversation=copy.deepcopy(original),skill_state={'ui_language':'es'})
+        append_turn_language(agent)
+        self.assertEqual(agent.conversation[0],original[0])
+        self.assertTrue(agent.conversation[-1]['content'].startswith('[System: Frontend response language]'))
+        self.assertIn('Responde al usuario en español',agent.conversation[-1]['content'])
+        legacy=N(conversation=copy.deepcopy(original),skill_state={})
+        append_turn_language(legacy)
+        self.assertEqual(legacy.conversation,original)
 
     def test_supported_locales_are_bounded(self):
         for code in ['en','es','ca','eu']:validate_ui_language({'ui_language':code})
