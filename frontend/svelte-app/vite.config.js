@@ -31,6 +31,11 @@ export default defineConfig({
 				changeOrigin: true,
 				secure: false
 			},
+			'/agent-docs': {
+				target: process.env.PROXY_TARGET || 'http://localhost:9099',
+				changeOrigin: true,
+				secure: false
+			},
 			'/static': {
 				target: process.env.PROXY_TARGET || 'http://localhost:9099',
 				changeOrigin: true,

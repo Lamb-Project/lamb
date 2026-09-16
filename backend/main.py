@@ -219,6 +219,8 @@ app = FastAPI(
 
 from lamb.document_static import DocumentAwareStaticFiles
 app.mount("/static", DocumentAwareStaticFiles(directory="static"), name="static")
+from lamb.aac.pack_loader import docs_root
+app.mount("/agent-docs", StaticFiles(directory=str(docs_root())), name="agent_docs")
 
 app.mount("/lamb", lamb_app)
 app.include_router(creator_router, prefix="/creator", tags=["Creator"])

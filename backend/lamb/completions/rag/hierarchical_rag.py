@@ -438,3 +438,6 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
             "assistant_data": assistant_dict,
             "raw_responses": all_responses if all_responses else None
         }
+
+
+AAC_DESCRIPTION = 'Retrieves hierarchical knowledge-base chunks using a model-generated query.'

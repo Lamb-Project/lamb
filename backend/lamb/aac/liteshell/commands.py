@@ -576,7 +576,12 @@ async def session_rename(ctx: "CommandContext", args: list[str], kwargs: dict) -
 def skill_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List available AAC skills with descriptions and requirements."""
     from lamb.aac.skill_loader import list_skills
-    return list_skills()
+    pack = ctx.knowledge.get('pack')
+    if not pack:
+        return list_skills()
+    from lamb.aac.pack_loader import allowed_skills
+    allowed = allowed_skills(pack, ctx.knowledge['brief']['layers'])
+    return [s for s in list_skills(pack.skills_dir) if s['id'] in allowed]
 
 
 @register("skill.load", local=True)
@@ -593,7 +598,12 @@ def skill_load(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
     if "language" in kwargs:
         context["language"] = kwargs["language"]
 
-    skill = load_skill(skill_id, context)
+    pack = ctx.knowledge.get('pack')
+    if pack:
+        from lamb.aac.pack_loader import allowed_skills
+        if skill_id not in allowed_skills(pack, ctx.knowledge['brief']['layers']):
+            raise ValueError('This workflow is outside your role; ask the appropriate administrator')
+    skill = load_skill(skill_id, context, pack.skills_dir if pack else None)
     return {
         "skill_id": skill_id,
         "name": skill["metadata"].get("name", skill_id),
@@ -605,121 +615,45 @@ def skill_load(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
 # Documentation commands (LOCAL — sync, read files, no HTTP)
 # ---------------------------------------------------------------------------
 
-_DOCS_DIR = None
-
-
-def _get_docs_dir():
-    """Resolve the aac_docs directory path (lazy, cached)."""
-    global _DOCS_DIR
-    if _DOCS_DIR is None:
-        from pathlib import Path
-        _DOCS_DIR = Path(__file__).parents[1] / "docs"
-    return _DOCS_DIR
-
-
-def _parse_front_matter(text: str) -> tuple[dict, str]:
-    """Parse YAML front matter from a markdown file. Returns (metadata, body)."""
-    if not text.startswith("---"):
-        return {}, text
-    end = text.find("---", 3)
-    if end == -1:
-        return {}, text
-    import yaml
-    try:
-        meta = yaml.safe_load(text[3:end]) or {}
-    except Exception:
-        meta = {}
-    body = text[end + 3:].lstrip("\n")
-    return meta, body
-
-
 @register("docs.index", local=True)
 def docs_index(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
-    """List available LAMB documentation topics with summaries."""
-    docs_dir = _get_docs_dir()
-    index_file = docs_dir / "index.md"
-    if not index_file.exists():
-        raise ValueError("Documentation index not found")
-
-    meta, body = _parse_front_matter(index_file.read_text(encoding="utf-8"))
-
-    sections = []
-    for md_file in sorted(docs_dir.glob("*.md")):
-        if md_file.name == "index.md":
-            continue
-        file_meta, _ = _parse_front_matter(md_file.read_text(encoding="utf-8"))
-        if not file_meta.get("topic"):
-            continue
-        sections.append({
-            "topic": file_meta["topic"],
-            "file": md_file.name,
-            "covers": file_meta.get("covers", []),
-            "answers": file_meta.get("answers", []),
-        })
-
-    return {
-        "version": meta.get("version", "unknown"),
-        "topics": [s["topic"] for s in sections],
-        "sections": sections,
-    }
+    """List documentation topics, language-neutral anchors and locale coverage."""
+    from lamb.aac.documentation import manifest
+    data = manifest()
+    language = ctx.knowledge.get('brief', {}).get('session_language', 'en')
+    return {'version':data['version'], 'topics':list(data['topics']), 'sections':data['topics'],
+            'language':language, 'coverage':data['coverage'][language]}
 
 
 @register("docs.read", local=True)
 def docs_read(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
-    """Read a specific LAMB documentation topic. Use --section to read only a subsection."""
-    if not args:
-        raise ValueError(
-            "Usage: lamb docs read <topic> [--section \"heading\"]\n"
-            "Use 'lamb docs index' to see available topics."
-        )
-    topic = args[0]
-    section = kwargs.get("section")
+    """Read a documentation topic, optionally --section ANCHOR_ID, in the session language."""
+    from lamb.aac.documentation import read_topic
+    language = ctx.knowledge.get('brief', {}).get('session_language', 'en')
+    result = read_topic(args[0], language, kwargs.get('section'))
+    # Keep proof of an actual missing section for the translation escape hatch.
+    if result['fallback_sections'] and ctx.knowledge.get('state') is not None:
+        ctx.knowledge['state']['documentation_fallback'] = {
+            'topic':args[0], 'sections':result['fallback_sections'], 'language':language}
+        ctx.knowledge['state'].setdefault('documentation_notices', {})[args[0]] = result['fallback_sections']
+    return result
 
-    docs_dir = _get_docs_dir()
-    candidates = [docs_dir / topic, docs_dir / f"{topic}.md"]
-    doc_file = None
-    for c in candidates:
-        if c.exists() and c.is_file():
-            doc_file = c
-            break
 
-    if not doc_file:
-        available = [f.stem for f in docs_dir.glob("*.md") if f.name != "index.md"]
-        raise ValueError(f"Topic '{topic}' not found. Available: {available}")
+@register("glossary", local=True)
+def glossary_lookup(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
+    """Look up a domain term in the pinned session glossary: lamb glossary TERM."""
+    from lamb.aac.glossary import lookup
+    glossary = ctx.knowledge.get('brief', {}).get('glossary', {})
+    entries = lookup(glossary, args[0])
+    return {'term':args[0], 'entries':entries, 'language':glossary.get('language','en'),
+            'source':'pinned_pack_glossary', 'machine_translation':False}
 
-    meta, body = _parse_front_matter(doc_file.read_text(encoding="utf-8"))
 
-    if section:
-        lines = body.split("\n")
-        section_lower = section.lower().strip()
-        in_section = False
-        section_lines = []
-        for line in lines:
-            if line.startswith("## "):
-                if in_section:
-                    break
-                heading = line[3:].strip().lower()
-                if section_lower in heading:
-                    in_section = True
-                    section_lines.append(line)
-            elif line.startswith("# ") and in_section:
-                break
-            elif in_section:
-                section_lines.append(line)
-
-        if not section_lines:
-            headings = [l[3:].strip() for l in lines if l.startswith("## ")]
-            raise ValueError(
-                f"Section '{section}' not found in '{topic}'. "
-                f"Available sections: {headings}"
-            )
-        body = "\n".join(section_lines).strip()
-
-    return {
-        "topic": meta.get("topic", topic),
-        "file": doc_file.name,
-        "content": body,
-    }
+@register("translate")
+async def translate_text(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
+    """Translate an unknown blocking term or missing documentation section through the configured utility model."""
+    from lamb.aac.translation import translate
+    return await translate(ctx.knowledge, ctx.user_email, args[0] if args else '', kwargs)
 
 
 # Existing CLI analytics vocabulary; the API remains the authorization boundary.
@@ -777,7 +711,14 @@ async def analytics_timeline(ctx, args, kwargs):
 def help_cmd(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict[str, str]:
     """Show available commands."""
     result = {}
+    pack = ctx.knowledge.get('pack')
+    allowed = None
+    if pack:
+        from lamb.aac.pack_loader import allowed_commands
+        allowed = allowed_commands(pack, ctx.knowledge['brief']['layers'])
     for key, func in sorted(COMMAND_REGISTRY.items()):
+        if allowed is not None and key not in allowed:
+            continue
         doc = func.__doc__ or ""
         result[f"lamb {key.replace('.', ' ')}"] = doc.split("\n")[0].strip()
     return result

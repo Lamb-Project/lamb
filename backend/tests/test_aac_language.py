@@ -1,3 +1,4 @@
+from tests.aac_knowledge_fixtures import knowledge_dependencies
 """Frontend language applies without rewriting cached history or confirmation text."""
 import copy
 import unittest
@@ -62,7 +63,10 @@ class LanguageRouteTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(a.skill_state['ui_language'],'es')
                 yield 'hecho'
             a.chat_stream=chunks
-            with patch.object(r,'AACSessionManager',return_value=mgr),patch.object(r,'_prepare_agent_and_message',AsyncMock(return_value=(a,'sí',None))):
+            async def prepare(auth, session, text, **kwargs):
+                apply_ui_language(a,kwargs['ui_language'])
+                return a,text,None
+            with patch.object(r,'AACSessionManager',return_value=mgr),patch.object(r,'_prepare_agent_and_message',AsyncMock(side_effect=prepare)):
                 if streaming:
                     response=await r.send_message_stream('s',req,auth)
                     _=[x async for x in response.body_iterator]
@@ -77,9 +81,9 @@ class CreationLanguageTests(unittest.IsolatedAsyncioTestCase):
         from unittest.mock import Mock
         for skill in [None, 'about-lamb']:
             mgr=Mock();mgr.create_session.return_value={'id':'new','created_at':'now'}
-            req=N(json=AsyncMock(return_value={'ui_language':'es','skill':skill}),headers={'content-type':'application/json'})
-            auth=N(user={'email':'teacher@example.test'},organization={'id':1})
-            with patch.object(r,'AACSessionManager',return_value=mgr):
+            req=N(json=AsyncMock(return_value={'ui_language':'es','skill':skill}),headers={'content-type':'application/json'},app=N(routes=[]))
+            auth=N(user={'email':'teacher@example.test','id':1},organization={'id':1},is_system_admin=False,is_org_admin=False)
+            with knowledge_dependencies(),patch.object(r,'AACSessionManager',return_value=mgr):
                 await r.create_session(req,auth)
             state=mgr.update_conversation.call_args.kwargs['skill_info']
             self.assertEqual(state['ui_language'],'es')

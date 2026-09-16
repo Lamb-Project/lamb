@@ -1,3 +1,4 @@
+from tests.aac_knowledge_fixtures import knowledge_dependencies
 """Second-letter recovery, payload and rubric/model boundary regressions."""
 import copy,json,unittest
 from types import SimpleNamespace as N
@@ -57,10 +58,10 @@ class Recovery(unittest.IsolatedAsyncioTestCase):
     async def test_retired_saved_skill_recovers_and_invalid_new_selection_rejected(self):
         from lamb.aac import router as r
         from fastapi import HTTPException
-        auth=N(user={'email':'owner@test','id':1},organization={'id':1})
+        auth=N(user={'email':'owner@test','id':1},organization={'id':1},is_system_admin=False,is_org_admin=False)
         session={'id':'old','conversation':[{'role':'user','content':'hello'}],
             'skill_info':{'skill_id':'retired-skill','context':{},'ui_language':'es'}}
-        with patch.object(r,'_resolve_agent_llm',return_value=(N(),'fake')),patch.object(r,'SessionLogger'):
+        with knowledge_dependencies(),patch.object(r,'_resolve_agent_llm',return_value=(N(),'fake')),patch.object(r,'SessionLogger'):
             agent, message, state=await r._prepare_agent_and_message(auth,session,'hello')
         self.assertIsNone(state['skill_id'])
         self.assertEqual(agent.conversation[0],session['conversation'][0])

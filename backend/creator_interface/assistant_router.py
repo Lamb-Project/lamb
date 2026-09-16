@@ -317,7 +317,7 @@ def sanitize_filename(filename: str) -> str:
 
 
 @router.get("/capabilities")
-async def get_assistant_capabilities(auth: AuthContext = Depends(get_auth_context)):
+async def get_assistant_capabilities(auth: AuthContext = Depends(get_auth_context), request: Request = None):
     """Use the same authenticated Creator instance for discovery and writes."""
     from lamb.completions.main import list_processors_and_connectors
     from lamb.assistant_model_config import model_configuration
@@ -325,7 +325,9 @@ async def get_assistant_capabilities(auth: AuthContext = Depends(get_auth_contex
     capabilities = await list_processors_and_connectors(auth=auth)
     configured = OrganizationConfigResolver(auth.user['email']).get_global_default_model_config()
     defaults = (auth.organization.get('config') or {}).get('assistant_defaults') or {}
-    return {**capabilities, **model_configuration(capabilities, defaults, configured)}
+    from lamb.aac.brief import capability_map
+    installation = await capability_map(auth, request.app.routes if request else ())
+    return {**capabilities, **model_configuration(capabilities, defaults, configured), 'capability_map':installation}
 
 
 REQUIRED_PLUGIN_METADATA_KEYS = (

@@ -5,7 +5,6 @@ import time
 import uuid
 from contextlib import closing, suppress
 from functools import lru_cache
-from lamb.database_manager import LambDatabaseManager
 
 TABS = {'assistant': ('properties', 'tests', 'chat', 'activity', 'edit'), 'kb': ('files', 'ingest', 'query'), 'rubric': ('view',)}
 PAGES = {'assistants', 'assistant-create'}
@@ -37,6 +36,7 @@ def destination(args, kwargs):
 
 class Mailbox:
     def __init__(self, db=None):
+        from lamb.database_manager import LambDatabaseManager
         self.db = db or LambDatabaseManager()
         self.table = f'{self.db.table_prefix}aac_frontend_actions'
         with closing(self.db.get_connection()) as c, c:

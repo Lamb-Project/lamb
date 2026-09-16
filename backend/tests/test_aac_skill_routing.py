@@ -1,3 +1,4 @@
+from tests.aac_knowledge_fixtures import knowledge_dependencies
 """Workflow routing, exact request prefixes, recipes and permission regressions."""
 import json,re,unittest
 from pathlib import Path
@@ -80,9 +81,9 @@ class Routing(unittest.IsolatedAsyncioTestCase):
 
     async def test_selected_skill_preparation_persists_and_does_not_greet_again(self):
         from lamb.aac import router as r
-        auth=N(user={'email':'x@test','id':1},organization={'id':1})
+        auth=N(user={'email':'x@test','id':1},organization={'id':1},is_system_admin=False,is_org_admin=False)
         session={'id':'test','conversation':[], 'skill_info':{'skill_id':'explain-assistant','context':{'assistant_id':2,'language':'Spanish'}}}
-        with patch.object(r,'_resolve_agent_llm',return_value=(N(), 'fake')),patch.object(r,'SessionLogger',MagicMock()):
+        with knowledge_dependencies(),patch.object(r,'_resolve_agent_llm',return_value=(N(), 'fake')),patch.object(r,'SessionLogger',MagicMock()):
             a,text,state=await r._prepare_agent_and_message(auth,session,'Explica este asistente')
             self.assertEqual(text,'Explica este asistente');self.assertIn('Spanish',a.conversation[-1]['content'])
             session=json.loads(json.dumps({**session,'conversation':a.conversation,'skill_info':state}))

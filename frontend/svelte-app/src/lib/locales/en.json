@@ -1005,5 +1005,38 @@
       "zipTooLarge": "ZIP file exceeds 500 MB limit.",
       "importFailed": "Import failed. Please try again."
     }
+  },
+  "aacSettings": {
+    "settingsTitle": "LAMB AGENT settings",
+    "settingsIntro": "Choose the agent model independently of assistant defaults. Language support is your organization's policy for this model. Model and fallback policy changes apply on the next turn. Each session keeps the frontend language captured when it started.",
+    "loadingSettings": "Loading agent settings…",
+    "provider": "Agent provider",
+    "model": "Agent model",
+    "useDefault": "Use organization default",
+    "notEnabled": "not currently enabled",
+    "selectModel": "Select model",
+    "orgDefault": "organization default",
+    "savedSelection": "saved selection",
+    "knowledgePack": "Knowledge pack",
+    "channel": "Release channel",
+    "version": "Pinned version",
+    "stable": "Stable",
+    "rc": "Release candidate",
+    "beta": "Beta",
+    "followChannel": "Follow channel",
+    "utilityTitle": "Translation utility model (optional)",
+    "utilityIntro": "Used only for a missing glossary term blocking a command choice, or a documentation section unavailable in the session language. Empty disables machine translation.",
+    "utilityProvider": "Utility provider",
+    "utilityModel": "Utility model",
+    "disabled": "Disabled",
+    "languageSupport": "Frontend language support",
+    "languageIntro": "“Supported” uses the session’s starting frontend language. Otherwise choose a supported fallback, for example Euskara → Español. No model limitations are assumed automatically.",
+    "fallback": "{name} fallback",
+    "supported": "Supported: respond in {name}",
+    "unsupported": "Not supported: use {name}",
+    "saving": "Saving…",
+    "saveSettings": "Save agent settings",
+    "settingsSaved": "Agent settings saved.",
+    "policyLabel": "Organization language policy"
   }
 }

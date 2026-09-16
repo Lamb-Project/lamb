@@ -1,0 +1,344 @@
+{
+  "version": "0.7.0-r1",
+  "topics": {
+    "assistants": {
+      "anchors": [
+        "overview",
+        "creating-an-assistant",
+        "system-prompt-tips",
+        "prompt-template",
+        "viewing-assistant-details",
+        "editing-an-assistant",
+        "deleting-an-assistant",
+        "exporting-an-assistant"
+      ]
+    },
+    "collaboration": {
+      "anchors": [
+        "overview",
+        "sharing-assistants",
+        "sharing-knowledge-bases",
+        "sharing-prompt-templates",
+        "shared-with-me"
+      ]
+    },
+    "getting-started": {
+      "anchors": [
+        "overview",
+        "login",
+        "signup",
+        "dashboard",
+        "navigation",
+        "user-roles",
+        "organizations"
+      ]
+    },
+    "glossary": {
+      "anchors": [
+        "overview",
+        "glossary"
+      ]
+    },
+    "index": {
+      "anchors": [
+        "overview",
+        "sections",
+        "illustrated-ui-tutorials"
+      ]
+    },
+    "knowledge-bases": {
+      "anchors": [
+        "overview",
+        "what-is-rag",
+        "creating-a-knowledge-base",
+        "adding-documents",
+        "connecting-a-kb-to-an-assistant",
+        "sharing-knowledge-bases",
+        "common-issues"
+      ]
+    },
+    "prompt-templates": {
+      "anchors": [
+        "overview",
+        "what-are-prompt-templates",
+        "managing-templates",
+        "loading-a-template",
+        "shared-templates"
+      ]
+    },
+    "publishing": {
+      "anchors": [
+        "overview",
+        "publishing-an-assistant",
+        "connecting-to-moodle",
+        "unified-lti-recommended",
+        "unpublishing"
+      ]
+    },
+    "rubrics": {
+      "anchors": [
+        "overview",
+        "what-is-evaluaitor",
+        "creating-a-rubric",
+        "using-a-rubric-with-an-assistant",
+        "managing-rubrics"
+      ]
+    },
+    "testing": {
+      "anchors": [
+        "overview",
+        "direct-chat",
+        "debug-mode-bypass",
+        "test-scenarios"
+      ]
+    },
+    "troubleshooting": {
+      "anchors": [
+        "overview",
+        "problem-assistant-ignores-my-documents",
+        "problem-context-is-empty-in-bypass-test",
+        "problem-assistant-hallucinates-gives-wrong-answers",
+        "problem-can-t-see-the-share-tab",
+        "problem-students-can-t-access-the-assistant",
+        "problem-can-t-publish-an-assistant",
+        "problem-test-runs-consume-too-many-tokens"
+      ]
+    },
+    "ui-assistants": {
+      "anchors": [
+        "overview",
+        "create-or-edit",
+        "without-documents",
+        "use-an-existing-knowledge-base",
+        "use-a-single-local-file",
+        "view-and-explain-saved-properties"
+      ]
+    },
+    "ui-knowledge-bases": {
+      "anchors": [
+        "overview",
+        "create-or-open-a-knowledge-base",
+        "select-your-local-file",
+        "start-ingestion",
+        "check-processing",
+        "verify-retrieval"
+      ]
+    },
+    "ui-rubrics": {
+      "anchors": [
+        "overview",
+        "create-a-rubric",
+        "view-and-edit",
+        "use-the-rubric-in-an-assistant"
+      ]
+    },
+    "ui-testing": {
+      "anchors": [
+        "overview",
+        "try-the-assistant-yourself",
+        "add-a-scenario",
+        "run-and-inspect",
+        "evaluate-and-improve",
+        "inspect-activity"
+      ]
+    },
+    "design-grounding": {
+      "anchors": [
+        "choose-grounding"
+      ]
+    },
+    "design-prompts": {
+      "anchors": [
+        "write-instructions"
+      ]
+    },
+    "design-testing": {
+      "anchors": [
+        "design-evidence"
+      ]
+    },
+    "design-rubrics": {
+      "anchors": [
+        "choose-rubric"
+      ]
+    },
+    "design-publishing": {
+      "anchors": [
+        "publishing-path"
+      ]
+    }
+  },
+  "images": [
+    {
+      "path": "img/en/assistant-chat.png",
+      "locale": "en",
+      "sha256": "7b4ef6dbfd25638374994b9701c281e444f34fb5ca48dccb86d4da8dbf0fd395"
+    },
+    {
+      "path": "img/en/assistant-context.png",
+      "locale": "en",
+      "sha256": "babb4f09d1975228c285158e5fcca2e72e9860c28377667f11fed9e58e58e0a3"
+    },
+    {
+      "path": "img/en/assistant-create.png",
+      "locale": "en",
+      "sha256": "a07c9123926ad91e2e2707a430627c41a38ca89715991ce82c0c22ee58f637db"
+    },
+    {
+      "path": "img/en/assistant-file.png",
+      "locale": "en",
+      "sha256": "e0fb452d3c6ed0c4e8cfad41dd7c0c18580f52673cb68ebe2ab6c4e7fa4d22c8"
+    },
+    {
+      "path": "img/en/assistant-kb.png",
+      "locale": "en",
+      "sha256": "e218e67f4dddad97e38b5ac35f38bfdd58f3e2268d454112c70b658d8e89797d"
+    },
+    {
+      "path": "img/en/assistant-properties.png",
+      "locale": "en",
+      "sha256": "08d2cb386a6dedff6856ec71033499237c116c7a04ebc2dc4d3d243763481a77"
+    },
+    {
+      "path": "img/en/kb-create.png",
+      "locale": "en",
+      "sha256": "0e7a315cfa817654e53b91c759c62d644b814247da824c4adaa38ed0cfa2b89a"
+    },
+    {
+      "path": "img/en/kb-files.png",
+      "locale": "en",
+      "sha256": "997f629685d6a74d7a13028f7351ffe086996f599200fbbc185935365ba3e98b"
+    },
+    {
+      "path": "img/en/kb-ingest.png",
+      "locale": "en",
+      "sha256": "4d775dd4d51a7c0514ff1fbbd8bcacb86de9f4e95470229d485e9ee43a86572d"
+    },
+    {
+      "path": "img/en/kb-query.png",
+      "locale": "en",
+      "sha256": "e2354798e6aeee151b1ad11322a30d6fac0f513ac8bba81bf89fac6f04e48997"
+    },
+    {
+      "path": "img/en/kb-select-file.png",
+      "locale": "en",
+      "sha256": "1ff6f7e7028400dcdd7685253d641e065bc2d2680254369d876e1e0109462ca8"
+    },
+    {
+      "path": "img/en/rubric-create.png",
+      "locale": "en",
+      "sha256": "8d0fb4358ab1ab76084191d3d9cf37ef9c5479cb651ea867631d1bf58f61d0ee"
+    },
+    {
+      "path": "img/en/tests-add.png",
+      "locale": "en",
+      "sha256": "bf588701ab35f329dbd9da56ee4f316aa54b318668179c114399dc33ff9a657d"
+    },
+    {
+      "path": "img/en/tests-run.png",
+      "locale": "en",
+      "sha256": "377453e25c60c4830a18d5145692a098bb90054f7c80fa503e7b5f14b5bc19a7"
+    }
+  ],
+  "coverage": {
+    "en": {
+      "translated_sections": 86,
+      "total_sections": 86
+    },
+    "es": {
+      "translated_sections": 5,
+      "total_sections": 86
+    },
+    "ca": {
+      "translated_sections": 5,
+      "total_sections": 86
+    },
+    "eu": {
+      "translated_sections": 0,
+      "total_sections": 86
+    }
+  },
+  "document_hashes": {
+    "en/assistants.md": "7e9bc78cd451e9bd50cb78252dd7a35ff8b5096851adf67f9e4b639219175644",
+    "en/collaboration.md": "0572f7589da6b4cecb33518613aa5b186d77361a52cf753f89e737acf5457891",
+    "en/getting-started.md": "380b1fa9331b1ff19dac1107fbb93948b192b252772a7059c11b027b07af52b1",
+    "en/glossary.md": "1f14bd53f5dae6825237e6f96d4a880f9a9e19f855ba737ad9fb7bd19a276cae",
+    "en/index.md": "70187ddbaeddcb0c3c38ec183c845ad58961b028928987f98bb62e049035dcea",
+    "en/knowledge-bases.md": "def3c92ba4d2b4a4b01697c8b9e3688baa57837bfe03f13f5db4706e2b335156",
+    "en/prompt-templates.md": "29e5b707646c3a7541f08e1615088be4733bef900f980b72cd7b43ba63fa5ecf",
+    "en/publishing.md": "fabc9f6072f5ce445e39b3ed01a505aa7c23ee304e26b80c9ce33e5593632d3d",
+    "en/rubrics.md": "1d3605683b4ed2cc2881cfffcc1b46069fc50db6f53f5dd3c631cfc7830c9b28",
+    "en/testing.md": "a72c3a1c22ed41f0df9e998c7934114946778c1573006265d73ee276387ad595",
+    "en/troubleshooting.md": "d6604a2d5f1e1dc802fb262df26679f0cbb32944f50a9ea36bf0a7f67430a427",
+    "en/ui-assistants.md": "684d59a0192c07e4856f2dac14b443c8ea18a04bac9d87c473dffdec07619ebd",
+    "en/ui-knowledge-bases.md": "7ed59d8879745cd473025f150990faea9f1e5d7bbe4de322c75b980a7b566c04",
+    "en/ui-rubrics.md": "7fc23f7683c7a3c2f2183f2a8def309b9599465f3ffbe48d25ef7368e467603a",
+    "en/ui-testing.md": "efa62e06af2c0681b66ee10749c7f5f319ce99deef007916aa04cb4838204ac7",
+    "en/design-grounding.md": "f6c23c8c9c7ce54156b0568111d5a18c249c7c4eef04825bd1d832947a5903c4",
+    "en/design-prompts.md": "657d8260f3eeff47c0606c764ca259fa309adb5f8a54caa70b728ceadfedd037",
+    "en/design-testing.md": "1f2c69f02a6a2515cf63f8f2b3f84128445432e711e4f7735f144a4e8b4db20f",
+    "en/design-rubrics.md": "4e856ceb14acf3ab8391b8fe0fef6eff3df57d486607b01cb304deae04af2205",
+    "en/design-publishing.md": "647e89e253c7a0384b58bccaf644e2517a207f19e1d48f178c8643dcde30f788",
+    "es/assistants.md": "17bc40075bfc7390181238b5b3c82d9fe8ad4d528115feb143a61d9b3df0798e",
+    "es/collaboration.md": "7ff4ed3ed5fb3028df9fce221f732ae59047fcc8451f8ad82a0e46e333078853",
+    "es/getting-started.md": "5486095701898c2fe2e8fb01361efd1456e498c5486e44c41ef284ccdb2ba066",
+    "es/glossary.md": "460dbea31b0ddf6990e22c3efe94835a30cbdeb77fd23cda2fdcc70909b80d40",
+    "es/index.md": "64537fec7fd846e8068a1a1751a617b7f9d5992f4dce526ab69aca47645ba009",
+    "es/knowledge-bases.md": "81eec96a2cddff3ea47ee8fc5f9049f4c8eb5e86290e67f61e79c6a50d4b6f01",
+    "es/prompt-templates.md": "41ee6beef00f23eb8d9a2c7ab2f3d305406b98536522f05c5d5cea42c2f94acd",
+    "es/publishing.md": "7eb770133dc834763bae2f94bad900c8f6fefa9a4ecdfcdba0649344df07863e",
+    "es/rubrics.md": "39b71408484a8d5e1a2b30461ee79a2ed94ee0966c4ccb219e918a0050f57b89",
+    "es/testing.md": "9a594f8dcf37e6c853f43c32da2f4fac768c83d2dd11fe7cc7fa641cdd22dde9",
+    "es/troubleshooting.md": "534ab17df3a8d9ce4357d25f2800d708e304a0825de6d971a85d6b47b736dc70",
+    "es/ui-assistants.md": "9bc02a4be583d2ebef94ca5115e6cf5b04163fad38cda97b5c50ba1adfabd2a4",
+    "es/ui-knowledge-bases.md": "4591952bbf5fefd68165b95665dc5643cef23c18cf4cc7991f6cbdc183e007d1",
+    "es/ui-rubrics.md": "430e4be79df0afbf6328a975dd94911f334d4971545e56424863c8a427108e70",
+    "es/ui-testing.md": "2fa692d090e503c729f0b7614a3fb4279fb06805dd5a500c2645f2d9019e896a",
+    "es/design-grounding.md": "4a086f0804c3abe8039529fa3d0c860028220a85bc9ae67982eae98e3416c8b2",
+    "es/design-prompts.md": "285ff9b8e9f72ff579723d328a02da93d71fc74a085282a18f4edcf08c468252",
+    "es/design-testing.md": "eb97d092153a40f1172f63e34499337e92dc06f831e347bd2f06851a062c329b",
+    "es/design-rubrics.md": "317d0d1a62adc60177bc66f0846c096ea514a600ed53265c7f3af358752ebabe",
+    "es/design-publishing.md": "e40820edd788b41a6941d8bef2ebbb80c171cf3459ece0a69d7b4e88f96c2194",
+    "ca/assistants.md": "17bc40075bfc7390181238b5b3c82d9fe8ad4d528115feb143a61d9b3df0798e",
+    "ca/collaboration.md": "7ff4ed3ed5fb3028df9fce221f732ae59047fcc8451f8ad82a0e46e333078853",
+    "ca/getting-started.md": "5486095701898c2fe2e8fb01361efd1456e498c5486e44c41ef284ccdb2ba066",
+    "ca/glossary.md": "460dbea31b0ddf6990e22c3efe94835a30cbdeb77fd23cda2fdcc70909b80d40",
+    "ca/index.md": "64537fec7fd846e8068a1a1751a617b7f9d5992f4dce526ab69aca47645ba009",
+    "ca/knowledge-bases.md": "81eec96a2cddff3ea47ee8fc5f9049f4c8eb5e86290e67f61e79c6a50d4b6f01",
+    "ca/prompt-templates.md": "41ee6beef00f23eb8d9a2c7ab2f3d305406b98536522f05c5d5cea42c2f94acd",
+    "ca/publishing.md": "7eb770133dc834763bae2f94bad900c8f6fefa9a4ecdfcdba0649344df07863e",
+    "ca/rubrics.md": "39b71408484a8d5e1a2b30461ee79a2ed94ee0966c4ccb219e918a0050f57b89",
+    "ca/testing.md": "9a594f8dcf37e6c853f43c32da2f4fac768c83d2dd11fe7cc7fa641cdd22dde9",
+    "ca/troubleshooting.md": "534ab17df3a8d9ce4357d25f2800d708e304a0825de6d971a85d6b47b736dc70",
+    "ca/ui-assistants.md": "9bc02a4be583d2ebef94ca5115e6cf5b04163fad38cda97b5c50ba1adfabd2a4",
+    "ca/ui-knowledge-bases.md": "4591952bbf5fefd68165b95665dc5643cef23c18cf4cc7991f6cbdc183e007d1",
+    "ca/ui-rubrics.md": "430e4be79df0afbf6328a975dd94911f334d4971545e56424863c8a427108e70",
+    "ca/ui-testing.md": "2fa692d090e503c729f0b7614a3fb4279fb06805dd5a500c2645f2d9019e896a",
+    "ca/design-grounding.md": "e474e78a8d77e9d21b6faac21fa1d1d436a8d15d9b2729cda7aba28a078e6dde",
+    "ca/design-prompts.md": "0e04078f1ab65434137e74824c207cec950087f1e50cf0f91693127df276469e",
+    "ca/design-testing.md": "436e21332f40d8b62e0e34251a1ed56a42b9c207e094c6311b17628f39438649",
+    "ca/design-rubrics.md": "07d82a9bb4c6328d39bfdfb4f64e41b7e439274318a4cff23254e69a6b3a940e",
+    "ca/design-publishing.md": "f8382783bab9971a840bd1283ce642681ae7556aba1da1822ed4d2b807be3a3f",
+    "eu/assistants.md": "17bc40075bfc7390181238b5b3c82d9fe8ad4d528115feb143a61d9b3df0798e",
+    "eu/collaboration.md": "7ff4ed3ed5fb3028df9fce221f732ae59047fcc8451f8ad82a0e46e333078853",
+    "eu/getting-started.md": "5486095701898c2fe2e8fb01361efd1456e498c5486e44c41ef284ccdb2ba066",
+    "eu/glossary.md": "460dbea31b0ddf6990e22c3efe94835a30cbdeb77fd23cda2fdcc70909b80d40",
+    "eu/index.md": "64537fec7fd846e8068a1a1751a617b7f9d5992f4dce526ab69aca47645ba009",
+    "eu/knowledge-bases.md": "81eec96a2cddff3ea47ee8fc5f9049f4c8eb5e86290e67f61e79c6a50d4b6f01",
+    "eu/prompt-templates.md": "41ee6beef00f23eb8d9a2c7ab2f3d305406b98536522f05c5d5cea42c2f94acd",
+    "eu/publishing.md": "7eb770133dc834763bae2f94bad900c8f6fefa9a4ecdfcdba0649344df07863e",
+    "eu/rubrics.md": "39b71408484a8d5e1a2b30461ee79a2ed94ee0966c4ccb219e918a0050f57b89",
+    "eu/testing.md": "9a594f8dcf37e6c853f43c32da2f4fac768c83d2dd11fe7cc7fa641cdd22dde9",
+    "eu/troubleshooting.md": "534ab17df3a8d9ce4357d25f2800d708e304a0825de6d971a85d6b47b736dc70",
+    "eu/ui-assistants.md": "9bc02a4be583d2ebef94ca5115e6cf5b04163fad38cda97b5c50ba1adfabd2a4",
+    "eu/ui-knowledge-bases.md": "4591952bbf5fefd68165b95665dc5643cef23c18cf4cc7991f6cbdc183e007d1",
+    "eu/ui-rubrics.md": "430e4be79df0afbf6328a975dd94911f334d4971545e56424863c8a427108e70",
+    "eu/ui-testing.md": "2fa692d090e503c729f0b7614a3fb4279fb06805dd5a500c2645f2d9019e896a",
+    "eu/design-grounding.md": "006356228fb091a52ae565e6369ee224f35bfe09357a544c8002e9678c63b46f",
+    "eu/design-prompts.md": "4e42d8ced1481b51c852ed8710231f6bb6025c6ea197d35e42ec2e2e84da8067",
+    "eu/design-testing.md": "bf2208896d3cb0c9b9c4640aede0b342203b6efd067dd194647b92d5f995b366",
+    "eu/design-rubrics.md": "ec95daab787b10e1ac8416fd6a302a5874c322eea6e9ff22d56a0c65e6d2c31b",
+    "eu/design-publishing.md": "46edd753561f973b75cb8628487ae5b1a4ad0e6839f1dc62302af0a039e630fa"
+  },
+  "revision": "89e9b56d419393641469140a5e936682f0b6ad5ebc283d5fb849d6e8875bebb0"
+}

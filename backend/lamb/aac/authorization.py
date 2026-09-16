@@ -21,6 +21,8 @@ logger = get_logger(__name__, component="AAC")
 # Default policy: which commands need confirmation
 DEFAULT_POLICY: dict[str, str] = {
     'whoami': 'auto',
+    'glossary': 'auto',
+    'translate': 'auto',
     'assistant.export': 'auto',
     'kb.list-shared': 'auto',
     'kb.plugins': 'auto',

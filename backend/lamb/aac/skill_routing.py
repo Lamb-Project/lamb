@@ -8,39 +8,23 @@ import json
 
 from lamb.aac.skill_loader import list_skills, load_skill
 
-BOOTSTRAP = {'frontend-manage.current', 'frontend-manage.open', 'help', 'skill.list', 'skill.load', 'docs.index', 'docs.read',
-             'assistant.list', 'assistant.list-shared', 'assistant.list-published',
-             'assistant.config', 'kb.list', 'rubric.list', 'rubric.list-public',
-             'template.list', 'template.get', 'template.list-shared', 'whoami', 'kb.list-shared', 'kb.plugins', 'kb.query-plugins', 'session.rename'}
-READ_ASSISTANT = {'assistant.get', 'assistant.debug'}
-CAPABILITIES = {
-    'create-assistant': READ_ASSISTANT | {'assistant.create'},
-    'publish-assistant': READ_ASSISTANT | {'assistant.publish', 'assistant.unpublish'},
-    'improve-assistant': READ_ASSISTANT | {'assistant.update'},
-    'explain-assistant': READ_ASSISTANT,
-    'chat-with-assistant': READ_ASSISTANT | {'assistant.chat'},
-    'test-and-evaluate': READ_ASSISTANT | {'assistant.chat', 'test.scenarios', 'test.add', 'test.update', 'test.run', 'test.runs', 'test.run-detail', 'test.evaluate', 'test.evaluations'},
-    'manage-knowledge-base': {'kb.get', 'kb.jobs', 'kb.status', 'kb.query', 'kb.create'},
-    'manage-rubric': {'rubric.get', 'rubric.export', 'rubric.create', 'rubric.update'},
-    'inspect-activity': READ_ASSISTANT | {'analytics.chats', 'analytics.chat-detail', 'analytics.stats', 'analytics.timeline'},
-}
-CAPABILITIES['explain-assistant'].add('assistant.export')
-CAPABILITIES['manage-knowledge-base'].update({'kb.update', 'kb.delete', 'kb.delete-file', 'kb.share', 'kb.ingest', 'job.get', 'job.retry', 'job.cancel'})
-CAPABILITIES['manage-rubric'].update({'rubric.delete', 'rubric.duplicate', 'rubric.share', 'rubric.generate'})
-CAPABILITIES['test-and-evaluate'].update({'test.scenario-detail', 'test.delete-scenario'})
-CAPABILITIES['manage-templates'] = {'template.create', 'template.update', 'template.delete', 'template.duplicate', 'template.share', 'template.export'}
-DEFAULT_SKILL = {key: skill for skill, keys in CAPABILITIES.items() for key in keys}
-DEFAULT_SKILL.update({'assistant.get':'explain-assistant', 'assistant.debug':'explain-assistant',
-                      'assistant.chat':'chat-with-assistant', 'assistant.delete':'improve-assistant'})
-CAPABILITIES['improve-assistant'].add('assistant.delete')
+# Compatibility exports are loaded from the immutable extraction pack. Runtime
+# agents select their own pack; no mutable process-global role/pack switching.
+from lamb.aac.pack_loader import load_pack
+_legacy_routing = load_pack().data('routing.yaml')
+BOOTSTRAP = set(_legacy_routing['BOOTSTRAP'])
+CAPABILITIES = {key:set(value) for key,value in _legacy_routing['CAPABILITIES'].items()}
+DEFAULT_SKILL = _legacy_routing['DEFAULT_SKILL']
 
 
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()
 
 
-def catalogue_prompt():
-    rows = sorted(list_skills(), key=lambda item: item['id'])
+def catalogue_prompt(skills_dir=None, allowed_skills=None):
+    rows = sorted(list_skills(skills_dir), key=lambda item: item['id'])
+    if allowed_skills is not None:
+        rows = [row for row in rows if row['id'] in allowed_skills]
     return '\n\n# Workflow catalogue\n' + '\n'.join(
         f"- {row['id']}: {row['description']}" for row in rows) + '''
 Before performing a supported educator task, load its recipe with lamb skill load ID.
@@ -99,10 +83,15 @@ class SkillRouting:
             raise ValueError('Skill routing is not initialized')
         context = normalize_context({**state.get('context', {}), **(context or {})})
         context.setdefault('language', "the user's current conversation language")
-        cache_key = digest([skill_id, context, state.get("policy_version")])
+        pack = getattr(self, 'pack', None)
+        if pack:
+            from lamb.aac.pack_loader import allowed_skills
+            if skill_id not in allowed_skills(pack, state['brief']['layers']):
+                raise ValueError('This workflow is outside your role; ask the appropriate administrator')
+        cache_key = digest([skill_id, context, state.get("policy_version"), state.get('pack_version')])
         snapshots = state.setdefault('snapshots', {})
         if cache_key not in snapshots:
-            skill = load_skill(skill_id, dict(context))
+            skill = load_skill(skill_id, dict(context), pack.skills_dir if pack else None)
             snapshots[cache_key] = {'id': skill['metadata']['id'], 'prompt': skill['prompt'],
                                     'version': digest(skill['prompt']), 'context': context}
         snapshot = snapshots[cache_key]
@@ -125,14 +114,18 @@ class SkillRouting:
                 + snapshot['prompt'])
 
     def required_skill(self, key, args, kwargs):
-        if self.skill_state is None or key in BOOTSTRAP:
+        pack = getattr(self, 'pack', None)
+        routing = pack.data('routing.yaml') if pack else _legacy_routing
+        if self.skill_state is None or key in routing['BOOTSTRAP']:
             return None
+        capabilities = routing['CAPABILITIES']
+        defaults = routing['DEFAULT_SKILL']
         state = self.skill_state
         context = command_context(key, args, kwargs, state)
         active = state.get('skill_id')
-        if key in CAPABILITIES.get(active, set()) and context == normalize_context(state.get('context')):
+        if key in capabilities.get(active, []) and context == normalize_context(state.get('context')):
             return None
-        skill_id = active if key in CAPABILITIES.get(active, set()) else DEFAULT_SKILL.get(key)
+        skill_id = active if key in capabilities.get(active, []) else defaults.get(key)
         if skill_id:
             return self.activate_skill(skill_id, context, reason='command_guard')
         raise ValueError(f"No workflow recipe covers '{key}'. Ask for clarification; do not improvise this action.")
@@ -154,52 +147,50 @@ class SkillRouting:
             self.session_logger.log('request_prefix', evidence)
 
 
-def select_workflow(message, state):
-    """Conservative hints from the actual user turn only, never retrieved/tool text.
-
-    Ambiguous compound requests and missing required context fall back to the
-    catalogue and command guard. Selection itself performs no resource action.
-    """
+def select_workflow(message, state, pack=None):
+    """Apply pack-owned conservative hints to the user turn, never tool results."""
     import re
     import unicodedata
+    routing = (pack.data('routing.yaml') if pack else _legacy_routing).get('USER_ROUTING')
+    if not routing:
+        return None
     text = ''.join(c for c in unicodedata.normalize('NFKD', message.lower()) if not unicodedata.combining(c))
-    # Quoted examples and explicit negatives should not silently change the task.
-    if re.search(r"\b(don't|do not|no|not|never|another|different|otro|otra|altre|altra)\b", text):
-        # Read-only constraints are common and do not negate the requested read.
-        text = re.sub(r'\b(do not|never) (create|edit|upload|delete|change|modify)[^.]*[.]?', '', text)
-        text = re.sub(r'\b(no writes|no changes|sin cambios|sense canvis)\b', '', text)
-        if re.search(r"\b(don't|do not|no|not|never|another|different|otro|otra|altre|altra)\b", text):
+    if re.search(routing['negative'], text):
+        for pattern in routing['read_only_constraints']:
+            text = re.sub(pattern, '', text)
+        if re.search(routing['negative'], text):
             return None
     context = normalize_context(state.get('context', {}))
-    match = re.search(r'\b(?:assistant|asistente|assistent)\s+(\d+)\b', text)
+    match = re.search(routing['assistant_id'], text)
     if match:
         context['assistant_id'] = match.group(1)
-    assistant = bool(re.search(r'\b(assistant|asistente|assistent)\b', text))
-    scenario = bool(re.search(r'\b(scenarios?|escenarios?|escenaris?)\b', text))
-    candidates = set()
-    if re.search(r'\b(knowledge bases?|kb|base de conocimiento|base de coneixement)\b', text):
-        candidates.add('manage-knowledge-base')
-    if re.search(r'\b(activity|analytics|statistics|timeline|actividad|activitat|estadisticas|estadistiques)\b', text):
-        candidates.add('inspect-activity')
-    if re.search(r'\b(rubric|rubrica|rubrics|rubriques)\b', text):
-        candidates.add('manage-rubric')
-    if assistant and re.search(r'\b(create|crear|crea)\b', text):
-        candidates.add('create-assistant')
-    if assistant and re.search(r'\b(explain|explica|properties|propiedades|propietats)\b', text):
-        candidates.add('explain-assistant')
-    if assistant and not scenario and re.search(r'\b(improve|edit|update|mejora|mejorar|editar|millora|millorar)\b', text):
-        candidates.add('improve-assistant')
-    if (assistant or context.get('assistant_id')) and (scenario or re.search(r'\b(tests?|pruebas|proves|evaluate|evaluar)\b', text)):
-        candidates.add('test-and-evaluate')
-    if assistant and re.search(r'\b(chat with|talk to|hablar con|conversar)\b', text):
-        candidates.add('chat-with-assistant')
-    if re.search(r'\b(publish|unpublish|publicar|publica|despublicar)\b', text) and context.get('assistant_id'):
-        candidates.add('publish-assistant')
+    facts = {name: bool(re.search(pattern, text)) for name, pattern in routing['facts'].items()}
+    facts['linked_assistant'] = bool(context.get('assistant_id'))
+    candidates = []
+    for rule in routing['rules']:
+        if not re.search(rule['pattern'], text):
+            continue
+        if not all(facts.get(key, False) for key in rule.get('all_facts', [])):
+            continue
+        if rule.get('any_facts') and not any(facts.get(key, False) for key in rule['any_facts']):
+            continue
+        if any(facts.get(key, False) for key in rule.get('exclude_facts', [])):
+            continue
+        candidates.append(rule)
+    if not candidates:
+        return None
+    priority = max(rule.get('priority', 0) for rule in candidates)
+    candidates = [rule for rule in candidates if rule.get('priority', 0) == priority]
     if len(candidates) != 1:
         return None
-    skill_id = candidates.pop()
-    if skill_id in {'inspect-activity','explain-assistant','improve-assistant','test-and-evaluate','chat-with-assistant'} and not context.get('assistant_id'):
+    rule = candidates[0]
+    if rule.get('requires_context') and not context.get('assistant_id'):
         return None
+    skill_id = rule['skill']
+    if pack:
+        from lamb.aac.pack_loader import allowed_skills
+        if skill_id not in allowed_skills(pack, state['brief']['layers']):
+            return None
     context.setdefault('language', "the user's current conversation language")
     if skill_id == state.get('skill_id') and context == normalize_context(state.get('context')) and state.get('active_snapshot'):
         return None

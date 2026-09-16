@@ -1,3 +1,4 @@
+from tests.aac_knowledge_fixtures import knowledge_dependencies
 """Request lifecycle regressions: state and resources survive failed/cancelled turns."""
 import asyncio
 import unittest
@@ -20,7 +21,7 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
             session_logger=None,chat=AsyncMock(return_value='done'),get_stats=lambda:{'turns':1})
         mgr=Mock();mgr.get_session.return_value={'id':'s'}
         req=N(json=AsyncMock(return_value={'message':'hello'}),headers={})
-        auth=N(user={'email':'teacher@example.test'},organization={'id':1})
+        auth=N(user={'email':'teacher@example.test','id':1},organization={'id':1},is_system_admin=False,is_org_admin=False)
         return a,mgr,req,auth
 
     async def test_plain_success_failure_and_cancel_persist_and_close(self):
@@ -266,7 +267,7 @@ class SkillSelectionValidation(unittest.IsolatedAsyncioTestCase):
                              ({'skill':'inspect-activity'}, 'requires context'),
                              ({'skill':'manage-knowledge-base','context':[]}, 'object')]:
             with self.subTest(body=body):
-                req=N(json=AsyncMock(return_value=body),headers={'content-type':'application/json'})
+                req=N(json=AsyncMock(return_value=body),headers={'content-type':'application/json'},app=N(routes=[]))
                 with patch.object(r,'AACSessionManager') as manager:
                     with self.assertRaises(HTTPException) as raised:
                         await r.create_session(req,N())
@@ -278,16 +279,16 @@ class SkillSelectionValidation(unittest.IsolatedAsyncioTestCase):
         for skill in ('manage-knowledge', 'inspect-activity'):
             agent=N(skill_state={'skill_id':skill,'context':{}}, pending_action=None,
                 activate_skill=Mock(side_effect=ValueError('unavailable')), conversation=[])
-            with patch.object(r,'_build_agent',return_value=agent):
-                result,message,state=await r._prepare_agent_and_message(N(),{},'hello')
+            with patch.object(r,'_build_agent',return_value=agent),patch.object(r,'_apply_language_policy',AsyncMock()):
+                result,message,state=await r._prepare_agent_and_message(N(),{'skill_info':{'brief':{'fixture':True}}},'hello')
             self.assertIsNone(state['skill_id'])
             self.assertIn('unavailable',result.conversation[-1]['content'])
 
     async def test_valid_selection_preserves_required_context(self):
-        req=N(json=AsyncMock(return_value={'skill':'inspect-activity','assistant_id':25}),headers={'content-type':'application/json'})
+        req=N(json=AsyncMock(return_value={'skill':'inspect-activity','assistant_id':25}),headers={'content-type':'application/json'},app=N(routes=[]))
         manager=Mock();manager.create_session.return_value={'id':'s','created_at':'today'}
-        auth=N(user={'email':'teacher@example.test'},organization={'id':1})
-        with patch.object(r,'AACSessionManager',return_value=manager):
+        auth=N(user={'email':'teacher@example.test','id':1},organization={'id':1},is_system_admin=False,is_org_admin=False)
+        with knowledge_dependencies(),patch.object(r,'AACSessionManager',return_value=manager):
             result=await r.create_session(req,auth)
         self.assertEqual(result['skill'],'inspect-activity')
         self.assertEqual(manager.update_conversation.call_args.kwargs['skill_info']['context']['assistant_id'],'25')

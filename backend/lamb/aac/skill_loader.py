@@ -24,7 +24,8 @@ from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="AAC")
 
-SKILLS_DIR = Path(__file__).parent / "skills"
+from lamb.aac.pack_loader import packs_root
+SKILLS_DIR = packs_root() / "lamb-default" / "skills"
 
 # Language directive appended to every skill prompt
 LANGUAGE_DIRECTIVE = """
@@ -39,10 +40,10 @@ command syntax, parameter names).
 """
 
 
-def list_skills() -> list[dict]:
+def list_skills(skills_dir=None) -> list[dict]:
     """List available skills with their metadata."""
     skills = []
-    for md_file in sorted(SKILLS_DIR.glob("*.md")):
+    for md_file in sorted(Path(skills_dir or SKILLS_DIR).glob("*.md")):
         meta, _ = _parse_skill_file(md_file)
         if meta.get("id"):
             skills.append({
@@ -58,6 +59,7 @@ def list_skills() -> list[dict]:
 def load_skill(
     skill_id: str,
     context: dict[str, Any],
+    skills_dir=None,
 ) -> dict:
     """Load a skill by ID, resolve includes, substitute context.
 
@@ -74,7 +76,7 @@ def load_skill(
     Raises:
         ValueError: If skill not found or required context missing.
     """
-    skill_file = _find_skill_file(skill_id)
+    skill_file = _find_skill_file(skill_id, skills_dir)
     if not skill_file:
         raise ValueError(f"Skill '{skill_id}' not found in {SKILLS_DIR}")
 
@@ -91,7 +93,7 @@ def load_skill(
         context["language"] = "English"
 
     # Resolve includes (with loop prevention)
-    full_body = _resolve_includes(body, meta.get("includes", []), loaded=set())
+    full_body = _resolve_includes(body, meta.get("includes", []), loaded=set(), skills_dir=skills_dir)
 
     # Substitute context variables in the body
     prompt = _substitute(full_body, context)
@@ -110,17 +112,18 @@ def load_skill(
 # Internals
 # ---------------------------------------------------------------------------
 
-def _find_skill_file(skill_id: str) -> Path | None:
+def _find_skill_file(skill_id: str, skills_dir=None) -> Path | None:
     """Find a skill file by ID (checks frontmatter) or filename stem."""
     # First try exact filename match
     if not re.fullmatch(r"[a-zA-Z0-9_-]+", skill_id):
         return None
-    direct = SKILLS_DIR / f"{skill_id}.md"
+    directory = Path(skills_dir or SKILLS_DIR)
+    direct = directory / f"{skill_id}.md"
     if direct.is_file():
         return direct
 
     # Search by frontmatter id
-    for md_file in SKILLS_DIR.glob("*.md"):
+    for md_file in directory.glob("*.md"):
         meta, _ = _parse_skill_file(md_file)
         if meta.get("id") == skill_id:
             return md_file
@@ -191,7 +194,7 @@ def _parse_skill_file(path: Path) -> tuple[dict, str]:
     return meta, body
 
 
-def _resolve_includes(body: str, includes: list[str], loaded: set[str]) -> str:
+def _resolve_includes(body: str, includes: list[str], loaded: set[str], skills_dir=None) -> str:
     """Resolve skill includes, preventing loops via the loaded set."""
     if not includes:
         return body
@@ -203,14 +206,14 @@ def _resolve_includes(body: str, includes: list[str], loaded: set[str]) -> str:
             continue
 
         loaded.add(include_id)
-        include_file = _find_skill_file(include_id)
+        include_file = _find_skill_file(include_id, skills_dir)
         if not include_file:
             logger.warning(f"Skill include '{include_id}' not found, skipping")
             continue
 
         inc_meta, inc_body = _parse_skill_file(include_file)
         # Recursively resolve nested includes
-        inc_body = _resolve_includes(inc_body, inc_meta.get("includes", []), loaded)
+        inc_body = _resolve_includes(inc_body, inc_meta.get("includes", []), loaded, skills_dir)
         parts.append(f"\n\n--- Included skill: {include_id} ---\n{inc_body}")
 
     return "\n".join(parts)

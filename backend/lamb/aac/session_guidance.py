@@ -5,10 +5,23 @@ POLICY_VERSION = 4
 
 def refresh_guidance(agent, state, session, skills_dir):
     previous = state.get('system_prompt')
-    refresh = not previous or (state.get('policy_version') != POLICY_VERSION and not session.get('pending_action'))
+    pack = getattr(agent, 'pack', None)
+    pack_changed = pack and state.get('pack_version') != pack.version
+    refresh = not previous or ((state.get('policy_version') != POLICY_VERSION or pack_changed) and not session.get('pending_action'))
     if not refresh:
+        if pack and state.get('pack_hash') and state['pack_hash'] != pack.fingerprint:
+            raise ValueError('Pinned pack content changed without a new version')
         return None
-    agent.load_skills(skills_dir)
+    if pack and state.get('brief'):
+        from lamb.aac.pack_loader import render_prefix
+        brief = dict(state['brief'])
+        brief.update(pack_version=pack.version, pack_hash=pack.fingerprint,
+                     glossary=pack.data(f"glossary/{brief['session_language']}.yaml"))
+        state['brief'] = brief
+        agent.system_prompt = render_prefix(pack, brief)
+        state.update(pack_version=pack.version, pack_hash=pack.fingerprint)
+    else:
+        agent.load_skills(skills_dir)
     state.update(system_prompt=agent.system_prompt, routing_version=1, policy_version=POLICY_VERSION)
     state.pop('active_snapshot', None)
     if previous:
@@ -24,7 +37,7 @@ def browser_session(session):
             (m.get('role') == 'assistant' and not m.get('tool_calls')) or
             (m.get('role') == 'user' and not m['content'].startswith(('[System:', '[Application workflow instructions]'))))]
     state = session.get('skill_info') or {}
-    result['skill_info'] = {k: state[k] for k in ('skill_id', 'context', 'ui_language', 'language_pinned', 'started', 'policy_version') if k in state}
+    result['skill_info'] = {k: state[k] for k in ('skill_id', 'context', 'ui_language', 'language_pinned', 'started', 'policy_version', 'brief', 'pack_version', 'response_language_policy') if k in state}
     result['skill_info']['snapshots_count'] = len(state.get('snapshots', {}))
     result['tool_audit_count'] = len(session.get('tool_audit') or [])
     result.pop('tool_audit', None)

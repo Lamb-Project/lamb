@@ -31,7 +31,7 @@ logger = get_logger(__name__, component="AAC")
 
 router = APIRouter(prefix="/aac", tags=["AAC"])
 
-SKILLS_DIR = Path(__file__).parent / "skills"
+from lamb.aac.skill_loader import SKILLS_DIR
 
 # ---------------------------------------------------------------------------
 # Session endpoints
@@ -100,7 +100,7 @@ async def create_session(
         validate_ui_language(body)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    ui_language = body.get('ui_language')
+    ui_language = body.get('ui_language', 'en')
     assistant_id = body.get("assistant_id")
     skill_id = body.get("skill")
     skill_context = body.get("context", {})
@@ -154,6 +154,13 @@ async def create_session(
     else:
         title = "Free-form chat"
 
+    # Situation and registry facts are computed once, before the first model turn.
+    state = {"skill_id": skill_id, "context": skill_context, "started": False, "ui_language":ui_language}
+    try:
+        state = await _initialize_session_knowledge(auth, state, request.app.routes, validate_selection=True)
+    except ValueError as exc:
+        raise HTTPException(503, f'LAMB AGENT knowledge configuration is unavailable: {exc}')
+
     mgr = AACSessionManager()
     session = mgr.create_session(
         user_email=auth.user["email"],
@@ -171,23 +178,34 @@ async def create_session(
         "created_at": session["created_at"],
     }
 
-    # Persist creation language even for a free-form session before its first turn.
-    if skill_id or ui_language:
-        mgr.update_conversation(
-            session_id=session["id"],
-            user_email=auth.user["email"],
-            conversation=[],
-            skill_info={"skill_id": skill_id, "context": skill_context, "started": False,
-                        **({"ui_language": ui_language} if ui_language else {})},
-        )
+    mgr.update_conversation(session_id=session['id'], user_email=auth.user['email'], conversation=[], skill_info=state)
+    result.update(brief=state['brief'], response_language_policy=state['response_language_policy'])
 
     return result
 
 
+@router.get('/policy')
+async def get_agent_policy(language: str = 'en', auth: AuthContext = Depends(get_auth_context)):
+    from lamb.aac.preferences import response_policy, language_code
+    try:
+        language_code(language)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    try:
+        return response_policy(OrganizationConfigResolver(auth.user['email']), language)
+    except ValueError as exc:
+        raise HTTPException(503, str(exc))
+
+
 @router.get("/skills")
 async def get_available_skills(auth: AuthContext = Depends(get_auth_context)):
-    """List available AAC skills."""
-    return list_skills()
+    """List only workflows in this user's role layers."""
+    from lamb.aac.pack_loader import load_pack, allowed_skills
+    from lamb.aac.preferences import agent_settings
+    from lamb.aac.brief import role_axes
+    pack = load_pack(agent_settings(auth.organization.get('config', {})))
+    allowed = allowed_skills(pack, role_axes(auth)['layers'])
+    return [s for s in list_skills(pack.skills_dir) if s['id'] in allowed]
 
 
 @router.get("/sessions")
@@ -355,9 +373,7 @@ async def _send_message(
     bearer_token = auth_header.removeprefix("Bearer ").strip() if auth_header.startswith("Bearer") else ""
 
     # Build agent — handle skill startup if needed
-    agent, user_message, skill_info = await _prepare_agent_and_message(auth, session, user_message, token=bearer_token)
-    from lamb.aac.language import apply_ui_language
-    apply_ui_language(agent, (await request.json()).get('ui_language'))
+    agent, user_message, skill_info = await _prepare_agent_and_message(auth, session, user_message, token=bearer_token, ui_language=(await request.json()).get('ui_language'))
 
     # Run agent loop
     try:
@@ -401,9 +417,7 @@ async def _send_message_stream(
 
     auth_header = request.headers.get("authorization", "")
     bearer_token = auth_header.removeprefix("Bearer ").strip() if auth_header.startswith("Bearer") else ""
-    agent, user_message, skill_info = await _prepare_agent_and_message(auth, session, user_message, token=bearer_token)
-    from lamb.aac.language import apply_ui_language
-    apply_ui_language(agent, (await request.json()).get('ui_language'))
+    agent, user_message, skill_info = await _prepare_agent_and_message(auth, session, user_message, token=bearer_token, ui_language=(await request.json()).get('ui_language'))
 
     from lamb.aac.frontend import FrontendBridge
     body = await request.json()
@@ -416,6 +430,9 @@ async def _send_message_stream(
         agent.shell.frontend = bridge.request
 
     async def generate():
+        policy = (getattr(agent, 'skill_state', None) or {}).get('response_language_policy')
+        if policy:
+            yield f"data: {json.dumps({'status': 'policy', 'policy': policy})}\n\n"
         from lamb.aac.frontend import stream_with_frontend
         events = stream_with_frontend(agent.chat_stream(user_message), bridge)
         try:
@@ -452,6 +469,37 @@ async def _send_message_stream(
 # ---------------------------------------------------------------------------
 
 
+async def _initialize_session_knowledge(auth, state, routes=(), validate_selection=False):
+    from lamb.aac.pack_loader import load_pack
+    from lamb.aac.preferences import agent_settings, response_policy
+    from lamb.aac.brief import capability_map, session_brief
+    from lamb.aac.documentation import coverage
+    selected = load_pack(agent_settings(auth.organization.get('config', {})))
+    language = state.get('ui_language', 'en')
+    if not state.get('brief'):
+        state['brief'] = session_brief(auth, language, await capability_map(auth, routes), coverage(language), selected)
+    from lamb.aac.pack_loader import allowed_skills
+    if validate_selection and state.get('skill_id') and state['skill_id'] not in allowed_skills(selected, state['brief']['layers']):
+        raise HTTPException(403, 'This workflow is outside your role')
+    state.setdefault('pack_version', selected.version)
+    state.setdefault('pack_hash', selected.fingerprint)
+    state['response_language_policy'] = response_policy(OrganizationConfigResolver(auth.user['email']), language)
+    return state
+
+
+async def _apply_language_policy(agent, auth, requested):
+    from lamb.aac.language import apply_ui_language
+    from lamb.aac.preferences import response_policy, apply_policy
+    apply_ui_language(agent, requested)
+    try:
+        policy = response_policy(OrganizationConfigResolver(auth.user['email']), agent.skill_state.get('ui_language', 'en'))
+        apply_policy(agent, policy)
+    except ValueError as exc:
+        await agent.shell.close()
+        await agent.llm_client.close()
+        raise HTTPException(503, f'Invalid LAMB AGENT settings; ask the organization administrator: {exc}')
+
+
 async def _finish_turn(mgr, agent, session_id, user_email, skill_info):
     """Persist completed tool effects even when output fails or the client leaves."""
     skill_info = getattr(agent, "skill_state", None) or skill_info
@@ -482,13 +530,27 @@ def _validate_skill_selection(skill_id, context):
 
 
 async def _prepare_agent_and_message(
-    auth: AuthContext, session: dict, user_message: str, token: str = "",
+    auth: AuthContext, session: dict, user_message: str, token: str = "", ui_language: str | None = None,
 ) -> tuple:
     """Build the right agent and adjust the message for skill startup.
 
     Returns: (agent, message, skill_info)
     """
-    agent = _build_agent(auth, session, token=token)
+    if not (session.get('skill_info') or {}).get('brief'):
+        state = dict(session.get('skill_info') or {})
+        from lamb.aac.language import LANGUAGES
+        legacy_language = state.get('context', {}).get('language', '')
+        inherited_locale = next((code for code,name in LANGUAGES.items() if name.casefold()==str(legacy_language).casefold()), 'en')
+        state.setdefault('ui_language', ui_language or inherited_locale)
+        try:
+            session = dict(session, skill_info=await _initialize_session_knowledge(auth, state))
+        except ValueError as exc:
+            raise HTTPException(503, f'LAMB AGENT knowledge configuration is unavailable: {exc}')
+    try:
+        agent = _build_agent(auth, session, token=token)
+    except ValueError as exc:
+        raise HTTPException(503, f'LAMB AGENT knowledge configuration is unavailable: {exc}') from exc
+    await _apply_language_policy(agent, auth, ui_language)
     state = agent.skill_state
     try:
         if state.get("skill_id") and not state.get("active_snapshot") and not agent.pending_action:
@@ -496,7 +558,7 @@ async def _prepare_agent_and_message(
             agent.conversation.append({"role": "user", "content": "[System: Workflow instructions]\n" + instructions})
         elif not agent.pending_action:
             from lamb.aac.skill_routing import select_workflow
-            selected = select_workflow(user_message, state)
+            selected = select_workflow(user_message, state, agent.pack)
             if selected:
                 instructions = agent.activate_skill(*selected, reason="user_turn")
                 agent.conversation.append({"role": "user", "content": "[System: Workflow instructions]\n" + instructions})
@@ -514,7 +576,15 @@ async def _prepare_agent_and_message(
 def _resolve_agent_llm(user_email: str):
     """Use the organization's selected provider for both plain and skill AAC."""
     resolver = OrganizationConfigResolver(user_email)
-    default = resolver.get_global_default_model_config()
+    from lamb.aac.preferences import agent_settings
+    try:
+        settings = agent_settings(resolver.organization.get('config', {}))
+    except ValueError as exc:
+        raise HTTPException(503, str(exc))
+    explicit = bool(settings.get('provider') or settings.get('model'))
+    default = settings if explicit else resolver.get_global_default_model_config()
+    if explicit and (not settings.get('model') or settings.get('provider') not in {'openai', 'ollama'}):
+        raise HTTPException(503, 'Invalid LAMB AGENT model configuration; ask the organization administrator to correct it')
     provider = default.get("provider") or "openai"
     if provider not in {"openai", "ollama"}:
         try:
@@ -551,8 +621,6 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
     org_id = auth.organization["id"]
     user_id = auth.user.get("id", 0)
 
-    llm_client, model = _resolve_agent_llm(user_email)
-
     # Build components — liteshell uses LambClient via HTTP (same path as CLI/frontend)
     import os
     server_url = os.environ.get("LAMB_LITESHELL_URL", "http://localhost:9099")
@@ -570,12 +638,11 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
         user_email=user_email,
         user_id=user_id,
     )
-    slog.log_session_start(assistant_id=session.get("assistant_id"), model=model)
 
     agent = AgentLoop(
         shell=shell,
-        llm_client=llm_client,
-        model=model,
+        llm_client=None,
+        model="",
         authorizer=authorizer,
         session_logger=slog,
         session_id=session["id"],
@@ -584,7 +651,18 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
     # Pin the rendered prefix for this session. Skill transitions append to history.
     state = dict(session.get("skill_info") or {})
     from lamb.aac.session_guidance import refresh_guidance
+    from lamb.aac.pack_loader import load_pack, allowed_commands
+    from lamb.aac.preferences import agent_settings
+    # Never change the interpretation of an action already awaiting confirmation.
+    if session.get('pending_action') and state.get('pack_version'):
+        selected = load_pack(version=state['pack_version'])
+    else:
+        selected = load_pack(agent_settings(auth.organization.get('config', {})))
+    agent.pack = selected
+    shell.knowledge = {'pack':selected, 'brief':state.get('brief', {}), 'state':state}
+    shell.allowed_commands = allowed_commands(selected, state.get('brief', {}).get('layers', ['creator']))
     notice = refresh_guidance(agent, state, session, SKILLS_DIR)
+    shell.knowledge['brief'] = state.get('brief', {})
     state.setdefault("context", {})
     if session.get("assistant_id"):
         state["context"].setdefault("assistant_id", session["assistant_id"])
@@ -599,6 +677,10 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
         agent.conversation.append({"role": "assistant", "content": notice})
     agent.pending_action = session.get("pending_action")
     agent.tool_audit = session.get("tool_audit", [])
+
+    # Pure pack and prefix validation must finish before allocating an HTTP client.
+    agent.llm_client, agent.model = _resolve_agent_llm(user_email)
+    slog.log_session_start(assistant_id=session.get("assistant_id"), model=agent.model)
 
     return agent
 

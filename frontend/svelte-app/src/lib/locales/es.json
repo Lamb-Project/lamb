@@ -1019,5 +1019,38 @@
       "zipTooLarge": "El archivo ZIP supera el límite de 500 MB.",
       "importFailed": "La importación ha fallado. Inténtalo de nuevo."
     }
+  },
+  "aacSettings": {
+    "settingsTitle": "Configuración de LAMB AGENT",
+    "settingsIntro": "Elige el modelo del agente independientemente de los valores predeterminados de los asistentes. La organización define los idiomas admitidos. Los cambios de modelo y de idioma alternativo se aplican en el siguiente turno. Cada sesión conserva el idioma de la interfaz con el que empezó.",
+    "loadingSettings": "Cargando configuración…",
+    "provider": "Proveedor del agente",
+    "model": "Modelo del agente",
+    "useDefault": "Usar el predeterminado de la organización",
+    "notEnabled": "no habilitado actualmente",
+    "selectModel": "Selecciona un modelo",
+    "orgDefault": "predeterminado de la organización",
+    "savedSelection": "selección guardada",
+    "knowledgePack": "Paquete de conocimiento",
+    "channel": "Canal de versiones",
+    "version": "Versión fijada",
+    "stable": "Estable",
+    "rc": "Candidata",
+    "beta": "Beta",
+    "followChannel": "Seguir el canal",
+    "utilityTitle": "Modelo auxiliar de traducción (opcional)",
+    "utilityIntro": "Solo para términos ausentes del glosario que impidan elegir un comando o secciones de documentación no disponibles en el idioma de la sesión. Sin modelo, la traducción automática queda desactivada.",
+    "utilityProvider": "Proveedor auxiliar",
+    "utilityModel": "Modelo auxiliar",
+    "disabled": "Desactivado",
+    "languageSupport": "Idiomas de la interfaz admitidos",
+    "languageIntro": "«Admitido» usa el idioma de la interfaz al iniciar la sesión. Si no está admitido, elige una alternativa, por ejemplo Euskara → Español. No se presuponen limitaciones del modelo.",
+    "fallback": "Alternativa para {name}",
+    "supported": "Admitido: responder en {name}",
+    "unsupported": "No admitido: usar {name}",
+    "saving": "Guardando…",
+    "saveSettings": "Guardar configuración del agente",
+    "settingsSaved": "Configuración del agente guardada.",
+    "policyLabel": "Política lingüística de la organización"
   }
 }

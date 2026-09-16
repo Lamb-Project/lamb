@@ -23,6 +23,8 @@ logger = get_logger(__name__, component="AAC")
 # key: (minimum positional arguments, maximum, accepted option names)
 COMMAND_CONTRACTS = {
     'whoami': (0, 0, ''),
+    'glossary': (1, 1, ''),
+    'translate': (0, 1, 'reason command blocker topic section'),
     'assistant.export': (1, 1, ''),
     'kb.list-shared': (0, 0, ''),
     'kb.plugins': (0, 0, ''),
@@ -237,6 +239,8 @@ class LiteShell:
     user_id: int = 0
     frontend: Any = None
     allowlist: set[str] | None = None
+    allowed_commands: set[str] | None = None
+    knowledge: dict = field(default_factory=dict)
     history: list[ShellResult] = field(default_factory=list)
     _http_client: Any = field(default=None, repr=False)
 
@@ -280,6 +284,8 @@ class LiteShell:
 
     async def _dispatch(self, command_str: str) -> ShellResult:
         key, args, kwargs, help_requested = prepare_command(command_str, self.allowlist)
+        if self.allowed_commands is not None and key not in self.allowed_commands:
+            raise ValueError('Command is outside your role; ask the appropriate administrator')
         handler = COMMAND_REGISTRY[key]
         if help_requested:
             return ShellResult(success=True, data={"command": key, "help": handler.__doc__ or "",
@@ -294,6 +300,7 @@ class LiteShell:
             organization_id=self.organization_id,
             user_id=self.user_id,
             frontend=self.frontend,
+            knowledge=self.knowledge,
         )
 
         # Local commands are sync, HTTP commands are async
@@ -307,6 +314,8 @@ class LiteShell:
         """Return available commands and their descriptions."""
         result = {}
         for key, func in sorted(COMMAND_REGISTRY.items()):
+            if self.allowed_commands is not None and key not in self.allowed_commands:
+                continue
             doc = func.__doc__ or ""
             result[f"lamb {key.replace('.', ' ')}"] = doc.split("\n")[0].strip()
         return result
@@ -322,6 +331,7 @@ class CommandContext:
     organization_id: int
     user_id: int = 0
     frontend: Any = None
+    knowledge: dict = field(default_factory=dict)
 
 
 BOOLEAN_OPTIONS = {'bypass', 'b', 'persist', 'enable', 'disable', 'vision', 'no_vision',

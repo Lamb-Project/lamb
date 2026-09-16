@@ -1,5 +1,6 @@
 <script>
 	import { onMount, onDestroy, tick } from 'svelte';
+	import { _ } from 'svelte-i18n';
 	import { sidebarBusy, startupSessions, openTabs } from '$lib/stores/aacStore.svelte';
 	import { splitCanvasContent, canvasFromMessages } from '$lib/utils/aacCanvas.js';
 	import { sendMessageStream, getSession, sendMessage } from '$lib/services/aacService';
@@ -41,7 +42,10 @@
         lastActivity = '';
         updateProgress({status: 'thinking'});
     }
+    let responsePolicy = $state(null);
+    const languageNames = {en:'English',es:'Español',ca:'Català',eu:'Euskara'};
     function updateProgress(event) {
+        if (event.status === 'policy') { responsePolicy = event.policy; return; }
         if (stopped) return;
         activityStarted = Date.now();
         activitySeconds = 0;
@@ -64,6 +68,7 @@
         try {
             const session = await getSession(sessionId);
             if(!isMounted)return;
+            responsePolicy=session.skill_info?.response_language_policy || null;
             sessionTitle=session.display_title || session.title || 'New conversation';
             openTabs.update(tabs=>tabs.map(t=>t.id===sessionId?{...t,title:sessionTitle}:t));
         } catch (_) { /* transcript remains usable if metadata refresh fails */ }
@@ -120,7 +125,8 @@
 			try {
 				const session = await getSession(sessionId);
 				if (!isMounted) return;
-                sessionTitle=session.display_title || session.title || 'New conversation';
+                responsePolicy=session.skill_info?.response_language_policy || null;
+            sessionTitle=session.display_title || session.title || 'New conversation';
 				const conv = (session.conversation || []).filter(
 					m => (m.role === 'user' && !(m.content || '').startsWith('[System:') && !(m.content || '').startsWith('[Application workflow instructions]'))
 					  || (m.role === 'assistant' && m.content && !m.tool_calls)
@@ -286,6 +292,12 @@
 </script>
 
 <div class="flex flex-col h-full min-h-0 gap-0">
+{#if responsePolicy?.fallback_applied}
+    <div role="status" class="px-3 py-2 text-sm bg-amber-50 text-amber-900 border-b border-amber-200">
+        {languageNames[responsePolicy.requested_language]} → {languageNames[responsePolicy.effective_language]}
+        <span> · LAMB AGENT · {$_('aacSettings.policyLabel')}</span>
+    </div>
+{/if}
 <!-- Terminal panel -->
 <div
 	class="flex flex-col font-sans text-sm rounded-lg border overflow-hidden w-full h-full min-h-0"

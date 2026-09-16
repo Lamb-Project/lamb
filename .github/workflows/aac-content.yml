@@ -1,0 +1,26 @@
+name: AAC content contracts
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  content:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install manifest parser
+        run: python -m pip install PyYAML==6.0.3
+      - name: Validate immutable content, contracts, routing, references and coverage
+        working-directory: backend
+        run: python -m lamb.aac.pack_build
+      - name: Verify role fixtures, glossary boundaries and prefix lifetime
+        working-directory: backend
+        run: python -m unittest tests.test_aac_content_ci tests.test_aac_pack_build -v

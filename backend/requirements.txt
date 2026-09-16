@@ -76,3 +76,6 @@ llama-index-llms-ollama==0.2.2
 
 # migration script from v01 to v02
 python-dotenv>=1.2.1
+
+# Versioned AAC pack manifests and routing
+PyYAML==6.0.3

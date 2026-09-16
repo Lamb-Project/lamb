@@ -19,7 +19,7 @@ def rag_processor(
     The file path is relative to the project's static/public folder.
     """
     logger.debug(f"Starting single_file_rag processor with assistant: {assistant.id if assistant else 'None'}")
-    
+
     if not assistant:
         logger.warning("No assistant provided")
         return {
@@ -30,18 +30,18 @@ def rag_processor(
     try:
         # Parse the metadata to get the file path
         logger.debug(f"Full metadata content: {assistant.metadata}")
-        
+
         # Handle empty metadata
         if not assistant.metadata or assistant.metadata.strip() == '':
             logger.warning(f"Empty metadata for assistant {assistant.id if assistant else 'unknown'}")
             config = {}
         else:
             config = json.loads(assistant.metadata)
-            
+
         logger.debug(f"Parsed metadata config: {config}")
         file_path = config.get('file_path')
         logger.debug(f"Extracted file_path from metadata: {file_path}")
-        
+
         if not file_path:
             logger.warning("No file_path found in metadata")
             return {
@@ -70,7 +70,7 @@ def rag_processor(
         with open(full_path, 'r', encoding='utf-8') as file:
             content = file.read()
             logger.debug(f"Successfully read {len(content)} characters from file")
-                
+
         return {
             "context": content,
             "sources": [{
@@ -91,4 +91,6 @@ def rag_processor(
         return {
             "context": f"Error processing file: {str(e)}",
             "sources": []
-        } 
+        }
+
+AAC_DESCRIPTION = 'Loads the assistant owner’s selected single file as grounding context.'

@@ -1,0 +1,45 @@
+{
+  "name": "lamb-default",
+  "version": "1.0.0",
+  "requires": "lamb >= 0.7",
+  "compatibility": "legacy-prefix",
+  "layers": {
+    "creator": [
+      "layers/creator/guidance.md"
+    ],
+    "lti": [
+      "layers/lti/guidance.md"
+    ],
+    "org_admin": [
+      "layers/org_admin/guidance.md"
+    ],
+    "admin": [
+      "layers/admin/guidance.md"
+    ]
+  },
+  "hashes": {
+    "compass.md": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "glossary/ca.yaml": "be34b2adae9b7edad7080ab2caf7556c87d45cdbd42f3a6dee29f4ecaa9fa961",
+    "glossary/en.yaml": "b4a15c134a45230ed45d4fc7cd143c15a7b90b588d4c586d14e08144c8264888",
+    "glossary/es.yaml": "f33a3ffa23acc8bcee9854d5605fd3bc7e81752f68d01a3df40c8744cbb1af8d",
+    "glossary/eu.yaml": "e43bb1af38e6bd9b181bc7ce36887c85c7eee5511f4cafedf2483e8ed38bfb3b",
+    "layers/admin/guidance.md": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "layers/creator/guidance.md": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "layers/lti/guidance.md": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "layers/org_admin/guidance.md": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "persona.md": "cd25591361ae856bfa49cb4c1095c5cd86686dc0ef6beb560db3303cbca804be",
+    "routing.yaml": "5d34bbcc7f07ad0bc8b464281ef72b824af3f5f879c18fd7570af8a84923e97a",
+    "skills/about_lamb.md": "982b02f7d68db97876c0ee4116dc3ae319bab107c55d05ed0afe1a70383d795b",
+    "skills/chat_with_assistant.md": "2cb8703c13b27b7a62f89cd7692aa33e53b6e1697aeb1318d76073d61c5a84f6",
+    "skills/create_assistant.md": "0fc24fb9ef9c7e52b87720d38fd7f67abeea8f22cf288cd3dfcfb42e009de181",
+    "skills/explain_assistant.md": "4927587fb35971e40db1e07a0cdc24c365b57c94529956516b499cc36eae3b7c",
+    "skills/improve_assistant.md": "b83a0d25f3d122b58b0444269aa72081bb3f1cb3129517d153d2608ddc8b30c1",
+    "skills/inspect_activity.md": "e156715540452786c672ca9834357436fae88bb501e4f6e4f48c3dd6644d7020",
+    "skills/manage_knowledge_base.md": "d48719fc7805ecc0480b5515d8d45d69b0679e74460dc09895269d9bb9653437",
+    "skills/manage_rubric.md": "32282f811aadb53b459a5dd3e4150d7b034420217d243c078746ee690470694d",
+    "skills/manage_templates.md": "9d3dcae2f0f69e10efab56c829f4107c7ad70b840e82a836f2cf1411d54d62c3",
+    "skills/publish_assistant.md": "af19634766b957121f296e3b7b2a2330248ec5f2a05fa865558b7bbf2df12a3c",
+    "skills/test_and_evaluate.md": "4b463ac6cbc49e2927beed24ebeea6714accbec285acd04333b44656f46b6af8",
+    "skills/test_lti_tools.md": "7eb08ade5f3ec1cf30663762623528d904f3bf923aa09a5b5d70ccf8a11e9d97"
+  }
+}

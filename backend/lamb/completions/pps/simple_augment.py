@@ -84,10 +84,10 @@ def prompt_processor(
                 "role": "system",
                 "content": assistant.system_prompt
             })
-        
+
         # Add previous messages except the last one
         processed_messages.extend(messages[:-1])
-        
+
         # Process the last message using the prompt template
         if assistant.prompt_template:
             # Check if assistant has vision capabilities
@@ -113,7 +113,7 @@ def prompt_processor(
                 # Add RAG context if available
                 if rag_context:
                     context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
-                    
+
                     # Format sources if available
                     sources_text = ""
                     if isinstance(rag_context, dict) and "sources" in rag_context:
@@ -125,7 +125,7 @@ def prompt_processor(
                                 url = source.get("url", "")
                                 similarity = source.get("similarity", 0)
                                 sources_text += f"{i}. [{title}]({url}) (similarity: {similarity:.3f})\n"
-                    
+
                     # Combine context with sources
                     full_context = context + sources_text
                     augmented_text = augmented_text.replace("{context}", "\n\n" + full_context + "\n\n")
@@ -169,7 +169,7 @@ def prompt_processor(
                 # Add RAG context if available
                 if rag_context:
                     context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
-                    
+
                     # Format sources if available
                     sources_text = ""
                     if isinstance(rag_context, dict) and "sources" in rag_context:
@@ -181,7 +181,7 @@ def prompt_processor(
                                 url = source.get("url", "")
                                 similarity = source.get("similarity", 0)
                                 sources_text += f"{i}. [{title}]({url}) (similarity: {similarity:.3f})\n"
-                    
+
                     # Combine context with sources
                     full_context = context + sources_text
                     prompt = prompt.replace("{context}", "\n\n" + full_context + "\n\n")
@@ -196,8 +196,10 @@ def prompt_processor(
         else:
             # If no template, use original message
             processed_messages.append(messages[-1])
-            
+
         return processed_messages
-    
+
     # If no assistant provided, return original messages
-    return messages 
+    return messages
+
+AAC_DESCRIPTION = 'Assembles system instructions and a prompt template with user input and retrieved context.'

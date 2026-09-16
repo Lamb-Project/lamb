@@ -53,7 +53,8 @@ def append_turn_language(agent):
     Called after confirmation classification and once per turn, not per tool round.
     Earlier conversation bytes remain unchanged, preserving the reusable KV prefix.
     """
-    code = (agent.skill_state or {}).get('ui_language')
+    state = agent.skill_state or {}
+    code = state.get('response_language_policy', {}).get('effective_language', state.get('ui_language'))
     if code in TURN_INSTRUCTIONS:
         agent.conversation.append({'role': 'user', 'content':
             '[System: Frontend response language]\n' + TURN_INSTRUCTIONS[code] +
@@ -62,7 +63,8 @@ def append_turn_language(agent):
 
 def confirmation_fallback(agent):
     """A provider ignoring disabled tools must still expose the saved approval."""
-    code = (agent.skill_state or {}).get('ui_language', 'en')
+    state = agent.skill_state or {}
+    code = state.get('response_language_policy', {}).get('effective_language', state.get('ui_language', 'en'))
     messages = {
         'en': ('This action is awaiting your approval and has not been executed:', 'Approve this action? Reply yes or no.'),
         'es': ('Esta acción está pendiente de tu aprobación y no se ha ejecutado:', '¿Apruebas esta acción? Responde sí o no.'),
@@ -73,3 +75,46 @@ def confirmation_fallback(agent):
     command = agent.pending_action.get('command', '')
     fence = '`' * max(3, max((len(part) for part in re.findall(r'`+', command)), default=0) + 1)
     return f'{intro}\n\n{fence}text\n{command}\n{fence}\n\n{question}'
+
+
+def translation_confirmation(agent):
+    """Render the interpretation independently of provider compliance.
+
+    Translation is untrusted text. A literal block prevents its Markdown from
+    hiding the actual interpretation or impersonating an approval control.
+    """
+    interpretations = (agent.pending_action or {}).get('machine_translation_interpretations', [])
+    if not interpretations:
+        return ''
+    state = agent.skill_state or {}
+    code = state.get('response_language_policy', {}).get('effective_language', state.get('ui_language', 'en'))
+    labels = {
+        'en': ('Machine translation used for this proposed action', 'Original', 'Interpretation', 'Check this interpretation before approving.'),
+        'es': ('Traducción automática usada para esta acción propuesta', 'Original', 'Interpretación', 'Comprueba esta interpretación antes de aprobar.'),
+        'ca': ('Traducció automàtica usada per a aquesta acció proposada', 'Original', 'Interpretació', 'Comprova aquesta interpretació abans d’aprovar.'),
+        'eu': ('Proposatutako ekintzarako erabilitako itzulpen automatikoa', 'Jatorrizkoa', 'Interpretazioa', 'Egiaztatu interpretazio hau onartu aurretik.'),
+    }
+    title, source_label, output_label, warning = labels.get(code, labels['en'])
+    blocks = []
+    for item in interpretations:
+        content = f"{source_label}: {item['source']}\n{output_label}: {item['translation']}"
+        fence = '`' * max(3, max((len(part) for part in re.findall(r'`+', content)), default=0) + 1)
+        blocks.append(f'{fence}text\n{content}\n{fence}')
+    return '\n\n' + title + '\n\n' + '\n\n'.join(blocks) + '\n\n' + warning
+
+
+def documentation_fallback_notice(agent):
+    """Expose English-source fallback even if the model omits the tool's notice."""
+    state = agent.skill_state or {}
+    notices = state.pop('documentation_notices', {})
+    if not notices:
+        return ''
+    code = state.get('response_language_policy', {}).get('effective_language', state.get('ui_language', 'en'))
+    messages = {
+        'en': 'These documentation sections are available only in English; English source material was used:',
+        'es': 'Estas secciones de la documentación solo están disponibles en inglés; se ha consultado el original en inglés:',
+        'ca': 'Aquestes seccions de la documentació només estan disponibles en anglès; s’ha consultat l’original en anglès:',
+        'eu': 'Dokumentazio-atal hauek ingelesez bakarrik daude eskuragarri; ingelesezko jatorrizkoa erabili da:',
+    }
+    references = [f'`{topic}#{anchor}`' for topic, anchors in sorted(notices.items()) for anchor in anchors]
+    return '\n\n' + messages.get(code, messages['en']) + ' ' + ', '.join(references)
