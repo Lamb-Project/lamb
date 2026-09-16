@@ -69,10 +69,10 @@ jobs:
             command -v node && echo "node found at: $(command -v node)" || echo "node not found"
 
             # Run tests but keep the exit code so we can always collect the HTML report
-            # Always exercise the public test deployment. The report host keeps
-            # its own untracked Playwright .env, which must not silently select
-            # a different LAMB instance.
-            PLAYWRIGHT_BASE_URL="https://test.lamb-project.org"
+            # Exercise the test deployment in /opt/lamb-test on ehu.
+            # test.lamb-project.org still points to Wasabi; explicitly override
+            # the untracked Playwright .env so CI always tests the ehu instance.
+            PLAYWRIGHT_BASE_URL="https://test.ehu.lamb-project.org"
             echo "Running Playwright against: $PLAYWRIGHT_BASE_URL"
 
             # temporarily exclude known-flaky / environment-disabled tests using grep-invert.
@@ -104,8 +104,8 @@ jobs:
               # Update 'latest' symlink (atomic)
               ln -sfn "$DEST" "$DEST_ROOT/latest" || sudo ln -sfn "$DEST" "$DEST_ROOT/latest"
 
-              echo "Playwright report deployed at: https://${{ secrets.SERVER_HOST }}/playwright/html/latest/index.html"
-              echo "Archive: https://${{ secrets.SERVER_HOST }}/playwright/html/$TIMESTAMP/index.html"
+              echo "Playwright report deployed at: https://playwright.lamb-project.org/latest/index.html"
+              echo "Archive: https://playwright.lamb-project.org/$TIMESTAMP/index.html"
 
               # Cleanup old archives older than 7 days
               if [ -d "$DEST_ROOT" ]; then
