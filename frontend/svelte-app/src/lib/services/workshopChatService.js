@@ -6,6 +6,7 @@
  * The SSE dialect is the shared LAMB dialect:
  *   - `data: {"choices":[{"delta":{"content":"..."}}]}`   → assistant text chunks
  *   - `data: {"type":"tool_event","data":{...}}`           → tool timeline frames
+ *   - `data: {"type":"tool_messages","data":{"messages":[…]}}` → tool exchanges to persist
  *   - `data: {"type":"observability","data":{...}}`        → obs dashboard frames
  *   - `data: [DONE]`                                       → stream end
  *
@@ -30,6 +31,7 @@
  * @param {(chunk: string) => void} [handlers.onChunk]
  * @param {(data: Object) => void} [handlers.onObservability]
  * @param {(evt: Object) => void} [handlers.onToolEvent]
+ * @param {(messages: Array<Object>) => void} [handlers.onToolMessages]
  * @param {() => void} [handlers.onDone]
  * @param {(msg: string) => void} [handlers.onError]
  * @param {AbortSignal} [signal]
@@ -39,7 +41,7 @@ export async function sendWorkshopChat(
 	handlers = {},
 	signal
 ) {
-	const { onChunk, onObservability, onToolEvent, onDone, onError } = handlers;
+	const { onChunk, onObservability, onToolEvent, onToolMessages, onDone, onError } = handlers;
 
 	// Dev (5173) proxies /lamb to the backend; prod SPA is served by the same
 	// origin. Use the relative /lamb path in both cases. getLambApiUrl would
@@ -52,15 +54,15 @@ export async function sendWorkshopChat(
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				token,
+				token
 			},
 			body: JSON.stringify({
 				messages,
 				stream: true,
 				observability: opts.observability ?? true,
-				tools: opts.tools || [],
+				tools: opts.tools || []
 			}),
-			signal,
+			signal
 		});
 	} catch (/** @type {any} */ e) {
 		// AbortError on unmount is expected; do not surface as an error.
@@ -83,7 +85,11 @@ export async function sendWorkshopChat(
 	try {
 		while (true) {
 			if (signal?.aborted) {
-				try { await reader.cancel(); } catch { /* noop */ }
+				try {
+					await reader.cancel();
+				} catch {
+					/* noop */
+				}
 				return;
 			}
 			const { done, value } = await reader.read();
@@ -106,6 +112,8 @@ export async function sendWorkshopChat(
 						if (onObservability) onObservability(data.data);
 					} else if (data.type === 'tool_event') {
 						if (onToolEvent) onToolEvent(data.data);
+					} else if (data.type === 'tool_messages') {
+						if (onToolMessages) onToolMessages(data.data?.messages || []);
 					} else if (
 						data.choices &&
 						data.choices[0] &&
@@ -114,7 +122,9 @@ export async function sendWorkshopChat(
 					) {
 						if (onChunk) onChunk(data.choices[0].delta.content);
 					}
-				} catch { /* ignore non-JSON */ }
+				} catch {
+					/* ignore non-JSON */
+				}
 			}
 		}
 	} catch (/** @type {any} */ e) {

@@ -13,7 +13,7 @@ function mockSseStream(lines) {
 				controller.enqueue(new TextEncoder().encode(l));
 			}
 			controller.close();
-		},
+		}
 	});
 }
 
@@ -21,7 +21,7 @@ const baseParams = {
 	sessionId: 'ws-1-2-123',
 	assistantId: 7,
 	token: 'workshop-token-abc',
-	messages: [{ role: 'user', content: 'Hello' }],
+	messages: [{ role: 'user', content: 'Hello' }]
 };
 
 describe('sendWorkshopChat — SSE frame dispatch', () => {
@@ -41,15 +41,15 @@ describe('sendWorkshopChat — SSE frame dispatch', () => {
 			ok: true,
 			body: mockSseStream([
 				'data: {"type":"observability","data":{"system_instructions":"Be a tutor","rag_context":"ctx"}}\n\n',
-				'data: [DONE]\n\n',
-			]),
+				'data: [DONE]\n\n'
+			])
 		});
 		const onObservability = vi.fn();
 		await sendWorkshopChat(baseParams, { onObservability });
 		expect(onObservability).toHaveBeenCalledTimes(1);
 		expect(onObservability).toHaveBeenCalledWith({
 			system_instructions: 'Be a tutor',
-			rag_context: 'ctx',
+			rag_context: 'ctx'
 		});
 	});
 
@@ -58,8 +58,8 @@ describe('sendWorkshopChat — SSE frame dispatch', () => {
 			ok: true,
 			body: mockSseStream([
 				'data: {"type":"tool_event","data":{"type":"tool","name":"calculator","args":"1+1"}}\n\n',
-				'data: [DONE]\n\n',
-			]),
+				'data: [DONE]\n\n'
+			])
 		});
 		const onToolEvent = vi.fn();
 		await sendWorkshopChat(baseParams, { onToolEvent });
@@ -67,8 +67,36 @@ describe('sendWorkshopChat — SSE frame dispatch', () => {
 		expect(onToolEvent).toHaveBeenCalledWith({
 			type: 'tool',
 			name: 'calculator',
-			args: '1+1',
+			args: '1+1'
 		});
+	});
+
+	test('N2b: tool_messages frame → onToolMessages with the tool exchanges', async () => {
+		const toolMsgs = [
+			{
+				role: 'assistant',
+				content: '',
+				tool_calls: [
+					{
+						id: 'call_1',
+						type: 'function',
+						function: { name: 'calculator', arguments: '{"expression":"2+2"}' }
+					}
+				]
+			},
+			{ role: 'tool', tool_call_id: 'call_1', content: '{"success":true,"result":4}' }
+		];
+		fetchMock.mockResolvedValue({
+			ok: true,
+			body: mockSseStream([
+				`data: ${JSON.stringify({ type: 'tool_messages', data: { messages: toolMsgs } })}\n\n`,
+				'data: [DONE]\n\n'
+			])
+		});
+		const onToolMessages = vi.fn();
+		await sendWorkshopChat(baseParams, { onToolMessages });
+		expect(onToolMessages).toHaveBeenCalledTimes(1);
+		expect(onToolMessages).toHaveBeenCalledWith(toolMsgs);
 	});
 
 	test('N3: content chunk → onChunk with delta content only', async () => {
@@ -77,8 +105,8 @@ describe('sendWorkshopChat — SSE frame dispatch', () => {
 			body: mockSseStream([
 				'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
 				'data: {"choices":[{"delta":{"content":" world"}}]}\n\n',
-				'data: [DONE]\n\n',
-			]),
+				'data: [DONE]\n\n'
+			])
 		});
 		const onChunk = vi.fn();
 		await sendWorkshopChat(baseParams, { onChunk });
@@ -93,8 +121,8 @@ describe('sendWorkshopChat — SSE frame dispatch', () => {
 			body: mockSseStream([
 				'data: {"choices":[{"delta":{"content":"A"}}]}\n\n',
 				'data: [DONE]\n\n',
-				'data: {"choices":[{"delta":{"content":"never reached"}}]}\n\n',
-			]),
+				'data: {"choices":[{"delta":{"content":"never reached"}}]}\n\n'
+			])
 		});
 		const onChunk = vi.fn();
 		const onDone = vi.fn();
@@ -106,10 +134,7 @@ describe('sendWorkshopChat — SSE frame dispatch', () => {
 	test('N5: no handlers passed → stream consumed without crashing', async () => {
 		fetchMock.mockResolvedValue({
 			ok: true,
-			body: mockSseStream([
-				'data: {"type":"observability","data":{"x":1}}\n\n',
-				'data: [DONE]\n\n',
-			]),
+			body: mockSseStream(['data: {"type":"observability","data":{"x":1}}\n\n', 'data: [DONE]\n\n'])
 		});
 		await expect(sendWorkshopChat(baseParams, {})).resolves.toBeUndefined();
 	});
@@ -119,14 +144,12 @@ describe('sendWorkshopChat — SSE frame dispatch', () => {
 		await sendWorkshopChat(
 			{
 				...baseParams,
-				opts: { tools: [{ type: 'function', function: { name: 'calculator' } }] },
+				opts: { tools: [{ type: 'function', function: { name: 'calculator' } }] }
 			},
 			{}
 		);
 		const [url, init] = fetchMock.mock.calls[0];
-		expect(url).toBe(
-			'/lamb/v1/workshop/sessions/ws-1-2-123/assistant/7/chat'
-		);
+		expect(url).toBe('/lamb/v1/workshop/sessions/ws-1-2-123/assistant/7/chat');
 		expect(init.headers.token).toBe('workshop-token-abc');
 		const body = JSON.parse(init.body);
 		expect(body.stream).toBe(true);
@@ -139,7 +162,7 @@ describe('sendWorkshopChat — SSE frame dispatch', () => {
 		fetchMock.mockResolvedValue({
 			ok: false,
 			status: 403,
-			json: async () => ({ detail: 'Not your assistant' }),
+			json: async () => ({ detail: 'Not your assistant' })
 		});
 		const onError = vi.fn();
 		await sendWorkshopChat(baseParams, { onError });
@@ -152,8 +175,8 @@ describe('sendWorkshopChat — SSE frame dispatch', () => {
 			ok: true,
 			body: mockSseStream([
 				'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n',
-				'data: [DONE]\n\n',
-			]),
+				'data: [DONE]\n\n'
+			])
 		});
 		const onChunk = vi.fn();
 		controller.abort();

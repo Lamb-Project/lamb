@@ -123,9 +123,13 @@ def format_messages_for_ollama(messages: list) -> list:
                 }
                 for tc in msg["tool_calls"]
             ]
-        # Preserve tool_call_id for tool response messages
-        if msg.get("role") == "tool" and msg.get("content"):
-            entry["content"] = msg.get("content", "")
+        # Preserve tool_call_id for tool response messages so the assistant
+        # tool_calls / tool result pairing survives round-tripping.
+        if msg.get("role") == "tool":
+            if msg.get("tool_call_id"):
+                entry["tool_call_id"] = msg["tool_call_id"]
+            if msg.get("content"):
+                entry["content"] = msg.get("content", "")
         result.append(entry)
     return result
 

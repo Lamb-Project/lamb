@@ -685,6 +685,20 @@ async def run_lamb_assistant(
                     if final_msgs is None:
                         final_msgs = messages
 
+                    # Echo the tool exchanges produced this turn back to the
+                    # client (assistant tool_calls + role:tool results) so it can
+                    # persist them and resend them on later turns. Without this
+                    # the model loses the record of prior tool invocations across
+                    # a multi-turn conversation.
+                    appended = final_msgs[len(messages):]
+                    tool_messages = [
+                        m for m in appended
+                        if m.get("role") == "tool"
+                        or (m.get("role") == "assistant" and m.get("tool_calls"))
+                    ]
+                    if tool_messages:
+                        yield f"data: {json.dumps({'type': 'tool_messages', 'data': {'messages': tool_messages}})}\n\n"
+
                     # Stream final text reply
                     gen_result = await connectors[connector](
                         messages=final_msgs,

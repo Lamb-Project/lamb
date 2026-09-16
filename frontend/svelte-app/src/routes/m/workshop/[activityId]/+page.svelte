@@ -40,7 +40,9 @@
 	let submitting = $state(false);
 
 	// ── Chat + observability ──
-	/** @type {Array<{role: string, content: string}>} */
+	// Entries may also carry assistant `tool_calls` / `role: tool` fields and an
+	// `hidden` flag (tool trace persisted for context but not rendered).
+	/** @type {Array<any>} */
 	let chatMessages = $state([]);
 	let chatInput = $state('');
 	let streaming = $state(false);
@@ -252,6 +254,28 @@
 		formStore.prevStep();
 	}
 
+	/**
+	 * History to send to the backend: everything except the empty assistant
+	 * placeholder, preserving assistant `tool_calls` and `role: tool` entries so
+	 * the model keeps the full tool trace across turns. Hidden entries are sent
+	 * too (they are part of the conversation), they're only hidden in the UI.
+	 * @param {Array<any>} msgs
+	 * @returns {Array<any>}
+	 */
+	function requestMessages(msgs) {
+		return msgs
+			.slice(0, -1)
+			.filter(
+				(m) =>
+					m.role === 'tool' ||
+					(m.tool_calls && m.tool_calls.length) ||
+					(m.content && m.content.length)
+			)
+			// Strip frontend-only fields (`hidden`) — they must not reach the
+			// model API. Keep role/content/tool_calls/tool_call_id.
+			.map(({ hidden, ...m }) => m);
+	}
+
 	async function handleSend() {
 		const text = chatInput.trim();
 		if (!text || streaming) return;
@@ -264,12 +288,13 @@
 				return;
 			}
 		}
+		if (assistantId == null) return;
 		// Persist the current step-1 instructions so the LLM (and the
 		// observability panel) always reflect what the student set.
 		await syncInstructions();
 
 		chatMessages = [...chatMessages, { role: 'user', content: text }, { role: 'assistant', content: '' }];
-		const assistantSlot = chatMessages.length - 1;
+		let assistantSlot = chatMessages.length - 1;
 		chatInput = '';
 		streaming = true;
 		toolEvents = [];
@@ -288,7 +313,7 @@
 				sessionId,
 				assistantId,
 				token,
-				messages: chatMessages.filter((m) => m.content !== ''),
+				messages: requestMessages(chatMessages),
 				opts: { tools, observability: true },
 			},
 			{
@@ -304,6 +329,20 @@
 				},
 				onToolEvent: (evt) => {
 					toolEvents = [...toolEvents, evt];
+				},
+				onToolMessages: (msgs) => {
+					// Persist the assistant tool_calls / role:tool exchanges this
+					// turn produced, right before the assistant reply, so they are
+					// resent on later turns (full tool trace across the session).
+					// Marked hidden so they don't render in the chat UI.
+					if (!msgs || msgs.length === 0) return;
+					const hidden = msgs.map((m) => ({ ...m, hidden: true }));
+					chatMessages = [
+						...chatMessages.slice(0, assistantSlot),
+						...hidden,
+						...chatMessages.slice(assistantSlot),
+					];
+					assistantSlot += hidden.length;
 				},
 				onDone: () => {
 					streaming = false;
@@ -444,17 +483,19 @@
 							<p class="text-sm text-gray-400 text-center pt-16">Send a message to test your assistant.</p>
 						{:else}
 							{#each chatMessages as m, i (i)}
-								<div class="flex {m.role === 'user' ? 'justify-end' : 'justify-start'}">
-									<div class="max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap {m.role === 'user'
-										? 'bg-blue-600 text-white'
-										: 'bg-gray-100 text-gray-800'}">
-										{#if m.role === 'assistant' && m.content === '' && streaming && i === chatMessages.length - 1}
-											<span class="text-gray-400">…</span>
-										{:else}
-											{m.content}
-										{/if}
+								{#if !m.hidden}
+									<div class="flex {m.role === 'user' ? 'justify-end' : 'justify-start'}">
+										<div class="max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap {m.role === 'user'
+											? 'bg-blue-600 text-white'
+											: 'bg-gray-100 text-gray-800'}">
+											{#if m.role === 'assistant' && m.content === '' && streaming && i === chatMessages.length - 1}
+												<span class="text-gray-400">…</span>
+											{:else}
+												{m.content}
+											{/if}
+										</div>
 									</div>
-								</div>
+								{/if}
 							{/each}
 							{#if streaming}
 								<div class="text-xs text-gray-400 pl-1">streaming…</div>
