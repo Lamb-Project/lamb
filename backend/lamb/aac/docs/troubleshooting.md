@@ -20,7 +20,7 @@ answers:
 1. Is a RAG Processor selected? (Edit assistant > RAG Processor must NOT be "No Rag")
 2. Is a Knowledge Base connected? (Edit assistant > check the KB checkbox)
 3. Does the prompt template contain `{context}`? Without it, retrieved content is discarded.
-4. Run a bypass/debug test — if `{context}` is empty, the KB or ingestion is the problem.
+4. Run a bypass/debug test — if `{context}` is empty, investigate retrieval, filters and prompt assembly before attributing a cause.
 5. Are the files in the KB fully ingested? (View KB > check status is "completed")
 
 ## Problem: Context is empty in bypass test

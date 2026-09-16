@@ -1,6 +1,6 @@
 """Explicit instruction compatibility, independent of deploy/build timestamps."""
 # Bump only for a deliberate instruction-policy change, not each deployment.
-POLICY_VERSION = 3
+POLICY_VERSION = 4
 
 
 def refresh_guidance(agent, state, session, skills_dir):

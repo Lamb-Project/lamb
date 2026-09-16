@@ -88,3 +88,15 @@ Do not recreate or delete an assistant as a workaround for an edit failure.
 After an approved edit and saved-state readback, run `frontend-manage open assistant ASSISTANT_ID --tab properties`. If the user wants to edit manually, run `frontend-manage open assistant ASSISTANT_ID --tab edit`; opening the form does not edit or save anything.
 
 Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.
+
+
+## Retrieval evidence limits
+
+For one-off pipeline inspection use `lamb assistant debug ASSISTANT_ID --message "exact question"`.
+Only valid assembled_messages demonstrate this new invocation's input, not a historical trace.
+An empty/failed debug result is not a successful inspection. Report the failure before
+substituting a direct `lamb kb query`, and label that as a separate KB probe.
+Do not invent omitted chunk ranks/scores, claim language mismatch as a proven cause,
+or promise that a larger top-k fixes the problem. Distinguish observations from
+hypotheses and proposed experiments. Saved tests require actual scenario/run IDs;
+a bypass inspection alone does not evaluate answer quality.

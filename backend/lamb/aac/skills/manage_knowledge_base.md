@@ -51,3 +51,15 @@ Use `lamb kb list-shared`, `lamb kb plugins` and `lamb kb query-plugins` for dis
 For a user-provided URL and a supported non-file plugin, use `lamb kb ingest KB_ID --plugin NAME --url URL` (or `--youtube URL`); repeat `--param key=value` for documented plugin parameters. Inspect `lamb kb plugins` first and only use base/non-file ingestion. This is distinct from local-file upload, which always stays in the UI. Never supply filesystem paths or file plugins through generic parameters. Submission requires approval and means a job was submitted, not that content is searchable.
 
 Inspect `lamb job get KB_ID JOB_ID`. Retry a failed job with `lamb job retry KB_ID JOB_ID`; cancel with `lamb job cancel KB_ID JOB_ID`, each after explicit approval. Check the job result afterwards.
+
+
+## Retrieval evidence limits
+
+For one-off pipeline inspection use `lamb assistant debug ASSISTANT_ID --message "exact question"`.
+Only valid assembled_messages demonstrate this new invocation's input, not a historical trace.
+An empty/failed debug result is not a successful inspection. Report the failure before
+substituting a direct `lamb kb query`, and label that as a separate KB probe.
+Do not invent omitted chunk ranks/scores, claim language mismatch as a proven cause,
+or promise that a larger top-k fixes the problem. Distinguish observations from
+hypotheses and proposed experiments. Saved tests require actual scenario/run IDs;
+a bypass inspection alone does not evaluate answer quality.

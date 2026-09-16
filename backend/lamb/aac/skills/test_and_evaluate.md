@@ -24,6 +24,19 @@ evaluate → improve.
 3. Check if test scenarios already exist for this assistant
 4. Adapt your approach based on what you find (see sections below)
 
+## One-off diagnosis (no saved tests required)
+
+For a request to inspect retrieval for a specific question, run
+`lamb assistant debug ASSISTANT_ID --message "exact question"` and inspect
+`assembled_messages`. This does not create scenarios, test runs or chats.
+If debug fails or returns no valid input, report the failure. A direct KB query
+is a separate probe, not a replacement pipeline trace. A new debug invocation
+cannot prove what an earlier answer received. Empty context alone does not
+identify the cause. Never infer omitted ranks/scores, a language mismatch cause,
+or a top-k fix from only the returned chunks. Label hypotheses and test them.
+Use saved scenarios when the user wants repeatable tests, then compare actual
+bypass and real runs before reporting a fix or evaluating answer quality.
+
 ## If no test scenarios exist
 
 Generate a test set based on the assistant's purpose and configuration:
@@ -45,7 +58,7 @@ Offer to run them.
 For RAG assistants running a full test suite, suggest bypass first:
 1. Run `lamb test run {assistant_id} --bypass` to check the pipeline
 2. Analyze the bypass output:
-   - Is `{context}` populated with actual content? If empty → RAG is broken
+   - Is `{context}` populated with actual content? If empty, report that observation; investigate retrieval, filtering and prompt assembly before attributing a cause
    - Are the retrieved chunks relevant text or just formatting/metadata?
    - Is the prompt template correctly structured?
 3. If pipeline issues found → report them, suggest fixes

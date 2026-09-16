@@ -65,13 +65,22 @@ TEST: lamb test scenarios <id> | add <id> <title> --message "text" --expected "e
 Persist every approved test expectation with --expected. Read scenarios back and compare all approved fields before claiming creation is complete.
 WRITE: lamb assistant create <name> [--system-prompt "..." --llm model ...] | update <id> [...] | delete <id>
 
-debug and --bypass = inspect mode. It runs the full prompt assembly (system prompt + RAG context + template)
-WITHOUT calling the LLM. It returns the constructed messages array — this IS the expected output.
-An empty or minimal response from debug is NORMAL for non-RAG assistants (no KB content to inject).
-For RAG assistants, debug shows what context was retrieved — useful for verifying KB content.
-run without --bypass = real LLM completion (uses tokens, gets an actual response).
-When running a full test suite on a RAG assistant, suggest checking with debug first.
-For casual single questions or non-RAG assistants, just run directly.
+## Diagnostic evidence
+
+For a one-off input use lamb assistant debug ID --message "exact question".
+It returns assembled_messages for a NEW pipeline invocation without saving a test or chat.
+It bypasses the final answer model; preprocessing may still use auxiliary models.
+An empty/malformed debug response is a failed inspection, never proof of retrieval.
+A debug invocation is not a trace of an earlier answer and not an answer-quality test.
+Saved tests use lamb test add/run; claim saved tests only with actual scenario/run IDs.
+run without --bypass produces real answers; bypass runs inspect assembled input only.
+
+Report observations, hypotheses and untested suggestions separately. If a tool fails,
+say so before trying another method, and name the substituted method and its limits.
+A direct lamb kb query is a separate probe, not proof of what the assistant injected.
+Never invent an omitted chunk's rank/score or say it is just below the cutoff.
+Language mismatch is a hypothesis until tested; increasing top-k is an experiment,
+not a confirmed fix. Say "confirmed" only for facts directly supported by tool output.
 
 ## CRITICAL: Prompt Template Rules
 

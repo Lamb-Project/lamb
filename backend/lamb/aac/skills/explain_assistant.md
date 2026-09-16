@@ -61,3 +61,15 @@ After inspecting the selected assistant, run `frontend-manage open assistant ASS
 Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.
 
 For the complete saved configuration as inline JSON use `lamb assistant export ASSISTANT_ID`. This reads the existing resource and does not write a local file. For caller identity use `lamb whoami`; do not infer roles from resource names.
+
+
+## Retrieval evidence limits
+
+For one-off pipeline inspection use `lamb assistant debug ASSISTANT_ID --message "exact question"`.
+Only valid assembled_messages demonstrate this new invocation's input, not a historical trace.
+An empty/failed debug result is not a successful inspection. Report the failure before
+substituting a direct `lamb kb query`, and label that as a separate KB probe.
+Do not invent omitted chunk ranks/scores, claim language mismatch as a proven cause,
+or promise that a larger top-k fixes the problem. Distinguish observations from
+hypotheses and proposed experiments. Saved tests require actual scenario/run IDs;
+a bypass inspection alone does not evaluate answer quality.

@@ -150,17 +150,39 @@ async def assistant_config(ctx: "CommandContext", args: list[str], kwargs: dict)
 
 @register("assistant.debug")
 async def assistant_debug(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
-    """Run a message through an assistant's full pipeline without calling the LLM. Shows what the LLM would see."""
+    """Inspect this input through prompt assembly without saving a test or chat."""
     if not args:
         raise ValueError("Usage: lamb assistant debug <id> --message \"text\"")
     assistant_id = args[0]
     message = kwargs.get("message", kwargs.get("m", ""))
     if not message:
         raise ValueError("Provide --message or -m with the test input")
-    return _unwrap(await ctx.http.post(
-        f"/creator/assistant/{assistant_id}/tests/run",
-        json={"message": message, "debug_bypass": True},
+    response = _unwrap(await ctx.http.post(
+        f"/creator/assistant/{assistant_id}/chat/completions",
+        json={"messages": [{"role": "user", "content": message}],
+              "debug_bypass": True, "stream": False, "persist_chat": False},
     ))
+    try:
+        if response.get("model") != "debug-bypass":
+            raise ValueError("not a bypass response")
+        content = response["choices"][0]["message"]["content"]
+        if not content.startswith("Messages:\n"):
+            raise ValueError("missing assembled messages")
+        messages, _ = json.JSONDecoder().raw_decode(content[len("Messages:\n"):])
+        if not isinstance(messages, list) or not messages or not all(
+            isinstance(m, dict) and "role" in m and "content" in m for m in messages
+        ):
+            raise ValueError("invalid assembled messages")
+    except (AttributeError, KeyError, IndexError, TypeError, ValueError) as exc:
+        raise ValueError("Debug inspection failed: no valid assembled input returned. "
+                         "Do not claim retrieval was verified; no saved test was run.") from exc
+    return {"evidence_type": "assistant_pipeline_debug", "assistant_id": assistant_id,
+            "input_message": message, "assembled_messages": messages,
+            "saved_test_run": False, "persisted_chat": False,
+            "limitations": "Shows assembled input for this new invocation, not a trace of an earlier answer. "
+                           "Bypasses the final answer model; preprocessing may still use models. "
+                           "Does not evaluate answer quality or expose ranks/scores of omitted chunks."}
+
 
 
 @register("assistant.create")
@@ -786,7 +808,12 @@ async def kb_query(ctx, args, kwargs):
         params['threshold'] = threshold
     if params: body['plugin_params'] = params
     if kwargs.get('plugin', kwargs.get('p')): body['plugin_name'] = kwargs.get('plugin', kwargs.get('p'))
-    return _unwrap(await ctx.http.post(f'/creator/knowledgebases/kb/{args[0]}/query', json=body))
+    result = _unwrap(await ctx.http.post(f'/creator/knowledgebases/kb/{args[0]}/query', json=body))
+    evidence = {"type": "direct_kb_query", "query": body,
+                "limitations": "Separate KB probe, not proof of an assistant's injected context. "
+                               "Only returned chunks have observed ranks/scores. Absence does not establish "
+                               "an omitted chunk's score, language-related cause, or that a larger top-k fixes it."}
+    return {**result, "evidence": evidence} if isinstance(result, dict) else {"result": result, "evidence": evidence}
 
 
 @register("test.evaluations")

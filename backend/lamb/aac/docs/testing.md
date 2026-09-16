@@ -24,7 +24,7 @@ Click the "Chat with [name]" tab on the assistant detail page. Type messages and
 Shows exactly what the AI model would receive — full system prompt, retrieved KB content, assembled prompt — without calling the model. No completion-model call; retrieval may still involve other services.
 
 Use bypass to verify:
-- Is `{context}` populated with relevant content? If empty, RAG is broken.
+- Is `{context}` populated with relevant content? If empty, report the observation and investigate retrieval, filters and prompt assembly; the cause is not yet established.
 - Is the prompt template correctly assembled?
 - Are the right KB documents being retrieved?
 
