@@ -319,10 +319,16 @@ async def lti_configure_activity(request: Request):
         assistant_ids_str = form_data.getlist("assistant_ids")
         assistant_ids = [int(x) for x in assistant_ids_str if x]
         chat_visibility_enabled = form_data.get("chat_visibility_enabled") == "1"
+        # Only known activity types are allowed; anything else falls back to chat.
+        activity_type = form_data.get("activity_type", "chat")
+        if activity_type not in ("chat", "workshop"):
+            activity_type = "chat"
 
         if not organization_id:
             return HTMLResponse("<h2>Error</h2><p>No organization selected.</p>", status_code=400)
-        if not assistant_ids:
+        # Workshop students build their own assistant, so no published assistant
+        # needs to be selected; chat activities still require at least one.
+        if activity_type != "workshop" and not assistant_ids:
             return HTMLResponse("<h2>Error</h2><p>Please select at least one assistant.</p>", status_code=400)
 
         # Find the creator user for this org
@@ -335,24 +341,34 @@ async def lti_configure_activity(request: Request):
         context_id = data.get("context_id", "")
         context_title = data.get("context_title", "")
 
-        # Configure the activity
-        activity = manager.configure_activity(
-            resource_link_id=resource_link_id,
-            organization_id=organization_id,
-            assistant_ids=assistant_ids,
-            configured_by_email=creator_user["user_email"],
-            configured_by_name=creator_user.get("user_name"),
-            context_id=context_id,
-            context_title=context_title,
-            activity_name=context_title or resource_link_id,
-            chat_visibility_enabled=chat_visibility_enabled,
-        )
+        # Idempotency: the setup form can be resubmitted / the setup URL
+        # reopened. If the activity already exists, reuse it instead of
+        # INSERTing a duplicate resource_link_id (which violates the UNIQUE
+        # constraint). Reconfiguring assistants is a separate flow.
+        activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
+        if activity:
+            logger.info(
+                f"Activity {resource_link_id} already configured "
+                f"(type={activity.get('activity_type')}); redirecting to dashboard")
+        else:
+            activity = manager.configure_activity(
+                resource_link_id=resource_link_id,
+                organization_id=organization_id,
+                assistant_ids=assistant_ids,
+                configured_by_email=creator_user["user_email"],
+                configured_by_name=creator_user.get("user_name"),
+                context_id=context_id,
+                context_title=context_title,
+                activity_name=context_title or resource_link_id,
+                chat_visibility_enabled=chat_visibility_enabled,
+                activity_type=activity_type,
+            )
 
-        if not activity:
-            logger.error(f"Failed to configure activity {resource_link_id}")
-            return HTMLResponse("<h2>Error</h2><p>Failed to configure activity. Please try again.</p>", status_code=500)
+            if not activity:
+                logger.error(f"Failed to configure activity {resource_link_id}")
+                return HTMLResponse("<h2>Error</h2><p>Failed to configure activity. Please try again.</p>", status_code=500)
 
-        logger.info(f"Activity {resource_link_id} configured with {len(assistant_ids)} assistants, chat_visibility={chat_visibility_enabled}")
+            logger.info(f"Activity {resource_link_id} configured with {len(assistant_ids)} assistants, activity_type={activity_type}, chat_visibility={chat_visibility_enabled}")
 
         # Consume the setup token
         _consume_token(token)
