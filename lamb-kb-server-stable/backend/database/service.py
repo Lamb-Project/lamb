@@ -238,16 +238,23 @@ class CollectionService:
             current_conf['apikey'] = apikey
         db_collection.embeddings_model = current_conf
 
-        # Commit SQLite changes
-        db.commit()
+        # Validate SQL constraints before changing the external vector-store name.
+        # A rejected Chroma rename must not commit a broken SQLite name.
+        chroma_col = None
+        renamed = False
+        try:
+            db.flush()
+            if name and name != old_name:
+                chroma_col = get_chroma_client().get_collection(old_name)
+                chroma_col.modify(name=name)
+                renamed = True
+            db.commit()
+        except Exception:
+            db.rollback()
+            if renamed:
+                chroma_col.modify(name=old_name)
+            raise
         db.refresh(db_collection)
-
-        # Rename ChromaDB collection if name changed
-        if name and name != old_name:
-            client = get_chroma_client()
-            chroma_col = client.get_collection(old_name)
-            chroma_col.modify(name=name)
-
         return db_collection
 
     
