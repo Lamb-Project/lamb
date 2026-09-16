@@ -2,10 +2,13 @@
 Tests for the workshop module (contract alignment with #277 ActivityModule).
 """
 
+from unittest.mock import MagicMock, patch
+
 from lamb.modules.workshop import WorkshopModule, module
 from lamb.modules import discover_modules, get_module
 from lamb.modules.workshop.routers import _resolve_tool_definitions
 from lamb.completions.tools.definitions import CALCULATOR_DEF
+from lamb.lti_activity_manager import LtiActivityManager
 
 
 def test_module_discovered():
@@ -73,3 +76,57 @@ def test_resolve_tool_definitions_drops_unknown():
     assert _resolve_tool_definitions(None) is None
     assert _resolve_tool_definitions([]) is None
     assert _resolve_tool_definitions([{"type": "function", "function": {"name": "nope"}}]) is None
+
+
+def _bare_manager():
+    """An LtiActivityManager with mocked collaborators (bypass __init__)."""
+    mgr = LtiActivityManager.__new__(LtiActivityManager)
+    mgr.db_manager = MagicMock()
+    mgr.owi_user_manager = MagicMock()
+    mgr.owi_group_manager = MagicMock()
+    return mgr
+
+
+def test_configure_activity_workshop_persists_type_without_owi():
+    """A workshop activity is DB-only: activity_type stored, no OWI group,
+    no assistant links, even with an empty assistant list."""
+    mgr = _bare_manager()
+    mgr.db_manager.create_lti_activity.return_value = 5
+    mgr.db_manager.get_lti_activity_by_resource_link.return_value = {
+        "id": 5, "activity_type": "workshop"}
+
+    result = mgr.configure_activity(
+        resource_link_id="rl-w", organization_id=1, assistant_ids=[],
+        configured_by_email="t@x.com", activity_name="WS",
+        activity_type="workshop",
+    )
+
+    assert result["activity_type"] == "workshop"
+    mgr.owi_user_manager.get_user_by_email.assert_not_called()
+    mgr.owi_group_manager.create_group.assert_not_called()
+    mgr.db_manager.add_assistants_to_activity.assert_not_called()
+    _, kwargs = mgr.db_manager.create_lti_activity.call_args
+    assert kwargs["activity_type"] == "workshop"
+
+
+def test_configure_activity_chat_creates_group_and_links_assistants():
+    """Chat activities keep the existing OWI-group + assistant-link behavior
+    and forward activity_type='chat'."""
+    mgr = _bare_manager()
+    mgr.owi_user_manager.get_user_by_email.return_value = {"id": "u1"}
+    mgr.owi_group_manager.create_group.return_value = {"id": "g1"}
+    mgr.db_manager.create_lti_activity.return_value = 7
+    mgr.db_manager.get_lti_activity_by_resource_link.return_value = {"id": 7}
+
+    with patch("lamb.lti_activity_manager.OwiDatabaseManager"), \
+            patch("lamb.lti_activity_manager.OWIModel") as mock_model:
+        mock_model.return_value.add_group_to_model.return_value = True
+        mgr.configure_activity(
+            resource_link_id="rl-c", organization_id=1, assistant_ids=[3],
+            configured_by_email="t@x.com", activity_type="chat",
+        )
+
+    mgr.owi_group_manager.create_group.assert_called_once()
+    mgr.db_manager.add_assistants_to_activity.assert_called_once_with(7, [3])
+    _, kwargs = mgr.db_manager.create_lti_activity.call_args
+    assert kwargs["activity_type"] == "chat"

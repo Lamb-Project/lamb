@@ -202,21 +202,78 @@ class TestRestrictedUpdateAssistant:
 
 
 class TestConsent:
-    """WE1/WE2: consent flow records via the existing consent method."""
+    """WE1/WE2: consent gate — first visit shows the page, later visits skip."""
+
+    @staticmethod
+    def _request():
+        from starlette.requests import Request
+
+        return Request({
+            "type": "http",
+            "method": "GET",
+            "path": "/lamb/v1/workshop/consent",
+            "query_string": b"",
+            "headers": [],
+            "scheme": "http",
+            "server": ("localhost", 80),
+            "client": ("127.0.0.1", 1234),
+        })
 
     @pytest.mark.asyncio
+    @patch("lamb.modules.workshop.routers._wizard_url",
+           return_value="http://t/m/workshop/1?token=tok")
     @patch("lamb.auth.decode_token")
     @patch("lamb.modules.workshop.routers._db_manager")
-    async def test_consent_submit_records(self, mock_db, mock_decode):
+    async def test_consent_submit_records_and_redirects(
+            self, mock_db, mock_decode, mock_wizard):
         mock_decode.return_value = _token_payload(activity_id=1, email="s@lamb.com")
-        result = await routers.consent_submit(body={}, token="tok")
-        assert result["success"] is True
+        resp = await routers.consent_submit(request=self._request(), token="tok")
+
+        from fastapi.responses import RedirectResponse
+        assert isinstance(resp, RedirectResponse)
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "http://t/m/workshop/1?token=tok"
         mock_db.record_student_consent.assert_called_once_with(1, "s@lamb.com")
 
     @pytest.mark.asyncio
+    @patch("lamb.modules.workshop.routers._wizard_url",
+           return_value="http://t/m/workshop/1?token=tok")
     @patch("lamb.auth.decode_token")
-    async def test_consent_bad_token(self, mock_decode):
+    @patch("lamb.modules.workshop.routers._db_manager")
+    async def test_consent_page_first_visit_renders(
+            self, mock_db, mock_decode, mock_wizard):
+        """WE1: no consent_given_at yet → the consent page is served (200)."""
+        mock_decode.return_value = _token_payload(activity_id=1, email="s@lamb.com")
+        mock_db.get_activity_user.return_value = {"consent_given_at": None}
+
+        resp = await routers.consent_page(request=self._request(), token="tok")
+        assert resp.status_code == 200
+        assert "text/html" in resp.media_type
+
+    @pytest.mark.asyncio
+    @patch("lamb.modules.workshop.routers._wizard_url",
+           return_value="http://t/m/workshop/1?token=tok")
+    @patch("lamb.auth.decode_token")
+    @patch("lamb.modules.workshop.routers._db_manager")
+    async def test_consent_page_revisit_skips(
+            self, mock_db, mock_decode, mock_wizard):
+        """WE2: consent already given → straight to the wizard (303)."""
+        mock_decode.return_value = _token_payload(activity_id=1, email="s@lamb.com")
+        mock_db.get_activity_user.return_value = {"consent_given_at": 1770000000}
+
+        resp = await routers.consent_page(request=self._request(), token="tok")
+
+        from fastapi.responses import RedirectResponse
+        assert isinstance(resp, RedirectResponse)
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "http://t/m/workshop/1?token=tok"
+
+    @pytest.mark.asyncio
+    @patch("lamb.modules.workshop.routers._wizard_url",
+           return_value="http://t/m/workshop/1?token=tok")
+    @patch("lamb.auth.decode_token")
+    async def test_consent_bad_token(self, mock_decode, mock_wizard):
         mock_decode.return_value = {"scope": "lti_unified"}
         with pytest.raises(HTTPException) as exc:
-            await routers.consent_submit(body={}, token="tok")
+            await routers.consent_page(request=self._request(), token="tok")
         assert exc.value.status_code == 401

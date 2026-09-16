@@ -82,6 +82,20 @@
             <!-- Options -->
             <div id="optionsStep" class="{% if needs_org_selection %}hidden{% endif %} mb-6">
                 <h2 class="text-lg font-semibold text-gray-800 mb-3">Options</h2>
+
+                <div class="mb-3">
+                    <label for="activityType" class="block font-medium text-gray-900 mb-1">Activity type</label>
+                    <select id="activityType" name="activity_type"
+                            class="w-full border border-gray-300 rounded-lg p-2 text-sm text-gray-800">
+                        <option value="chat" selected>Chat — students talk to the selected assistant(s)</option>
+                        <option value="workshop">AI Workshop — students build their own assistant</option>
+                    </select>
+                    <p class="text-sm text-gray-500 mt-1">
+                        Choose <span class="font-medium">AI Workshop</span> to send students into the assistant-building
+                        wizard. No published assistant is needed for a workshop activity. This cannot be changed later.
+                    </p>
+                </div>
+
                 <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors">
                     <input type="checkbox" name="chat_visibility_enabled" value="1" class="mt-1 text-blue-600 rounded">
                     <div>
@@ -110,6 +124,11 @@
         const noOrgSelected = document.getElementById('noOrgSelected');
         const optionsStep = document.getElementById('optionsStep');
         const submitBtn = document.getElementById('submitBtn');
+        const activityTypeSelect = document.getElementById('activityType');
+
+        function isWorkshop() {
+            return !!activityTypeSelect && activityTypeSelect.value === 'workshop';
+        }
 
         function renderAssistants(orgId) {
             const assistants = orgsData[orgId] || [];
@@ -140,7 +159,9 @@
         function updateSubmitState() {
             const anyChecked = document.querySelectorAll('input[name="assistant_ids"]:checked').length > 0;
             const orgSelected = !needsOrgSelection || document.querySelector('input[name="organization_id"]:checked');
-            submitBtn.disabled = !(anyChecked && orgSelected);
+            // Workshop activities don't need published assistants — students build their own.
+            const assistantsOk = anyChecked || isWorkshop();
+            submitBtn.disabled = !(assistantsOk && orgSelected);
         }
 
         // Org radio handlers
@@ -158,6 +179,11 @@
         document.querySelectorAll('input[name="assistant_ids"]').forEach(cb => {
             cb.addEventListener('change', updateSubmitState);
         });
+
+        // Activity type toggles whether an assistant must be selected.
+        if (activityTypeSelect) {
+            activityTypeSelect.addEventListener('change', updateSubmitState);
+        }
 
         // Initial state
         updateSubmitState();

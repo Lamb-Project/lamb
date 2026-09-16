@@ -83,6 +83,23 @@ def initialize_workshop_workspace(ctx: Dict[str, Any]) -> Optional[Dict[str, Any
 
     # Redirect target for the workshop build wizard (a static SPA serves this).
     token = _create_workshop_token(principal)
+
+    # Consent gate: first visit sends the student to the consent page; once
+    # consent_given_at is set (POST /workshop/consent) they skip straight in.
+    if not activity_user.get("consent_given_at"):
+        consent_url = (
+            f"{public_base}/lamb/v1/workshop/consent?token={token}"
+            if public_base
+            else f"/lamb/v1/workshop/consent?token={token}"
+        )
+        return {
+            "redirect": consent_url,
+            "consent_required": True,
+            "session": session,
+            "principal": principal,
+            "token": token,
+        }
+
     redirect = (
         f"{public_base}/m/workshop/{activity['id']}?token={token}"
         if public_base

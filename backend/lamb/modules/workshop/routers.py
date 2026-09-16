@@ -15,10 +15,12 @@ routes validate scope + quota and return an accepted reference.
 
 import json
 import logging
+import os
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException, Header
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, Header, Form, Request
+from fastapi.responses import StreamingResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 
 from lamb.completions.tools.definitions import WORKSHOP_TOOLS
 from lamb.database_manager import LambDatabaseManager
@@ -29,6 +31,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/workshop", tags=["workshop"])
 
 _db_manager = LambDatabaseManager()
+
+# Jinja templates owned by this module (consent page).
+_templates = Jinja2Templates(directory=[
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates"),
+])
 
 # Workshop per-session quotas (Lean MVP)
 MAX_DOCUMENTS_PER_SESSION = 1
@@ -309,18 +316,52 @@ async def submit_workshop(
     return {"success": True, "status": "submitted"}
 
 
-@router.post("/consent")
-async def consent_submit(body: Dict[str, Any], token: str = Header(...)):
-    """Record student consent then proceed to the wizard."""
+def _decode_workshop_student(token: str) -> Dict[str, Any]:
+    """Decode a workshop_student token, or raise 401. No session binding check."""
     from lamb import auth as lamb_auth
 
     data = lamb_auth.decode_token(token)
     if not data or data.get("scope") != "workshop_student":
         raise HTTPException(status_code=401, detail="Invalid workshop token")
+    return data
 
+
+def _wizard_url(request: Request, activity_id: Any, token: str) -> str:
+    """Build the public wizard URL for a student's workshop activity."""
+    from lamb.lti_activity_manager import LtiActivityManager
+
+    public_base = LtiActivityManager().get_public_base_url(request)
+    return f"{public_base}/m/workshop/{activity_id}?token={token}"
+
+
+@router.get("/consent")
+async def consent_page(request: Request, token: str = ""):
+    """Show the consent page on first visit; skip straight to the wizard after.
+
+    A student who already consented (lti_activity_users.consent_given_at set) is
+    redirected to the wizard instead of being asked again.
+    """
+    data = _decode_workshop_student(token)
+    activity_id = data.get("activity_id")
+    email = data.get("email")
+
+    student = None
+    if activity_id and email:
+        student = _db_manager.get_activity_user(activity_id=activity_id, user_email=email)
+
+    if student and student.get("consent_given_at"):
+        return RedirectResponse(url=_wizard_url(request, activity_id, token), status_code=303)
+
+    return _templates.TemplateResponse(request, "consent.html", {"token": token})
+
+
+@router.post("/consent")
+async def consent_submit(request: Request, token: str = Form(...)):
+    """Record student consent then redirect to the wizard."""
+    data = _decode_workshop_student(token)
     activity_id = data.get("activity_id")
     email = data.get("email")
     if activity_id and email:
         _db_manager.record_student_consent(activity_id, email)
 
-    return {"success": True}
+    return RedirectResponse(url=_wizard_url(request, activity_id, token), status_code=303)
