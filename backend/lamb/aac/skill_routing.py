@@ -11,7 +11,7 @@ from lamb.aac.skill_loader import list_skills, load_skill
 BOOTSTRAP = {'frontend-manage.current', 'frontend-manage.open', 'help', 'skill.list', 'skill.load', 'docs.index', 'docs.read',
              'assistant.list', 'assistant.list-shared', 'assistant.list-published',
              'assistant.config', 'kb.list', 'rubric.list', 'rubric.list-public',
-             'template.list', 'template.get', 'session.rename'}
+             'template.list', 'template.get', 'template.list-shared', 'whoami', 'kb.list-shared', 'kb.plugins', 'kb.query-plugins', 'session.rename'}
 READ_ASSISTANT = {'assistant.get', 'assistant.debug'}
 CAPABILITIES = {
     'create-assistant': READ_ASSISTANT | {'assistant.create'},
@@ -24,6 +24,11 @@ CAPABILITIES = {
     'manage-rubric': {'rubric.get', 'rubric.export', 'rubric.create', 'rubric.update'},
     'inspect-activity': READ_ASSISTANT | {'analytics.chats', 'analytics.chat-detail', 'analytics.stats', 'analytics.timeline'},
 }
+CAPABILITIES['explain-assistant'].add('assistant.export')
+CAPABILITIES['manage-knowledge-base'].update({'kb.update', 'kb.delete', 'kb.delete-file', 'kb.share', 'kb.ingest', 'job.get', 'job.retry', 'job.cancel'})
+CAPABILITIES['manage-rubric'].update({'rubric.delete', 'rubric.duplicate', 'rubric.share', 'rubric.generate'})
+CAPABILITIES['test-and-evaluate'].update({'test.scenario-detail', 'test.delete-scenario'})
+CAPABILITIES['manage-templates'] = {'template.create', 'template.update', 'template.delete', 'template.duplicate', 'template.share', 'template.export'}
 DEFAULT_SKILL = {key: skill for skill, keys in CAPABILITIES.items() for key in keys}
 DEFAULT_SKILL.update({'assistant.get':'explain-assistant', 'assistant.debug':'explain-assistant',
                       'assistant.chat':'chat-with-assistant', 'assistant.delete':'improve-assistant'})
@@ -58,8 +63,8 @@ def command_context(key, args, kwargs, state):
     context = normalize_context(state.get('context', {}))
     context.setdefault('language', "the user's current conversation language")
     if key.startswith(('assistant.', 'analytics.', 'test.')) and args:
-        if key in {'test.run-detail', 'test.evaluate'}:
-            index = 1 if key == 'test.run-detail' or (len(args) == 3 and args[2] in {'good','bad','mixed'}) else 2
+        if key in {'test.run-detail', 'test.evaluate', 'test.scenario-detail', 'test.delete-scenario'}:
+            index = 1 if key in {'test.run-detail', 'test.scenario-detail', 'test.delete-scenario'} or (len(args) == 3 and args[2] in {'good','bad','mixed'}) else 2
             value = args[index] if len(args) > index else kwargs.get('assistant', kwargs.get('a'))
         elif key == 'assistant.create':
             value = None

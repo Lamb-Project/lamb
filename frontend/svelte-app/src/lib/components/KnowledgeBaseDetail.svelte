@@ -1,4 +1,5 @@
 <script>
+ import { knowledgeBaseFileUrl } from '$lib/services/knowledgeBaseFileUrl';
  import { clearWorkspaceDirty } from '$lib/services/frontendManage';
  let ingestionForm;
     import { onMount } from 'svelte';
@@ -1272,7 +1273,7 @@
                                                             <div class="text-sm font-medium text-gray-900 truncate" title={file.filename}>
                                                                 {#if file.file_url}
                                                                     <a 
-                                                                        href={file.file_url} 
+                                                                        href={knowledgeBaseFileUrl(file.file_url)}
                                                                         target="_blank" 
                                                                         rel="noopener noreferrer"
                                                                         class="text-[#2271b3] hover:text-[#195a91] hover:underline truncate block"
@@ -1709,7 +1710,7 @@
                                                     {#if result.metadata?.file_url && result.metadata?.filename}
                                                         <div class="mb-2 text-sm">
                                                             <a 
-                                                                href={result.metadata.file_url} 
+                                                                href={knowledgeBaseFileUrl(result.metadata.file_url)}
                                                                 target="_blank" 
                                                                 rel="noopener noreferrer"
                                                                 class="text-[#2271b3] hover:text-[#195a91] hover:underline font-medium"
@@ -2029,7 +2030,7 @@
                                 <div class="flex flex-wrap gap-2">
                                     {#if stats.output_files.markdown_url}
                                         <a 
-                                            href={stats.output_files.markdown_url} 
+                                            href={knowledgeBaseFileUrl(stats.output_files.markdown_url)}
                                             target="_blank" 
                                             rel="noopener noreferrer"
                                             class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md hover:bg-emerald-100 transition-colors text-sm"
@@ -2042,7 +2043,7 @@
                                     {/if}
                                     {#if stats.output_files.images_folder_url}
                                         <a 
-                                            href={stats.output_files.images_folder_url} 
+                                            href={knowledgeBaseFileUrl(stats.output_files.images_folder_url)}
                                             target="_blank" 
                                             rel="noopener noreferrer"
                                             class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-md hover:bg-purple-100 transition-colors text-sm"
@@ -2055,7 +2056,7 @@
                                     {/if}
                                     {#if stats.output_files.original_file_url}
                                         <a 
-                                            href={stats.output_files.original_file_url} 
+                                            href={knowledgeBaseFileUrl(stats.output_files.original_file_url)}
                                             target="_blank" 
                                             rel="noopener noreferrer"
                                             class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 text-gray-700 border border-gray-200 rounded-md hover:bg-gray-100 transition-colors text-sm"

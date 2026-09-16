@@ -59,3 +59,5 @@ Debug shows assembled input, not an assistant answer or a quality evaluation. On
 After inspecting the selected assistant, run `frontend-manage open assistant ASSISTANT_ID --tab properties` and explain the saved properties beside that view.
 
 Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.
+
+For the complete saved configuration as inline JSON use `lamb assistant export ASSISTANT_ID`. This reads the existing resource and does not write a local file. For caller identity use `lamb whoami`; do not infer roles from resource names.

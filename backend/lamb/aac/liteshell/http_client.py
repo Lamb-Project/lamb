@@ -55,6 +55,9 @@ class AsyncLambClient:
     async def put(self, path: str, **kwargs: Any) -> Any:
         return await self._request("PUT", path, **kwargs)
 
+    async def patch(self, path: str, **kwargs: Any) -> Any:
+        return await self._request("PATCH", path, **kwargs)
+
     async def delete(self, path: str, **kwargs: Any) -> Any:
         return await self._request("DELETE", path, **kwargs)
 

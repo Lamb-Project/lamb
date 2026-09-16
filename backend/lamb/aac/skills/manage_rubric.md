@@ -34,3 +34,7 @@ For W13 activate create-assistant with the saved rubric ID and its rubric_rag re
 After a rubric create/edit and readback, or a request to view it, run `frontend-manage open rubric RUBRIC_ID`. Use the exact returned UUID. This opens the actual rubric editor without changing it. After binding a rubric to an assistant, read back the assistant and open `frontend-manage open assistant ASSISTANT_ID --tab properties`.
 
 Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.
+
+## Additional rubric operations
+
+`lamb rubric generate "description of rubric" --language es` returns an unsaved AI preview, not a persisted rubric. Inspect it and use approved `rubric create` with complete criteria to save it; no file import/export workaround. `lamb rubric duplicate ID` creates a copy and needs approval. `lamb rubric share ID --enable` makes it public, `--disable` makes it private; explain visibility before asking approval. `lamb rubric delete ID` is only for an explicit delete request and requires approval. Read the created/edited result and report real identifiers. Stop on permission failures.

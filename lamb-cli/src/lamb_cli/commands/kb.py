@@ -205,7 +205,7 @@ def ingest_kb(
     if url:
         plugin_params["url"] = url
     if youtube:
-        plugin_params["youtube_url"] = youtube
+        plugin_params["video_url"] = youtube
     if param:
         for p in param:
             if "=" not in p:
@@ -215,7 +215,7 @@ def ingest_kb(
             plugin_params[key] = value
 
     if plugin_params:
-        body["plugin_params"] = plugin_params
+        body["parameters"] = plugin_params
 
     with get_client() as client:
         data = client.post(f"/creator/knowledgebases/kb/{kb_id}/plugin-ingest-base", json=body)

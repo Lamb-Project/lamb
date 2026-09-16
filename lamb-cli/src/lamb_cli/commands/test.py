@@ -89,6 +89,7 @@ def add_scenario(
     assistant_id: int = typer.Argument(..., help="Assistant ID."),
     title: str = typer.Argument(..., help="Scenario title."),
     message: Optional[str] = typer.Option(None, "--message", "-m", help="Single user message (for single-turn)."),
+    messages_json: Optional[str] = typer.Option(None, "--messages", help="Inline JSON array of role/content messages."),
     messages_file: Optional[str] = typer.Option(None, "--messages-file", "-f", help="JSON file with messages array."),
     description: Optional[str] = typer.Option(None, "--description", "-d", help="Description."),
     expected: Optional[str] = typer.Option(None, "--expected", "-e", help="Expected behavior."),
@@ -98,7 +99,12 @@ def add_scenario(
     """Add a test scenario."""
     fmt = output or get_output_format()
 
-    if messages_file:
+    if sum(bool(v) for v in [message, messages_file, messages_json]) != 1:
+        print_error('Provide exactly one of --message, --messages, or --messages-file.')
+        raise typer.Exit(1)
+    if messages_json:
+        messages = json.loads(messages_json)
+    elif messages_file:
         import pathlib
         raw = pathlib.Path(messages_file).read_text()
         messages = json.loads(raw)

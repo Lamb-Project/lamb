@@ -22,9 +22,36 @@ logger = get_logger(__name__, component="AAC")
 # Explicit supported shell surface. Unsupported CLI options fail instead of being ignored.
 # key: (minimum positional arguments, maximum, accepted option names)
 COMMAND_CONTRACTS = {
+    'whoami': (0, 0, ''),
+    'assistant.export': (1, 1, ''),
+    'kb.list-shared': (0, 0, ''),
+    'kb.plugins': (0, 0, ''),
+    'kb.query-plugins': (0, 0, ''),
+    'kb.update': (1, 1, 'name n description d access_control'),
+    'kb.delete': (1, 1, ''),
+    'kb.delete-file': (2, 2, ''),
+    'kb.share': (1, 1, 'enable disable'),
+    'kb.ingest': (1, 1, 'plugin p url youtube param'),
+    'job.get': (2, 2, ''),
+    'job.retry': (2, 2, ''),
+    'job.cancel': (2, 2, ''),
+    'rubric.delete': (1, 1, ''),
+    'rubric.duplicate': (1, 1, ''),
+    'rubric.share': (1, 1, 'enable disable'),
+    'rubric.generate': (1, 1, 'language lang model m'),
+    'template.list-shared': (0, 0, 'limit l offset'),
+    'template.create': (1, 1, 'description d system_prompt prompt_template shared'),
+    'template.update': (1, 1, 'name n description d system_prompt prompt_template'),
+    'template.delete': (1, 1, ''),
+    'template.duplicate': (1, 1, 'new_name'),
+    'template.share': (1, 1, 'enable disable'),
+    'template.export': (1, 1000, ''),
+    'test.scenario-detail': (2, 2, ''),
+    'test.delete-scenario': (2, 2, ''),
+
     "frontend-manage.current": (0, 0, ""), "frontend-manage.open": (1, 2, "tab"),
     "kb.jobs": (1, 1, ""), "kb.status": (1, 1, ""),
-    "kb.create": (1, 1, "description d"),
+    "kb.create": (1, 1, "description d access_control"),
     "kb.query": (2, 2, "plugin p top_k k threshold t"),
     "test.evaluations": (1, 1, ""),
     "rubric.create": (1, 1, "criteria description subject grade_level scoring_type max_score"),
@@ -32,8 +59,8 @@ COMMAND_CONTRACTS = {
     "assistant.list": (0, 0, "limit l offset"), "assistant.list-shared": (0, 0, ""),
     "assistant.get": (1, 1, ""), "assistant.config": (0, 0, ""),
     "assistant.debug": (1, 1, "message m"),
-    "assistant.create": (1, 1, "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format"),
-    "assistant.update": (1, 1, "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format"),
+    "assistant.create": (1, 1, "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format vision no_vision image_generation no_image_generation"),
+    "assistant.update": (1, 1, "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format vision no_vision image_generation no_image_generation"),
     "assistant.publish": (1, 1, ""), "assistant.unpublish": (1, 1, ""),
     "assistant.delete": (1, 1, ""), "assistant.list-published": (0, 0, ""),
     "assistant.chat": (1, 1, "message m bypass b chat_id persist"),
@@ -42,8 +69,8 @@ COMMAND_CONTRACTS = {
     "kb.list": (0, 0, ""), "kb.get": (1, 1, ""),
     "template.list": (0, 0, "limit l offset"), "template.get": (1, 1, ""),
     "test.update": (2, 2, "title message m description d type t expected e"),
-    "test.scenarios": (1, 1, ""), "test.add": (1, 2, "title message m description d type t expected e"),
-    "test.run": (1, 1, "bypass b scenario s"), "test.runs": (1, 1, "limit l"),
+    "test.scenarios": (1, 1, ""), "test.add": (1, 2, "title message m messages description d type t expected e"),
+    "test.run": (1, 1, "bypass b scenario s timeout"), "test.runs": (1, 1, "limit l"),
     "test.run-detail": (1, 2, "assistant a"), "test.evaluate": (2, 3, "assistant a notes n"),
     "session.rename": (1, 1, "session s"), "skill.list": (0, 0, ""),
     "skill.load": (1, 1, "assistant a language"), "docs.index": (0, 0, ""),
@@ -89,6 +116,27 @@ def validate_command(key, args, kwargs):
     minimum, maximum, options = COMMAND_CONTRACTS[key]
     if not minimum <= len(args) <= maximum:
         raise ValueError(f"{key} expects {minimum}..{maximum} positional arguments")
+    for positive, negative in [('enable', 'disable'), ('vision', 'no_vision'), ('image_generation', 'no_image_generation')]:
+        if positive in kwargs and negative in kwargs:
+            raise ValueError(f'Use only one of --{positive} or --{negative.replace("_", "-")}')
+    if 'timeout' in kwargs:
+        import math
+        if not math.isfinite(float(kwargs['timeout'])) or float(kwargs['timeout']) < 1:
+            raise ValueError('timeout must be a finite number of seconds >= 1')
+    if key == 'kb.ingest':
+        if not kwargs.get('plugin', kwargs.get('p')):
+            raise ValueError('Provide --plugin NAME')
+        for value in kwargs.get('param', []):
+            if not isinstance(value, str) or '=' not in value:
+                raise ValueError('Use --param key=value')
+            name = value.split('=', 1)[0].lower()
+            if name in {'file', 'files', 'file_path', 'path', 'filename', 'directory'}:
+                raise ValueError(FILESYSTEM_MESSAGE)
+    if key == 'test.add' and 'messages' in kwargs:
+        from lamb.aac.liteshell.commands import _messages
+        _messages(kwargs)
+    if key.endswith('.share') and not (set(kwargs) & {'enable', 'disable'}):
+        raise ValueError('Specify --enable or --disable')
     if key == "test.update" and not (set(kwargs) & set(options.split())):
         raise ValueError("Provide at least one field to update")
     allowed = set(options.split()) | {"output", "o"}
@@ -96,7 +144,7 @@ def validate_command(key, args, kwargs):
     if unknown:
         raise ValueError(f"Unsupported options for {key}: {', '.join(sorted(unknown))}")
     for option, value in kwargs.items():
-        if option in {"bypass", "b", "persist"}:
+        if option in BOOLEAN_OPTIONS:
             if value not in (True, "true", "false"):
                 raise ValueError(f"Invalid boolean for {option}")
         elif value is True:
@@ -140,6 +188,13 @@ def prepare_command(command_str: str, allowlist=None):
     help_requested = kwargs.pop("help", kwargs.pop("h", False))
     if not help_requested:
         validate_command(key, args, kwargs)
+    aliases = {'d': 'description', 'n': 'name'}
+    if key in {'assistant.create', 'assistant.update'}:
+        aliases['s'] = 'system_prompt'
+    for alias, canonical in aliases.items():
+        if alias in kwargs:
+            if canonical in kwargs: raise ValueError(f'Duplicate option --{canonical}')
+            kwargs[canonical] = kwargs.pop(alias)
     return key, args, kwargs, help_requested
 
 @dataclass
@@ -269,28 +324,34 @@ class CommandContext:
     frontend: Any = None
 
 
+BOOLEAN_OPTIONS = {'bypass', 'b', 'persist', 'enable', 'disable', 'vision', 'no_vision',
+                   'image_generation', 'no_image_generation', 'shared', 'help', 'h'}
+
+
 def _parse_args(tokens: list[str]) -> tuple[list[str], dict[str, Any]]:
-    """Parse CLI-style tokens into positional args and keyword kwargs."""
-    args: list[str] = []
-    kwargs: dict[str, Any] = {}
+    args, kwargs = [], {}
     i = 0
     while i < len(tokens):
         token = tokens[i]
-        if token.startswith("--"):
-            if "=" in token:
-                key, value = token[2:].split("=", 1)
-                kwargs[key.replace("-", "_")] = value
-            elif i + 1 < len(tokens) and not tokens[i + 1].startswith("-"):
-                kwargs[token[2:].replace("-", "_")] = tokens[i + 1]
-                i += 1
+        if token.startswith('--') or (token.startswith('-') and len(token) == 2):
+            raw = token.lstrip('-')
+            if '=' in raw:
+                key, value = raw.split('=', 1)
             else:
-                kwargs[token[2:].replace("-", "_")] = True
-        elif token.startswith("-") and len(token) == 2:
-            if i + 1 < len(tokens) and not tokens[i + 1].startswith("-"):
-                kwargs[token[1:]] = tokens[i + 1]
-                i += 1
+                key, value = raw, True
+                normalized = key.replace('-', '_')
+                if i + 1 < len(tokens) and (normalized not in BOOLEAN_OPTIONS or tokens[i + 1] in {'true', 'false'}):
+                    following = tokens[i + 1]
+                    if not following.startswith('-') or following[1:2].isdigit():
+                        value = following
+                        i += 1
+            key = key.replace('-', '_')
+            if key == 'param':
+                kwargs.setdefault(key, []).append(value)
+            elif key in kwargs:
+                raise ValueError(f'Duplicate option --{key.replace("_", "-")}')
             else:
-                kwargs[token[1:]] = True
+                kwargs[key] = value
         else:
             args.append(token)
         i += 1

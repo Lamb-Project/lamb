@@ -133,3 +133,7 @@ After creating or running tests, use `frontend-manage open assistant ASSISTANT_I
 After creating scenarios, executing tests or saving evaluations, run `frontend-manage open assistant ASSISTANT_ID --tab tests` and identify the actual saved scenarios/results. The view refreshes on each navigation. Do not claim a failed test or pending evaluation passed. Opening Tests alone never executes or evaluates tests.
 
 Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.
+
+## Scenario detail and multi-turn input
+
+`lamb test scenario-detail SCENARIO_ID ASSISTANT_ID` reads a saved scenario. `lamb test delete-scenario SCENARIO_ID ASSISTANT_ID` requires explicit deletion approval; never delete to simulate editing. `lamb test add ASSISTANT_ID TITLE --messages '[{"role":"user","content":"first question"},{"role":"user","content":"follow-up"}]' --type multi_turn --expected TEXT` accepts inline JSON without local files. Do not combine --messages and --message. `lamb test run ASSISTANT_ID --timeout 900` bounds waiting; on timeout inspect `lamb test runs ASSISTANT_ID` before retrying because some runs may have completed.

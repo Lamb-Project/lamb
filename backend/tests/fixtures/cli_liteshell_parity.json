@@ -4561,6 +4561,19 @@
           "is_flag": false
         },
         {
+          "name": "messages_json",
+          "kind": "TyperOption",
+          "opts": [
+            "--messages"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
           "name": "messages_file",
           "kind": "TyperOption",
           "opts": [
@@ -5014,6 +5027,119 @@
         }
       ]
     },
+    "test.update": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "scenario_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "scenario_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "title",
+          "kind": "TyperOption",
+          "opts": [
+            "--title"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "message",
+          "kind": "TyperOption",
+          "opts": [
+            "--message",
+            "-m"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "description",
+          "kind": "TyperOption",
+          "opts": [
+            "--description",
+            "-d"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "expected",
+          "kind": "TyperOption",
+          "opts": [
+            "--expected",
+            "-e"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "scenario_type",
+          "kind": "TyperOption",
+          "opts": [
+            "--type",
+            "-t"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
     "user.bulk-import": {
       "params": [
         {
@@ -5416,122 +5542,149 @@
           "is_flag": false
         }
       ]
-    },
-    "test.update": {
-      "params": [
-        {
-          "name": "assistant_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "assistant_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "scenario_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "scenario_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "title",
-          "kind": "TyperOption",
-          "opts": [
-            "--title"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "message",
-          "kind": "TyperOption",
-          "opts": [
-            "--message",
-            "-m"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "description",
-          "kind": "TyperOption",
-          "opts": [
-            "--description",
-            "-d"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "expected",
-          "kind": "TyperOption",
-          "opts": [
-            "--expected",
-            "-e"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "scenario_type",
-          "kind": "TyperOption",
-          "opts": [
-            "--type",
-            "-t"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
     }
   },
   "shell_contracts": {
+    "whoami": [
+      0,
+      0,
+      ""
+    ],
+    "assistant.export": [
+      1,
+      1,
+      ""
+    ],
+    "kb.list-shared": [
+      0,
+      0,
+      ""
+    ],
+    "kb.plugins": [
+      0,
+      0,
+      ""
+    ],
+    "kb.query-plugins": [
+      0,
+      0,
+      ""
+    ],
+    "kb.update": [
+      1,
+      1,
+      "name n description d access_control"
+    ],
+    "kb.delete": [
+      1,
+      1,
+      ""
+    ],
+    "kb.delete-file": [
+      2,
+      2,
+      ""
+    ],
+    "kb.share": [
+      1,
+      1,
+      "enable disable"
+    ],
+    "kb.ingest": [
+      1,
+      1,
+      "plugin p url youtube param"
+    ],
+    "job.get": [
+      2,
+      2,
+      ""
+    ],
+    "job.retry": [
+      2,
+      2,
+      ""
+    ],
+    "job.cancel": [
+      2,
+      2,
+      ""
+    ],
+    "rubric.delete": [
+      1,
+      1,
+      ""
+    ],
+    "rubric.duplicate": [
+      1,
+      1,
+      ""
+    ],
+    "rubric.share": [
+      1,
+      1,
+      "enable disable"
+    ],
+    "rubric.generate": [
+      1,
+      1,
+      "language lang model m"
+    ],
+    "template.list-shared": [
+      0,
+      0,
+      "limit l offset"
+    ],
+    "template.create": [
+      1,
+      1,
+      "description d system_prompt prompt_template shared"
+    ],
+    "template.update": [
+      1,
+      1,
+      "name n description d system_prompt prompt_template"
+    ],
+    "template.delete": [
+      1,
+      1,
+      ""
+    ],
+    "template.duplicate": [
+      1,
+      1,
+      "new_name"
+    ],
+    "template.share": [
+      1,
+      1,
+      "enable disable"
+    ],
+    "template.export": [
+      1,
+      1000,
+      ""
+    ],
+    "test.scenario-detail": [
+      2,
+      2,
+      ""
+    ],
+    "test.delete-scenario": [
+      2,
+      2,
+      ""
+    ],
+    "frontend-manage.current": [
+      0,
+      0,
+      ""
+    ],
+    "frontend-manage.open": [
+      1,
+      2,
+      "tab"
+    ],
     "kb.jobs": [
       1,
       1,
@@ -5545,7 +5698,7 @@
     "kb.create": [
       1,
       1,
-      "description d"
+      "description d access_control"
     ],
     "kb.query": [
       2,
@@ -5595,12 +5748,12 @@
     "assistant.create": [
       1,
       1,
-      "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format"
+      "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format vision no_vision image_generation no_image_generation"
     ],
     "assistant.update": [
       1,
       1,
-      "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format"
+      "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format vision no_vision image_generation no_image_generation"
     ],
     "assistant.publish": [
       1,
@@ -5667,6 +5820,11 @@
       1,
       ""
     ],
+    "test.update": [
+      2,
+      2,
+      "title message m description d type t expected e"
+    ],
     "test.scenarios": [
       1,
       1,
@@ -5675,12 +5833,12 @@
     "test.add": [
       1,
       2,
-      "title message m description d type t expected e"
+      "title message m messages description d type t expected e"
     ],
     "test.run": [
       1,
       1,
-      "bypass b scenario s"
+      "bypass b scenario s timeout"
     ],
     "test.runs": [
       1,
@@ -5746,21 +5904,6 @@
       1,
       1,
       "period start_date end_date"
-    ],
-    "frontend-manage.current": [
-      0,
-      0,
-      ""
-    ],
-    "frontend-manage.open": [
-      1,
-      2,
-      "tab"
-    ],
-    "test.update": [
-      2,
-      2,
-      "title message m description d type t expected e"
     ]
   },
   "dispositions": {
@@ -5774,40 +5917,40 @@
     "aac.skills": "adapter: skill.list; AAC session management stays outside its own shell",
     "aac.start": "not exposed: outer AAC session/client lifecycle",
     "aac.tools": "not exposed: outer AAC session/client lifecycle",
-    "analytics.chat-detail": "supported",
-    "analytics.chats": "supported",
-    "analytics.stats": "supported",
-    "analytics.timeline": "supported",
-    "assistant.config": "supported",
-    "assistant.create": "supported",
-    "assistant.delete": "supported",
-    "assistant.export": "gap: educator command missing from liteshell",
-    "assistant.get": "supported",
-    "assistant.list": "supported",
-    "assistant.publish": "supported",
-    "assistant.unpublish": "supported",
-    "assistant.update": "supported",
+    "analytics.chat-detail": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "analytics.chats": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "analytics.stats": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "analytics.timeline": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.config": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.create": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.delete": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.export": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.get": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.list": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.publish": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.unpublish": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.update": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
     "chat": "adapter: assistant.chat; streaming and persistence defaults differ",
-    "job.cancel": "gap: educator command missing from liteshell",
-    "job.get": "gap: educator command missing from liteshell",
+    "job.cancel": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "job.get": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
     "job.list": "adapter: kb.jobs",
-    "job.retry": "gap: educator command missing from liteshell",
+    "job.retry": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
     "job.status": "adapter: kb.status",
     "job.watch": "not exposed: terminal polling loop; use job read/status operations",
-    "kb.create": "supported",
-    "kb.delete": "gap: educator command missing from liteshell",
-    "kb.delete-file": "gap: educator command missing from liteshell",
-    "kb.get": "supported",
-    "kb.ingest": "gap: educator command missing from liteshell",
-    "kb.jobs": "supported",
-    "kb.list": "supported",
-    "kb.list-shared": "gap: educator command missing from liteshell",
-    "kb.plugins": "gap: educator command missing from liteshell",
-    "kb.query": "supported",
-    "kb.query-plugins": "gap: educator command missing from liteshell",
-    "kb.share": "gap: educator command missing from liteshell",
-    "kb.status": "supported",
-    "kb.update": "gap: educator command missing from liteshell",
+    "kb.create": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.delete": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.delete-file": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.get": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.ingest": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.jobs": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.list": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.list-shared": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.plugins": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.query": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.query-plugins": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.share": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.status": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.update": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
     "kb.upload": "intentional-filesystem-exclusion: frontend UI required; explicit liteshell boundary error",
     "library.create": "deferred: library workflow outside dev 0.7 AAC scope",
     "library.delete": "deferred: library workflow outside dev 0.7 AAC scope",
@@ -5836,36 +5979,36 @@
     "org.list": "not exposed: account/organization administration",
     "org.set-role": "not exposed: account/organization administration",
     "org.update": "not exposed: account/organization administration",
-    "rubric.create": "supported",
-    "rubric.delete": "gap: educator command missing from liteshell",
-    "rubric.duplicate": "gap: educator command missing from liteshell",
-    "rubric.export": "supported",
-    "rubric.generate": "gap: educator command missing from liteshell",
-    "rubric.get": "supported",
+    "rubric.create": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "rubric.delete": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "rubric.duplicate": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "rubric.export": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "rubric.generate": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "rubric.get": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
     "rubric.import": "intentional-filesystem-exclusion: frontend UI required; explicit liteshell boundary error",
-    "rubric.list": "supported",
-    "rubric.list-public": "supported",
-    "rubric.share": "gap: educator command missing from liteshell",
-    "rubric.update": "supported",
+    "rubric.list": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "rubric.list-public": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "rubric.share": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "rubric.update": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
     "status": "not exposed: local client identity/connectivity",
-    "template.create": "gap: educator command missing from liteshell",
-    "template.delete": "gap: educator command missing from liteshell",
-    "template.duplicate": "gap: educator command missing from liteshell",
-    "template.export": "gap: educator command missing from liteshell",
-    "template.get": "supported",
-    "template.list": "supported",
-    "template.list-shared": "gap: educator command missing from liteshell",
-    "template.share": "gap: educator command missing from liteshell",
-    "template.update": "gap: educator command missing from liteshell",
-    "test.add": "supported",
-    "test.delete-scenario": "gap: educator command missing from liteshell",
-    "test.evaluate": "supported",
-    "test.evaluations": "supported",
-    "test.run": "supported",
-    "test.run-detail": "supported",
-    "test.runs": "supported",
-    "test.scenario-detail": "gap: educator command missing from liteshell",
-    "test.scenarios": "supported",
+    "template.create": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "template.delete": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "template.duplicate": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "template.export": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "template.get": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "template.list": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "template.list-shared": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "template.share": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "template.update": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.add": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.delete-scenario": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.evaluate": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.evaluations": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.run": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.run-detail": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.runs": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.scenario-detail": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.scenarios": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
     "user.bulk-import": "intentional-filesystem-exclusion: frontend UI required; explicit liteshell boundary error",
     "user.create": "not exposed: account/organization administration",
     "user.delete": "not exposed: account/organization administration",
@@ -5875,8 +6018,8 @@
     "user.list": "not exposed: account/organization administration",
     "user.reset-password": "not exposed: account/organization administration",
     "user.update": "not exposed: account/organization administration",
-    "whoami": "gap: educator command missing from liteshell",
-    "test.update": "supported"
+    "whoami": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.update": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations"
   },
   "shell_only": [
     "assistant.chat",

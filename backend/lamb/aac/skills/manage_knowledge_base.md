@@ -10,7 +10,7 @@ Help the user create and populate a knowledge base. Ask for the intended source 
 
 For frontend users who need to supply local files, read `lamb docs read ui-knowledge-bases` and guide them through the existing Knowledge Bases UI. The user opens the file picker, selects the file and presses Upload File. Display the documented screenshot when useful or requested, using its exact Markdown URL. Do not replace this tutorial with an AAC attachment request or ask for a local path. Wait for the user's response, then verify status/retrieval with read tools if the KB is known. Do not execute a write merely because you are explaining its steps.
 
-Frontend liteshell cannot upload files, including staged server references. Do not run `lamb aac attach` or `lamb kb upload`, offer to perform ingestion, or ask for approval for these operations. Show the illustrated KB UI guide and let the user select and ingest the file. Then inspect KB status and query the content.
+Frontend liteshell cannot upload files, including staged server references. Do not run `lamb aac attach` or `lamb kb upload`, offer to perform local-file ingestion, or ask for approval for these operations. Show the illustrated KB UI guide and let the user select and ingest the file. Then inspect KB status and query the content.
 
 For PDFs use `--plugin markitdown_ingest`; for UTF-8 text/Markdown use `--plugin simple_ingest`. If the service reports the plugin unavailable, report the actual failure. Do not substitute a placeholder or retyped summary for the user's file.
 
@@ -43,3 +43,11 @@ After creating the KB, use `frontend-manage open kb KB_ID --tab ingest` before e
 After creating and reading back a KB, run `frontend-manage open kb KB_ID --tab files`. If the next requested action is file ingestion, open `frontend-manage open kb KB_ID --tab ingest` instead and use the illustrated tutorial for the user-operated file selection and ingestion. For user-operated querying open `frontend-manage open kb KB_ID --tab query`. Opening Query does not execute a query.
 
 Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.
+
+## Additional educator operations
+
+Use `lamb kb list-shared`, `lamb kb plugins` and `lamb kb query-plugins` for discovery. Edit only requested fields with `lamb kb update KB_ID --name NAME --description TEXT`; `--access-control JSON` is available on create/update when specifically requested. Sharing uses `lamb kb share KB_ID --enable` or `--disable`. Explicit deletion uses `lamb kb delete KB_ID` or `lamb kb delete-file KB_ID FILE_ID`. These operations require approval. Read back the saved result; never delete to work around an edit failure.
+
+For a user-provided URL and a supported non-file plugin, use `lamb kb ingest KB_ID --plugin NAME --url URL` (or `--youtube URL`); repeat `--param key=value` for documented plugin parameters. Inspect `lamb kb plugins` first and only use base/non-file ingestion. This is distinct from local-file upload, which always stays in the UI. Never supply filesystem paths or file plugins through generic parameters. Submission requires approval and means a job was submitted, not that content is searchable.
+
+Inspect `lamb job get KB_ID JOB_ID`. Retry a failed job with `lamb job retry KB_ID JOB_ID`; cancel with `lamb job cancel KB_ID JOB_ID`, each after explicit approval. Check the job result afterwards.

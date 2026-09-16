@@ -247,7 +247,7 @@ class TestKbIngest:
         req = httpx_mock.get_request()
         body = json.loads(req.content)
         assert body["plugin_name"] == "web_scraper"
-        assert body["plugin_params"]["url"] == "https://example.com"
+        assert body["parameters"]["url"] == "https://example.com"
 
     def test_ingest_youtube(self, httpx_mock, mock_token):
         httpx_mock.add_response(json={"job_id": "job-2"})
@@ -259,7 +259,7 @@ class TestKbIngest:
         assert "job-2" in result.output
         req = httpx_mock.get_request()
         body = json.loads(req.content)
-        assert body["plugin_params"]["youtube_url"] == "https://youtube.com/watch?v=abc"
+        assert body["parameters"]["video_url"] == "https://youtube.com/watch?v=abc"
 
     def test_ingest_with_params(self, httpx_mock, mock_token):
         httpx_mock.add_response(json={"job_id": "job-3"})
@@ -270,8 +270,8 @@ class TestKbIngest:
         assert result.exit_code == 0
         req = httpx_mock.get_request()
         body = json.loads(req.content)
-        assert body["plugin_params"]["key1"] == "val1"
-        assert body["plugin_params"]["key2"] == "val2"
+        assert body["parameters"]["key1"] == "val1"
+        assert body["parameters"]["key2"] == "val2"
 
     def test_ingest_invalid_param_format(self, mock_token):
         result = runner.invoke(

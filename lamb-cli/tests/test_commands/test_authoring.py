@@ -61,3 +61,17 @@ def test_scenario_update_sends_only_requested_fields(httpx_mock,mock_token):
 
 def test_scenario_update_requires_a_field(mock_token):
     assert runner.invoke(app,['test','update','1','s']).exit_code!=0
+
+
+def test_inline_multiturn_messages_match_saved_scenario(httpx_mock,mock_token):
+    messages=[{'role':'user','content':'First'},{'role':'user','content':'Follow up'}]
+    httpx_mock.add_response(json={'id':'scenario'})
+    result=runner.invoke(app,['test','add','30','Multi','--messages',json.dumps(messages),'--type','multi_turn','-o','json'])
+    assert result.exit_code==0,result.output
+    assert json.loads(httpx_mock.get_request().content)['messages']==messages
+
+
+def test_conflicting_scenario_inputs_fail_before_request(mock_token):
+    result=runner.invoke(app,['test','add','30','Multi','--messages','[]','--message','hello'])
+    assert result.exit_code==1
+    assert 'exactly one' in result.output
