@@ -1013,7 +1013,7 @@ async def job_cancel(ctx, args, kwargs):
 
 @register("kb.update")
 async def kb_update(ctx, args, kwargs):
-    """Update selected KB fields: kb update ID --name TEXT --description TEXT --access-control JSON."""
+    """Update selected KB fields: kb update ID --name TEXT --description TEXT --access-control private|public."""
     body = _fields(kwargs, ('name', 'description', 'access_control'))
     if not body: raise ValueError('Provide at least one field to update')
     return _unwrap(await ctx.http.patch(f'/creator/knowledgebases/kb/{args[0]}', json=body))

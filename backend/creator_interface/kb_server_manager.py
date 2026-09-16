@@ -859,6 +859,7 @@ class KBServerManager:
                         # Return successful response
                         return {
                             "message": "Knowledge base updated successfully",
+                            "kb_id": str(kb_id),
                             "id": kb_id,
                             "name": kb_data.name if kb_data.name is not None else collection_name
                         }

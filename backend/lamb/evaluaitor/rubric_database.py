@@ -5,6 +5,7 @@ Handles all database operations for rubrics including CRUD, visibility, and show
 
 import sqlite3
 import json
+import copy
 import logging
 import uuid
 from typing import Dict, List, Optional, Any
@@ -620,7 +621,7 @@ class RubricDatabaseManager:
             raise Exception("New owner not found in any organization")
 
         # Create duplicate
-        new_rubric_data = json.loads(source_rubric['rubric_data'])
+        new_rubric_data = copy.deepcopy(source_rubric['rubric_data'])
         new_rubric_data['title'] = f"{new_rubric_data['title']} (Copy)"
         new_rubric_data['rubricId'] = str(uuid.uuid4())  # Generate new ID
 
