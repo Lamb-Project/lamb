@@ -83,7 +83,7 @@ For the easiest setup experience, we recommend using Docker Compose to run all L
 
 📘 **[Docker Installation Guide](Documentation/deployLocal.md)** - One-command deployment with all services configured
 
-Migrating from the old (pre-`next`) Docker stack? See **[Migrating to lamb.next](Documentation/migrating-to-lamb-next.md)**.
+Migrating from the old (pre-`next`) Docker stack? See the **[official 0.6 → 0.7 upgrade guide](Documentation/migrating-to-lamb-next.md)** and [0.7 deployment release notes](Documentation/release-notes-0.7.md).
 
 ### Alternative: Manual Installation
 

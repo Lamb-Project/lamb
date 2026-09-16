@@ -1,213 +1,161 @@
-# Migrating to lamb.next (docker-compose.next.yaml)
+# Official LAMB 0.6 → 0.7 upgrade: migrate persistent data
 
-The new stack replaces the old build-on-deploy approach with **pre-built container images** and **named Docker volumes**. No more local `npm run build` or `pip install` at startup.
+**An upgrade requires a stopped-data copy, not just `git pull`.** Version 0.7 uses
+named Docker volumes. Starting it without migration can present an empty installation.
+Use `scripts/migrate_06_to_07.py` as the standard copy and verification procedure.
+This guide also applies to older bind-mounted installations after reviewing their paths.
 
-## What changes
+## 1. Preserve the rollback environment before upgrading
 
-| | Old stack (`docker-compose.yaml`) | New stack (`docker-compose.next.yaml`) |
-|---|---|---|
-| Images | Built at startup from source | Pre-built from GHCR |
-| Data storage | Host bind-mounts (`/opt/lamb/...`) | Named Docker volumes |
-| Config file | `backend/.env` | `.env` at project root |
-| Service name | `backend` | `lamb` |
-| Build services | `openwebui-build`, `frontend-build` | Gone |
+Schedule downtime. Stop native processes, ingestion jobs, scripts and containers that
+can write any source store. Keep them stopped throughout migration and verification.
+Do not run two installations against the same database.
 
-## Prerequisites
+Before replacing code or configuration, retain:
 
-- A checkout that contains `docker-compose.next.yaml` (any `main` or `dev` revision from 2026 onwards)
-- Docker with Compose v2 (`docker compose`, not `docker-compose`)
-- The legacy LAMB containers are stopped
+- The exact old Git revision and any local changes, or a full copy of the old checkout.
+- Old Compose files, resolved configuration, `.env`, `backend/.env` and service-specific
+  configuration. Protect this backup: resolved Compose configuration contains secrets.
+- Exact old container image IDs/digests and an image archive (`docker image save`) if
+  the images cannot otherwise be retrieved. A moving `latest` tag is not a rollback pin.
+- A stopped backup of **all** persistent stores, including SQLite `-wal`, `-shm` and
+  `-journal` files where present. Keep the original stores untouched.
+- Baseline application counts and sample IDs for users, organisations, assistants,
+  chats, KB collections/files and libraries. Retain a known RAG question and its source.
 
----
-
-## Step 1 - Update your checkout
-
-```bash
-cd /opt/lamb
-git pull
-```
-
-## Step 2 - Create your `.env` file
-
-Copy the example and fill in your values:
+Use your actual legacy Compose files and project name to stop the old stack:
 
 ```bash
-cp .env.next.example .env
+docker compose -p OLD_PROJECT -f /path/to/saved-old-compose.yaml stop
 ```
 
-Edit `.env` - the minimum required vars are:
+Do not use `down -v`, delete old files, prune rollback images, or checkpoint SQLite
+against the live source to make copying convenient. The script reads sources only.
+Native writers cannot be discovered reliably by Docker; stopping them is an operator
+precondition. The script checks running Compose projects, overlapping bind mounts and
+attached destination volumes, but cannot prevent another operator from starting them.
 
-```env
-# Data paths (inside containers - leave as-is)
-LAMB_DB_PATH=/data/lamb
-OWI_PATH=/data/openwebui
+## 2. Prepare 0.7 code and configuration
 
-# Optional DB prefix override
-# Default is LAMB_. If your schema is unprefixed, set LAMB_DB_PREFIX=
+Obtain the approved 0.7 revision in a separate checkout, retaining the old rollback
+checkout. Copy `.env.next.example` to the new root `.env`, then set your existing URLs,
+provider credentials, tokens, signing secrets and administrator settings. Do not replace
+existing secrets with example values. The example model is `gpt-5-mini`; this does not
+change model settings already stored in organisations.
 
-# Internal OWI URL (leave as-is)
-OWI_BASE_URL=http://openwebui:8080
+The base Compose file pins `LAMB_DB_PATH=/data/lamb` and `OWI_PATH=/data/openwebui`.
+The development overlay inherits these settings, keeping source bind mounts/hot reload
+while persistent data stays on volumes. Open WebUI `DATA_DIR`, Library Manager
+`DATA_DIR` and KB configuration are pinned to their mounted stores. KB database and
+static paths are derived from its backend directory; nested named volumes cover them.
+If your old LAMB tables have no `LAMB_` prefix, explicitly set `LAMB_DB_PREFIX=` in `.env`.
 
-# Public URLs (adjust to your hostname/IP if not localhost)
-LAMB_WEB_HOST=http://localhost:9099
-LAMB_BACKEND_HOST=http://lamb:9099
+Do not start the new stack or use `up --no-start` before copying: Docker image contents
+can populate empty volumes during container creation. The script creates volumes with
+`volume-nocopy`, and refuses any destination which already contains entries.
 
-# Secrets - change these
-LAMB_BEARER_TOKEN=change-me
-SIGNUP_SECRET_KEY=change-me
+## 3. Copy and verify all stores
 
-# OpenAI (or any OpenAI-compatible endpoint)
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-4o-mini
+Requirements: Python 3 on the host, a local Docker daemon, sufficient storage for the
+originals, backups, new volumes and temporary SQLite verification copies. Pull the
+helper first if needed: `docker pull python:3.12-slim`. It runs without network access;
+SQLite verification uses disposable copies under the helper's `/tmp` tmpfs, so provide
+enough Docker memory for the largest database and its sidecars.
 
-# OWI admin bootstrap
-OWI_ADMIN_NAME=Admin User
-OWI_ADMIN_EMAIL=admin@example.com
-OWI_ADMIN_PASSWORD=change-me
-```
+Pull the intended Library Manager image and inspect its user with
+`docker run --rm --entrypoint id ghcr.io/lamb-project/lamb-library-manager:latest`.
+Use the reported numeric UID:GID for `--library-owner` below; do not assume host user
+IDs match container IDs. Prefer your approved release image digest over `latest`.
+The script assigns that ownership to Library Manager's destination; other services
+use their base images' root user. Custom non-root images require an ownership review.
 
-> The full list of optional vars (embeddings, Ollama, LTI, ports, log levels, etc.) is in `.env.next.example`.
-
-## Step 3 - Create named volumes and migrate existing data
-
-### 3a. Create the volumes (without starting services)
+From the new checkout (replace LIBRARY_UID:LIBRARY_GID with those numbers):
 
 ```bash
-docker compose -f docker-compose.next.yaml --env-file .env --project-name lamb-next up --no-start
-```
-
-This creates four named volumes: `lamb-next_lamb-data`, `lamb-next_openwebui-data`, `lamb-next_kb-data`, `lamb-next_kb-static`.
-
-### 3b. Copy the LAMB database
-
-```bash
-docker run --rm \
-  -v /opt/lamb/lamb_v4.db:/src/lamb_v4.db:ro \
-  -v lamb-next_lamb-data:/dst \
-  alpine cp /src/lamb_v4.db /dst/lamb_v4.db
-```
-
-### 3c. Copy the Open WebUI data
-
-```bash
-docker run --rm \
-  -v /opt/lamb/open-webui/backend/data:/src:ro \
-  -v lamb-next_openwebui-data:/dst \
-  alpine sh -c "cp -r /src/. /dst/"
-```
-
-### 3d. Copy the KB server data
-
-```bash
-docker run --rm \
-  -v /opt/lamb/lamb-kb-server-stable/backend/data:/src:ro \
-  -v lamb-next_kb-data:/dst \
-  alpine sh -c "cp -r /src/. /dst/"
-```
-
-### 3e. Verify the volumes
-
-```bash
-docker run --rm -v lamb-next_lamb-data:/data alpine ls -la /data
-docker run --rm -v lamb-next_openwebui-data:/data alpine ls -la /data
-docker run --rm -v lamb-next_kb-data:/data alpine ls -la /data
-```
-
-Expected: `lamb_v4.db` in `lamb-data`; `webui.db`, `vector_db/`, etc. in `openwebui-data`; `lamb-kb-server.db`, `chromadb/` in `kb-data`.
-
-## Step 4 - Pull images
-
-```bash
-docker compose -f docker-compose.next.yaml --env-file .env --project-name lamb-next pull
-```
-
-> **Apple Silicon (M1/M2/M3):** Current images are `linux/amd64` only and run under Rosetta emulation. This works but is slower for RAG ingestion. Native `arm64` images are planned.
-
-## Step 5 - Start the stack
-
-```bash
-docker compose -f docker-compose.next.yaml --env-file .env --project-name lamb-next up -d
-```
-
-The startup order is: `openwebui` first (with healthcheck), then `kb` and `lamb` in parallel once OWI is healthy.
-
-## Step 6 - Verify
-
-```bash
-# Container status
-docker ps --filter "name=lamb-next"
-
-# Health endpoints
-curl http://localhost:9099/status        # {"status": true}
-curl http://localhost:9090/health        # {"status": "ok", ...}
-curl http://localhost:8080/health        # {"status": true}
-
-# Check logs if something is wrong
-docker compose -f docker-compose.next.yaml --project-name lamb-next logs -f
-```
-
-Then open `http://localhost:9099` in your browser - the frontend SPA is now served directly by the `lamb` container (no separate dev server).
-
----
-
-## Day-to-day operations
-
-### Update to latest images
-
-```bash
-docker compose -f docker-compose.next.yaml --env-file .env --project-name lamb-next pull
-docker compose -f docker-compose.next.yaml --env-file .env --project-name lamb-next up -d
-```
-
-No local build step needed - just pull and restart.
-
-### Stop the stack
-
-```bash
-docker compose -f docker-compose.next.yaml --project-name lamb-next down
-```
-
-### View logs
-
-```bash
-# All services
-docker compose -f docker-compose.next.yaml --project-name lamb-next logs -f
-
-# Single service
-docker logs lamb-next-lamb-1 -f
-```
-
-### Optional: local Ollama (for local inference)
-
-```bash
-docker compose -f docker-compose.next.yaml --env-file .env --project-name lamb-next --profile ollama up -d
-```
-
-### Optional: production TLS with Caddy
-
-```bash
-docker compose \
-  -f docker-compose.next.yaml \
-  -f docker-compose.next.prod.yaml \
-  --env-file .env \
+python3 scripts/migrate_06_to_07.py \
+  --source-root /absolute/path/to/old-lamb \
+  --legacy-project OLD_PROJECT \
+  --library-owner LIBRARY_UID:LIBRARY_GID \
   --project-name lamb-next \
-  up -d
+  --manifest /absolute/private/backup/migration-0.7.json
 ```
 
-Set `CADDY_EMAIL`, `LAMB_PUBLIC_HOST`, and `OWI_PUBLIC_HOST` in `.env` before using this.
+Default source mapping:
 
----
+| Source below old checkout | Destination volume suffix |
+|---|---|
+| `lamb_v4.db`, plus existing WAL/SHM/journal sidecars | `lamb-data` |
+| `open-webui/backend/data/` | `openwebui-data` |
+| `lamb-kb-server-stable/backend/data/` | `kb-data` |
+| `lamb-kb-server-stable/backend/static/` | `kb-static` |
+| `library-manager/data/` | `library-manager-data` |
+| `backend/static/` (uploads and file RAG) | `lamb-static` |
 
-## Troubleshooting
+Actual Docker names are `PROJECT_SUFFIX`, for example `lamb-next_kb-static`.
+Use the same project name when starting Compose. Custom/external volume naming needs
+separate review; the script targets the standard base Compose layout.
 
-**`lamb` fails to start / connection refused to OWI**
-The healthcheck on `openwebui` gives it up to 2 minutes to become ready. On first boot with an empty DB it may take longer. Wait and check `docker logs lamb-next-openwebui-1`.
+If an installation uses different paths, provide `--sources /private/sources.json`:
 
-**`LAMB_DB_PREFIX` - which value do I need?**
-Default is `LAMB_` (no override needed for `LAMB_*` tables). If your tables are unprefixed (`Creator_users`, etc.), set `LAMB_DB_PREFIX=`.
+```json
+{
+  "lamb-data": "/srv/legacy/lamb_v4.db",
+  "openwebui-data": "/srv/legacy/openwebui-data",
+  "library-manager-data": null
+}
+```
 
-**Platform warning (`linux/amd64` on Apple Silicon)**
-This is expected and harmless. The containers run via Rosetta 2.
+Unspecified stores use defaults. `null` is allowed only for `library-manager-data` and
+`lamb-static`, explicitly declaring a store never used in that installation. Never
+use it to bypass a missing-path error for real data. Symlinks and special files are
+rejected; supply actual regular-file/directory sources and review custom layouts.
 
-**Old stack data is untouched**
-The migration only *copies* data into the named volumes. Your original files at `/opt/lamb/lamb_v4.db`, `/opt/lamb/open-webui/backend/data/`, and `/opt/lamb/lamb-kb-server-stable/backend/data/` are not modified.
+All sources are mounted read-only. The script checks every source and every destination
+before copying, compares per-file SHA-256/size inventories, and checks SQLite integrity
+and table row counts on disposable copies of both sides. WAL and journal files travel
+with their database, including committed rows not yet checkpointed into the main file.
+SQLite verification never opens the original or destination database for writing.
+
+Success produces `status: verified` in the private manifest and leaves services stopped.
+On failure the manifest says `incomplete`; partial volumes are retained for inspection.
+Do not start them or rerun into populated volumes. Correct the cause and use a fresh,
+reviewed destination project/manifest, or have the administrator archive and recreate
+only that failed attempt's volumes. The script never deletes data or volumes.
+
+## 4. Start and validate
+
+Only after the manifest is verified:
+
+```bash
+docker compose -p lamb-next -f docker-compose.next.yaml --env-file .env pull
+docker compose -p lamb-next -f docker-compose.next.yaml --env-file .env up -d
+docker compose -p lamb-next -f docker-compose.next.yaml --env-file .env ps
+```
+
+For development, add `-f docker-compose.next.dev.yaml` to the same commands.
+Inspect effective mounts with `docker inspect`; databases must remain on named volumes,
+even when a legacy `backend/.env` exists in the source bind mount.
+
+Check health, login and the saved baseline counts/IDs for every store. Open a saved chat,
+assistant, KB file and library document. Run the known RAG query and check retrieved
+content. Restart the stack and repeat these checks. Retain the results alongside the
+manifest. Hash equality before startup proves copying, not application compatibility.
+
+## 5. Rollback rehearsal
+
+Stop 0.7 with the same Compose project and files. Preserve its volumes separately for
+investigation; do not copy them over the original 0.6 data. Restore the exact old code,
+configuration and image pins from step 1. Start the old Compose stack against the
+untouched old stores, and repeat baseline checks and the known RAG query.
+
+**Rollback returns to the pre-migration state. Writes made after starting 0.7 are absent
+from the original 0.6 files.** Plan how to retain/export those writes before a real
+rollback; reverse-copying upgraded databases is not supported by this procedure.
+
+## Release gate
+
+Before publishing 0.7, record both a clean installation and an upgrade from a real 0.6
+checkout on a Linux host. Required evidence: store preservation, restart, RAG query,
+rollback rehearsal and the development-overlay/legacy-env storage check. A Docker
+Desktop rehearsal or unit-test fixture does not satisfy this Linux release gate.
+See [0.7 release notes](release-notes-0.7.md).
