@@ -34,7 +34,7 @@ except ImportError:
 from fastapi import Depends, FastAPI, HTTPException, status, Query, File, Form, UploadFile, BackgroundTasks
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
-from fastapi.staticfiles import StaticFiles
+from static_files import KnowledgeBaseStaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -167,7 +167,7 @@ app.include_router(ingestion_status.router)
 
 # Configure static files
 static_dir = IngestionService.STATIC_DIR
-app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+app.mount("/static", KnowledgeBaseStaticFiles(directory=str(static_dir)), name="static")
 
 # Add CORS middleware
 # Minimal CORS: wildcard origins, no credentials (so '*' is valid with browsers)
