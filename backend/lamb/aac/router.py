@@ -397,7 +397,7 @@ async def _send_message(
         agent.session_logger.log("turn_complete", stats)
 
     return {
-        "response": response_text,
+        "response": ((getattr(agent, "scenario_notice", None) or "") + "\n\n" + response_text).lstrip(),
         "stats": stats,
     }
 
@@ -440,6 +440,9 @@ async def _send_message_stream(
         from lamb.aac.frontend import stream_with_frontend
         events = stream_with_frontend(agent.chat_stream(user_message), bridge)
         try:
+            notice = getattr(agent, "scenario_notice", None)
+            if isinstance(notice, str) and notice:
+                yield f"data: {json.dumps({'content': notice + chr(10) + chr(10)})}\n\n"
             async for event in events:
                 if isinstance(event, dict):
                     yield f"data: {json.dumps(event)}\n\n"

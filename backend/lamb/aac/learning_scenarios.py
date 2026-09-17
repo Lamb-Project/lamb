@@ -107,6 +107,7 @@ class ScenarioStore:
 
 def apply_scenario(agent, auth):
     """Append context once per saved revision; never rewrite the prefix or pending action."""
+    agent.scenario_notice = None
     state = agent.skill_state
     if agent.pending_action: return
     key = state.get('learning_scenario_id')
@@ -128,4 +129,5 @@ def apply_scenario(agent, auth):
         'eu': ('Ikaskuntza-eszenatokia eguneratu da: ', 'Ez dago ikaskuntza-eszenatoki aktiborik; aurreko hautaketa kendu izana liteke.'),
     }
     notice = notices.get(language, notices['en'])
-    agent.conversation.append({'role': 'assistant', 'content': notice[0]+item['title'] if item else notice[1]})
+    agent.scenario_notice = notice[0]+item['title'] if item else notice[1]
+    agent.conversation.append({'role': 'assistant', 'content': agent.scenario_notice})
