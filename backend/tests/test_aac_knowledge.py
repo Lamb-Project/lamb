@@ -65,7 +65,7 @@ class KnowledgeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(pending.conversation, session['conversation'])
             resumed = dict(session, pending_action=None, skill_info=copy.deepcopy(pending.skill_state))
             updated = router._build_agent(auth, resumed)
-            self.assertEqual(updated.pack.version, '1.1.0')
+            self.assertEqual(updated.pack.version, load_pack().version)
             self.assertNotEqual(updated.system_prompt, state['system_prompt'])
             self.assertEqual(updated.conversation[0], session['conversation'][0])
             self.assertEqual(len(updated.conversation), 2)

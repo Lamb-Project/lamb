@@ -154,7 +154,10 @@ def build(write=False):
         if stored_catalog.get(category) != entries:
             raise ValueError(f'Capability catalogue differs from module metadata: {category}')
     references = validate_capability_prose(pack, docs_root())
-    qa_cells = validate_question_bank(packs_root()/'qa-1.1/bank.json', pack)
+    # Historical acceptance banks remain pinned to the release they evaluate.
+    bank_path = packs_root()/'qa-1.1/bank.json'
+    bank_pack = load_pack(version=json.loads(bank_path.read_text())['pack_version'])
+    qa_cells = validate_question_bank(bank_path, bank_pack)
     return {'version':pack.version,'hash':pack.fingerprint,'files':len(hashes),'qa_cells':qa_cells,'capability_references':references,'docs_coverage':json.loads((docs_root()/'manifest.json').read_text())['coverage']}
 
 

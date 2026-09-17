@@ -32,6 +32,8 @@ logger = get_logger(__name__, component="AAC")
 router = APIRouter(prefix="/aac", tags=["AAC"])
 
 from lamb.aac.skill_loader import SKILLS_DIR
+from lamb.aac.scenario_router import router as scenario_router
+router.include_router(scenario_router)
 
 # ---------------------------------------------------------------------------
 # Session endpoints
@@ -155,7 +157,9 @@ async def create_session(
         title = "Free-form chat"
 
     # Situation and registry facts are computed once, before the first model turn.
-    state = {"skill_id": skill_id, "context": skill_context, "started": False, "ui_language":ui_language}
+    from lamb.aac.learning_scenarios import ScenarioStore
+    selected_scenario = ScenarioStore(auth).selection(body.get("learning_scenario_id"))
+    state = {"learning_scenario_id": selected_scenario, "skill_id": skill_id, "context": skill_context, "started": False, "ui_language":ui_language}
     try:
         state = await _initialize_session_knowledge(auth, state, request.app.routes, validate_selection=True)
     except ValueError as exc:
@@ -677,6 +681,8 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
         agent.conversation.append({"role": "assistant", "content": notice})
     agent.pending_action = session.get("pending_action")
     agent.tool_audit = session.get("tool_audit", [])
+    from lamb.aac.learning_scenarios import apply_scenario
+    apply_scenario(agent, auth)
 
     # Pure pack and prefix validation must finish before allocating an HTTP client.
     agent.llm_client, agent.model = _resolve_agent_llm(user_email)

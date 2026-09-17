@@ -24,6 +24,9 @@ function hasUnsavedChanges() {
     return manualDirty || dirtyForms.size > 0;
 }
 export function destinationUrl(target) {
+    if (target.resource === 'learning-scenarios' && target.id === '' && target.tab === '') return `${base}/learning-scenarios?view=list`;
+    if (target.resource === 'learning-scenario' && ['view','edit'].includes(target.tab) && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(target.id)) return `${base}/learning-scenarios?id=${target.id}&aacTab=${target.tab}`;
+
     if (['assistants', 'assistant-create'].includes(target.resource) && target.id === '' && target.tab === '') return `${base}/assistants?view=${target.resource === 'assistants' ? 'list' : 'create'}`;
     if (target.resource === 'rubric' && target.tab === 'view' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(target.id)) return `${base}/evaluaitor/${target.id}?aacTab=view`;
     if (target.resource === 'rubric') throw new Error('Unsupported rubric destination');

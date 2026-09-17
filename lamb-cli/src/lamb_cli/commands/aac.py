@@ -83,6 +83,7 @@ def list_skills(
 
 @app.command("start")
 def start_session(
+    scenario: Optional[str] = typer.Option(None, "--scenario", help="Learning scenario ID, default, or none (empty)."),
     assistant_id: Optional[int] = typer.Option(None, "--assistant", "-a", help="Existing assistant ID to work on."),
     skill: Optional[str] = typer.Option(None, "--skill", "-s", help="Skill to launch (e.g., improve-assistant, create-assistant)."),
     language: Optional[str] = typer.Option(None, "--language", "--lang", help="Language for agent responses (e.g., English, Catalan, Spanish)."),
@@ -99,7 +100,7 @@ def start_session(
         lamb aac start  # free-form, no skill
     """
     fmt = output or get_output_format()
-    body: dict = {}
+    body: dict = {"learning_scenario_id": None if scenario in (None, "none") else scenario}
     if assistant_id is not None:
         body["assistant_id"] = assistant_id
     if skill:

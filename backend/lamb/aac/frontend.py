@@ -6,8 +6,8 @@ import uuid
 from contextlib import closing, suppress
 from functools import lru_cache
 
-TABS = {'assistant': ('properties', 'tests', 'chat', 'activity', 'edit'), 'kb': ('files', 'ingest', 'query'), 'rubric': ('view',)}
-PAGES = {'assistants', 'assistant-create'}
+TABS = {'assistant': ('properties', 'tests', 'chat', 'activity', 'edit'), 'kb': ('files', 'ingest', 'query'), 'rubric': ('view',), 'learning-scenario': ('view', 'edit')}
+PAGES = {'assistants', 'assistant-create', 'learning-scenarios'}
 
 
 def destination(args, kwargs):
@@ -18,7 +18,7 @@ def destination(args, kwargs):
     if len(args) != 2 or args[0] not in TABS:
         raise ValueError('Use frontend-manage open assistants|assistant-create, or assistant|kb|rubric ID [--tab TAB]')
     kind, resource_id = args
-    if kind == 'rubric':
+    if kind in ('rubric', 'learning-scenario'):
         try:
             resource_id = str(uuid.UUID(resource_id))
         except ValueError:

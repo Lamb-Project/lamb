@@ -22,6 +22,15 @@ logger = get_logger(__name__, component="AAC")
 # Explicit supported shell surface. Unsupported CLI options fail instead of being ignored.
 # key: (minimum positional arguments, maximum, accepted option names)
 COMMAND_CONTRACTS = {
+    'learning-scenario.list': (0, 0, ''),
+    'learning-scenario.get': (1, 1, ''),
+    'learning-scenario.create': (1, 1, 'content'),
+    'learning-scenario.update': (1, 1, 'revision title content'),
+    'learning-scenario.remove': (1, 1, 'revision'),
+    'learning-scenario.duplicate': (1, 1, 'title'),
+    'learning-scenario.default': (1, 1, ''),
+    'learning-scenario.selected': (1, 1, ''),
+    'learning-scenario.select': (2, 2, ''),
     'whoami': (0, 0, ''),
     'glossary': (1, 1, ''),
     'translate': (0, 1, 'reason command blocker topic section'),
@@ -153,6 +162,14 @@ def validate_command(key, args, kwargs):
             raise ValueError(f"Missing value for {option}")
     if kwargs.get("output", kwargs.get("o", "json")) != "json":
         raise ValueError("The AAC shell returns structured JSON; use -o json")
+    if key.startswith('learning-scenario.'):
+        required = {'update': ['revision'], 'remove': ['revision'], 'duplicate': ['title']}.get(key.split('.')[1], [])
+        if any(field not in kwargs for field in required):
+            raise ValueError('Missing required options: '+', '.join('--'+field for field in required))
+        if 'revision' in kwargs and int(kwargs['revision']) < 1:
+            raise ValueError('Revision must be positive')
+        if key.endswith('.update') and not ({'title', 'content'} & kwargs.keys()):
+            raise ValueError('Provide --title or --content')
     if key == "frontend-manage.open":
         from lamb.aac.frontend import destination
         destination(args, kwargs)

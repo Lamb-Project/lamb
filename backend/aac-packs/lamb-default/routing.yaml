@@ -23,7 +23,10 @@
     "template.list-shared",
     "whoami",
     "glossary",
-    "translate"
+    "translate",
+    "learning-scenario.list",
+    "learning-scenario.get",
+    "learning-scenario.selected"
   ],
   "CAPABILITIES": {
     "create-assistant": [
@@ -109,7 +112,18 @@
       "template.share",
       "template.update"
     ],
-    "configure-agent": []
+    "configure-agent": [],
+    "manage-learning-scenarios": [
+      "learning-scenario.list",
+      "learning-scenario.get",
+      "learning-scenario.create",
+      "learning-scenario.update",
+      "learning-scenario.remove",
+      "learning-scenario.duplicate",
+      "learning-scenario.default",
+      "learning-scenario.selected",
+      "learning-scenario.select"
+    ]
   },
   "DEFAULT_SKILL": {
     "assistant.debug": "explain-assistant",
@@ -161,7 +175,13 @@
     "template.create": "manage-templates",
     "template.export": "manage-templates",
     "template.duplicate": "manage-templates",
-    "assistant.delete": "improve-assistant"
+    "assistant.delete": "improve-assistant",
+    "learning-scenario.create": "manage-learning-scenarios",
+    "learning-scenario.update": "manage-learning-scenarios",
+    "learning-scenario.remove": "manage-learning-scenarios",
+    "learning-scenario.duplicate": "manage-learning-scenarios",
+    "learning-scenario.default": "manage-learning-scenarios",
+    "learning-scenario.select": "manage-learning-scenarios"
   },
   "USER_ROUTING": {
     "negative": "\\b(don't|do not|no|not|never|another|different|otro|otra|altre|altra)\\b",
@@ -175,6 +195,11 @@
       "scenario": "\\b(scenarios?|escenarios?|escenaris?)\\b"
     },
     "rules": [
+      {
+        "skill": "manage-learning-scenarios",
+        "pattern": "\\b(learning scenarios?|escenarios? de aprendizaje|escenaris? d.aprenentatge|ikaskuntza.eszenatoki\\w*)\\b",
+        "priority": 2
+      },
       {
         "skill": "manage-knowledge-base",
         "pattern": "\\b(knowledge bases?|kb|base de conocimiento|base de coneixement)\\b"

@@ -9,9 +9,8 @@
     onMount(async () => {
         const id = $page.url.searchParams.get('session');
         if ($page.url.searchParams.get('new') === 'true' && !$sidebarBusy) {
-            const language = { en: 'English', es: 'Spanish', ca: 'Catalan', eu: 'Basque' }[$locale] || 'English';
-            const s = await createSession({ context: { language } });
-            showSession(s.id, s.title, null, null, false);
+            sidebarOpen.set(true);
+            window.dispatchEvent(new CustomEvent('aac-new-conversation'));
         } else if (id) showSession(id);
         else sidebarOpen.set(true);
         goto(`${base}/assistants`, { replaceState: true });

@@ -35,9 +35,9 @@ def browser_session(session):
     result['conversation'] = [dict(m) for m in session.get('conversation', [])
         if isinstance(m.get('content'), str) and (
             (m.get('role') == 'assistant' and not m.get('tool_calls')) or
-            (m.get('role') == 'user' and not m['content'].startswith(('[System:', '[Application workflow instructions]'))))]
+            (m.get('role') == 'user' and not m['content'].startswith(('[System:', '[Application workflow instructions]', '[Application learning scenario context]'))))]
     state = session.get('skill_info') or {}
-    result['skill_info'] = {k: state[k] for k in ('skill_id', 'context', 'ui_language', 'language_pinned', 'started', 'policy_version', 'brief', 'pack_version', 'response_language_policy') if k in state}
+    result['skill_info'] = {k: state[k] for k in ('learning_scenario_id', 'skill_id', 'context', 'ui_language', 'language_pinned', 'started', 'policy_version', 'brief', 'pack_version', 'response_language_policy') if k in state}
     result['skill_info']['snapshots_count'] = len(state.get('snapshots', {}))
     result['tool_audit_count'] = len(session.get('tool_audit') or [])
     result.pop('tool_audit', None)

@@ -1,0 +1,10 @@
+import { apiJson } from './apiClient';
+const root = '/aac/learning-scenarios';
+export const listScenarios = () => apiJson(root);
+export const getScenario = id => apiJson(`${root}/${encodeURIComponent(id)}`);
+export const createScenario = (title, content) => apiJson(root, {method:'POST', body:JSON.stringify({title, content})});
+export const updateScenario = item => apiJson(`${root}/${item.id}`, {method:'PUT', body:JSON.stringify({title:item.title, content:item.content, revision:item.revision})});
+export const removeScenario = item => apiJson(`${root}/${item.id}?revision=${item.revision}`, {method:'DELETE'});
+export const duplicateScenario = (id, title) => apiJson(`${root}/${id}/duplicate`, {method:'POST', body:JSON.stringify({title})});
+export const defaultScenario = id => apiJson(`${root}/default`, {method:'PUT', body:JSON.stringify({scenario_id:id})});
+export const selectedScenario = session => apiJson(`/aac/sessions/${session}/learning-scenario`);

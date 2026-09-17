@@ -853,7 +853,7 @@ async def frontend_open(ctx, args, kwargs):
     target = destination(args, kwargs)
     if ctx.frontend is None:
         raise ValueError('No connected frontend for this turn. Guide the user; do not claim navigation.')
-    paths = {'assistant': '/creator/assistant/get_assistant/', 'kb': '/creator/knowledgebases/kb/', 'rubric': '/creator/rubrics/'}
+    paths = {'assistant': '/creator/assistant/get_assistant/', 'kb': '/creator/knowledgebases/kb/', 'rubric': '/creator/rubrics/', 'learning-scenario': '/creator/aac/learning-scenarios/'}
     if target['resource'] in paths:
         await ctx.http.get(paths[target['resource']] + target['id'])  # normal caller resource permissions, before emitting an action
     return await ctx.frontend({'operation': 'open', **target})
@@ -1078,3 +1078,51 @@ async def kb_ingest(ctx, args, kwargs):
         raise ValueError(FILESYSTEM_MESSAGE)
     if params: body['parameters'] = params
     return _unwrap(await ctx.http.post(f'/creator/knowledgebases/kb/{args[0]}/plugin-ingest-base', json=body))
+
+
+@register('learning-scenario.list')
+async def learning_scenario_list(ctx, args, kwargs):
+    """List personal learning scenarios and the default ID."""
+    return _unwrap(await ctx.http.get('/creator/aac/learning-scenarios'))
+
+@register('learning-scenario.get')
+async def learning_scenario_get(ctx, args, kwargs):
+    """Read a learning scenario including its revision before proposing edits."""
+    return _unwrap(await ctx.http.get('/creator/aac/learning-scenarios/'+args[0]))
+
+@register('learning-scenario.create')
+async def learning_scenario_create(ctx, args, kwargs):
+    """Create TITLE --content TEXT. No local file; requires approval."""
+    return _unwrap(await ctx.http.post('/creator/aac/learning-scenarios', json={'title':args[0], 'content':kwargs.get('content', '')}))
+
+@register('learning-scenario.update')
+async def learning_scenario_update(ctx, args, kwargs):
+    """Update ID --revision N [--title TEXT] [--content TEXT]; show proposed content for approval."""
+    body = _fields(kwargs, ('title', 'content'))
+    body['revision'] = int(kwargs['revision'])
+    return _unwrap(await ctx.http.put('/creator/aac/learning-scenarios/'+args[0], json=body))
+
+@register('learning-scenario.remove')
+async def learning_scenario_remove(ctx, args, kwargs):
+    """Remove ID --revision N from selection, clear its default, retain historical chats."""
+    return _unwrap(await ctx.http.delete('/creator/aac/learning-scenarios/'+args[0], params={'revision':int(kwargs['revision'])}))
+
+@register('learning-scenario.duplicate')
+async def learning_scenario_duplicate(ctx, args, kwargs):
+    """Duplicate ID --title TEXT into an independent learning scenario."""
+    return _unwrap(await ctx.http.post('/creator/aac/learning-scenarios/'+args[0]+'/duplicate', json={'title':kwargs['title']}))
+
+@register('learning-scenario.default')
+async def learning_scenario_default(ctx, args, kwargs):
+    """Set the personal default to ID, or use none to clear it."""
+    return _unwrap(await ctx.http.put('/creator/aac/learning-scenarios/default', json={'scenario_id':None if args[0]=='none' else args[0]}))
+
+@register('learning-scenario.selected')
+async def learning_scenario_selected(ctx, args, kwargs):
+    """Inspect the selected scenario of SESSION_ID."""
+    return _unwrap(await ctx.http.get('/creator/aac/sessions/'+args[0]+'/learning-scenario'))
+
+@register('learning-scenario.select')
+async def learning_scenario_select(ctx, args, kwargs):
+    """Select ID|none|default for an idle SESSION_ID; busy/pending sessions refuse changes."""
+    return _unwrap(await ctx.http.put('/creator/aac/sessions/'+args[0]+'/learning-scenario', json={'scenario_id':None if args[1]=='none' else args[1]}))

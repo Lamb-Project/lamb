@@ -20,6 +20,16 @@ logger = get_logger(__name__, component="AAC")
 
 # Default policy: which commands need confirmation
 DEFAULT_POLICY: dict[str, str] = {
+    "learning-scenario.list": "auto",
+    "learning-scenario.get": "auto",
+    "learning-scenario.create": "ask",
+    "learning-scenario.update": "ask",
+    "learning-scenario.remove": "ask",
+    "learning-scenario.duplicate": "ask",
+    "learning-scenario.default": "ask",
+    "learning-scenario.selected": "auto",
+    "learning-scenario.select": "ask",
+
     'whoami': 'auto',
     'glossary': 'auto',
     'translate': 'auto',

@@ -49,9 +49,9 @@ export async function getSession(sessionId) {
  * @param {Object} [params.context]
  * @returns {Promise<AacSession>}
  */
-export async function createSession({ assistantId, skill, context } = {}) {
+export async function createSession({ assistantId, skill, context, learningScenarioId = null } = {}) {
 	/** @type {Object} */
-	const body = { ui_language: get(locale) || "en" };
+	const body = { ui_language: get(locale) || "en", learning_scenario_id: learningScenarioId };
 	if (assistantId != null) body.assistant_id = assistantId;
 	if (skill) {
 		body.skill = skill;

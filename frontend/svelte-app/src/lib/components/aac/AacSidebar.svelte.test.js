@@ -4,6 +4,8 @@ import { get } from 'svelte/store';
 vi.mock('$lib/services/aacService', () => ({ createSession: vi.fn(), getSessions: vi.fn(), getSession: vi.fn().mockResolvedValue({ conversation: [] }), sendMessageStream: vi.fn(), attachFile: vi.fn(), sendMessage: vi.fn() }));
 import { createSession, getSessions, getSession, sendMessageStream } from '$lib/services/aacService';
 import { sidebarOpen, sidebarBusy, activeTabId, resetSidebar, showSession } from '$lib/stores/aacStore.svelte';
+vi.mock('$lib/services/learningScenarios', () => ({ listScenarios:vi.fn().mockResolvedValue({scenarios:[],default_id:null}), selectedScenario:vi.fn().mockResolvedValue({scenario:null}) }));
+import { listScenarios } from '$lib/services/learningScenarios';
 import Sidebar from './AacSidebar.svelte';
 
 describe('persistent AAC sidebar', () => {
@@ -121,4 +123,18 @@ describe('persistent AAC sidebar', () => {
         expect(sendMessageStream).not.toHaveBeenCalled();
     });
 
+});
+
+it('offers explicit empty, default and saved scenarios before starting', async()=>{
+ resetSidebar();vi.clearAllMocks();
+ listScenarios.mockResolvedValueOnce({default_id:'scenario-a',scenarios:[{id:'scenario-a',title:'Algebra'},{id:'scenario-b',title:'History'}]});
+ createSession.mockResolvedValue({id:'chosen',title:'New conversation'});
+ sidebarOpen.set(true);render(Sidebar);
+ await fireEvent.click(screen.getByRole('button',{name:'New conversation'}));
+ const picker=await screen.findByRole('combobox',{name:'Select scenario'});
+ expect(createSession).not.toHaveBeenCalled();
+ expect(picker.value).toBe('default');
+ await fireEvent.change(picker,{target:{value:'scenario-b'}});
+ await fireEvent.click(screen.getByRole('button',{name:'Start conversation'}));
+ await waitFor(()=>expect(createSession.mock.calls[0][0].learningScenarioId).toBe('scenario-b'));
 });

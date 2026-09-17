@@ -1,26 +1,26 @@
 {
   "cli": {
-    "aac.attach": {
+    "chat": {
       "params": [
         {
-          "name": "file",
+          "name": "assistant_id",
           "kind": "TyperArgument",
           "opts": [
-            "file"
+            "assistant_id"
           ],
           "secondary_opts": [],
           "required": true,
           "default": "None",
-          "type": "STRING",
+          "type": "INT",
           "nargs": 1,
           "is_flag": false
         },
         {
-          "name": "output",
+          "name": "message",
           "kind": "TyperOption",
           "opts": [
-            "-o",
-            "--output"
+            "--message",
+            "-m"
           ],
           "secondary_opts": [],
           "required": false,
@@ -28,47 +28,52 @@
           "type": "STRING",
           "nargs": 1,
           "is_flag": false
-        }
-      ]
-    },
-    "aac.chat": {
-      "params": [
+        },
         {
-          "name": "session_id",
-          "kind": "TyperArgument",
+          "name": "chat_id",
+          "kind": "TyperOption",
           "opts": [
-            "session_id"
+            "--chat-id"
           ],
           "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "aac.delete": {
-      "params": [
-        {
-          "name": "session_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "session_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
+          "required": false,
           "default": "None",
           "type": "STRING",
           "nargs": 1,
           "is_flag": false
         },
         {
-          "name": "confirm",
+          "name": "no_persist",
           "kind": "TyperOption",
           "opts": [
-            "--confirm",
-            "-y"
+            "--no-persist"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "timeout",
+          "kind": "TyperOption",
+          "opts": [
+            "--timeout"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "300",
+          "type": "<IntRange x>=1>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "bypass",
+          "kind": "TyperOption",
+          "opts": [
+            "--bypass",
+            "-b"
           ],
           "secondary_opts": [],
           "required": false,
@@ -79,21 +84,60 @@
         }
       ]
     },
-    "aac.get": {
+    "login": {
       "params": [
         {
-          "name": "session_id",
-          "kind": "TyperArgument",
+          "name": "email",
+          "kind": "TyperOption",
           "opts": [
-            "session_id"
+            "--email",
+            "-e"
           ],
           "secondary_opts": [],
-          "required": true,
+          "required": false,
           "default": "None",
           "type": "STRING",
           "nargs": 1,
           "is_flag": false
         },
+        {
+          "name": "password",
+          "kind": "TyperOption",
+          "opts": [
+            "--password",
+            "-p"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "server_url",
+          "kind": "TyperOption",
+          "opts": [
+            "--server-url",
+            "-s"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "logout": {
+      "params": []
+    },
+    "status": {
+      "params": []
+    },
+    "whoami": {
+      "params": [
         {
           "name": "output",
           "kind": "TyperOption",
@@ -110,21 +154,8 @@
         }
       ]
     },
-    "aac.history": {
+    "aac.skills": {
       "params": [
-        {
-          "name": "session_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "session_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
         {
           "name": "output",
           "kind": "TyperOption",
@@ -141,29 +172,58 @@
         }
       ]
     },
-    "aac.message": {
+    "aac.start": {
       "params": [
         {
-          "name": "session_id",
-          "kind": "TyperArgument",
+          "name": "scenario",
+          "kind": "TyperOption",
           "opts": [
-            "session_id"
+            "--scenario"
           ],
           "secondary_opts": [],
-          "required": true,
+          "required": false,
           "default": "None",
           "type": "STRING",
           "nargs": 1,
           "is_flag": false
         },
         {
-          "name": "message",
-          "kind": "TyperArgument",
+          "name": "assistant_id",
+          "kind": "TyperOption",
           "opts": [
-            "message"
+            "--assistant",
+            "-a"
           ],
           "secondary_opts": [],
-          "required": true,
+          "required": false,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "skill",
+          "kind": "TyperOption",
+          "opts": [
+            "--skill",
+            "-s"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "language",
+          "kind": "TyperOption",
+          "opts": [
+            "--language",
+            "--lang"
+          ],
+          "secondary_opts": [],
+          "required": false,
           "default": "None",
           "type": "STRING",
           "nargs": 1,
@@ -271,8 +331,21 @@
         }
       ]
     },
-    "aac.skills": {
+    "aac.get": {
       "params": [
+        {
+          "name": "session_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "session_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
         {
           "name": "output",
           "kind": "TyperOption",
@@ -289,28 +362,71 @@
         }
       ]
     },
-    "aac.start": {
+    "aac.delete": {
       "params": [
         {
-          "name": "assistant_id",
-          "kind": "TyperOption",
+          "name": "session_id",
+          "kind": "TyperArgument",
           "opts": [
-            "--assistant",
-            "-a"
+            "session_id"
           ],
           "secondary_opts": [],
-          "required": false,
+          "required": true,
           "default": "None",
-          "type": "INT",
+          "type": "STRING",
           "nargs": 1,
           "is_flag": false
         },
         {
-          "name": "skill",
+          "name": "confirm",
           "kind": "TyperOption",
           "opts": [
-            "--skill",
-            "-s"
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "aac.message": {
+      "params": [
+        {
+          "name": "session_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "session_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "message",
+          "kind": "TyperArgument",
+          "opts": [
+            "message"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
           ],
           "secondary_opts": [],
           "required": false,
@@ -318,16 +434,36 @@
           "type": "STRING",
           "nargs": 1,
           "is_flag": false
-        },
+        }
+      ]
+    },
+    "aac.chat": {
+      "params": [
         {
-          "name": "language",
-          "kind": "TyperOption",
+          "name": "session_id",
+          "kind": "TyperArgument",
           "opts": [
-            "--language",
-            "--lang"
+            "session_id"
           ],
           "secondary_opts": [],
-          "required": false,
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "aac.history": {
+      "params": [
+        {
+          "name": "session_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "session_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
           "default": "None",
           "type": "STRING",
           "nargs": 1,
@@ -421,26 +557,13 @@
         }
       ]
     },
-    "analytics.chat-detail": {
+    "aac.attach": {
       "params": [
         {
-          "name": "assistant_id",
+          "name": "file",
           "kind": "TyperArgument",
           "opts": [
-            "assistant_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "chat_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "chat_id"
+            "file"
           ],
           "secondary_opts": [],
           "required": true,
@@ -465,13 +588,119 @@
         }
       ]
     },
-    "analytics.chats": {
+    "learning-scenario.list": {
       "params": [
         {
-          "name": "assistant_id",
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "learning-scenario.get": {
+      "params": [
+        {
+          "name": "key",
           "kind": "TyperArgument",
           "opts": [
-            "assistant_id"
+            "key"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "learning-scenario.create": {
+      "params": [
+        {
+          "name": "title",
+          "kind": "TyperArgument",
+          "opts": [
+            "title"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "content",
+          "kind": "TyperOption",
+          "opts": [
+            "--content"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "learning-scenario.update": {
+      "params": [
+        {
+          "name": "key",
+          "kind": "TyperArgument",
+          "opts": [
+            "key"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "revision",
+          "kind": "TyperOption",
+          "opts": [
+            "--revision"
           ],
           "secondary_opts": [],
           "required": true,
@@ -481,80 +710,267 @@
           "is_flag": false
         },
         {
-          "name": "page",
+          "name": "title",
           "kind": "TyperOption",
           "opts": [
-            "--page"
+            "--title"
           ],
           "secondary_opts": [],
           "required": false,
-          "default": "1",
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "content",
+          "kind": "TyperOption",
+          "opts": [
+            "--content"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "learning-scenario.remove": {
+      "params": [
+        {
+          "name": "key",
+          "kind": "TyperArgument",
+          "opts": [
+            "key"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "revision",
+          "kind": "TyperOption",
+          "opts": [
+            "--revision"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
           "type": "INT",
           "nargs": 1,
           "is_flag": false
         },
         {
-          "name": "per_page",
+          "name": "output",
           "kind": "TyperOption",
           "opts": [
-            "--per-page"
+            "-o",
+            "--output"
           ],
           "secondary_opts": [],
           "required": false,
-          "default": "20",
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "learning-scenario.duplicate": {
+      "params": [
+        {
+          "name": "key",
+          "kind": "TyperArgument",
+          "opts": [
+            "key"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "title",
+          "kind": "TyperOption",
+          "opts": [
+            "--title"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "learning-scenario.default": {
+      "params": [
+        {
+          "name": "key",
+          "kind": "TyperArgument",
+          "opts": [
+            "key"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "learning-scenario.selected": {
+      "params": [
+        {
+          "name": "session",
+          "kind": "TyperArgument",
+          "opts": [
+            "session"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "learning-scenario.select": {
+      "params": [
+        {
+          "name": "session",
+          "kind": "TyperArgument",
+          "opts": [
+            "session"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "key",
+          "kind": "TyperArgument",
+          "opts": [
+            "key"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "assistant.list": {
+      "params": [
+        {
+          "name": "limit",
+          "kind": "TyperOption",
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "50",
           "type": "INT",
           "nargs": 1,
           "is_flag": false
         },
         {
-          "name": "user_id",
+          "name": "offset",
           "kind": "TyperOption",
           "opts": [
-            "--user-id"
+            "--offset"
           ],
           "secondary_opts": [],
           "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "search",
-          "kind": "TyperOption",
-          "opts": [
-            "--search"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "start_date",
-          "kind": "TyperOption",
-          "opts": [
-            "--start-date"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "end_date",
-          "kind": "TyperOption",
-          "opts": [
-            "--end-date"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
+          "default": "0",
+          "type": "INT",
           "nargs": 1,
           "is_flag": false
         },
@@ -574,7 +990,7 @@
         }
       ]
     },
-    "analytics.stats": {
+    "assistant.get": {
       "params": [
         {
           "name": "assistant_id",
@@ -585,124 +1001,10 @@
           "secondary_opts": [],
           "required": true,
           "default": "None",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "start_date",
-          "kind": "TyperOption",
-          "opts": [
-            "--start-date"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
           "type": "STRING",
           "nargs": 1,
           "is_flag": false
         },
-        {
-          "name": "end_date",
-          "kind": "TyperOption",
-          "opts": [
-            "--end-date"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "analytics.timeline": {
-      "params": [
-        {
-          "name": "assistant_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "assistant_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "period",
-          "kind": "TyperOption",
-          "opts": [
-            "--period"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "day",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "start_date",
-          "kind": "TyperOption",
-          "opts": [
-            "--start-date"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "end_date",
-          "kind": "TyperOption",
-          "opts": [
-            "--end-date"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "assistant.config": {
-      "params": [
         {
           "name": "output",
           "kind": "TyperOption",
@@ -948,206 +1250,6 @@
           "type": "BOOL",
           "nargs": 1,
           "is_flag": true
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "assistant.delete": {
-      "params": [
-        {
-          "name": "assistant_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "assistant_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "confirm",
-          "kind": "TyperOption",
-          "opts": [
-            "--confirm",
-            "-y"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "False",
-          "type": "BOOL",
-          "nargs": 1,
-          "is_flag": true
-        }
-      ]
-    },
-    "assistant.export": {
-      "params": [
-        {
-          "name": "assistant_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "assistant_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output_file",
-          "kind": "TyperOption",
-          "opts": [
-            "--output-file",
-            "-f"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "<typer.models.TyperPath object>",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "assistant.get": {
-      "params": [
-        {
-          "name": "assistant_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "assistant_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "assistant.list": {
-      "params": [
-        {
-          "name": "limit",
-          "kind": "TyperOption",
-          "opts": [
-            "--limit",
-            "-l"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "50",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "offset",
-          "kind": "TyperOption",
-          "opts": [
-            "--offset"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "0",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "assistant.publish": {
-      "params": [
-        {
-          "name": "assistant_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "assistant_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "assistant.unpublish": {
-      "params": [
-        {
-          "name": "assistant_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "assistant_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
         },
         {
           "name": "output",
@@ -1412,7 +1514,7 @@
         }
       ]
     },
-    "chat": {
+    "assistant.delete": {
       "params": [
         {
           "name": "assistant_id",
@@ -1423,69 +1525,16 @@
           "secondary_opts": [],
           "required": true,
           "default": "None",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "message",
-          "kind": "TyperOption",
-          "opts": [
-            "--message",
-            "-m"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
           "type": "STRING",
           "nargs": 1,
           "is_flag": false
         },
         {
-          "name": "chat_id",
+          "name": "confirm",
           "kind": "TyperOption",
           "opts": [
-            "--chat-id"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "no_persist",
-          "kind": "TyperOption",
-          "opts": [
-            "--no-persist"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "False",
-          "type": "BOOL",
-          "nargs": 1,
-          "is_flag": true
-        },
-        {
-          "name": "timeout",
-          "kind": "TyperOption",
-          "opts": [
-            "--timeout"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "300",
-          "type": "<IntRange x>=1>",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "bypass",
-          "kind": "TyperOption",
-          "opts": [
-            "--bypass",
-            "-b"
+            "--confirm",
+            "-y"
           ],
           "secondary_opts": [],
           "required": false,
@@ -1496,56 +1545,13 @@
         }
       ]
     },
-    "job.cancel": {
+    "assistant.publish": {
       "params": [
         {
-          "name": "kb_id",
+          "name": "assistant_id",
           "kind": "TyperArgument",
           "opts": [
-            "kb_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "job_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "job_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "job.get": {
-      "params": [
-        {
-          "name": "kb_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "kb_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "job_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "job_id"
+            "assistant_id"
           ],
           "secondary_opts": [],
           "required": true,
@@ -1570,83 +1576,16 @@
         }
       ]
     },
-    "job.list": {
+    "assistant.unpublish": {
       "params": [
         {
-          "name": "kb_id",
+          "name": "assistant_id",
           "kind": "TyperArgument",
           "opts": [
-            "kb_id"
+            "assistant_id"
           ],
           "secondary_opts": [],
           "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "status",
-          "kind": "TyperOption",
-          "opts": [
-            "--status",
-            "-s"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "limit",
-          "kind": "TyperOption",
-          "opts": [
-            "--limit",
-            "-l"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "50",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "offset",
-          "kind": "TyperOption",
-          "opts": [
-            "--offset"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "0",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "sort_by",
-          "kind": "TyperOption",
-          "opts": [
-            "--sort-by"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "sort_order",
-          "kind": "TyperOption",
-          "opts": [
-            "--sort-order"
-          ],
-          "secondary_opts": [],
-          "required": false,
           "default": "None",
           "type": "STRING",
           "nargs": 1,
@@ -1668,13 +1607,13 @@
         }
       ]
     },
-    "job.retry": {
+    "assistant.export": {
       "params": [
         {
-          "name": "kb_id",
+          "name": "assistant_id",
           "kind": "TyperArgument",
           "opts": [
-            "kb_id"
+            "assistant_id"
           ],
           "secondary_opts": [],
           "required": true,
@@ -1684,13 +1623,32 @@
           "is_flag": false
         },
         {
-          "name": "job_id",
-          "kind": "TyperArgument",
+          "name": "output_file",
+          "kind": "TyperOption",
           "opts": [
-            "job_id"
+            "--output-file",
+            "-f"
           ],
           "secondary_opts": [],
-          "required": true,
+          "required": false,
+          "default": "None",
+          "type": "<typer.models.TyperPath object>",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "assistant.config": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
           "default": "None",
           "type": "STRING",
           "nargs": 1,
@@ -1698,7 +1656,61 @@
         }
       ]
     },
-    "job.status": {
+    "model.list": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "kb.list": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "kb.list-shared": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "kb.get": {
       "params": [
         {
           "name": "kb_id",
@@ -1724,50 +1736,6 @@
           "required": false,
           "default": "None",
           "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "job.watch": {
-      "params": [
-        {
-          "name": "kb_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "kb_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "job_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "job_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "interval",
-          "kind": "TyperOption",
-          "opts": [
-            "--interval",
-            "-i"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "3.0",
-          "type": "FLOAT",
           "nargs": 1,
           "is_flag": false
         }
@@ -1798,6 +1766,78 @@
           "secondary_opts": [],
           "required": false,
           "default": "",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "access_control",
+          "kind": "TyperOption",
+          "opts": [
+            "--access-control"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "kb.update": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "name",
+          "kind": "TyperOption",
+          "opts": [
+            "--name",
+            "-n"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "description",
+          "kind": "TyperOption",
+          "opts": [
+            "--description",
+            "-d"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
           "type": "STRING",
           "nargs": 1,
           "is_flag": false
@@ -1862,7 +1902,7 @@
         }
       ]
     },
-    "kb.delete-file": {
+    "kb.share": {
       "params": [
         {
           "name": "kb_id",
@@ -1878,35 +1918,23 @@
           "is_flag": false
         },
         {
-          "name": "file_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "file_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "confirm",
+          "name": "enable",
           "kind": "TyperOption",
           "opts": [
-            "--confirm",
-            "-y"
+            "--enable"
           ],
-          "secondary_opts": [],
+          "secondary_opts": [
+            "--disable"
+          ],
           "required": false,
-          "default": "False",
+          "default": "None",
           "type": "BOOL",
           "nargs": 1,
           "is_flag": true
         }
       ]
     },
-    "kb.get": {
+    "kb.upload": {
       "params": [
         {
           "name": "kb_id",
@@ -1916,6 +1944,32 @@
           ],
           "secondary_opts": [],
           "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "files",
+          "kind": "TyperArgument",
+          "opts": [
+            "files"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": -1,
+          "is_flag": false
+        },
+        {
+          "name": "plugin",
+          "kind": "TyperOption",
+          "opts": [
+            "--plugin"
+          ],
+          "secondary_opts": [],
+          "required": false,
           "default": "None",
           "type": "STRING",
           "nargs": 1,
@@ -1997,91 +2051,6 @@
           "kind": "TyperOption",
           "opts": [
             "--param"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "kb.jobs": {
-      "params": [
-        {
-          "name": "kb_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "kb_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "kb.list": {
-      "params": [
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "kb.list-shared": {
-      "params": [
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "kb.plugins": {
-      "params": [
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
           ],
           "secondary_opts": [],
           "required": false,
@@ -2178,6 +2147,68 @@
         }
       ]
     },
+    "kb.delete-file": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "file_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "file_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "confirm",
+          "kind": "TyperOption",
+          "opts": [
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "kb.plugins": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
     "kb.query-plugins": {
       "params": [
         {
@@ -2196,7 +2227,7 @@
         }
       ]
     },
-    "kb.share": {
+    "kb.jobs": {
       "params": [
         {
           "name": "kb_id",
@@ -2212,19 +2243,18 @@
           "is_flag": false
         },
         {
-          "name": "enable",
+          "name": "output",
           "kind": "TyperOption",
           "opts": [
-            "--enable"
+            "-o",
+            "--output"
           ],
-          "secondary_opts": [
-            "--disable"
-          ],
+          "secondary_opts": [],
           "required": false,
           "default": "None",
-          "type": "BOOL",
+          "type": "STRING",
           "nargs": 1,
-          "is_flag": true
+          "is_flag": false
         }
       ]
     },
@@ -2259,119 +2289,8 @@
         }
       ]
     },
-    "kb.update": {
+    "library.list": {
       "params": [
-        {
-          "name": "kb_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "kb_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "name",
-          "kind": "TyperOption",
-          "opts": [
-            "--name",
-            "-n"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "description",
-          "kind": "TyperOption",
-          "opts": [
-            "--description",
-            "-d"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "access_control",
-          "kind": "TyperOption",
-          "opts": [
-            "--access-control"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "kb.upload": {
-      "params": [
-        {
-          "name": "kb_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "kb_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "files",
-          "kind": "TyperArgument",
-          "opts": [
-            "files"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": -1,
-          "is_flag": false
-        },
-        {
-          "name": "plugin",
-          "kind": "TyperOption",
-          "opts": [
-            "--plugin"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
         {
           "name": "output",
           "kind": "TyperOption",
@@ -2433,112 +2352,6 @@
         }
       ]
     },
-    "library.delete": {
-      "params": [
-        {
-          "name": "library_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "library_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "confirm",
-          "kind": "TyperOption",
-          "opts": [
-            "--confirm",
-            "-y"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "False",
-          "type": "BOOL",
-          "nargs": 1,
-          "is_flag": true
-        }
-      ]
-    },
-    "library.delete-item": {
-      "params": [
-        {
-          "name": "library_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "library_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "item_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "item_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "confirm",
-          "kind": "TyperOption",
-          "opts": [
-            "--confirm",
-            "-y"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "False",
-          "type": "BOOL",
-          "nargs": 1,
-          "is_flag": true
-        }
-      ]
-    },
-    "library.export": {
-      "params": [
-        {
-          "name": "library_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "library_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output_file",
-          "kind": "TyperOption",
-          "opts": [
-            "--output-file",
-            "-f"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
     "library.get": {
       "params": [
         {
@@ -2570,24 +2383,7 @@
         }
       ]
     },
-    "library.import": {
-      "params": [
-        {
-          "name": "file_path",
-          "kind": "TyperArgument",
-          "opts": [
-            "file_path"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "library.import-config": {
+    "library.delete": {
       "params": [
         {
           "name": "library_id",
@@ -2603,11 +2399,101 @@
           "is_flag": false
         },
         {
-          "name": "output",
+          "name": "confirm",
           "kind": "TyperOption",
           "opts": [
-            "-o",
-            "--output"
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "library.share": {
+      "params": [
+        {
+          "name": "library_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "library_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "enable",
+          "kind": "TyperOption",
+          "opts": [
+            "--enable"
+          ],
+          "secondary_opts": [
+            "--disable"
+          ],
+          "required": false,
+          "default": "None",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "library.upload": {
+      "params": [
+        {
+          "name": "library_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "library_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "files",
+          "kind": "TyperArgument",
+          "opts": [
+            "files"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": -1,
+          "is_flag": false
+        },
+        {
+          "name": "plugin",
+          "kind": "TyperOption",
+          "opts": [
+            "--plugin",
+            "-p"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "title",
+          "kind": "TyperOption",
+          "opts": [
+            "--title",
+            "-t"
           ],
           "secondary_opts": [],
           "required": false,
@@ -2747,50 +2633,6 @@
         }
       ]
     },
-    "library.item": {
-      "params": [
-        {
-          "name": "library_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "library_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "item_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "item_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
     "library.items": {
       "params": [
         {
@@ -2862,7 +2704,95 @@
         }
       ]
     },
-    "library.list": {
+    "library.item": {
+      "params": [
+        {
+          "name": "library_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "library_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "item_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "item_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "library.delete-item": {
+      "params": [
+        {
+          "name": "library_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "library_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "item_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "item_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "confirm",
+          "kind": "TyperOption",
+          "opts": [
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "library.plugins": {
       "params": [
         {
           "name": "output",
@@ -2880,8 +2810,21 @@
         }
       ]
     },
-    "library.plugins": {
+    "library.import-config": {
       "params": [
+        {
+          "name": "library_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "library_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
         {
           "name": "output",
           "kind": "TyperOption",
@@ -2941,7 +2884,7 @@
         }
       ]
     },
-    "library.share": {
+    "library.export": {
       "params": [
         {
           "name": "library_id",
@@ -2957,70 +2900,11 @@
           "is_flag": false
         },
         {
-          "name": "enable",
+          "name": "output_file",
           "kind": "TyperOption",
           "opts": [
-            "--enable"
-          ],
-          "secondary_opts": [
-            "--disable"
-          ],
-          "required": false,
-          "default": "None",
-          "type": "BOOL",
-          "nargs": 1,
-          "is_flag": true
-        }
-      ]
-    },
-    "library.upload": {
-      "params": [
-        {
-          "name": "library_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "library_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "files",
-          "kind": "TyperArgument",
-          "opts": [
-            "files"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": -1,
-          "is_flag": false
-        },
-        {
-          "name": "plugin",
-          "kind": "TyperOption",
-          "opts": [
-            "--plugin",
-            "-p"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "title",
-          "kind": "TyperOption",
-          "opts": [
-            "--title",
-            "-t"
+            "--output-file",
+            "-f"
           ],
           "secondary_opts": [],
           "required": false,
@@ -3031,41 +2915,43 @@
         }
       ]
     },
-    "login": {
+    "library.import": {
       "params": [
         {
-          "name": "email",
-          "kind": "TyperOption",
+          "name": "file_path",
+          "kind": "TyperArgument",
           "opts": [
-            "--email",
-            "-e"
+            "file_path"
           ],
           "secondary_opts": [],
-          "required": false,
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "job.list": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
           "default": "None",
           "type": "STRING",
           "nargs": 1,
           "is_flag": false
         },
         {
-          "name": "password",
+          "name": "status",
           "kind": "TyperOption",
           "opts": [
-            "--password",
-            "-p"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "server_url",
-          "kind": "TyperOption",
-          "opts": [
-            "--server-url",
+            "--status",
             "-s"
           ],
           "secondary_opts": [],
@@ -3074,14 +2960,288 @@
           "type": "STRING",
           "nargs": 1,
           "is_flag": false
+        },
+        {
+          "name": "limit",
+          "kind": "TyperOption",
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "50",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "offset",
+          "kind": "TyperOption",
+          "opts": [
+            "--offset"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "0",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "sort_by",
+          "kind": "TyperOption",
+          "opts": [
+            "--sort-by"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "sort_order",
+          "kind": "TyperOption",
+          "opts": [
+            "--sort-order"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
         }
       ]
     },
-    "logout": {
-      "params": []
-    },
-    "model.list": {
+    "job.get": {
       "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "job_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "job_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "job.retry": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "job_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "job_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "job.cancel": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "job_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "job_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "job.watch": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "job_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "job_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "interval",
+          "kind": "TyperOption",
+          "opts": [
+            "--interval",
+            "-i"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "3.0",
+          "type": "FLOAT",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "job.status": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "org.list": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "org.get": {
+      "params": [
+        {
+          "name": "slug",
+          "kind": "TyperArgument",
+          "opts": [
+            "slug"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
         {
           "name": "output",
           "kind": "TyperOption",
@@ -3184,13 +3344,40 @@
         }
       ]
     },
-    "org.dashboard": {
+    "org.update": {
       "params": [
         {
-          "name": "org",
+          "name": "slug",
+          "kind": "TyperArgument",
+          "opts": [
+            "slug"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "name",
           "kind": "TyperOption",
           "opts": [
-            "--org"
+            "--name",
+            "-n"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "status",
+          "kind": "TyperOption",
+          "opts": [
+            "--status"
           ],
           "secondary_opts": [],
           "required": false,
@@ -3277,55 +3464,6 @@
         }
       ]
     },
-    "org.get": {
-      "params": [
-        {
-          "name": "slug",
-          "kind": "TyperArgument",
-          "opts": [
-            "slug"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "org.list": {
-      "params": [
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
     "org.set-role": {
       "params": [
         {
@@ -3369,13 +3507,218 @@
         }
       ]
     },
-    "org.update": {
+    "org.dashboard": {
       "params": [
         {
-          "name": "slug",
+          "name": "org",
+          "kind": "TyperOption",
+          "opts": [
+            "--org"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "user.list": {
+      "params": [
+        {
+          "name": "org",
+          "kind": "TyperOption",
+          "opts": [
+            "--org"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "user.get": {
+      "params": [
+        {
+          "name": "user_id",
           "kind": "TyperArgument",
           "opts": [
-            "slug"
+            "user_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "org",
+          "kind": "TyperOption",
+          "opts": [
+            "--org"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "user.create": {
+      "params": [
+        {
+          "name": "email",
+          "kind": "TyperArgument",
+          "opts": [
+            "email"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "name",
+          "kind": "TyperArgument",
+          "opts": [
+            "name"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "password",
+          "kind": "TyperArgument",
+          "opts": [
+            "password"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "user_type",
+          "kind": "TyperOption",
+          "opts": [
+            "--user-type",
+            "-t"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "creator",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "enabled",
+          "kind": "TyperOption",
+          "opts": [
+            "--enabled"
+          ],
+          "secondary_opts": [
+            "--disabled"
+          ],
+          "required": false,
+          "default": "True",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "org",
+          "kind": "TyperOption",
+          "opts": [
+            "--org"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "user.update": {
+      "params": [
+        {
+          "name": "user_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "user_id"
           ],
           "secondary_opts": [],
           "required": true,
@@ -3399,41 +3742,29 @@
           "is_flag": false
         },
         {
-          "name": "status",
+          "name": "enabled",
           "kind": "TyperOption",
           "opts": [
-            "--status"
+            "--enabled"
           ],
-          "secondary_opts": [],
+          "secondary_opts": [
+            "--disabled"
+          ],
           "required": false,
           "default": "None",
-          "type": "STRING",
+          "type": "BOOL",
           "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
+          "is_flag": true
         }
       ]
     },
-    "rubric.create": {
+    "user.delete": {
       "params": [
         {
-          "name": "title",
+          "name": "user_id",
           "kind": "TyperArgument",
           "opts": [
-            "title"
+            "user_id"
           ],
           "secondary_opts": [],
           "required": true,
@@ -3443,109 +3774,13 @@
           "is_flag": false
         },
         {
-          "name": "criteria",
+          "name": "org",
           "kind": "TyperOption",
           "opts": [
-            "--criteria"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "description",
-          "kind": "TyperOption",
-          "opts": [
-            "--description"
+            "--org"
           ],
           "secondary_opts": [],
           "required": false,
-          "default": "",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "subject",
-          "kind": "TyperOption",
-          "opts": [
-            "--subject"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "grade_level",
-          "kind": "TyperOption",
-          "opts": [
-            "--grade-level"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "scoring_type",
-          "kind": "TyperOption",
-          "opts": [
-            "--scoring-type"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "points",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "max_score",
-          "kind": "TyperOption",
-          "opts": [
-            "--max-score"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "10",
-          "type": "FLOAT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "rubric.delete": {
-      "params": [
-        {
-          "name": "rubric_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "rubric_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
           "default": "None",
           "type": "STRING",
           "nargs": 1,
@@ -3567,13 +3802,47 @@
         }
       ]
     },
-    "rubric.duplicate": {
+    "user.enable": {
       "params": [
         {
-          "name": "rubric_id",
+          "name": "user_id",
           "kind": "TyperArgument",
           "opts": [
-            "rubric_id"
+            "user_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "user.disable": {
+      "params": [
+        {
+          "name": "user_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "user_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "user.reset-password": {
+      "params": [
+        {
+          "name": "user_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "user_id"
           ],
           "secondary_opts": [],
           "required": true,
@@ -3583,28 +3852,10 @@
           "is_flag": false
         },
         {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "rubric.export": {
-      "params": [
-        {
-          "name": "rubric_id",
+          "name": "new_password",
           "kind": "TyperArgument",
           "opts": [
-            "rubric_id"
+            "new_password"
           ],
           "secondary_opts": [],
           "required": true,
@@ -3612,140 +3863,10 @@
           "type": "STRING",
           "nargs": 1,
           "is_flag": false
-        },
-        {
-          "name": "format_",
-          "kind": "TyperOption",
-          "opts": [
-            "--format",
-            "-f"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "json",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "file",
-          "kind": "TyperOption",
-          "opts": [
-            "--file"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "<typer.models.TyperPath object>",
-          "nargs": 1,
-          "is_flag": false
         }
       ]
     },
-    "rubric.generate": {
-      "params": [
-        {
-          "name": "prompt",
-          "kind": "TyperArgument",
-          "opts": [
-            "prompt"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "language",
-          "kind": "TyperOption",
-          "opts": [
-            "--language",
-            "--lang"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "en",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "model",
-          "kind": "TyperOption",
-          "opts": [
-            "--model",
-            "-m"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "save_to",
-          "kind": "TyperOption",
-          "opts": [
-            "--save-to"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "<typer.models.TyperPath object>",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "rubric.get": {
-      "params": [
-        {
-          "name": "rubric_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "rubric_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "rubric.import": {
+    "user.bulk-import": {
       "params": [
         {
           "name": "file",
@@ -3756,7 +3877,33 @@
           "secondary_opts": [],
           "required": true,
           "default": "None",
-          "type": "<typer.models.TyperPath object>",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "dry_run",
+          "kind": "TyperOption",
+          "opts": [
+            "--dry-run"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "org",
+          "kind": "TyperOption",
+          "opts": [
+            "--org"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
           "nargs": 1,
           "is_flag": false
         },
@@ -3920,6 +4067,174 @@
         }
       ]
     },
+    "rubric.get": {
+      "params": [
+        {
+          "name": "rubric_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "rubric_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "rubric.delete": {
+      "params": [
+        {
+          "name": "rubric_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "rubric_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "confirm",
+          "kind": "TyperOption",
+          "opts": [
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "rubric.duplicate": {
+      "params": [
+        {
+          "name": "rubric_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "rubric_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "rubric.export": {
+      "params": [
+        {
+          "name": "rubric_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "rubric_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "format_",
+          "kind": "TyperOption",
+          "opts": [
+            "--format",
+            "-f"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "file",
+          "kind": "TyperOption",
+          "opts": [
+            "--file"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<typer.models.TyperPath object>",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "rubric.import": {
+      "params": [
+        {
+          "name": "file",
+          "kind": "TyperArgument",
+          "opts": [
+            "file"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "<typer.models.TyperPath object>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
     "rubric.share": {
       "params": [
         {
@@ -3949,6 +4264,187 @@
           "type": "BOOL",
           "nargs": 1,
           "is_flag": true
+        }
+      ]
+    },
+    "rubric.generate": {
+      "params": [
+        {
+          "name": "prompt",
+          "kind": "TyperArgument",
+          "opts": [
+            "prompt"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "language",
+          "kind": "TyperOption",
+          "opts": [
+            "--language",
+            "--lang"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "en",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "model",
+          "kind": "TyperOption",
+          "opts": [
+            "--model",
+            "-m"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "save_to",
+          "kind": "TyperOption",
+          "opts": [
+            "--save-to"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<typer.models.TyperPath object>",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "rubric.create": {
+      "params": [
+        {
+          "name": "title",
+          "kind": "TyperArgument",
+          "opts": [
+            "title"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "criteria",
+          "kind": "TyperOption",
+          "opts": [
+            "--criteria"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "description",
+          "kind": "TyperOption",
+          "opts": [
+            "--description"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "subject",
+          "kind": "TyperOption",
+          "opts": [
+            "--subject"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "grade_level",
+          "kind": "TyperOption",
+          "opts": [
+            "--grade-level"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "scoring_type",
+          "kind": "TyperOption",
+          "opts": [
+            "--scoring-type"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "points",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "max_score",
+          "kind": "TyperOption",
+          "opts": [
+            "--max-score"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "10",
+          "type": "FLOAT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
         }
       ]
     },
@@ -4087,8 +4583,126 @@
         }
       ]
     },
-    "status": {
-      "params": []
+    "template.list": {
+      "params": [
+        {
+          "name": "limit",
+          "kind": "TyperOption",
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "50",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "offset",
+          "kind": "TyperOption",
+          "opts": [
+            "--offset"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "0",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "template.list-shared": {
+      "params": [
+        {
+          "name": "limit",
+          "kind": "TyperOption",
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "50",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "offset",
+          "kind": "TyperOption",
+          "opts": [
+            "--offset"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "0",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "template.get": {
+      "params": [
+        {
+          "name": "template_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "template_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
     },
     "template.create": {
       "params": [
@@ -4157,6 +4771,91 @@
           "type": "BOOL",
           "nargs": 1,
           "is_flag": true
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "template.update": {
+      "params": [
+        {
+          "name": "template_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "template_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "name",
+          "kind": "TyperOption",
+          "opts": [
+            "--name",
+            "-n"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "description",
+          "kind": "TyperOption",
+          "opts": [
+            "--description",
+            "-d"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "system_prompt",
+          "kind": "TyperOption",
+          "opts": [
+            "--system-prompt"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "prompt_template",
+          "kind": "TyperOption",
+          "opts": [
+            "--prompt-template"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
         },
         {
           "name": "output",
@@ -4249,158 +4948,6 @@
         }
       ]
     },
-    "template.export": {
-      "params": [
-        {
-          "name": "template_ids",
-          "kind": "TyperArgument",
-          "opts": [
-            "template_ids"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "INT",
-          "nargs": -1,
-          "is_flag": false
-        },
-        {
-          "name": "file",
-          "kind": "TyperOption",
-          "opts": [
-            "-f",
-            "--file"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "<typer.models.TyperPath object>",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "template.get": {
-      "params": [
-        {
-          "name": "template_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "template_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "template.list": {
-      "params": [
-        {
-          "name": "limit",
-          "kind": "TyperOption",
-          "opts": [
-            "--limit",
-            "-l"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "50",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "offset",
-          "kind": "TyperOption",
-          "opts": [
-            "--offset"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "0",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "template.list-shared": {
-      "params": [
-        {
-          "name": "limit",
-          "kind": "TyperOption",
-          "opts": [
-            "--limit",
-            "-l"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "50",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "offset",
-          "kind": "TyperOption",
-          "opts": [
-            "--offset"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "0",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
     "template.share": {
       "params": [
         {
@@ -4433,72 +4980,49 @@
         }
       ]
     },
-    "template.update": {
+    "template.export": {
       "params": [
         {
-          "name": "template_id",
+          "name": "template_ids",
           "kind": "TyperArgument",
           "opts": [
-            "template_id"
+            "template_ids"
           ],
           "secondary_opts": [],
           "required": true,
           "default": "None",
           "type": "INT",
-          "nargs": 1,
+          "nargs": -1,
           "is_flag": false
         },
         {
-          "name": "name",
+          "name": "file",
           "kind": "TyperOption",
           "opts": [
-            "--name",
-            "-n"
+            "-f",
+            "--file"
           ],
           "secondary_opts": [],
           "required": false,
           "default": "None",
-          "type": "STRING",
+          "type": "<typer.models.TyperPath object>",
           "nargs": 1,
           "is_flag": false
-        },
+        }
+      ]
+    },
+    "test.scenarios": {
+      "params": [
         {
-          "name": "description",
-          "kind": "TyperOption",
+          "name": "assistant_id",
+          "kind": "TyperArgument",
           "opts": [
-            "--description",
-            "-d"
+            "assistant_id"
           ],
           "secondary_opts": [],
-          "required": false,
+          "required": true,
           "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "system_prompt",
-          "kind": "TyperOption",
-          "opts": [
-            "--system-prompt"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "prompt_template",
-          "kind": "TyperOption",
-          "opts": [
-            "--prompt-template"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
+          "type": "INT",
           "nargs": 1,
           "is_flag": false
         },
@@ -4645,388 +5169,6 @@
         }
       ]
     },
-    "test.delete-scenario": {
-      "params": [
-        {
-          "name": "scenario_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "scenario_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "assistant_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "assistant_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "confirm",
-          "kind": "TyperOption",
-          "opts": [
-            "--confirm",
-            "-y"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "False",
-          "type": "BOOL",
-          "nargs": 1,
-          "is_flag": true
-        }
-      ]
-    },
-    "test.evaluate": {
-      "params": [
-        {
-          "name": "run_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "run_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "assistant_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "assistant_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "verdict",
-          "kind": "TyperArgument",
-          "opts": [
-            "verdict"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "notes",
-          "kind": "TyperOption",
-          "opts": [
-            "--notes",
-            "-n"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "test.evaluations": {
-      "params": [
-        {
-          "name": "assistant_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "assistant_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "test.run": {
-      "params": [
-        {
-          "name": "assistant_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "assistant_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "scenario_id",
-          "kind": "TyperOption",
-          "opts": [
-            "--scenario",
-            "-s"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "bypass",
-          "kind": "TyperOption",
-          "opts": [
-            "--bypass",
-            "-b"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "False",
-          "type": "BOOL",
-          "nargs": 1,
-          "is_flag": true
-        },
-        {
-          "name": "timeout",
-          "kind": "TyperOption",
-          "opts": [
-            "--timeout"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "900.0",
-          "type": "<FloatRange x>=1.0>",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "test.run-detail": {
-      "params": [
-        {
-          "name": "run_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "run_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "assistant_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "assistant_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "test.runs": {
-      "params": [
-        {
-          "name": "assistant_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "assistant_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "limit",
-          "kind": "TyperOption",
-          "opts": [
-            "--limit",
-            "-l"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "20",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "test.scenario-detail": {
-      "params": [
-        {
-          "name": "scenario_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "scenario_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "assistant_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "assistant_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "test.scenarios": {
-      "params": [
-        {
-          "name": "assistant_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "assistant_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "INT",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
     "test.update": {
       "params": [
         {
@@ -5140,13 +5282,13 @@
         }
       ]
     },
-    "user.bulk-import": {
+    "test.scenario-detail": {
       "params": [
         {
-          "name": "file",
+          "name": "scenario_id",
           "kind": "TyperArgument",
           "opts": [
-            "file"
+            "scenario_id"
           ],
           "secondary_opts": [],
           "required": true,
@@ -5156,28 +5298,15 @@
           "is_flag": false
         },
         {
-          "name": "dry_run",
-          "kind": "TyperOption",
+          "name": "assistant_id",
+          "kind": "TyperArgument",
           "opts": [
-            "--dry-run"
+            "assistant_id"
           ],
           "secondary_opts": [],
-          "required": false,
-          "default": "False",
-          "type": "BOOL",
-          "nargs": 1,
-          "is_flag": true
-        },
-        {
-          "name": "org",
-          "kind": "TyperOption",
-          "opts": [
-            "--org"
-          ],
-          "secondary_opts": [],
-          "required": false,
+          "required": true,
           "default": "None",
-          "type": "STRING",
+          "type": "INT",
           "nargs": 1,
           "is_flag": false
         },
@@ -5197,13 +5326,13 @@
         }
       ]
     },
-    "user.create": {
+    "test.delete-scenario": {
       "params": [
         {
-          "name": "email",
+          "name": "scenario_id",
           "kind": "TyperArgument",
           "opts": [
-            "email"
+            "scenario_id"
           ],
           "secondary_opts": [],
           "required": true,
@@ -5213,114 +5342,15 @@
           "is_flag": false
         },
         {
-          "name": "name",
+          "name": "assistant_id",
           "kind": "TyperArgument",
           "opts": [
-            "name"
+            "assistant_id"
           ],
           "secondary_opts": [],
           "required": true,
           "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "password",
-          "kind": "TyperArgument",
-          "opts": [
-            "password"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "user_type",
-          "kind": "TyperOption",
-          "opts": [
-            "--user-type",
-            "-t"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "creator",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "enabled",
-          "kind": "TyperOption",
-          "opts": [
-            "--enabled"
-          ],
-          "secondary_opts": [
-            "--disabled"
-          ],
-          "required": false,
-          "default": "True",
-          "type": "BOOL",
-          "nargs": 1,
-          "is_flag": true
-        },
-        {
-          "name": "org",
-          "kind": "TyperOption",
-          "opts": [
-            "--org"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "output",
-          "kind": "TyperOption",
-          "opts": [
-            "-o",
-            "--output"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "user.delete": {
-      "params": [
-        {
-          "name": "user_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "user_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        },
-        {
-          "name": "org",
-          "kind": "TyperOption",
-          "opts": [
-            "--org"
-          ],
-          "secondary_opts": [],
-          "required": false,
-          "default": "None",
-          "type": "STRING",
+          "type": "INT",
           "nargs": 1,
           "is_flag": false
         },
@@ -5340,65 +5370,59 @@
         }
       ]
     },
-    "user.disable": {
+    "test.run": {
       "params": [
         {
-          "name": "user_id",
+          "name": "assistant_id",
           "kind": "TyperArgument",
           "opts": [
-            "user_id"
+            "assistant_id"
           ],
           "secondary_opts": [],
           "required": true,
           "default": "None",
-          "type": "STRING",
+          "type": "INT",
           "nargs": 1,
           "is_flag": false
-        }
-      ]
-    },
-    "user.enable": {
-      "params": [
+        },
         {
-          "name": "user_id",
-          "kind": "TyperArgument",
+          "name": "scenario_id",
+          "kind": "TyperOption",
           "opts": [
-            "user_id"
+            "--scenario",
+            "-s"
           ],
           "secondary_opts": [],
-          "required": true,
-          "default": "None",
-          "type": "STRING",
-          "nargs": 1,
-          "is_flag": false
-        }
-      ]
-    },
-    "user.get": {
-      "params": [
-        {
-          "name": "user_id",
-          "kind": "TyperArgument",
-          "opts": [
-            "user_id"
-          ],
-          "secondary_opts": [],
-          "required": true,
+          "required": false,
           "default": "None",
           "type": "STRING",
           "nargs": 1,
           "is_flag": false
         },
         {
-          "name": "org",
+          "name": "bypass",
           "kind": "TyperOption",
           "opts": [
-            "--org"
+            "--bypass",
+            "-b"
           ],
           "secondary_opts": [],
           "required": false,
-          "default": "None",
-          "type": "STRING",
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "timeout",
+          "kind": "TyperOption",
+          "opts": [
+            "--timeout"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "900.0",
+          "type": "<FloatRange x>=1.0>",
           "nargs": 1,
           "is_flag": false
         },
@@ -5418,18 +5442,32 @@
         }
       ]
     },
-    "user.list": {
+    "test.runs": {
       "params": [
         {
-          "name": "org",
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "limit",
           "kind": "TyperOption",
           "opts": [
-            "--org"
+            "--limit",
+            "-l"
           ],
           "secondary_opts": [],
           "required": false,
-          "default": "None",
-          "type": "STRING",
+          "default": "20",
+          "type": "INT",
           "nargs": 1,
           "is_flag": false
         },
@@ -5449,13 +5487,13 @@
         }
       ]
     },
-    "user.reset-password": {
+    "test.run-detail": {
       "params": [
         {
-          "name": "user_id",
+          "name": "run_id",
           "kind": "TyperArgument",
           "opts": [
-            "user_id"
+            "run_id"
           ],
           "secondary_opts": [],
           "required": true,
@@ -5465,13 +5503,27 @@
           "is_flag": false
         },
         {
-          "name": "new_password",
+          "name": "assistant_id",
           "kind": "TyperArgument",
           "opts": [
-            "new_password"
+            "assistant_id"
           ],
           "secondary_opts": [],
           "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
           "default": "None",
           "type": "STRING",
           "nargs": 1,
@@ -5479,13 +5531,13 @@
         }
       ]
     },
-    "user.update": {
+    "test.evaluate": {
       "params": [
         {
-          "name": "user_id",
+          "name": "run_id",
           "kind": "TyperArgument",
           "opts": [
-            "user_id"
+            "run_id"
           ],
           "secondary_opts": [],
           "required": true,
@@ -5495,10 +5547,36 @@
           "is_flag": false
         },
         {
-          "name": "name",
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "verdict",
+          "kind": "TyperArgument",
+          "opts": [
+            "verdict"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "notes",
           "kind": "TyperOption",
           "opts": [
-            "--name",
+            "--notes",
             "-n"
           ],
           "secondary_opts": [],
@@ -5509,24 +5587,316 @@
           "is_flag": false
         },
         {
-          "name": "enabled",
+          "name": "output",
           "kind": "TyperOption",
           "opts": [
-            "--enabled"
+            "-o",
+            "--output"
           ],
-          "secondary_opts": [
-            "--disabled"
-          ],
+          "secondary_opts": [],
           "required": false,
           "default": "None",
-          "type": "BOOL",
+          "type": "STRING",
           "nargs": 1,
-          "is_flag": true
+          "is_flag": false
         }
       ]
     },
-    "whoami": {
+    "test.evaluations": {
       "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "analytics.chats": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "page",
+          "kind": "TyperOption",
+          "opts": [
+            "--page"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "1",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "per_page",
+          "kind": "TyperOption",
+          "opts": [
+            "--per-page"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "20",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "user_id",
+          "kind": "TyperOption",
+          "opts": [
+            "--user-id"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "search",
+          "kind": "TyperOption",
+          "opts": [
+            "--search"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "start_date",
+          "kind": "TyperOption",
+          "opts": [
+            "--start-date"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "end_date",
+          "kind": "TyperOption",
+          "opts": [
+            "--end-date"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "analytics.chat-detail": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "chat_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "chat_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "analytics.stats": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "start_date",
+          "kind": "TyperOption",
+          "opts": [
+            "--start-date"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "end_date",
+          "kind": "TyperOption",
+          "opts": [
+            "--end-date"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "analytics.timeline": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "period",
+          "kind": "TyperOption",
+          "opts": [
+            "--period"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "day",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "start_date",
+          "kind": "TyperOption",
+          "opts": [
+            "--start-date"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "end_date",
+          "kind": "TyperOption",
+          "opts": [
+            "--end-date"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
         {
           "name": "output",
           "kind": "TyperOption",
@@ -5545,10 +5915,65 @@
     }
   },
   "shell_contracts": {
+    "learning-scenario.list": [
+      0,
+      0,
+      ""
+    ],
+    "learning-scenario.get": [
+      1,
+      1,
+      ""
+    ],
+    "learning-scenario.create": [
+      1,
+      1,
+      "content"
+    ],
+    "learning-scenario.update": [
+      1,
+      1,
+      "revision title content"
+    ],
+    "learning-scenario.remove": [
+      1,
+      1,
+      "revision"
+    ],
+    "learning-scenario.duplicate": [
+      1,
+      1,
+      "title"
+    ],
+    "learning-scenario.default": [
+      1,
+      1,
+      ""
+    ],
+    "learning-scenario.selected": [
+      1,
+      1,
+      ""
+    ],
+    "learning-scenario.select": [
+      2,
+      2,
+      ""
+    ],
     "whoami": [
       0,
       0,
       ""
+    ],
+    "glossary": [
+      1,
+      1,
+      ""
+    ],
+    "translate": [
+      0,
+      1,
+      "reason command blocker topic section"
     ],
     "assistant.export": [
       1,
@@ -6019,7 +6444,16 @@
     "user.reset-password": "not exposed: account/organization administration",
     "user.update": "not exposed: account/organization administration",
     "whoami": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
-    "test.update": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations"
+    "test.update": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "learning-scenario.list": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "learning-scenario.get": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "learning-scenario.create": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "learning-scenario.update": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "learning-scenario.remove": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "learning-scenario.duplicate": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "learning-scenario.default": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "learning-scenario.selected": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "learning-scenario.select": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session"
   },
   "shell_only": [
     "assistant.chat",
@@ -6030,9 +6464,11 @@
     "docs.read",
     "frontend-manage.current",
     "frontend-manage.open",
+    "glossary",
     "help",
     "session.rename",
     "skill.list",
-    "skill.load"
+    "skill.load",
+    "translate"
   ]
 }

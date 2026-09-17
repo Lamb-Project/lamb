@@ -10,6 +10,8 @@ from lamb.uploaded_files import owned_document
 class DocumentAwareStaticFiles(StaticFiles):
     async def get_response(self,path,scope):
         parts=PurePosixPath(path).parts
+        if any(part.casefold() == '.learning-scenarios' for part in parts):
+            raise HTTPException(404, 'Document not found')
         private=len(parts)==3 and parts[0].casefold()=='public' and parts[1].isdigit()
         if private:
             credentials=await HTTPBearer(auto_error=False)(Request(scope))

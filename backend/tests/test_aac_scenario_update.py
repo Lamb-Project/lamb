@@ -4,7 +4,7 @@ from types import SimpleNamespace as N
 from unittest.mock import AsyncMock, Mock, patch
 from fastapi import HTTPException
 from lamb.services import test_router as r
-from lamb.aac.liteshell.commands import test_update
+from lamb.aac.liteshell.commands import test_update as command_test_update
 from lamb.aac.liteshell.shell import prepare_command
 from lamb.aac.authorization import ActionAuthorizer
 
@@ -29,7 +29,7 @@ class ScenarioUpdateTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_liteshell_matches_partial_payload_and_empty_clear(self):
         http=N(put=AsyncMock(return_value={'success':True}));ctx=N(http=http)
-        await test_update(ctx,['1','s'],{'expected':''})
+        await command_test_update(ctx,['1','s'],{'expected':''})
         http.put.assert_awaited_once_with('/creator/assistant/1/tests/scenarios/s',json={'expected_behavior':''})
 
     def test_missing_fields_rejected_before_confirmation(self):

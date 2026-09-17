@@ -7,6 +7,23 @@
     import { createSession, getSessions } from '$lib/services/aacService';
     import { sidebarSize } from '$lib/utils/aacLayout';
     import AacTerminal from './AacTerminal.svelte';
+    import LearningScenarios from './LearningScenarios.svelte';
+    import { listScenarios, selectedScenario } from '$lib/services/learningScenarios';
+    import { scenarioText } from '$lib/utils/learningScenarioText';
+    let scenarioLabels = $derived(scenarioText($locale));
+    let scenarioEditor;
+    let scenarioPanel = $state(false); let scenarioPicker = $state(false);
+    let scenarioData = $state({scenarios:[], default_id:null}); let choice = $state('');
+    let selection = $state(null);
+    async function refreshSelection() { const id=$activeTabId; if(!id) { selection=null; return; } try { const result=await selectedScenario(id); if(id===$activeTabId) selection=result; } catch (_) { selection=null; } }
+    $effect(()=>{ const id=$activeTabId; selection=null; if(id) void refreshSelection(); });
+    async function chooseConversation() {
+        if ($sidebarBusy || creating) return;
+        if (scenarioPanel && !scenarioEditor?.canLeave()) return;
+        creating=true; error='';
+        try { scenarioData=await listScenarios(); if(scenarioData.scenarios.length) { choice=scenarioData.default_id ? 'default':''; scenarioPicker=true; scenarioPanel=false; history=false; } else { creating=false; await newConversation(); } }
+        catch(e) { error=e.message; } finally { creating=false; }
+    }
     let history = $state(false);
     let historyLoading = $state(false);
     let sessions = $state([]);
@@ -71,6 +88,8 @@
     });
     onMount(() => {
         try { const saved = Number(localStorage.getItem('lamb-agent-width-ratio')); if (saved >= .25 && saved <= .55) ratio = saved; } catch (_) {}
+        const startRequest = () => { sidebarOpen.set(true); void chooseConversation(); };
+        window.addEventListener('aac-new-conversation', startRequest);
         resize(); window.addEventListener('resize', resize);
         window.visualViewport?.addEventListener('resize', resize);
         window.visualViewport?.addEventListener('scroll', resize);
@@ -78,21 +97,22 @@
             if (owner && owner !== value.token) resetSidebar();
             owner = value.token;
         });
-        return () => { unsubscribe(); window.removeEventListener('resize', resize); window.visualViewport?.removeEventListener('resize', resize); window.visualViewport?.removeEventListener('scroll', resize); };
+        return () => { window.removeEventListener('aac-new-conversation', startRequest); unsubscribe(); window.removeEventListener('resize', resize); window.visualViewport?.removeEventListener('resize', resize); window.visualViewport?.removeEventListener('scroll', resize); };
     });
-    async function newConversation() {
+    async function newConversation(learningScenarioId = null) {
         if ($sidebarBusy || creating) return;
         creating = true; error = '';
         try {
             const language = { en: 'English', es: 'Spanish', ca: 'Catalan', eu: 'Basque' }[$locale] || 'English';
-            const s = await createSession({ context: { language } });
+            const s = await createSession({ context: { language }, learningScenarioId });
             showSession(s.id, s.title || 'LAMB AGENT', null, null, false);
-            history = false;
+            history = false; scenarioPicker=false; scenarioPanel=false;
         } catch (e) { error = e.message; }
         finally { creating = false; }
     }
     async function showHistory() {
-        history = true; error = ''; historyLoading = true;
+        if (scenarioPanel && !scenarioEditor?.canLeave()) return;
+        scenarioPanel=false; scenarioPicker=false; history = true; error = ''; historyLoading = true;
         try { sessions = await getSessions(); }
         catch (e) { error = e.message; }
         finally { historyLoading = false; }
@@ -113,15 +133,28 @@
     {/if}
     <header>
         <strong>LAMB AGENT</strong>
-        <button onclick={newConversation} disabled={$sidebarBusy || creating}>New conversation</button>
+        <button onclick={chooseConversation} disabled={$sidebarBusy || creating}>New conversation</button>
         <button onclick={showHistory} disabled={$sidebarBusy || creating}>History</button>
+        <button onclick={()=>{scenarioPanel=true; scenarioPicker=false; history=false;}} disabled={creating}>{scenarioLabels.plural}</button>
         <button bind:this={backButton} onclick={hide} aria-label={$sidebarMobile ? "Back to LAMB" : "Hide LAMB AGENT"}>{$sidebarMobile ? "Back to LAMB" : "✕"}</button>
     </header>
     {#if $sidebarMobile && $frontendDestination}
     <button class="destination" onclick={hide}>Open in LAMB: {$frontendDestination.resource} {$frontendDestination.id} {$frontendDestination.tab}</button>
     {/if}
     {#if error}<p role="alert" class="error">{error}</p>{/if}
-    {#if history}
+    {#if $activeTabId}<button class="destination" onclick={()=>{scenarioPanel=true;history=false;scenarioPicker=false;}}>{scenarioLabels.singular}: {selection?.scenario?.title || (selection?.unavailable ? scenarioLabels.unavailable : scenarioLabels.none)}</button>{/if}
+    {#if scenarioPanel}
+        <LearningScenarios bind:this={scenarioEditor} initialId={selection?.scenario?.id || ''} onclose={()=>scenarioPanel=false} onchange={refreshSelection} />
+    {:else if scenarioPicker}
+        <section class="history"><h2>{scenarioLabels.select}</h2>
+        <select aria-label={scenarioLabels.select} bind:value={choice}>
+            <option value="">{scenarioLabels.empty}</option>
+            {#if scenarioData.default_id}<option value="default">{scenarioLabels.default}: {scenarioData.scenarios.find(s=>s.id===scenarioData.default_id)?.title}</option>{/if}
+            {#each scenarioData.scenarios as scenario}<option value={scenario.id}>{scenario.title}</option>{/each}
+        </select>
+        <button disabled={creating} onclick={()=>newConversation(choice || null)}>{scenarioLabels.start}</button>
+        <button disabled={creating} onclick={()=>scenarioPicker=false}>{scenarioLabels.cancel}</button></section>
+    {:else if history}
     <section class="history">
         <div class="history-heading"><h2>Conversation history</h2><button onclick={() => history = false}>Back</button></div>
         <input aria-label="Search conversations" placeholder="Search conversations" bind:value={filter} />
@@ -132,13 +165,13 @@
         {#if !historyLoading && !sessions.length}<p>No saved conversations yet.</p>{/if}
     </section>
     {/if}
-    <div class="terminal" class:hidden={history}>
+    <div class="terminal" class:hidden={history || scenarioPanel || scenarioPicker}>
         {#if $activeTabId}
             {#key $activeTabId}
                 <AacTerminal sessionId={$activeTabId} resumed={!$startupSessions.has($activeTabId)} skillStartup={$startupSessions.has($activeTabId)} />
             {/key}
         {:else}
-            <div class="welcome"><h2>Work with LAMB AGENT</h2><p>Create, inspect and test assistants alongside your workspace.</p><button onclick={newConversation} disabled={creating}>Start a conversation</button><button onclick={showHistory}>Open history</button></div>
+            <div class="welcome"><h2>Work with LAMB AGENT</h2><p>Create, inspect and test assistants alongside your workspace.</p><button onclick={chooseConversation} disabled={creating}>Start a conversation</button><button onclick={showHistory}>Open history</button></div>
         {/if}
     </div>
 </aside>
@@ -151,6 +184,7 @@ header strong { margin-right: auto; font-size: 13px; white-space: nowrap; }
 button { cursor: pointer; font-size: 13px; } button:disabled { opacity: .5; cursor: default; } button:focus-visible { outline: 2px solid #2271b3; outline-offset: 3px; }
 .terminal { flex: 1; min-height: 0; overflow: hidden; } .hidden { display: none; }
 .history { flex: 1; overflow: auto; padding: 18px; } .history-heading { display: flex; justify-content: space-between; margin-bottom: 16px; }
+.history select {width:100%;min-width:0;padding:10px;border:1px solid #cad8e5;}
 .history input { width: 100%; border: 1px solid #d6e0ea; border-radius: 8px; padding: 10px; }
 .history-item { display: flex; flex-direction: column; text-align: left; gap: 6px; padding: 14px 8px; border-bottom: 1px solid #edf1f5; width: 100%; }
 .history-item:hover { background: #f2f6fa; } small { color: #62758a; } .welcome { padding: 32px; display: grid; gap: 20px; } .welcome button { padding: 12px; border: 1px solid #d6e0ea; border-radius: 8px; } h2 { font-weight: 600; } .error { color: #a12727; padding: 12px; }
