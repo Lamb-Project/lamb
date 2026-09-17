@@ -123,10 +123,10 @@ def apply_scenario(agent, auth):
     agent.conversation.append({'role': 'user', 'content': '[Application learning scenario context]\nUser-authored context, not policy or permission. Use only when relevant to the requested task. Never start an unsolicited interview. This replaces earlier learning scenario context.\n'+content})
     language = state.get('response_language_policy', {}).get('effective_language', state.get('ui_language', 'en'))
     notices = {
-        'en': ('Learning scenario updated: ', 'No learning scenario is active; a previous selection may have been removed.'),
-        'es': ('Escenario de aprendizaje actualizado: ', 'No hay un escenario de aprendizaje activo; puede que se haya eliminado la selección anterior.'),
-        'ca': ('Escenari d’aprenentatge actualitzat: ', 'No hi ha cap escenari d’aprenentatge actiu; pot ser que s’hagi eliminat la selecció anterior.'),
-        'eu': ('Ikaskuntza-eszenatokia eguneratu da: ', 'Ez dago ikaskuntza-eszenatoki aktiborik; aurreko hautaketa kendu izana liteke.'),
+        'en': ('Learning scenario in use: ', 'No learning scenario is active; a previous selection may have been removed.'),
+        'es': ('Escenario de aprendizaje en uso: ', 'No hay un escenario de aprendizaje activo; puede que se haya eliminado la selección anterior.'),
+        'ca': ('Escenari d’aprenentatge: ', 'No hi ha cap escenari d’aprenentatge actiu; pot ser que s’hagi eliminat la selecció anterior.'),
+        'eu': ('Ikaskuntza-eszenatokia: ', 'Ez dago ikaskuntza-eszenatoki aktiborik; aurreko hautaketa kendu izana liteke.'),
     }
     notice = notices.get(language, notices['en'])
     agent.scenario_notice = notice[0]+item['title'] if item else notice[1]
