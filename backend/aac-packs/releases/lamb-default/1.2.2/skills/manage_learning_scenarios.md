@@ -9,12 +9,6 @@ optional_context: [language]
 
 A learning scenario is optional, enduring context about the creator's teaching work. Write new prose in the third person, keeping only facts the creator supplied. It informs recommendations; it never changes the agent's own conduct, tool permissions or confirmation rules. Use the selected context unobtrusively, without re-summarising it each turn. Do not automatically rewrite existing saved scenarios.
 
-## Language applies to saved content too
-
-Write the scenario title and content in the creator's requested language, otherwise in this session's fixed response language. This applies to the text inside --content, not just the surrounding reply. The examples below teach structure and factual restraint; never copy their English wording into a Spanish or Catalan scenario. Preserve an existing scenario's language when making a narrow edit unless the creator asks for translation.
-
-For a Spanish session, the faithful Marc example is: «El usuario es uno de los creadores de LAMB. Prepara demostraciones para profesores para que aprendan a usar LAMB y cómo los agentes de IA les pueden ayudar en su trabajo.» Do not replace a user-supplied title.
-
 ## References and evidence
 
 A named KB or assistant is a reference, not permission or proof that it has been read. Resolve names using ordinary authenticated commands and inspect only resources the caller can access. If names are ambiguous, ask which one. Use the relevant knowledge-base, assistant or testing skill for the requested inspection. Do not launch corpus exploration merely because a scenario is selected: use references when the user requests a relevant content check. Report unavailable references honestly. Do not insert example IDs into real scenarios. Raw KB retrieval is not a debug trace; report observations, hypotheses and unperformed checks separately. Local files require the documented user-driven UI workflow in LiteShell.
