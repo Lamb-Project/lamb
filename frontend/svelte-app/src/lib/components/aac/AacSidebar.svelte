@@ -7,21 +7,28 @@
     import { createSession, getSessions } from '$lib/services/aacService';
     import { sidebarSize } from '$lib/utils/aacLayout';
     import AacTerminal from './AacTerminal.svelte';
-    import LearningScenarios from './LearningScenarios.svelte';
+    import { goto } from '$app/navigation';
+    import { base } from '$app/paths';
     import { listScenarios, selectedScenario } from '$lib/services/learningScenarios';
     import { scenarioText } from '$lib/utils/learningScenarioText';
     let scenarioLabels = $derived(scenarioText($locale));
-    let scenarioEditor;
-    let scenarioPanel = $state(false); let scenarioPicker = $state(false);
+    let scenarioPicker = $state(false);
     let scenarioData = $state({scenarios:[], default_id:null}); let choice = $state('');
     let selection = $state(null);
     async function refreshSelection() { const id=$activeTabId; if(!id) { selection=null; return; } try { const result=await selectedScenario(id); if(id===$activeTabId) selection=result; } catch (_) { selection=null; } }
     $effect(()=>{ const id=$activeTabId; selection=null; if(id) void refreshSelection(); });
+    async function openScenarios(id = null) {
+        error='';
+        try {
+            await goto(`${base}/learning-scenarios${id ? `?id=${encodeURIComponent(id)}&aacTab=view` : ''}`);
+            history=false; scenarioPicker=false;
+            if ($sidebarMobile) hide();
+        } catch(e) { error=e.message; }
+    }
     async function chooseConversation() {
         if ($sidebarBusy || creating) return;
-        if (scenarioPanel && !scenarioEditor?.canLeave()) return;
         creating=true; error='';
-        try { scenarioData=await listScenarios(); if(scenarioData.scenarios.length) { choice=scenarioData.default_id ? 'default':''; scenarioPicker=true; scenarioPanel=false; history=false; } else { creating=false; await newConversation(); } }
+        try { scenarioData=await listScenarios(); if(scenarioData.scenarios.length) { choice=scenarioData.default_id ? 'default':''; scenarioPicker=true; history=false; } else { creating=false; await newConversation(); } }
         catch(e) { error=e.message; } finally { creating=false; }
     }
     let history = $state(false);
@@ -93,11 +100,13 @@
         resize(); window.addEventListener('resize', resize);
         window.visualViewport?.addEventListener('resize', resize);
         window.visualViewport?.addEventListener('scroll', resize);
+        let wasBusy=false;
+        const stopBusy=sidebarBusy.subscribe(value=>{if(wasBusy && !value) void refreshSelection(); wasBusy=value;});
         const unsubscribe = user.subscribe(value => {
             if (owner && owner !== value.token) resetSidebar();
             owner = value.token;
         });
-        return () => { window.removeEventListener('aac-new-conversation', startRequest); unsubscribe(); window.removeEventListener('resize', resize); window.visualViewport?.removeEventListener('resize', resize); window.visualViewport?.removeEventListener('scroll', resize); };
+        return () => { stopBusy(); window.removeEventListener('aac-new-conversation', startRequest); unsubscribe(); window.removeEventListener('resize', resize); window.visualViewport?.removeEventListener('resize', resize); window.visualViewport?.removeEventListener('scroll', resize); };
     });
     async function newConversation(learningScenarioId = null) {
         if ($sidebarBusy || creating) return;
@@ -106,13 +115,12 @@
             const language = { en: 'English', es: 'Spanish', ca: 'Catalan', eu: 'Basque' }[$locale] || 'English';
             const s = await createSession({ context: { language }, learningScenarioId });
             showSession(s.id, s.title || 'LAMB AGENT', null, null, false);
-            history = false; scenarioPicker=false; scenarioPanel=false;
+            history = false; scenarioPicker=false;
         } catch (e) { error = e.message; }
         finally { creating = false; }
     }
     async function showHistory() {
-        if (scenarioPanel && !scenarioEditor?.canLeave()) return;
-        scenarioPanel=false; scenarioPicker=false; history = true; error = ''; historyLoading = true;
+        scenarioPicker=false; history = true; error = ''; historyLoading = true;
         try { sessions = await getSessions(); }
         catch (e) { error = e.message; }
         finally { historyLoading = false; }
@@ -135,17 +143,15 @@
         <strong>LAMB AGENT</strong>
         <button onclick={chooseConversation} disabled={$sidebarBusy || creating}>New conversation</button>
         <button onclick={showHistory} disabled={$sidebarBusy || creating}>History</button>
-        <button onclick={()=>{scenarioPanel=true; scenarioPicker=false; history=false;}} disabled={creating}>{scenarioLabels.plural}</button>
+        <button onclick={()=>openScenarios()} disabled={creating}>{scenarioLabels.plural}</button>
         <button bind:this={backButton} onclick={hide} aria-label={$sidebarMobile ? "Back to LAMB" : "Hide LAMB AGENT"}>{$sidebarMobile ? "Back to LAMB" : "✕"}</button>
     </header>
     {#if $sidebarMobile && $frontendDestination}
-    <button class="destination" onclick={hide}>Open in LAMB: {$frontendDestination.resource} {$frontendDestination.id} {$frontendDestination.tab}</button>
+    <button class="destination" onclick={hide}>{#if $frontendDestination.resource === 'learning-scenario'}{scenarioLabels.singular}: {selection?.scenario?.title || ''}{:else}Open in LAMB: {$frontendDestination.resource} {$frontendDestination.id} {$frontendDestination.tab}{/if}</button>
     {/if}
     {#if error}<p role="alert" class="error">{error}</p>{/if}
-    {#if $activeTabId && !scenarioPicker}<button class="destination" onclick={()=>{scenarioPanel=true;history=false;scenarioPicker=false;}}>{scenarioLabels.singular}: {selection?.scenario?.title || (selection?.unavailable ? scenarioLabels.unavailable : scenarioLabels.none)}</button>{/if}
-    {#if scenarioPanel}
-        <LearningScenarios bind:this={scenarioEditor} initialId={selection?.scenario?.id || ''} onclose={()=>scenarioPanel=false} onchange={refreshSelection} />
-    {:else if scenarioPicker}
+    {#if $activeTabId && !scenarioPicker}<button class="destination" onclick={()=>openScenarios(selection?.scenario?.id)}>{scenarioLabels.singular}: {selection?.scenario?.title || (selection?.unavailable ? scenarioLabels.unavailable : scenarioLabels.none)}</button>{/if}
+    {#if scenarioPicker}
         <section class="history scenario-picker"><h2>{scenarioLabels.select}</h2>
         <select aria-label={scenarioLabels.select} bind:value={choice}>
             <option value="">{scenarioLabels.empty}</option>
@@ -165,7 +171,7 @@
         {#if !historyLoading && !sessions.length}<p>No saved conversations yet.</p>{/if}
     </section>
     {/if}
-    <div class="terminal" class:hidden={history || scenarioPanel || scenarioPicker}>
+    <div class="terminal" class:hidden={history || scenarioPicker}>
         {#if $activeTabId}
             {#key $activeTabId}
                 <AacTerminal sessionId={$activeTabId} resumed={!$startupSessions.has($activeTabId)} skillStartup={$startupSessions.has($activeTabId)} />

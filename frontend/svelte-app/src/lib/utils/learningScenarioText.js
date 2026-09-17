@@ -5,4 +5,10 @@ const text = {
  eu: ['Ikaskuntza-eszenatokiak','Ikaskuntza-eszenatokia','Sortu','Izenburua','Edukia','Gorde','Utzi','Editatu','Kendu','Bikoiztu','Lehenetsi','Lehenetsia kendu','Eszenatoki lehenetsia','Eszenatoki hutsa','Hautatu eszenatokia','Hasi elkarrizketa','Atzera','Ez dago ikaskuntza-eszenatokirik hautatuta','Eszenatokia ez dago erabilgarri','Eszenatoki hau kendu? Ez da elkarrizketa berrietarako erabilgarri egongo. Txataren historia gordeko da.','Kopia','Zure lanerako testuinguru iraunkorra: hartzaileak, helburua, aurretiko ezagutzak eta mugak. LAMB AGENTek laguntzaileak, edukiak eta probak egokitzeko erabiltzen du.','Agenteari laguntza eskatu','Itxi','Gorde gabeko aldaketak daude. Baztertu?']
 };
 const keys = ['plural','singular','create','title','content','save','cancel','edit','remove','duplicate','setDefault','clearDefault','default','empty','select','start','back','none','unavailable','confirmRemove','copy','hint','help','close','discard'];
-export function scenarioText(locale) { return Object.fromEntries(keys.map((k,i)=>[k,(text[locale]||text.en)[i]])); }
+const workspace = {
+ en: {editWithAgent:'Edit with agent', remoteChanged:'A newer revision was saved. Your unsaved edits are preserved. Reload to review it before saving.', reload:'Reload saved version'},
+ es: {editWithAgent:'Editar con el agente', remoteChanged:'Se ha guardado una versión más reciente. Tus cambios sin guardar se conservan. Recarga para revisarla antes de guardar.', reload:'Recargar versión guardada'},
+ ca: {editWithAgent:'Editar amb l’agent', remoteChanged:'S’ha desat una versió més recent. Es conserven els teus canvis sense desar. Recarrega-la per revisar-la abans de desar.', reload:'Recarregar la versió desada'},
+ eu: {editWithAgent:'Agentearekin editatu', remoteChanged:'Bertsio berriago bat gorde da. Gorde gabeko aldaketak mantendu dira. Kargatu berriro gorde aurretik berrikusteko.', reload:'Gordetako bertsioa berriz kargatu'}
+};
+export function scenarioText(locale) { return {...Object.fromEntries(keys.map((k,i)=>[k,(text[locale]||text.en)[i]])), ...(workspace[locale]||workspace.en)}; }

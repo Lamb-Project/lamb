@@ -1,4 +1,5 @@
 <script>
+  import { scenarioText } from '$lib/utils/learningScenarioText';
   import { sidebarOpen } from '$lib/stores/aacStore.svelte';
   import { user } from '$lib/stores/userStore';
   import { clearCurrentSession, ensureProfileLoaded } from '$lib/session/sessionManager';
@@ -91,7 +92,7 @@
         </div>
         
         <!-- Navigation links -->
-        <div class="hidden sm:ml-4 sm:flex sm:items-center sm:gap-1">
+        <div class="hidden sm:ml-4 sm:flex sm:flex-wrap sm:items-center sm:gap-1">
           
           <!-- Restore dynamic class based on $page.url.pathname and $user -->
           <!-- Restore: aria-disabled={!$user.isLoggedIn} -->
@@ -103,6 +104,11 @@
             {localeLoaded ? $_('assistants.title') : 'Learning Assistants'}
           </a>
 
+
+          {#if $user.isLoggedIn}
+          <a href="{base}/learning-scenarios" aria-current={$page.url.pathname === base + '/learning-scenarios' ? 'page' : undefined}
+             class="inline-flex items-center px-2 pt-1 border-b-2 text-sm font-medium whitespace-nowrap {$page.url.pathname === base + '/learning-scenarios' ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}">{scenarioText($locale).plural}</a>
+          {/if}
 
           {#if $user.isLoggedIn && $user.data?.role === 'admin'} <!-- System Admin link -->
           <a
@@ -172,6 +178,9 @@
         </div>
       </div>
       
+      {#if $user.isLoggedIn}
+      <a href="{base}/learning-scenarios" class="sm:hidden order-last w-full py-2 text-sm font-medium text-[#173f64]" aria-current={$page.url.pathname === base + '/learning-scenarios' ? 'page' : undefined}>{scenarioText($locale).plural}</a>
+      {/if}
       <!-- User info and Language selector section -->
       <div class="flex items-center gap-3">
         {#if $user.isLoggedIn}
