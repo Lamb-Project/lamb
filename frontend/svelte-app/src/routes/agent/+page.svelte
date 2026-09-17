@@ -10,8 +10,8 @@
         const id = $page.url.searchParams.get('session');
         if ($page.url.searchParams.get('new') === 'true' && !$sidebarBusy) {
             const language = { en: 'English', es: 'Spanish', ca: 'Catalan', eu: 'Basque' }[$locale] || 'English';
-            const s = await createSession({ skill: 'about-lamb', context: { language } });
-            showSession(s.id, s.title, null, 'about-lamb', true);
+            const s = await createSession({ context: { language } });
+            showSession(s.id, s.title, null, null, false);
         } else if (id) showSession(id);
         else sidebarOpen.set(true);
         goto(`${base}/assistants`, { replaceState: true });

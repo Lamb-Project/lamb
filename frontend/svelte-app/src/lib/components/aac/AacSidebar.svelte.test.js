@@ -42,6 +42,9 @@ describe('persistent AAC sidebar', () => {
         await fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
         await waitFor(() => expect(get(activeTabId)).toBe('new-session'));
         expect(createSession).toHaveBeenCalledOnce();
+        expect(createSession.mock.calls[0][0].skill).toBeUndefined();
+        await waitFor(() => expect(screen.getByText(/I’m LAMB AGENT/)).not.toBeNull());
+        expect(sendMessageStream).not.toHaveBeenCalled();
     });
     it('opens and resumes history inside the sidebar', async () => {
         getSessions.mockResolvedValue([{ id: 'saved', title: 'My saved conversation' }]);

@@ -5,6 +5,7 @@
 	import { splitCanvasContent, canvasFromMessages } from '$lib/utils/aacCanvas.js';
 	import { sendMessageStream, getSession, sendMessage } from '$lib/services/aacService';
 	import { renderMarkdownWithMath } from '$lib/utils/renderMarkdown.js';
+    import { agentWelcome } from '$lib/utils/aacWelcome.js';
 
 	// Abort any in-flight stream when the component unmounts so the fetch
 	// and getReader() loop stop running in the background (#352, H3).
@@ -133,6 +134,9 @@
 				).map(m => ({ role: m.role, content: m.content || '' }));
 				if (conv.length > 0) {
 					messages = conv;
+				} else {
+                    const language = session.skill_info?.response_language_policy?.effective_language || session.skill_info?.ui_language || 'en';
+                    messages = [{ role: 'assistant', content: agentWelcome(language) }];
 				}
 			} catch (e) {
 				if (!isMounted) return;

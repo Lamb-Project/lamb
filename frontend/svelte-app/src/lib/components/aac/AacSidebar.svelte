@@ -85,8 +85,8 @@
         creating = true; error = '';
         try {
             const language = { en: 'English', es: 'Spanish', ca: 'Catalan', eu: 'Basque' }[$locale] || 'English';
-            const s = await createSession({ skill: 'about-lamb', context: { language } });
-            showSession(s.id, s.title || 'LAMB Helper', null, 'about-lamb', true);
+            const s = await createSession({ context: { language } });
+            showSession(s.id, s.title || 'LAMB AGENT', null, null, false);
             history = false;
         } catch (e) { error = e.message; }
         finally { creating = false; }
