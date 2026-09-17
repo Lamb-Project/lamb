@@ -97,6 +97,9 @@ describe('persistent AAC sidebar', () => {
         progress({status:'thinking'});
         await waitFor(()=>expect(screen.getByText('Tool reported a problem: Reading assistant config')).not.toBeNull());
         expect(screen.getByRole('status').textContent).toContain('Reviewing the tool result');
+        progress({status:'tool_done',command:'Updating assistant',success:true,awaiting_user_confirmation:true});
+        await waitFor(()=>expect(screen.getByText('Awaiting your approval; not executed: Updating assistant')).not.toBeNull());
+        expect(screen.queryByText('Tool completed: Updating assistant')).toBeNull();
         finish();
         await waitFor(()=>expect(screen.getByRole('button',{name:'Send'})).not.toBeNull());
         expect(screen.queryByText('Tool reported a problem: Reading assistant config')).toBeNull();

@@ -362,7 +362,11 @@ class AgentLoop(SkillRouting):
                 delta = chunk.choices[0].delta
                 if delta.content:
                     text += delta.content
-                    yield delta.content
+                    # A tool-bearing message can claim success before its command
+                    # is even authorized. Hold prose until we know whether this
+                    # message is an answer or a tool proposal.
+                    if not tools_enabled:
+                        yield delta.content
                 for part in (getattr(delta, "tool_calls", None) or []):
                     index = getattr(part, "index", None)
                     if index is not None:
@@ -428,6 +432,14 @@ class AgentLoop(SkillRouting):
         """Shared legacy turn control; transport does not change tool semantics."""
         tool_rounds = 0
         while True:
+            if self.pending_action:
+                from lamb.aac.language import confirmation_fallback, translation_confirmation, documentation_fallback_notice
+                text = confirmation_fallback(self) + documentation_fallback_notice(self) + translation_confirmation(self)
+                self.conversation.append({"role": "assistant", "content": text})
+                if self.session_logger:
+                    self.session_logger.log_agent_response(text)
+                yield text
+                return
             yield {"status": "thinking"}
             tools_enabled = tool_rounds < self.max_tool_rounds and not self.pending_action
             conversation = self.conversation
@@ -447,7 +459,9 @@ class AgentLoop(SkillRouting):
             calls = message.pop("tool_calls", [])
             if calls and tools_enabled:
                 tool_rounds += 1
-                self.conversation.append({**message, "tool_calls": calls})
+                # Retain calls/results for the provider, without retaining an
+                # unverified tool preamble as if it were a completed action.
+                self.conversation.append({**message, "content": "", "tool_calls": calls})
                 waiting = False
                 for call in calls:
                     tc = SimpleNamespace(id=call["id"], function=SimpleNamespace(**call["function"]))
@@ -460,7 +474,8 @@ class AgentLoop(SkillRouting):
                     waiting = waiting or bool(result.get("awaiting_user_confirmation") or result.get("skill_loaded"))
                     self.conversation.append({"role": "tool", "tool_call_id": tc.id,
                         "content": json.dumps(result, default=str, ensure_ascii=False)})
-                    yield {"status": "tool_done", "command": command, "success": result.get("success", False)}
+                    yield {"status": "tool_done", "command": command, "success": result.get("success", False),
+                           "awaiting_user_confirmation": bool(result.get("awaiting_user_confirmation"))}
                 if tool_rounds >= self.max_tool_rounds:
                     self.conversation.append({"role": "user", "content":
                         "[System: Maximum tool rounds reached. Respond using the results already available. No further tools are allowed this turn.]"})
@@ -475,7 +490,7 @@ class AgentLoop(SkillRouting):
                 else:
                     text = "This turn reached its tool limit. No additional action was executed. Ask me to continue from the saved results."
                 yield text
-            elif not streaming:
+            elif not streaming or tools_enabled:
                 yield text
             from lamb.aac.language import translation_confirmation, documentation_fallback_notice
             interpretation_notice = documentation_fallback_notice(self) + translation_confirmation(self)

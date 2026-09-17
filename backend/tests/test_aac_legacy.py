@@ -142,7 +142,7 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
             await turn(a,streaming)
             self.assertEqual(a.pending_action['command'],'lamb assistant create one')
             self.assertEqual(len([x for x in a.conversation if x['role']=='tool']),2)
-            self.assertNotIn('tools',p.calls[-1])
+            self.assertEqual(len(p.calls), 1)  # Application renders the pending approval.
             s.execute.assert_not_awaited()
 
     async def test_confirmation_languages_execute_once(self):

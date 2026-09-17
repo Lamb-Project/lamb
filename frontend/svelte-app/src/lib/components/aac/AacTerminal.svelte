@@ -54,7 +54,7 @@
         } else if (event.status === 'tool') {
             statusText = event.command || 'Using a tool…';
         } else if (event.status === 'tool_done') {
-            lastActivity = `${event.success ? 'Tool completed' : 'Tool reported a problem'}: ${event.command || 'Command'}`;
+            lastActivity = `${event.awaiting_user_confirmation ? 'Awaiting your approval; not executed' : event.success ? 'Tool completed' : 'Tool reported a problem'}: ${event.command || 'Command'}`;
             statusText = 'Reviewing the tool result…';
         } else if (event.status === 'responding') {
             statusText = '';
