@@ -142,18 +142,18 @@
     <button class="destination" onclick={hide}>Open in LAMB: {$frontendDestination.resource} {$frontendDestination.id} {$frontendDestination.tab}</button>
     {/if}
     {#if error}<p role="alert" class="error">{error}</p>{/if}
-    {#if $activeTabId}<button class="destination" onclick={()=>{scenarioPanel=true;history=false;scenarioPicker=false;}}>{scenarioLabels.singular}: {selection?.scenario?.title || (selection?.unavailable ? scenarioLabels.unavailable : scenarioLabels.none)}</button>{/if}
+    {#if $activeTabId && !scenarioPicker}<button class="destination" onclick={()=>{scenarioPanel=true;history=false;scenarioPicker=false;}}>{scenarioLabels.singular}: {selection?.scenario?.title || (selection?.unavailable ? scenarioLabels.unavailable : scenarioLabels.none)}</button>{/if}
     {#if scenarioPanel}
         <LearningScenarios bind:this={scenarioEditor} initialId={selection?.scenario?.id || ''} onclose={()=>scenarioPanel=false} onchange={refreshSelection} />
     {:else if scenarioPicker}
-        <section class="history"><h2>{scenarioLabels.select}</h2>
+        <section class="history scenario-picker"><h2>{scenarioLabels.select}</h2>
         <select aria-label={scenarioLabels.select} bind:value={choice}>
             <option value="">{scenarioLabels.empty}</option>
             {#if scenarioData.default_id}<option value="default">{scenarioLabels.default}: {scenarioData.scenarios.find(s=>s.id===scenarioData.default_id)?.title}</option>{/if}
             {#each scenarioData.scenarios as scenario}<option value={scenario.id}>{scenario.title}</option>{/each}
         </select>
-        <button disabled={creating} onclick={()=>newConversation(choice || null)}>{scenarioLabels.start}</button>
-        <button disabled={creating} onclick={()=>scenarioPicker=false}>{scenarioLabels.cancel}</button></section>
+        <div class="scenario-actions"><button class="scenario-start" disabled={creating} onclick={()=>newConversation(choice || null)}>{scenarioLabels.start}</button>
+        <button class="scenario-cancel" disabled={creating} onclick={()=>scenarioPicker=false}>{scenarioLabels.cancel}</button></div></section>
     {:else if history}
     <section class="history">
         <div class="history-heading"><h2>Conversation history</h2><button onclick={() => history = false}>Back</button></div>
@@ -184,6 +184,11 @@ header strong { margin-right: auto; font-size: 13px; white-space: nowrap; }
 button { cursor: pointer; font-size: 13px; } button:disabled { opacity: .5; cursor: default; } button:focus-visible { outline: 2px solid #2271b3; outline-offset: 3px; }
 .terminal { flex: 1; min-height: 0; overflow: hidden; } .hidden { display: none; }
 .history { flex: 1; overflow: auto; padding: 18px; } .history-heading { display: flex; justify-content: space-between; margin-bottom: 16px; }
+.scenario-picker h2 {margin-bottom:12px;}
+.scenario-actions {display:flex;flex-wrap:wrap;gap:12px;margin-top:20px;}
+.scenario-actions button {min-height:44px;padding:10px 18px;border-radius:8px;font-weight:600;}
+.scenario-start {background:#173f64;color:white;border:1px solid #173f64;}
+.scenario-cancel {background:white;color:#173f64;border:1px solid #94a3b8;}
 .history select {width:100%;min-width:0;padding:10px;border:1px solid #cad8e5;}
 .history input { width: 100%; border: 1px solid #d6e0ea; border-radius: 8px; padding: 10px; }
 .history-item { display: flex; flex-direction: column; text-align: left; gap: 6px; padding: 14px 8px; border-bottom: 1px solid #edf1f5; width: 100%; }
