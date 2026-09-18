@@ -24,7 +24,7 @@ RESOURCE_READS={
     'workshop.grades':('workshop_id','workshop'),
 }
 SCOPED_READS=COURSE_READS | set(RESOURCE_READS) | {'assign.submissions','assign.grades','forum.posts',
-    'course.module','user.get','user.list','badge.user','calendar.events'}
+    'course.module','user.get','user.list','badge.user','calendar.events','quiz.review','file.list'}
 
 
 def execute_scoped_read(client,key,params,*,owner_moodle_id,context):
@@ -77,12 +77,27 @@ def execute_scoped_read(client,key,params,*,owner_moodle_id,context):
     if key=='enrol.list-users':
         users=plain(list(scope.class_roster(course).values()))
         return [u for u in users if not params['role'] or any(r.get('shortname')==params['role'] for r in u['roles'])]
-    if key in RESOURCE_READS or key in {'assign.submissions','assign.grades','forum.posts','course.module'}:
+    if key in RESOURCE_READS or key in {'assign.submissions','assign.grades','forum.posts','course.module','quiz.review','file.list'}:
         contents=CourseService(client).get_contents(course)
         modules=[module for section in contents for module in section.modules]
         def owns(instance,module_type):
             return any(m.get('modname')==module_type and int(m.get('instance',0))==int(instance) for m in modules)
-        if key in RESOURCE_READS:
+        if key=='quiz.review':
+            proof=context.get('quiz_attempts',{}).get(str(params['attempt_id']))
+            if not proof or proof['course']!=course:
+                raise PermissionError('List quiz attempts for the enrolled user before reviewing this attempt')
+            if not owns(proof['quiz'],'quiz'):
+                raise PermissionError('Moodle quiz is outside the selected instructor course')
+            scope.require_member(course,proof['user'])
+            from moodle_cli.services.quiz import QuizService
+            attempts=QuizService(client).get_attempts(proof['quiz'],proof['user'])
+            if not any(a.id==params['attempt_id'] and a.quiz==proof['quiz'] and a.userid==proof['user'] for a in attempts):
+                raise PermissionError('Moodle attempt no longer belongs to the verified quiz and user')
+        elif key=='file.list':
+            module=next((m for m in modules if m.get('contextid')==params['contextid']),None)
+            if not module or params['component']!='mod_'+module['modname'] or params['filearea'] not in {'intro','content'}:
+                raise PermissionError('File listing is limited to content or intro files in the selected course modules')
+        elif key in RESOURCE_READS:
             field,kind=RESOURCE_READS[key]
             if not owns(params[field],kind):raise PermissionError('Moodle activity is outside the selected instructor course')
         elif key in {'assign.submissions','assign.grades'}:
@@ -100,4 +115,11 @@ def execute_scoped_read(client,key,params,*,owner_moodle_id,context):
                 if any((d.discussion or d.id)==params['discussion_id'] for d in discussions):
                     found=True;break
             if not found:raise PermissionError('Moodle discussion is outside the selected instructor course')
-    return execute_read(client,key,params,owner_moodle_id=owner_moodle_id)
+    result=execute_read(client,key,params,owner_moodle_id=owner_moodle_id)
+    if key=='quiz.attempts':
+        user=params.get('user_id') if params.get('user_id') is not None else owner_moodle_id
+        proofs=context.setdefault('quiz_attempts',{})
+        for attempt in result:
+            if attempt['quiz']==params['quiz_id'] and attempt['userid']==user:
+                proofs[str(attempt['id'])]={'course':course,'quiz':params['quiz_id'],'user':user}
+    return result
