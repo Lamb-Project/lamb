@@ -662,7 +662,10 @@ class AgentLoop(SkillRouting):
             # Execute the queued command
             self.pending_action = None
             try:
-                result = await self.shell.execute(action["command"])
+                if (action.get("action_key") or "").startswith("moodle."):
+                    result = await self.shell.execute(action["command"], confirmed=True)
+                else:
+                    result = await self.shell.execute(action["command"])
             except BaseException:
                 self._record_interrupted(action["command"], action.get("action_key"))
                 self.conversation.append({"role": "user", "content": user_message})

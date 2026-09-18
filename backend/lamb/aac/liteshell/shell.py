@@ -286,7 +286,7 @@ class LiteShell:
             await self._http_client.close()
             self._http_client = None
 
-    async def execute(self, command_str: str) -> ShellResult:
+    async def execute(self, command_str: str, *, confirmed: bool = False) -> ShellResult:
         """Parse and execute a CLI-like command string.
 
         Args:
@@ -297,7 +297,7 @@ class LiteShell:
         """
         start = time.monotonic()
         try:
-            result = await self._dispatch(command_str)
+            result = await self._dispatch(command_str, confirmed=confirmed)
             result.command = command_str
             result.elapsed_ms = (time.monotonic() - start) * 1000
         except Exception as e:
@@ -311,7 +311,7 @@ class LiteShell:
         self.history.append(result)
         return result
 
-    async def _dispatch(self, command_str: str) -> ShellResult:
+    async def _dispatch(self, command_str: str, *, confirmed: bool = False) -> ShellResult:
         key, args, kwargs, help_requested = prepare_command(command_str, self.allowlist)
         if self.allowed_commands is not None and key not in self.allowed_commands:
             raise ValueError('Command is outside your role; ask the appropriate administrator')
@@ -319,7 +319,7 @@ class LiteShell:
             if self.moodle is None:
                 raise ValueError('Moodle connector is unavailable in this conversation')
             import asyncio
-            data=await asyncio.to_thread(self.moodle.execute,key.removeprefix('moodle.'),kwargs)
+            data=await asyncio.to_thread(self.moodle.execute,key.removeprefix('moodle.'),kwargs,confirmed=confirmed)
             return ShellResult(success=True,data=data)
         handler = COMMAND_REGISTRY[key]
         if help_requested:
