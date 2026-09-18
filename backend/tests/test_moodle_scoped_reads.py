@@ -44,6 +44,7 @@ def test_select_course_then_read_owned_discussion_and_assignment(stores):
         assert result.success,result.error
         assert result.data[0]['userid']==80
     asyncio.run(run())
+    assert 'core_course_get_courses' not in {fn for fn,_ in calls}
 
 
 @respx.mock

@@ -69,6 +69,7 @@ def execute_scoped_read(client,key,params,*,owner_moodle_id,context):
         params['course_id']=(course,)
     # Store only a verified course selection. Every later command checks it again.
     context['course_id']=course
+    if key=='course.get': return plain(scope.own_courses()[course])
     if params.get('user_id') is not None:
         scope.require_member(course,params['user_id'])
     for user in params.get('user_ids',()): scope.require_member(course,user)

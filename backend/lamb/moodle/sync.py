@@ -18,7 +18,7 @@ def sync_course(client, cache, course_id, section=None):
     data={}
     for name in selected:
         if name=='course':
-            data[name]=plain(CourseService(client).get_course(course_id))
+            data[name]=plain(scope.own_courses()[course_id])
         elif name=='forums':
             service=ForumService(client)
             forums=plain(service.list_forums(course_id))
