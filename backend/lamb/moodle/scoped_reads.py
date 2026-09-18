@@ -24,12 +24,33 @@ RESOURCE_READS={
     'workshop.grades':('workshop_id','workshop'),
 }
 SCOPED_READS=COURSE_READS | set(RESOURCE_READS) | {'assign.submissions','assign.grades','forum.posts',
-    'course.module','user.get','user.list'}
+    'course.module','user.get','user.list','badge.user','calendar.events'}
 
 
 def execute_scoped_read(client,key,params,*,owner_moodle_id,context):
     scope=MoodleScope(client,owner_moodle_id)
     params=dict(params)
+    if key=='badge.user':
+        user=params['user_id'] if params['user_id'] is not None else owner_moodle_id
+        course=params['course_id']
+        if user != owner_moodle_id:
+            course=course or context.get('course_id')
+            if not course: raise PermissionError('Select an instructor course before reading another user’s badges')
+            scope.require_member(course,user)
+        elif course is not None and int(course) not in scope.own_courses():
+            raise PermissionError('Moodle course is outside your enrolment')
+        params.update(user_id=user,course_id=course)
+        return execute_read(client,key,params,owner_moodle_id=owner_moodle_id)
+    if key=='calendar.events':
+        requested=params['course_id']
+        if requested:
+            courses=[scope.require_teacher(course) for course in requested]
+        else:
+            courses=list(scope.own_courses())
+        # An empty list must not mean all site courses to the server. The current
+        # user's personal/site events are still allowed, then filtered below.
+        result=execute_read(client,key,{'course_id':tuple(courses)},owner_moodle_id=owner_moodle_id)
+        return [event for event in result if not event.get('courseid') or event['courseid'] in courses]
     direct=params.get('course_id') if key in COURSE_READS else None
     if isinstance(direct,(tuple,list)):
         if len(direct)>1:
