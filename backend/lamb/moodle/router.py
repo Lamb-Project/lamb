@@ -52,17 +52,26 @@ def settings_view(policy):
             'write_groups': sorted(policy.write_groups), 'allow_grade_write': policy.allow_grade_write}
 
 
+def effective_driver(auth):
+    from lamb.aac.driver import resolve_driver, public_driver
+    from lamb.completions.org_config_resolver import OrganizationConfigResolver
+    try:
+        return public_driver(resolve_driver(OrganizationConfigResolver(auth.user['email'])))
+    except HTTPException as exc:
+        # Users must still be able to disconnect or repair connector settings.
+        return {'provider': '', 'model': '', 'error': exc.detail}
+
+
 @router.get('/connection')
 def connection_status(auth: AuthContext = Depends(get_auth_context), store=Depends(store_for)):
     try:
         snap = store.snapshot()
         policy, record = snap['policy'], snap['record']
         connected = bool(policy.enabled and record and record.get('base_url') == policy.base_url)
-        setup = (auth.organization.get('config') or {}).get('setups', {}).get('default', {})
-        driver = setup.get('aac', {}) or setup.get('global_default_model', {})
+        driver = effective_driver(auth)
         return {'connected': connected, 'connection': public_connection(record) if record else None,
                 'settings': settings_view(policy), 'can_configure': bool(auth.is_system_admin or auth.is_org_admin),
-                'configured_driver': {k:driver.get(k, '') for k in ('provider', 'model')},
+                'effective_driver': driver,
                 'privacy_notice': PRIVACY_NOTICE}
     except (MoodleConfigurationError, PermissionError, RuntimeError) as exc:
         translate_error(exc)

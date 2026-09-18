@@ -40,8 +40,9 @@
     {#if status}
         <aside aria-label="Moodle data and AI provider">
             <p>{status.privacy_notice}</p>
-            <p>Configured AAC provider: <strong>{status.configured_driver.provider || 'Not configured'}</strong>
-                {#if status.configured_driver.model} · {status.configured_driver.model}{/if}</p>
+            <p>Effective AAC provider: <strong>{status.effective_driver.provider || 'Not configured'}</strong>
+                {#if status.effective_driver.model} · {status.effective_driver.model}{/if}</p>
+            {#if status.effective_driver.error}<p role="alert">{status.effective_driver.error}</p>{/if}
         </aside>
         <div class="card">
             <h2>Your connection</h2>

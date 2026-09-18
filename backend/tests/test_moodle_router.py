@@ -16,7 +16,7 @@ def client(stores,monkeypatch):
     app=FastAPI();app.include_router(router)
     auth=SimpleNamespace(user={'id':7},organization={'id':1,'config':{}},is_system_admin=False,is_org_admin=False)
     app.dependency_overrides[get_auth_context]=lambda:auth
-    with patch('lamb.moodle.router.database',return_value=db):
+    with patch('lamb.moodle.router.database',return_value=db), patch('lamb.moodle.router.effective_driver',return_value={'provider':'ollama','model':'fixture'}):
         yield TestClient(app),auth,store
 
 

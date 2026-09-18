@@ -108,13 +108,13 @@ def attach_to_agent(agent, store):
     if snapshot:
         record=snapshot['record']
         facts={'base_url':record['base_url'],'username':record['username'],
-               'generation':snapshot['generation'],'commands':sorted(keys),'model':agent.model,'forum_write': 'moodle.forum.post' in keys}
+               'generation':snapshot['generation'],'commands':sorted(keys),'model':agent.model,'provider':getattr(getattr(agent,'llm_client',None),'_lamb_aac_driver',{}).get('provider','unknown'),'forum_write': 'moodle.forum.post' in keys}
     state=agent.skill_state
     if state.get('moodle_capability')==facts: return
     state['moodle_capability']=facts
     if facts:
         access="forum writes require explicit approval" if facts["forum_write"] else "read-only"
-        line=f"Moodle: {facts['base_url']} as {facts['username']}, {access}. AAC driver model: {agent.model}."
+        line=f"Moodle: {facts['base_url']} as {facts['username']}, {access}. AAC driver provider: {facts['provider']}; model: {agent.model}. Student names, posts and grades sent to this driver reach that provider. A hosted provider receives them off premises; a local deployment keeps them on premises."
         references=[spec.reference() for key,spec in command_specs().items() if 'moodle.'+key in keys]
         references += ['Select context with moodle course get COURSE_ID before activity or individual queries. A course ID in a learning scenario is a suggestion, not permission.',
                        'moodle sync COURSE_ID [--section course|forums|assignments|enrolment|calendar]',

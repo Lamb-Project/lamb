@@ -5,7 +5,7 @@ vi.mock('$lib/services/frontendManage', () => ({clearWorkspaceDirty:vi.fn()}));
 import { moodleStatus, connectMoodle, configureMoodle } from '$lib/services/moodleService';
 import { clearWorkspaceDirty } from '$lib/services/frontendManage';
 import Page from './+page.svelte';
-const status = () => ({settings:{enabled:true,base_url:'https://moodle.test',mode:'readonly',write_groups:[],allow_grade_write:false},can_configure:true,configured_driver:{provider:'ollama',model:'fixture'},privacy_notice:'Student data reaches the configured provider.',connection:null});
+const status = () => ({settings:{enabled:true,base_url:'https://moodle.test',mode:'readonly',write_groups:[],allow_grade_write:false},can_configure:true,effective_driver:{provider:'ollama',model:'fixture'},privacy_notice:'Student data reaches the configured provider.',connection:null});
 beforeEach(() => {cleanup();vi.resetAllMocks();moodleStatus.mockImplementation(async () => status());connectMoodle.mockResolvedValue({});configureMoodle.mockResolvedValue({});});
 it('connecting clears only its credential and preserves unsaved organization settings', async () => {
     render(Page);
@@ -46,4 +46,10 @@ it('members have no organization settings form', async () => {
     render(Page);
     await screen.findByLabelText('QR passport');
     expect(screen.queryByRole('button',{name:'Save organization settings'})).toBeNull();
+});
+it('shows an unavailable driver while preserving connection controls', async () => {
+    moodleStatus.mockResolvedValue({...status(),effective_driver:{provider:'',model:'',error:'Ask the organization administrator to correct the model.'}});
+    render(Page);
+    expect(await screen.findByRole('alert')).toHaveTextContent('correct the model');
+    expect(screen.getByLabelText('QR passport')).toBeInTheDocument();
 });
