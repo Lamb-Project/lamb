@@ -232,12 +232,12 @@
     {
       "path": "img/en/tests-add.png",
       "locale": "en",
-      "sha256": "bf588701ab35f329dbd9da56ee4f316aa54b318668179c114399dc33ff9a657d"
+      "sha256": "8dba3a921525fb280bee7867f24cf696f9885ba648bc5620c6a439db285fe231"
     },
     {
       "path": "img/en/tests-run.png",
       "locale": "en",
-      "sha256": "377453e25c60c4830a18d5145692a098bb90054f7c80fa503e7b5f14b5bc19a7"
+      "sha256": "16cddf6034b405eae0dea6a80e23ef6eac72505af70e0ce4d07fac4c3ae3010f"
     }
   ],
   "coverage": {
@@ -259,24 +259,24 @@
     }
   },
   "document_hashes": {
-    "en/assistants.md": "7e9bc78cd451e9bd50cb78252dd7a35ff8b5096851adf67f9e4b639219175644",
+    "en/assistants.md": "12fb69b5d234f28c418044570ddec97c395d723adbb82a5737c64c789eececf6",
     "en/collaboration.md": "0572f7589da6b4cecb33518613aa5b186d77361a52cf753f89e737acf5457891",
     "en/getting-started.md": "380b1fa9331b1ff19dac1107fbb93948b192b252772a7059c11b027b07af52b1",
     "en/glossary.md": "1f14bd53f5dae6825237e6f96d4a880f9a9e19f855ba737ad9fb7bd19a276cae",
-    "en/index.md": "70187ddbaeddcb0c3c38ec183c845ad58961b028928987f98bb62e049035dcea",
+    "en/index.md": "a5feed276769badfdcc2454cdcde2b331879535d12f13b05bd100cbb8c79ee6b",
     "en/knowledge-bases.md": "def3c92ba4d2b4a4b01697c8b9e3688baa57837bfe03f13f5db4706e2b335156",
     "en/prompt-templates.md": "29e5b707646c3a7541f08e1615088be4733bef900f980b72cd7b43ba63fa5ecf",
     "en/publishing.md": "fabc9f6072f5ce445e39b3ed01a505aa7c23ee304e26b80c9ce33e5593632d3d",
     "en/rubrics.md": "1d3605683b4ed2cc2881cfffcc1b46069fc50db6f53f5dd3c631cfc7830c9b28",
-    "en/testing.md": "a72c3a1c22ed41f0df9e998c7934114946778c1573006265d73ee276387ad595",
+    "en/testing.md": "bec99e08b836b0169e92c5ccb3c4ff3de83cdbfea313c17701af07755a08adfd",
     "en/troubleshooting.md": "d6604a2d5f1e1dc802fb262df26679f0cbb32944f50a9ea36bf0a7f67430a427",
     "en/ui-assistants.md": "684d59a0192c07e4856f2dac14b443c8ea18a04bac9d87c473dffdec07619ebd",
     "en/ui-knowledge-bases.md": "7ed59d8879745cd473025f150990faea9f1e5d7bbe4de322c75b980a7b566c04",
     "en/ui-rubrics.md": "7fc23f7683c7a3c2f2183f2a8def309b9599465f3ffbe48d25ef7368e467603a",
-    "en/ui-testing.md": "efa62e06af2c0681b66ee10749c7f5f319ce99deef007916aa04cb4838204ac7",
+    "en/ui-testing.md": "d4b4292ff6671a1803caf4fd6f9c90924d272ad62d85879b4ef36d4bf0d3fb94",
     "en/design-grounding.md": "f6c23c8c9c7ce54156b0568111d5a18c249c7c4eef04825bd1d832947a5903c4",
     "en/design-prompts.md": "657d8260f3eeff47c0606c764ca259fa309adb5f8a54caa70b728ceadfedd037",
-    "en/design-testing.md": "1f2c69f02a6a2515cf63f8f2b3f84128445432e711e4f7735f144a4e8b4db20f",
+    "en/design-testing.md": "0caacd01627090f457c49f3c54dfc7a682dfc01d6672bf24234558cfdf8d4bc4",
     "en/design-rubrics.md": "4e856ceb14acf3ab8391b8fe0fef6eff3df57d486607b01cb304deae04af2205",
     "en/design-publishing.md": "647e89e253c7a0384b58bccaf644e2517a207f19e1d48f178c8643dcde30f788",
     "es/assistants.md": "17bc40075bfc7390181238b5b3c82d9fe8ad4d528115feb143a61d9b3df0798e",
@@ -296,7 +296,7 @@
     "es/ui-testing.md": "2fa692d090e503c729f0b7614a3fb4279fb06805dd5a500c2645f2d9019e896a",
     "es/design-grounding.md": "4a086f0804c3abe8039529fa3d0c860028220a85bc9ae67982eae98e3416c8b2",
     "es/design-prompts.md": "285ff9b8e9f72ff579723d328a02da93d71fc74a085282a18f4edcf08c468252",
-    "es/design-testing.md": "eb97d092153a40f1172f63e34499337e92dc06f831e347bd2f06851a062c329b",
+    "es/design-testing.md": "c36b743f1d9d2bacb92a0cf4bb2034a14db57cf5ea345f3500f82dc6c0068b0e",
     "es/design-rubrics.md": "317d0d1a62adc60177bc66f0846c096ea514a600ed53265c7f3af358752ebabe",
     "es/design-publishing.md": "e40820edd788b41a6941d8bef2ebbb80c171cf3459ece0a69d7b4e88f96c2194",
     "ca/assistants.md": "17bc40075bfc7390181238b5b3c82d9fe8ad4d528115feb143a61d9b3df0798e",
@@ -316,7 +316,7 @@
     "ca/ui-testing.md": "2fa692d090e503c729f0b7614a3fb4279fb06805dd5a500c2645f2d9019e896a",
     "ca/design-grounding.md": "e474e78a8d77e9d21b6faac21fa1d1d436a8d15d9b2729cda7aba28a078e6dde",
     "ca/design-prompts.md": "0e04078f1ab65434137e74824c207cec950087f1e50cf0f91693127df276469e",
-    "ca/design-testing.md": "436e21332f40d8b62e0e34251a1ed56a42b9c207e094c6311b17628f39438649",
+    "ca/design-testing.md": "5902a2bc53b28eb249468f5c228846b1275a2686d8ade6de711e2805c41f4560",
     "ca/design-rubrics.md": "07d82a9bb4c6328d39bfdfb4f64e41b7e439274318a4cff23254e69a6b3a940e",
     "ca/design-publishing.md": "f8382783bab9971a840bd1283ce642681ae7556aba1da1822ed4d2b807be3a3f",
     "eu/assistants.md": "17bc40075bfc7390181238b5b3c82d9fe8ad4d528115feb143a61d9b3df0798e",
@@ -340,5 +340,5 @@
     "eu/design-rubrics.md": "ec95daab787b10e1ac8416fd6a302a5874c322eea6e9ff22d56a0c65e6d2c31b",
     "eu/design-publishing.md": "46edd753561f973b75cb8628487ae5b1a4ad0e6839f1dc62302af0a039e630fa"
   },
-  "revision": "89e9b56d419393641469140a5e936682f0b6ad5ebc283d5fb849d6e8875bebb0"
+  "revision": "6d7bf226b8c4b610638fe360e626226f321211eede90f3862327d2addf6a1e0e"
 }

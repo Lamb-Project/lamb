@@ -47,8 +47,8 @@ def command_context(key, args, kwargs, state):
     context = normalize_context(state.get('context', {}))
     context.setdefault('language', "the user's current conversation language")
     if key.startswith(('assistant.', 'analytics.', 'test.')) and args:
-        if key in {'test.run-detail', 'test.evaluate', 'test.scenario-detail', 'test.delete-scenario'}:
-            index = 1 if key in {'test.run-detail', 'test.scenario-detail', 'test.delete-scenario'} or (len(args) == 3 and args[2] in {'good','bad','mixed'}) else 2
+        if key in {'test.run-detail', 'test.evaluate', 'test.scenario-detail', 'test.delete-scenario', 'test.case-detail', 'test.delete-case'}:
+            index = 1 if key in {'test.run-detail', 'test.scenario-detail', 'test.delete-scenario', 'test.case-detail', 'test.delete-case'} or (len(args) == 3 and args[2] in {'good','bad','mixed'}) else 2
             value = args[index] if len(args) > index else kwargs.get('assistant', kwargs.get('a'))
         elif key == 'assistant.create':
             value = None

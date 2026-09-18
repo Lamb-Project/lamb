@@ -103,3 +103,17 @@ class Operations(unittest.IsolatedAsyncioTestCase):
         s,h=authoring.Authoring().shell();self.assertTrue((await s.execute('lamb test add 42 Test -m hello -d purpose')).success)
         self.assertEqual(h.post.call_args.kwargs['json']['messages'],[{'role':'user','content':'hello'}])
         self.assertEqual(h.post.call_args.kwargs['json']['description'],'purpose')
+
+class TestCaseNames(unittest.IsolatedAsyncioTestCase):
+    async def test_aliases_preserve_handlers_permissions_and_assistant_context(self):
+        from lamb.aac.contract import command_reference
+        for old,new,arguments in [('test.scenarios','test.cases','42'),('test.scenario-detail','test.case-detail','abc 42'),('test.delete-scenario','test.delete-case','abc 42')]:
+            self.assertIs(COMMAND_REGISTRY[old],COMMAND_REGISTRY[new])
+            self.assertEqual(ActionAuthorizer().check(old),ActionAuthorizer().check(new))
+            self.assertEqual(command_context(old,arguments.split(), {}, {}),command_context(new,arguments.split(), {}, {}))
+        self.assertIn('lamb test cases:',command_reference())
+        self.assertNotIn('lamb test scenarios:',command_reference())
+        for option in ('case','scenario','s'):
+            shell,http=authoring.Authoring().shell()
+            await shell.execute(f'lamb test run 42 --{option} abc' if len(option)>1 else f'lamb test run 42 -{option} abc')
+            self.assertEqual(http.post.await_args.kwargs['json']['scenario_id'],'abc')

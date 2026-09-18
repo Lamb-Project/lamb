@@ -21,13 +21,13 @@ Use bypass to verify:
 **Use bypass when inspecting prompt/context assembly** to avoid wasting tokens on a broken pipeline.
 
 <a id="test-scenarios"></a>
-## Test Scenarios
+## Test Cases
 
 The Tests tab lets you create structured test cases and run them systematically.
 
-### Creating Scenarios
+### Creating test cases
 
-Click + Add Scenario:
+Click + Add test case:
 - **Title** — descriptive name (e.g., "Basic question about topic X")
 - **Type** — Normal, Multi-turn, or Adversarial
 - **Message** — the test question
@@ -37,10 +37,10 @@ Click + Add Scenario:
 
 | Action | What it does | Cost |
 |--------|-------------|------|
-| **Run** (single) | Run one scenario with real LLM | Tokens |
-| **Debug** (single) | Run one scenario in bypass | Free |
-| **Run All** | Run all scenarios with real LLM | Tokens |
-| **Debug All (bypass)** | Run all scenarios in bypass | Free |
+| **Run** (single) | Run one test case with real LLM | Tokens |
+| **Debug** (single) | Run one test case in bypass | Free |
+| **Run All** | Run all test cases with real LLM | Tokens |
+| **Debug All (bypass)** | Run all test cases in bypass | Free |
 | **Test & Evaluate with Agent** | AI agent generates, runs, evaluates tests | Tokens |
 
 ### Evaluating Results
@@ -53,7 +53,7 @@ Click a run to see the full response. Click Evaluate to record:
 
 ### Recommended Workflow
 
-1. Create 3-5 test scenarios (normal + edge + adversarial)
+1. Create 3-5 test cases (normal + edge + adversarial)
 2. Run Debug All (bypass) — verify the pipeline
 3. Fix any issues (missing context, wrong KB, bad template)
 4. Run All with real LLM

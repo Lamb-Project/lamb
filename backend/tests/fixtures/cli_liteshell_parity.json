@@ -5389,6 +5389,7 @@
           "name": "scenario_id",
           "kind": "TyperOption",
           "opts": [
+            "--case",
             "--scenario",
             "-s"
           ],
@@ -5912,6 +5913,125 @@
           "is_flag": false
         }
       ]
+    },
+    "test.cases": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "test.case-detail": {
+      "params": [
+        {
+          "name": "scenario_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "scenario_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "test.delete-case": {
+      "params": [
+        {
+          "name": "scenario_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "scenario_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "confirm",
+          "kind": "TyperOption",
+          "opts": [
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
     }
   },
   "shell_contracts": {
@@ -6263,7 +6383,7 @@
     "test.run": [
       1,
       1,
-      "bypass b scenario s timeout"
+      "bypass b case scenario s timeout"
     ],
     "test.runs": [
       1,
@@ -6329,6 +6449,21 @@
       1,
       1,
       "period start_date end_date"
+    ],
+    "test.cases": [
+      1,
+      1,
+      ""
+    ],
+    "test.case-detail": [
+      2,
+      2,
+      ""
+    ],
+    "test.delete-case": [
+      2,
+      2,
+      ""
     ]
   },
   "dispositions": {
@@ -6453,7 +6588,10 @@
     "learning-scenario.duplicate": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
     "learning-scenario.default": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
     "learning-scenario.selected": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
-    "learning-scenario.select": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session"
+    "learning-scenario.select": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "test.cases": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.case-detail": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.delete-case": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations"
   },
   "shell_only": [
     "assistant.chat",

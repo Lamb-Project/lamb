@@ -10,6 +10,9 @@ def command_reference(allowed=None):
     for key in sorted(COMMAND_CONTRACTS):
         if allowed is not None and key not in allowed:
             continue
+        replacement = {'test.scenarios': 'test.cases', 'test.scenario-detail': 'test.case-detail', 'test.delete-scenario': 'test.delete-case'}.get(key)
+        if replacement and (allowed is None or replacement in allowed):
+            continue
         if key not in COMMAND_REGISTRY:
             raise ValueError(f'Contract has no handler: {key}')
         minimum, maximum, flags = COMMAND_CONTRACTS[key]
@@ -41,7 +44,7 @@ def validate_skill_contracts(pack):
             # identifiers. No handler or HTTP operation is executed by preflight.
             try:
                 example = re.sub(r'\b(?:RUBRIC_ID|LEARNING_SCENARIO_ID)\b', '00000000-0000-0000-0000-000000000001', command)
-                example = re.sub(r'\b(?:ASSISTANT|KB|SCENARIO|RUN|CHAT|TEMPLATE|JOB)_ID\b', '1', example)
+                example = re.sub(r'\b(?:ASSISTANT|KB|SCENARIO|CASE|RUN|CHAT|TEMPLATE|JOB)_ID\b', '1', example)
                 example = re.sub(r'\{assistant_id\}|<assistant_id>|<id>', '1', example)
                 prepare_command(example)
             except (ValueError, TypeError) as exc:

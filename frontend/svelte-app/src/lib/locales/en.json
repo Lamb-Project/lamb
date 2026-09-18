@@ -1038,5 +1038,12 @@
     "saveSettings": "Save agent settings",
     "settingsSaved": "Agent settings saved.",
     "policyLabel": "Organization language policy"
+  },
+  "assistantTestCases": {
+    "title": "Test Cases",
+    "add": "Add Test Case",
+    "empty": "No test cases yet. Add some or let the agent generate them.",
+    "delete": "Delete Test Case",
+    "confirmDelete": "Are you sure you want to delete this test case? This action cannot be undone."
   }
 }

@@ -1052,5 +1052,12 @@
     "saveSettings": "Guardar configuración del agente",
     "settingsSaved": "Configuración del agente guardada.",
     "policyLabel": "Política lingüística de la organización"
+  },
+  "assistantTestCases": {
+    "title": "Casos de prueba",
+    "add": "Añadir caso de prueba",
+    "empty": "Todavía no hay casos de prueba. Añade uno o pide al agente que los genere.",
+    "delete": "Eliminar caso de prueba",
+    "confirmDelete": "¿Quieres eliminar este caso de prueba? Esta acción no se puede deshacer."
   }
 }

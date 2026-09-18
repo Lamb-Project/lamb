@@ -75,3 +75,18 @@ def test_conflicting_scenario_inputs_fail_before_request(mock_token):
     result=runner.invoke(app,['test','add','30','Multi','--messages','[]','--message','hello'])
     assert result.exit_code==1
     assert 'exactly one' in result.output
+
+@pytest.mark.parametrize('command',['cases','scenarios'])
+def test_case_list_alias_preserves_endpoint(command,httpx_mock,mock_token):
+    httpx_mock.add_response(json=[{'id':'existing','title':'Existing case'}])
+    result=runner.invoke(app,['test',command,'42','-o','json'])
+    assert result.exit_code==0,result.output
+    assert json.loads(result.stdout)[0]['id']=='existing'
+    assert httpx_mock.get_request().url.path.endswith('/assistant/42/tests/scenarios')
+
+@pytest.mark.parametrize('flag',['--case','--scenario','-s'])
+def test_case_run_alias_preserves_payload(flag,httpx_mock,mock_token):
+    httpx_mock.add_response(json=[])
+    result=runner.invoke(app,['test','run','42',flag,'existing','-o','json'])
+    assert result.exit_code==0,result.output
+    assert json.loads(httpx_mock.get_request().content)['scenario_id']=='existing'

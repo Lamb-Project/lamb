@@ -138,9 +138,9 @@ class UserTurnSelection(unittest.TestCase):
     def test_scenario_update_does_not_select_assistant_improvement(self):
         from lamb.aac.skill_routing import select_workflow
         state={'skill_id':'improve-assistant','context':{'assistant_id':87},'active_snapshot':'old'}
-        for text in ['Propose the same expected-only update again for assistant 87 scenario abc: expected Tuesday. Do not change other fields.',
-                     'Edit scenario abc for assistant 87 using test-and-evaluate.',
-                     'Editar el escenario abc del asistente 87.']:
+        for text in ['Propose the same expected-only update again for assistant 87 test case abc: expected Tuesday. Do not change other fields.',
+                     'Edit test scenario abc for assistant 87 using test-and-evaluate.',
+                     'Editar el caso de prueba abc del asistente 87.']:
             self.assertEqual(select_workflow(text,state)[0],'test-and-evaluate',text)
         selected=select_workflow('Update the description of assistant 87',{'context':{'assistant_id':87}})
         self.assertEqual(selected[0],'improve-assistant')
@@ -172,3 +172,11 @@ class ContextIdentityTests(unittest.TestCase):
         self.assertIsNone(a.required_skill('assistant.get',['25'],{}))
         self.assertIsNone(select_workflow('explain assistant 25',a.skill_state))
         self.assertEqual(len(a.skill_state['snapshots']),count)
+
+class ScenarioTerminology(unittest.TestCase):
+    def test_unqualified_scenario_means_learning_context_even_with_linked_assistant(self):
+        from lamb.aac.skill_routing import select_workflow
+        for text in ['Create a scenario', 'Edit my scenario for assistant 87', 'Editar mi escenario', 'Edita el meu escenari']:
+            self.assertEqual(select_workflow(text, {'context': {'assistant_id': 87}})[0], 'manage-learning-scenarios', text)
+        for text in ['Run test cases for assistant 87', 'List test scenarios for assistant 87', 'Muestra escenarios de prueba del asistente 87', 'Mostra els casos de prova de l’assistent 87']:
+            self.assertEqual(select_workflow(text, {'context': {'assistant_id': 87}})[0], 'test-and-evaluate', text)

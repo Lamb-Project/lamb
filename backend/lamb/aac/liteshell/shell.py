@@ -57,6 +57,9 @@ COMMAND_CONTRACTS = {
     'template.duplicate': (1, 1, 'new_name'),
     'template.share': (1, 1, 'enable disable'),
     'template.export': (1, 1000, ''),
+    'test.cases': (1, 1, ''),
+    'test.case-detail': (2, 2, ''),
+    'test.delete-case': (2, 2, ''),
     'test.scenario-detail': (2, 2, ''),
     'test.delete-scenario': (2, 2, ''),
 
@@ -81,7 +84,7 @@ COMMAND_CONTRACTS = {
     "template.list": (0, 0, "limit l offset"), "template.get": (1, 1, ""),
     "test.update": (2, 2, "title message m description d type t expected e"),
     "test.scenarios": (1, 1, ""), "test.add": (1, 2, "title message m messages description d type t expected e"),
-    "test.run": (1, 1, "bypass b scenario s timeout"), "test.runs": (1, 1, "limit l"),
+    "test.run": (1, 1, "bypass b case scenario s timeout"), "test.runs": (1, 1, "limit l"),
     "test.run-detail": (1, 2, "assistant a"), "test.evaluate": (2, 3, "assistant a notes n"),
     "session.rename": (1, 1, "session s"), "skill.list": (0, 0, ""),
     "skill.load": (1, 1, "assistant a language"), "docs.index": (0, 0, ""),

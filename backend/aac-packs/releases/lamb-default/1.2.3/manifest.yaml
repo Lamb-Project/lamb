@@ -1,0 +1,58 @@
+{
+  "name": "lamb-default",
+  "version": "1.2.3",
+  "requires": "lamb >= 0.7",
+  "compatibility": "knowledge-brief",
+  "layers": {
+    "creator": [
+      "layers/creator/guidance.md"
+    ],
+    "lti": [
+      "layers/lti/guidance.md"
+    ],
+    "org_admin": [
+      "layers/org_admin/guidance.md"
+    ],
+    "admin": [
+      "layers/admin/guidance.md"
+    ]
+  },
+  "hashes": {
+    "capability-catalog.json": "dc5906e7b0d734954150171986bb1f30e122c53ef4d84ed1317f5122a29ed212",
+    "compass.md": "a45ec8639529710208546f5272358387560763ff458b66e53382d42bc7d92ee4",
+    "glossary/ca.yaml": "177117d1c146038a41fe43e6f32535f71e99f28217dd1b558b78230028d5f940",
+    "glossary/en.yaml": "742f3a745f0a3c433f9a0106e4db6ca42a9cea2d06d6817818e8213e4ff91aac",
+    "glossary/es.yaml": "c495db2a4fc0d775397a1fda2ae8c3f82dfab100465ad9cda058e702963fc819",
+    "glossary/eu.yaml": "7049cb7e90e5bc38823d5e95bb8ef29eeee0406e087d67cfa86f571fb161793d",
+    "glossary/ui-keys.json": "a9296211a52ad932ab0b58c46843820c3c80b940daab8fa526931831701cd5be",
+    "layers/admin/guidance.md": "b5506b6e269120de70d0d0b9246522618484f135516cbbdd162b692f27e4a6d6",
+    "layers/creator/guidance.md": "4515da1590b7d777f3d8f8faed87081ee85c7942bc69a81a240cc1247eb6c540",
+    "layers/lti/guidance.md": "7abb65ae6bb8280ebe8cb3cf5193ea53adf6533f50528614692ead3075f0cbbd",
+    "layers/org_admin/guidance.md": "8d6b57fa6a970250e086a76da5766aa751f5b0e48f835babf131535d8e613c01",
+    "methodology/design-grounding.md": "f6c23c8c9c7ce54156b0568111d5a18c249c7c4eef04825bd1d832947a5903c4",
+    "methodology/design-prompts.md": "657d8260f3eeff47c0606c764ca259fa309adb5f8a54caa70b728ceadfedd037",
+    "methodology/design-publishing.md": "647e89e253c7a0384b58bccaf644e2517a207f19e1d48f178c8643dcde30f788",
+    "methodology/design-rubrics.md": "4e856ceb14acf3ab8391b8fe0fef6eff3df57d486607b01cb304deae04af2205",
+    "methodology/design-testing.md": "1f2c69f02a6a2515cf63f8f2b3f84128445432e711e4f7735f144a4e8b4db20f",
+    "persona.md": "1b0f4fc61c72916a9616f8a3b0626c97b30e710ff34c4fc8fb7d373ae788f770",
+    "routing.yaml": "a002bf1771b7b1c7910a2afb24dac112ebe3d1a090dd85ec97c76124e85b87b5",
+    "skills/about_lamb.md": "eac1abcae105e03445dd5bb2e31aa69fcc82ce9646a307ef8622efa8030b2013",
+    "skills/chat_with_assistant.md": "2cb8703c13b27b7a62f89cd7692aa33e53b6e1697aeb1318d76073d61c5a84f6",
+    "skills/configure_agent.md": "7da8ccda54e24e038cc352eed410b91ca6bc8aec307dc5dd224adece85e16ab8",
+    "skills/create_assistant.md": "a37b3787b26bdaf03b47220dd963f08ef36587496c0d55c3ff7e8d55645a67b0",
+    "skills/explain_assistant.md": "180f9e6ab8bc8b9e88ae4c6f65cfdd96905cf4fe08f68dda141c7b30025740ab",
+    "skills/improve_assistant.md": "df7e0aaadcf6caad0a25e320670a5168011c2e3ee5a7f26b90d6d9a15123544e",
+    "skills/inspect_activity.md": "e156715540452786c672ca9834357436fae88bb501e4f6e4f48c3dd6644d7020",
+    "skills/manage_knowledge_base.md": "1964df1526bcb83702932f0a6a0dae8d6fde461a1de36f1e187efbd40b1577fb",
+    "skills/manage_learning_scenarios.md": "e89d59fbf644ce68016ba4b874c23976b41d54a3221a723784f22d7beb17c474",
+    "skills/manage_rubric.md": "32282f811aadb53b459a5dd3e4150d7b034420217d243c078746ee690470694d",
+    "skills/manage_templates.md": "9d3dcae2f0f69e10efab56c829f4107c7ad70b840e82a836f2cf1411d54d62c3",
+    "skills/publish_assistant.md": "2f49e67253d91765c867b393bdcd059d40768cd71584f3aac1032bf7358c011b",
+    "skills/test_and_evaluate.md": "4b463ac6cbc49e2927beed24ebeea6714accbec285acd04333b44656f46b6af8",
+    "skills/test_lti_tools.md": "14528d8e0b4988bb2044a17adb73fdf8d2a8878d8d13cb0a8ce8d791a7b9f7cf"
+  },
+  "skill_layers": {
+    "test-lti-tools": "admin"
+  },
+  "command_layers": {}
+}

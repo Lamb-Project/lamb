@@ -1048,5 +1048,12 @@
     "saveSettings": "Gorde agentearen ezarpenak",
     "settingsSaved": "Agentearen ezarpenak gordeta.",
     "policyLabel": "Erakundearen hizkuntza-politika"
+  },
+  "assistantTestCases": {
+    "title": "Proba-kasuak",
+    "add": "Gehitu proba-kasua",
+    "empty": "Oraindik ez dago proba-kasurik. Gehitu bat edo eskatu agenteari sortzeko.",
+    "delete": "Ezabatu proba-kasua",
+    "confirmDelete": "Proba-kasu hau ezabatu nahi duzu? Ekintza hau ezin da desegin."
   }
 }

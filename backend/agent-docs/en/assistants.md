@@ -58,7 +58,7 @@ Click the View (eye) icon on any assistant. The detail page has tabs:
 - **Share** — manage who has access
 - **Chat** — test by chatting directly
 - **Activity** — usage statistics and chat history
-- **Tests** — create and run test scenarios
+- **Tests** — create and run test cases
 
 <a id="editing-an-assistant"></a>
 ## Editing an Assistant

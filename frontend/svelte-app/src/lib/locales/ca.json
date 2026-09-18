@@ -1041,5 +1041,12 @@
     "saveSettings": "Desa la configuració de l’agent",
     "settingsSaved": "Configuració de l’agent desada.",
     "policyLabel": "Política lingüística de l’organització"
+  },
+  "assistantTestCases": {
+    "title": "Casos de prova",
+    "add": "Afegir cas de prova",
+    "empty": "Encara no hi ha casos de prova. Afegeix-ne un o demana a l’agent que els generi.",
+    "delete": "Eliminar cas de prova",
+    "confirmDelete": "Vols eliminar aquest cas de prova? Aquesta acció no es pot desfer."
   }
 }

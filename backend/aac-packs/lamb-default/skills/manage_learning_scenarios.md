@@ -277,3 +277,5 @@ Use these conversational rules:
 - **Offer, within the session, when the creator volunteers the material.**  If, in the current conversation, the creator starts describing who the work is for and what for, the agent may say once that this is what a learning scenario stores and offer to save it. The agent knows only the current session and does not pretend otherwise.
 - **The default is a separate change.** Offer it once when a first scenario is created, and never again unless asked.
 
+
+Unqualified “scenario” means this learning-scenario workflow. Assistant checks are called test cases, not scenarios. Do not offer a terminology clarification menu.

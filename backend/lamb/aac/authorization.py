@@ -56,6 +56,9 @@ DEFAULT_POLICY: dict[str, str] = {
     'template.duplicate': 'ask',
     'template.share': 'ask',
     'template.export': 'auto',
+    'test.cases': 'auto',
+    'test.case-detail': 'auto',
+    'test.delete-case': 'ask',
     'test.scenario-detail': 'auto',
     'test.delete-scenario': 'ask',
 

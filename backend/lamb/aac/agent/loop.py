@@ -84,9 +84,12 @@ _TOOL_LABELS = {
     "assistant.list-published": "Loading published assistants",
     "template.list": "Loading templates",
     "assistant.chat": "Chatting with assistant",
-    "test.scenarios": "Loading test scenarios",
-    "test.add": "Creating test scenario",
-    "test.update": "Updating test scenario",
+    "test.cases": "Loading test cases",
+    "test.case-detail": "Reading test case",
+    "test.delete-case": "Deleting test case",
+    "test.scenarios": "Loading test cases",
+    "test.add": "Creating test case",
+    "test.update": "Updating test case",
     "test.run": "Running tests",
     "test.runs": "Loading test results",
     "test.evaluate": "Recording evaluation",
@@ -168,8 +171,8 @@ def _summarize_result(action_key: str, result: Any) -> str:
                 return f"{len(d)} runs"
             tok = d.get("token_usage", {}).get("total_tokens", 0)
             return f"tokens={tok}, {d.get('elapsed_ms',0):.0f}ms" if tok else f"{d.get('elapsed_ms',0):.0f}ms"
-        elif action_key == "test.scenarios":
-            return f"{len(d)} scenarios" if isinstance(d, list) else ""
+        elif action_key in {"test.scenarios", "test.cases"}:
+            return f"{len(d)} test cases" if isinstance(d, list) else ""
         elif action_key == "test.add":
             return f"title={d.get('title', '?')}"
         elif action_key == "test.evaluate":

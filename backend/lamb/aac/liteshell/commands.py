@@ -396,20 +396,21 @@ async def assistant_list_published(ctx: "CommandContext", args: list[str], kwarg
 # ---------------------------------------------------------------------------
 
 @register("test.scenarios")
+@register("test.cases")
 async def test_scenarios(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
-    """List test scenarios for an assistant."""
+    """List test cases for an assistant."""
     if not args:
-        raise ValueError("Usage: lamb test scenarios <assistant_id>")
+        raise ValueError("Usage: lamb test cases <assistant_id>")
     return _unwrap(await ctx.http.get(f"/creator/assistant/{args[0]}/tests/scenarios"))
 
 
 @register("test.add")
 async def test_add(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
-    """Add a test scenario to an assistant."""
+    """Add a test case to an assistant."""
     if not args:
         raise ValueError("Usage: lamb test add <assistant_id> <title> --message \"text\"")
     assistant_id = args[0]
-    title = args[1] if len(args) > 1 else kwargs.get("title", "Test scenario")
+    title = args[1] if len(args) > 1 else kwargs.get("title", "Test case")
     message = kwargs.get("message", kwargs.get("m", ""))
     if not message and "messages" not in kwargs:
         raise ValueError("Provide --message or --messages with the test input")
@@ -427,7 +428,7 @@ async def test_add(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
 
 @register("test.update")
 async def test_update(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
-    """Patch explicitly supplied scenario fields; keep scenario identity and history."""
+    """Patch explicitly supplied test case fields; keep test case identity and history."""
     body = {}
     for field, names in {"title":("title",), "description":("description","d"),
                          "expected_behavior":("expected","e"), "scenario_type":("type","t")}.items():
@@ -445,15 +446,15 @@ async def test_update(ctx: "CommandContext", args: list[str], kwargs: dict) -> A
 
 @register("test.run")
 async def test_run(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
-    """Run test scenarios through the real completion pipeline."""
+    """Run test cases through the real completion pipeline."""
     if not args:
-        raise ValueError("Usage: lamb test run <assistant_id> [--scenario <id>] [--bypass]")
+        raise ValueError("Usage: lamb test run <assistant_id> [--case <id>] [--bypass]")
     assistant_id = args[0]
     bypass = kwargs.get("bypass", kwargs.get("b", False))
     body: dict[str, Any] = {
         "debug_bypass": bypass is True or bypass == "true",
     }
-    scenario_id = kwargs.get("scenario", kwargs.get("s"))
+    scenario_id = kwargs.get("case", kwargs.get("scenario", kwargs.get("s")))
     if scenario_id:
         body["scenario_id"] = scenario_id
     import asyncio
@@ -719,6 +720,9 @@ def help_cmd(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict[str, 
     for key, func in sorted(COMMAND_REGISTRY.items()):
         if allowed is not None and key not in allowed:
             continue
+        replacement = {'test.scenarios': 'test.cases', 'test.scenario-detail': 'test.case-detail', 'test.delete-scenario': 'test.delete-case'}.get(key)
+        if replacement and (allowed is None or replacement in allowed):
+            continue
         doc = func.__doc__ or ""
         result[f"lamb {key.replace('.', ' ')}"] = doc.split("\n")[0].strip()
     return result
@@ -932,8 +936,9 @@ async def job_get(ctx, args, kwargs):
 
 
 @register("test.scenario-detail")
+@register("test.case-detail")
 async def test_scenario_detail(ctx, args, kwargs):
-    """Read a saved scenario: test scenario-detail SCENARIO_ID ASSISTANT_ID."""
+    """Read a saved test case: test case-detail SCENARIO_ID ASSISTANT_ID."""
     return _unwrap(await ctx.http.get(f'/creator/assistant/{args[1]}/tests/scenarios/{args[0]}'))
 
 
@@ -962,8 +967,9 @@ async def template_delete(ctx, args, kwargs):
 
 
 @register("test.delete-scenario")
+@register("test.delete-case")
 async def test_delete_scenario(ctx, args, kwargs):
-    """Delete a saved scenario: test delete-scenario SCENARIO_ID ASSISTANT_ID."""
+    """Delete a saved test case: test delete-case CASE_ID ASSISTANT_ID."""
     return _unwrap(await ctx.http.delete(f'/creator/assistant/{args[1]}/tests/scenarios/{args[0]}'))
 
 

@@ -69,7 +69,10 @@
       "test.runs",
       "test.scenario-detail",
       "test.scenarios",
-      "test.update"
+      "test.update",
+      "test.cases",
+      "test.case-detail",
+      "test.delete-case"
     ],
     "manage-knowledge-base": [
       "job.cancel",
@@ -181,7 +184,10 @@
     "learning-scenario.remove": "manage-learning-scenarios",
     "learning-scenario.duplicate": "manage-learning-scenarios",
     "learning-scenario.default": "manage-learning-scenarios",
-    "learning-scenario.select": "manage-learning-scenarios"
+    "learning-scenario.select": "manage-learning-scenarios",
+    "test.cases": "test-and-evaluate",
+    "test.case-detail": "test-and-evaluate",
+    "test.delete-case": "test-and-evaluate"
   },
   "USER_ROUTING": {
     "negative": "\\b(don't|do not|no|not|never|another|different|otro|otra|altre|altra)\\b",
@@ -192,13 +198,17 @@
     "assistant_id": "\\b(?:assistant|asistente|assistent)\\s+(\\d+)\\b",
     "facts": {
       "assistant": "\\b(assistant|asistente|assistent)\\b",
-      "scenario": "\\b(scenarios?|escenarios?|escenaris?)\\b"
+      "scenario": "\\b(scenarios?|escenarios?|escenaris?|test cases?|casos? de prueba|casos? de prova)\\b",
+      "testing": "\\b(tests?|test-and-evaluate|casos? de prueba|casos? de prova|pruebas?|proves|prova|evaluate|evaluar)\\b"
     },
     "rules": [
       {
         "skill": "manage-learning-scenarios",
-        "pattern": "\\b(learning scenarios?|escenarios? de aprendizaje|escenaris? d.aprenentatge|ikaskuntza.eszenatoki\\w*)\\b",
-        "priority": 2
+        "pattern": "\\b(learning scenarios?|(?<!test )scenarios?(?! de prueba)|escenarios?(?! de prueba)|escenaris?(?! de prova)|ikaskuntza.eszenatoki\\w*)\\b",
+        "priority": 2,
+        "exclude_facts": [
+          "testing"
+        ]
       },
       {
         "skill": "manage-knowledge-base",
@@ -241,7 +251,7 @@
       },
       {
         "skill": "test-and-evaluate",
-        "pattern": "\\b(tests?|pruebas|proves|evaluate|evaluar|scenarios?|escenarios?|escenaris?)\\b",
+        "pattern": "\\b(tests?|test cases?|casos? de prueba|casos? de prova|pruebas?|proves|prova|evaluate|evaluar)\\b",
         "any_facts": [
           "assistant",
           "linked_assistant"
