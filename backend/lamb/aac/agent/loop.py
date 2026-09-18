@@ -202,6 +202,10 @@ def _extract_artifacts(cmd: str, result: Any) -> list[dict]:
     if len(tokens) < 2:
         return []
 
+    if tokens[0] == 'moodle':
+        from lamb.moodle.audit import command_artifacts
+        return command_artifacts(cmd, result)
+
     resource_type = tokens[0]  # assistant, rubric, kb, test, template, model
     subcommand = tokens[1] if not tokens[1].startswith("-") else ""
 
@@ -728,6 +732,7 @@ class AgentLoop(SkillRouting):
         result = ShellResult(False, error='Interrupted; outcome unknown. Read back state before retrying.', command=command)
         self._record_audit(command, action_key, False, 0, result)
         self.tool_audit[-1]['outcome'] = 'unknown'
+        self.tool_audit[-1]['phase'] = 'interrupted'
         self.tool_audit[-1]['interrupted'] = True
 
     def _record_audit(
@@ -749,6 +754,7 @@ class AgentLoop(SkillRouting):
             "action_key": action_key or "",
             "intent": intent,
             "success": success,
+            "phase": "awaiting_confirmation" if queued else "completed" if success else "failed",
             "elapsed_ms": round(elapsed_ms, 1),
             "artifacts": _extract_artifacts(command, result),
             "summary": _summarize_result(action_key or "", result),
