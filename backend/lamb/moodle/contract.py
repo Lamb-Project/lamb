@@ -55,7 +55,13 @@ def command_specs():
             raise RuntimeError(f'Moodle parameter callback requires review: {key}')
         parser = click.Command(name, params=list(source.params), help=source.help,
                                add_help_option=False, context_settings={'allow_extra_args': False})
-        result[key] = CommandSpec(key, source.help or '', 'ask' if key in CURATED_WRITES else 'auto', parser)
+        # The pinned library labels this SUBWIKI_ID and sends subwikiid,
+        # but Moodle's documented endpoint takes wikiid. Keep the command
+        # vocabulary while explicitly correcting its argument and service.
+        if key == 'wiki.pages':
+            parser = click.Command(name, params=[click.Argument(['wiki_id'], type=click.IntRange(min=1))],
+                                   help='List pages in a wiki activity (WIKI_ID from course contents).', add_help_option=False)
+        result[key] = CommandSpec(key, parser.help or '', 'ask' if key in CURATED_WRITES else 'auto', parser)
     return result
 
 

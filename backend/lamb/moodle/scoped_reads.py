@@ -20,11 +20,12 @@ RESOURCE_READS={
     'lesson.pages':('lesson_id','lesson'),
     'quiz.attempts':('quiz_id','quiz'),
     'quiz.best-grade':('quiz_id','quiz'),
+    'wiki.pages':('wiki_id','wiki'),
     'workshop.submissions':('workshop_id','workshop'),
     'workshop.grades':('workshop_id','workshop'),
 }
 SCOPED_READS=COURSE_READS | set(RESOURCE_READS) | {'assign.submissions','assign.grades','forum.posts',
-    'course.module','user.get','user.list','badge.user','calendar.events','quiz.review','file.list'}
+    'course.module','user.get','user.list','badge.user','calendar.events','quiz.review','file.list','wiki.page'}
 
 
 def execute_scoped_read(client,key,params,*,owner_moodle_id,context):
@@ -78,12 +79,20 @@ def execute_scoped_read(client,key,params,*,owner_moodle_id,context):
     if key=='enrol.list-users':
         users=plain(list(scope.class_roster(course).values()))
         return [u for u in users if not params['role'] or any(r.get('shortname')==params['role'] for r in u['roles'])]
-    if key in RESOURCE_READS or key in {'assign.submissions','assign.grades','forum.posts','course.module','quiz.review','file.list'}:
+    if key in RESOURCE_READS or key in {'assign.submissions','assign.grades','forum.posts','course.module','quiz.review','file.list','wiki.page'}:
         contents=CourseService(client).get_contents(course)
         modules=[module for section in contents for module in section.modules]
         def owns(instance,module_type):
             return any(m.get('modname')==module_type and int(m.get('instance',0))==int(instance) for m in modules)
-        if key=='quiz.review':
+        if key=='wiki.page':
+            proof=context.get('wiki_pages',{}).get(str(params['page_id']))
+            if not proof or proof['course']!=course or not owns(proof['wiki'],'wiki'):
+                raise PermissionError('List pages in this course wiki before reading a page')
+            from .wiki import WikiPagesService
+            pages=WikiPagesService(client).pages(proof['wiki'])
+            if not any(int(page['id'])==params['page_id'] for page in pages):
+                raise PermissionError('Wiki page no longer belongs to the selected wiki')
+        elif key=='quiz.review':
             proof=context.get('quiz_attempts',{}).get(str(params['attempt_id']))
             if not proof or proof['course']!=course:
                 raise PermissionError('List quiz attempts for the enrolled user before reviewing this attempt')
@@ -117,6 +126,10 @@ def execute_scoped_read(client,key,params,*,owner_moodle_id,context):
                     found=True;break
             if not found:raise PermissionError('Moodle discussion is outside the selected instructor course')
     result=execute_read(client,key,params,owner_moodle_id=owner_moodle_id)
+    if key=='wiki.pages':
+        proofs=context.setdefault('wiki_pages',{})
+        for page in result:
+            proofs[str(page['id'])]={'course':course,'wiki':params['wiki_id']}
     if key=='quiz.attempts':
         user=params.get('user_id') if params.get('user_id') is not None else owner_moodle_id
         proofs=context.setdefault('quiz_attempts',{})

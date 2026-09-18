@@ -62,11 +62,10 @@ BINDINGS = {
     'user.me': ('user','UserService','get_me',''),
     'user.profiles': ('user','UserService','course_profiles','course_id user_ids'),
     'wiki.page': ('activity_content','WikiService','page_contents','page_id'),
-    'wiki.pages': ('activity_content','WikiService','subwiki_pages','subwiki_id'),
     'workshop.grades': ('activity_content','WorkshopService','grades_report','workshop_id'),
     'workshop.submissions': ('activity_content','WorkshopService','submissions','workshop_id'),
 }
-SPECIAL_READS = {'content.types','enrol.my-courses','message.list','message.conversations','message.unread'}
+SPECIAL_READS = {'wiki.pages','content.types','enrol.my-courses','message.list','message.conversations','message.unread'}
 
 
 def service_class(module, name):
@@ -100,6 +99,9 @@ def execute_read(client, key, params, *, owner_moodle_id):
     # Never let an omitted user select a server-dependent class-wide default.
     if 'user_id' in params and params['user_id'] is None:
         params['user_id'] = owner_moodle_id
+    if key == 'wiki.pages':
+        from .wiki import WikiPagesService
+        return WikiPagesService(client).pages(params['wiki_id'])
     if key == 'content.types':
         from moodle_cli.services.content import CONTENT_TYPES
         return list(CONTENT_TYPES)
