@@ -50,3 +50,17 @@ def establish_connection(policy, cipher, *, organization_id, owner_id, token=Non
 
 def public_connection(record):
     return {key: record[key] for key in ('base_url', 'moodle_user_id', 'username', 'connected_at') if key in record}
+
+
+def public_user_config(config):
+    """Keep encrypted credentials and connection generations out of user lists."""
+    import json
+    if isinstance(config, str):
+        try:
+            config = json.loads(config)
+        except (ValueError, TypeError):
+            return {}
+    if not isinstance(config, dict):
+        return {}
+    return {key: value for key, value in config.items()
+            if key not in {'moodle_connection', 'moodle_connection_generation'}}

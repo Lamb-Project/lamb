@@ -2211,12 +2211,26 @@ class LambDatabaseManager:
             return False
 
         try:
+            connection.execute("BEGIN IMMEDIATE")
             with connection:
                 cursor = connection.cursor()
                 now = int(time.time())
 
-                # Convert dict to JSON string
-                config_json = json_lib.dumps(user_config)
+                # Connector credentials are updated only by ConnectionStore. An older
+                # sharing-settings snapshot must never resurrect a disconnected token.
+                row = cursor.execute(
+                    f"SELECT user_config FROM {self.table_prefix}Creator_users WHERE id=?",
+                    (user_id,),
+                ).fetchone()
+                if row is None:
+                    return False
+                current = json_lib.loads(row[0]) if row[0] else {}
+                updated = dict(user_config)
+                for key in ('moodle_connection', 'moodle_connection_generation'):
+                    updated.pop(key, None)
+                    if key in current:
+                        updated[key] = current[key]
+                config_json = json_lib.dumps(updated)
 
                 cursor.execute(f"""
                     UPDATE {self.table_prefix}Creator_users

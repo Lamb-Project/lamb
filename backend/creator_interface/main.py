@@ -1,3 +1,4 @@
+from lamb.moodle.connection import public_user_config
 from .chats_router import router as chats_router
 from .library_router import router as library_router
 from .analytics_router import router as analytics_router
@@ -650,7 +651,7 @@ async def list_users(credentials: HTTPAuthorizationCredentials = Depends(securit
                 "role": user.get("role", "user"),
                 "enabled": user.get("enabled", True),
                 "user_type": user.get("user_type", "creator"),
-                "user_config": user.get("user_config", {}),
+                "user_config": public_user_config(user.get("user_config", {})),
                 "organization": user.get("organization"),
                 "organization_role": user.get("organization_role"),
                 "auth_provider": user.get("auth_provider", "password"),
@@ -2709,3 +2710,7 @@ async def update_user_sharing_permission_endpoint(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
+
+# Per-creator Moodle credentials are managed outside AAC messages.
+from lamb.moodle.router import router as moodle_router
+router.include_router(moodle_router)

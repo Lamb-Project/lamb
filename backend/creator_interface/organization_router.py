@@ -3,6 +3,7 @@ Organization management router for creator interface
 Provides admin endpoints to manage organizations through the creator interface
 """
 
+from lamb.moodle.connection import public_user_config
 from fastapi import APIRouter, HTTPException, Depends, Query, Request, File, UploadFile
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
@@ -1885,7 +1886,7 @@ async def list_organization_users(request: Request, org: Optional[str] = None):
                 user_type=user.get('user_type', 'creator'),
                 auth_provider=user.get('auth_provider', 'password'),
                 lti_user_id=user.get('lti_user_id'),
-                user_config=user_config
+                user_config=public_user_config(user_config)
             ))
         
         return user_responses
