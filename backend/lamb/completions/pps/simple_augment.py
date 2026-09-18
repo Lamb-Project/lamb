@@ -6,6 +6,21 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="MAIN")
 
 
+def _format_sources(sources: List[Dict[str, Any]]) -> str:
+    """Keep source metadata distinct from document text; do not invent links or scores."""
+    if not sources:
+        return ""
+    lines = ["\n\n## Available Sources\n"]
+    for i, source in enumerate(sources, 1):
+        title = source.get("title") or source.get("source") or "Untitled source"
+        url = source.get("url")
+        label = f"[{title}]({url})" if url else str(title)
+        similarity = source.get("similarity")
+        score = f" (similarity: {similarity:.3f})" if isinstance(similarity, (int, float)) else ""
+        lines.append(f"{i}. {label}{score}")
+    return "\n".join(lines) + "\n"
+
+
 def _has_vision_capability(assistant: Assistant) -> bool:
     """
     Check if the assistant has vision capabilities enabled.
@@ -119,12 +134,7 @@ def prompt_processor(
                     if isinstance(rag_context, dict) and "sources" in rag_context:
                         sources = rag_context["sources"]
                         if sources:
-                            sources_text = "\n\n## Available Sources\n\n"
-                            for i, source in enumerate(sources, 1):
-                                title = source.get("title", "Unknown")
-                                url = source.get("url", "")
-                                similarity = source.get("similarity", 0)
-                                sources_text += f"{i}. [{title}]({url}) (similarity: {similarity:.3f})\n"
+                            sources_text = _format_sources(sources)
 
                     # Combine context with sources
                     full_context = context + sources_text
@@ -175,12 +185,7 @@ def prompt_processor(
                     if isinstance(rag_context, dict) and "sources" in rag_context:
                         sources = rag_context["sources"]
                         if sources:
-                            sources_text = "\n\n## Available Sources\n\n"
-                            for i, source in enumerate(sources, 1):
-                                title = source.get("title", "Unknown")
-                                url = source.get("url", "")
-                                similarity = source.get("similarity", 0)
-                                sources_text += f"{i}. [{title}]({url}) (similarity: {similarity:.3f})\n"
+                            sources_text = _format_sources(sources)
 
                     # Combine context with sources
                     full_context = context + sources_text

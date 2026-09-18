@@ -75,6 +75,7 @@ def rag_processor(
             "context": content,
             "sources": [{
                 "source": file_path,
+                "title": os.path.basename(file_path),
                 "content": content,
                 "score": 1.0
             }]
