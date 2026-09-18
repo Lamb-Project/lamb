@@ -8,10 +8,11 @@ from .writes import FORUM_WRITES, verify_forum_target, write_forum
 from .reads import execute_read
 from .scoped_reads import SCOPED_READS, execute_scoped_read
 
-# These require no foreign resource resolution. Remaining reads are registered
-# after their course/resource lineage guards are implemented.
+# These have no caller-supplied foreign resource target. Category/cohort
+# catalogues contain metadata only, not membership: Moodle enforces category
+# visibility and cohort view/manage permissions for the connected account.
 SELF_READS = frozenset({'site.info','site.functions','user.me','enrol.my-courses',
-                       'course.list','course.search','course.timeline','calendar.upcoming','grade.overview','message.list','message.conversations','message.unread','content.types'})
+                       'course.list','course.search','course.categories','cohort.list','course.timeline','calendar.upcoming','grade.overview','message.list','message.conversations','message.unread','content.types'})
 
 
 class MoodleRuntime:
