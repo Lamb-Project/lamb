@@ -62,7 +62,7 @@ ALWAYS include --connector (from the organization configuration) and --prompt-pr
 
 ## Explicit knowledge and rubric bindings
 
-Distinguish no_rag, simple_rag (retrieved KB chunks), single_file_rag (whole UTF-8 file), and context_aware_rag. For single_file_rag, an existing owned upload returned by Moodle import can be bound using --file-reference OWNED_REFERENCE. This is an ownership-validated server reference, never a local path. If no owned reference exists, show the illustrated assistant UI guide and let the user select and bind the file in the form. The --file-path option remains unavailable in frontend liteshell; PDFs require KB ingestion (a connected Moodle import can do that after approval). Use --rubric-id and --rubric-format for rubric_rag. Read back saved properties and verify retrieval/context before claiming success. Preserve unrelated fields during edits. Use manage-knowledge-base for KB creation/ingestion/query and manage-rubric for rubric creation/editing.
+Distinguish no_rag, simple_rag (retrieved KB chunks), single_file_rag (whole UTF-8 file), and context_aware_rag. For single_file_rag, show the illustrated assistant UI guide and let the user select and bind the file in the form. The --file-path option is unavailable in frontend liteshell; a PDF requires user-operated KB ingestion instead. Use --rubric-id and --rubric-format for rubric_rag. Read back saved properties and verify retrieval/context before claiming success. Preserve unrelated fields during edits. Use manage-knowledge-base for KB creation/ingestion/query and manage-rubric for rubric creation/editing.
 
 ## UI tutorial requests
 
@@ -81,7 +81,7 @@ lamb assistant create NAME --description "Approved purpose" --system-prompt "Ans
 lamb assistant create NAME --description "Approved assessment purpose" --system-prompt "Assess the submission against the supplied rubric" --connector PROVIDER --llm MODEL --prompt-processor simple_augment --rag-processor rubric_rag --rubric-id RUBRIC_ID --rubric-format markdown --prompt-template "Rubric: {context} Submission: {user_input}"
 ```
 
-Create requires confirmation. Keep the returned assistant ID. Read back `lamb assistant get ASSISTANT_ID` and compare every requested setting. Do not create twice after an unclear response; inspect the list first. If no existing owned reference was supplied, for single-file frontend selection show the ui-assistants guide and let the user choose/upload through the form; let the user finish saving the binding in the form, then inspect the assistant; never invent a reference or use --file-path in liteshell. For KB setup activate manage-knowledge-base, and for a missing rubric activate manage-rubric. Return to this recipe after that prerequisite exists. A readback proves configuration, not behavior: use chat-with-assistant and test-and-evaluate for real responses and saved tests.
+Create requires confirmation. Keep the returned assistant ID. Read back `lamb assistant get ASSISTANT_ID` and compare every requested setting. Do not create twice after an unclear response; inspect the list first. For single-file frontend selection, show the ui-assistants guide and let the user choose/upload through the form; let the user finish saving the binding in the form, then inspect the assistant; never invent a reference or use --file-path in liteshell. For KB setup activate manage-knowledge-base, and for a missing rubric activate manage-rubric. Return to this recipe after that prerequisite exists. A readback proves configuration, not behavior: use chat-with-assistant and test-and-evaluate for real responses and saved tests.
 
 ## Show the user the workspace
 
@@ -93,10 +93,3 @@ After successful creation and readback, use `frontend-manage open assistant ASSI
 If the user asks to open the creation form, run `frontend-manage open assistant-create` immediately, then explain fields only as needed. Do not start the creation interview or issue a create command for a navigation-only request. For the assistant list run `frontend-manage open assistants`. After an approved creation, read back the saved assistant and run `frontend-manage open assistant ASSISTANT_ID --tab properties`.
 
 Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.
-
-
-For an existing owned single-file import, use the returned reference directly and request the normal application confirmation once:
-```aac-command
-lamb assistant create NAME --rag-processor single_file_rag --file-reference OWNED_REFERENCE
-```
-Do not omit the reference and then claim single-file assistants require browser creation. Validate by reading the saved metadata and actually chatting with the assistant.

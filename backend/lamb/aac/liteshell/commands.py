@@ -200,6 +200,9 @@ async def assistant_create(ctx: "CommandContext", args: list[str], kwargs: dict)
         if key in kwargs:
             metadata[key] = kwargs[key]
 
+    if "file_reference" in kwargs:
+        await ctx.http.get('/creator/aac/files/validate', params={'reference': kwargs['file_reference']})
+        metadata['file_path'] = kwargs['file_reference']
     _capabilities(metadata, kwargs)
     body: dict[str, Any] = {"name": name}
     if kwargs.get("system_prompt"):
@@ -271,6 +274,9 @@ async def assistant_update(ctx: "CommandContext", args: list[str], kwargs: dict)
                 "rubric_id", "rubric_format"):
         if key in kwargs:
             existing_meta[key] = kwargs[key]
+    if "file_reference" in kwargs:
+        await ctx.http.get('/creator/aac/files/validate', params={'reference': kwargs['file_reference']})
+        existing_meta['file_path'] = kwargs['file_reference']
     _capabilities(existing_meta, kwargs)
     body["metadata"] = json.dumps(existing_meta)
 

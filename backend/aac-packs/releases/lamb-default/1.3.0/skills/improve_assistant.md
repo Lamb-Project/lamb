@@ -56,7 +56,7 @@ Don't run tests unless the user asks or you've just made a change worth verifyin
 
 ## Explicit knowledge and rubric bindings
 
-Distinguish no_rag, simple_rag (retrieved KB chunks), single_file_rag (whole UTF-8 file), and context_aware_rag. For single_file_rag, an existing owned upload returned by Moodle import can be bound using --file-reference OWNED_REFERENCE. This is an ownership-validated server reference, never a local path. If no owned reference exists, show the illustrated assistant UI guide and let the user select and bind the file in the form. The --file-path option remains unavailable in frontend liteshell; PDFs require KB ingestion (a connected Moodle import can do that after approval). Use --rubric-id and --rubric-format for rubric_rag. Read back saved properties and verify retrieval/context before claiming success. Preserve unrelated fields during edits. Use manage-knowledge-base for KB creation/ingestion/query and manage-rubric for rubric creation/editing.
+Distinguish no_rag, simple_rag (retrieved KB chunks), single_file_rag (whole UTF-8 file), and context_aware_rag. For single_file_rag, show the illustrated assistant UI guide and let the user select and bind the file in the form. The --file-path option is unavailable in frontend liteshell; a PDF requires user-operated KB ingestion instead. Use --rubric-id and --rubric-format for rubric_rag. Read back saved properties and verify retrieval/context before claiming success. Preserve unrelated fields during edits. Use manage-knowledge-base for KB creation/ingestion/query and manage-rubric for rubric creation/editing.
 
 ## UI tutorial requests
 
@@ -100,10 +100,3 @@ Do not invent omitted chunk ranks/scores, claim language mismatch as a proven ca
 or promise that a larger top-k fixes the problem. Distinguish observations from
 hypotheses and proposed experiments. Saved tests require actual scenario/run IDs;
 a bypass inspection alone does not evaluate answer quality.
-
-
-For an existing owned single-file import, use the returned reference directly and request the normal application confirmation once:
-```aac-command
-lamb assistant update ASSISTANT_ID --rag-processor single_file_rag --file-reference OWNED_REFERENCE
-```
-Do not omit the reference and then claim single-file assistants require browser creation. Validate by reading the saved metadata and actually chatting with the assistant.

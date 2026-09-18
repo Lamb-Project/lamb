@@ -26,11 +26,12 @@ def test_bad_rubric_input(criteria,mock_token):
     assert runner.invoke(app,['rubric','create','x','--criteria',criteria]).exit_code!=0
 
 
-def test_file_and_rubric_binding(httpx_mock,mock_token):
+@pytest.mark.parametrize('option',['--file-path','--file-reference'])
+def test_file_and_rubric_binding(httpx_mock,mock_token,option):
     httpx_mock.add_response(method='GET',json={'valid':True})
     httpx_mock.add_response(method='GET',json={'rubric_id':'r1'})
     httpx_mock.add_response(method='POST',json={'assistant_id':1})
-    result=runner.invoke(app,['assistant','create','x','--connector','openai','--llm','fake','--file-path','7/doc.md','--rubric-id','r1','--rubric-format','json','-o','json'])
+    result=runner.invoke(app,['assistant','create','x','--connector','openai','--llm','fake',option,'7/doc.md','--rubric-id','r1','--rubric-format','json','-o','json'])
     assert result.exit_code==0,result.output
     md=json.loads(json.loads(httpx_mock.get_requests()[-1].content)['metadata']);assert md['file_path']=='7/doc.md';assert md['rubric_id']=='r1';assert md['rubric_format']=='json'
 
