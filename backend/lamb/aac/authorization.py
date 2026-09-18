@@ -159,6 +159,12 @@ class ActionAuthorizer:
 
         Unknown actions default to 'ask' (safe default).
         """
+        if action_key.startswith('moodle.'):
+            from lamb.moodle.contract import command_specs
+            key=action_key.removeprefix('moodle.')
+            if key in {'sync','cache.show'}: return 'auto'
+            spec=command_specs().get(key)
+            return spec.policy if spec else 'never'
         return self.policy.get(action_key, "ask")
 
     def resolve_action_key(self, command_str: str) -> str | None:

@@ -6048,12 +6048,12 @@
     "learning-scenario.create": [
       1,
       1,
-      "content"
+      "content moodle_course_id"
     ],
     "learning-scenario.update": [
       1,
       1,
-      "revision title content"
+      "revision title content moodle_course_id"
     ],
     "learning-scenario.remove": [
       1,

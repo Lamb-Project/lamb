@@ -62,6 +62,14 @@ def command_specs():
 def prepare_moodle(command):
     """Strict CLI tokenization and typed parameters without executing anything."""
     tokens = shlex.split(command)
+    if len(tokens) >= 2 and tokens[:2] == ['moodle', 'sync']:
+        parser = click.Command('sync', params=[click.Argument(['course_id'],type=click.IntRange(min=1)), click.Option(['--section'],type=click.Choice(['course','forums','assignments','enrolment','calendar']))],add_help_option=False)
+        spec=CommandSpec('sync','Refresh the private course cache','auto',parser)
+        return spec,spec.parse(tokens[2:])
+    if len(tokens) >= 3 and tokens[:3] == ['moodle','cache','show']:
+        parser = click.Command('show', params=[click.Argument(['course_id'],type=click.IntRange(min=1)), click.Option(['--section'],required=True,type=click.Choice(['course','forums','assignments','enrolment','calendar']))],add_help_option=False)
+        spec=CommandSpec('cache.show','Read a private cache section with its sync time','auto',parser)
+        return spec,spec.parse(tokens[3:])
     if len(tokens) < 3 or tokens[0] != 'moodle':
         raise ValueError('Use moodle GROUP COMMAND; consult the Moodle command reference')
     key = '.'.join(tokens[1:3])

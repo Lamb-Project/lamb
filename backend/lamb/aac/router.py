@@ -689,6 +689,10 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
 
     # Pure pack and prefix validation must finish before allocating an HTTP client.
     agent.llm_client, agent.model = _resolve_agent_llm(user_email)
+    from lamb.moodle.runtime import attach_to_agent
+    from lamb.moodle.store import ConnectionStore
+    from lamb.moodle.router import database as moodle_database
+    attach_to_agent(agent, ConnectionStore(moodle_database(), org_id, user_id))
     slog.log_session_start(assistant_id=session.get("assistant_id"), model=agent.model)
 
     return agent

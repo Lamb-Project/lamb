@@ -725,6 +725,13 @@ def help_cmd(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict[str, 
             continue
         doc = func.__doc__ or ""
         result[f"lamb {key.replace('.', ' ')}"] = doc.split("\n")[0].strip()
+    moodle=ctx.knowledge.get('moodle')
+    if moodle:
+        from lamb.moodle.contract import command_specs
+        for key in sorted(moodle.available()):
+            spec=command_specs().get(key.removeprefix('moodle.'))
+            result[key.replace('.', ' ')]=spec.description if spec else 'Read or refresh the private Moodle course cache.'
+
     return result
 
 

@@ -199,6 +199,10 @@ def prepare_command(command_str: str, allowlist=None):
     group = tokens[0]
     if allowlist is not None and group not in allowlist:
         raise ValueError(f"Command '{group}' not allowed. Available: {sorted(allowlist)}")
+    if group == 'moodle':
+        from lamb.moodle.contract import prepare_moodle
+        spec,params=prepare_moodle(shlex.join(tokens))
+        return 'moodle.'+spec.key, [], params, False
     key = f"{group}.{tokens[1]}" if len(tokens) > 1 and not tokens[1].startswith("-") else group
     arg_tokens = tokens[2:] if key != group else tokens[1:]
     _, preliminary_options = _parse_args(arg_tokens)
@@ -261,6 +265,7 @@ class LiteShell:
     user_email: str
     organization_id: int
     user_id: int = 0
+    moodle: Any = None
     frontend: Any = None
     allowlist: set[str] | None = None
     allowed_commands: set[str] | None = None
@@ -310,6 +315,12 @@ class LiteShell:
         key, args, kwargs, help_requested = prepare_command(command_str, self.allowlist)
         if self.allowed_commands is not None and key not in self.allowed_commands:
             raise ValueError('Command is outside your role; ask the appropriate administrator')
+        if key.startswith('moodle.'):
+            if self.moodle is None:
+                raise ValueError('Moodle connector is unavailable in this conversation')
+            import asyncio
+            data=await asyncio.to_thread(self.moodle.execute,key.removeprefix('moodle.'),kwargs)
+            return ShellResult(success=True,data=data)
         handler = COMMAND_REGISTRY[key]
         if help_requested:
             return ShellResult(success=True, data={"command": key, "help": handler.__doc__ or "",
