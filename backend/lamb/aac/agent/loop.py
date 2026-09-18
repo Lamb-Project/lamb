@@ -573,6 +573,13 @@ class AgentLoop(SkillRouting):
             return {"success": False, "awaiting_user_confirmation": True,
                     "error": "An action is already awaiting confirmation"}
         if policy == "ask":
+            review = None
+            if action_key == "moodle.assign.grade":
+                import asyncio
+                try:
+                    review = await asyncio.to_thread(self.shell.moodle.prepare_grade, parsed_kwargs)
+                except Exception as exc:
+                    return {"success": False, "error": str(exc)}
             # Queue the command, don't execute
             self.pending_action = {
                 "command": command,
@@ -580,6 +587,8 @@ class AgentLoop(SkillRouting):
                 "machine_translation_interpretations": [dict(item) for item in interpretations],
                 "tool_call_id": tool_call.id,
             }
+            if review is not None:
+                self.pending_action['moodle_review'] = review
             self._record_audit(command, action_key, True, 0, None, queued=True)
             if self.session_logger:
                 self.session_logger.log("action_queued", {
@@ -662,7 +671,9 @@ class AgentLoop(SkillRouting):
             # Execute the queued command
             self.pending_action = None
             try:
-                if (action.get("action_key") or "").startswith("moodle."):
+                if action.get("action_key") == "moodle.assign.grade":
+                    result = await self.shell.execute(action["command"], confirmed=True, review=action.get('moodle_review'))
+                elif (action.get("action_key") or "").startswith("moodle."):
                     result = await self.shell.execute(action["command"], confirmed=True)
                 else:
                     result = await self.shell.execute(action["command"])

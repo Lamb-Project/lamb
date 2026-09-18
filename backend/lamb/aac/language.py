@@ -73,6 +73,10 @@ def confirmation_fallback(agent):
     }
     intro, question = messages.get(code, messages['en'])
     command = agent.pending_action.get('command', '')
+    review = agent.pending_action.get('moodle_review')
+    if review:
+        import json
+        command = json.dumps(review, ensure_ascii=False, indent=2) + '\n\n' + command
     fence = '`' * max(3, max((len(part) for part in re.findall(r'`+', command)), default=0) + 1)
     return f'{intro}\n\n{fence}text\n{command}\n{fence}\n\n{question}'
 

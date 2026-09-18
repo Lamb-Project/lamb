@@ -61,6 +61,8 @@ def command_specs():
         if key == 'wiki.pages':
             parser = click.Command(name, params=[click.Argument(['wiki_id'], type=click.IntRange(min=1))],
                                    help='List pages in a wiki activity (WIKI_ID from course contents).', add_help_option=False)
+        if key == 'assign.grade':
+            parser.params.append(click.Option(['--rationale'], required=True, help='Reason for the proposed grade, recorded with the approved action.'))
         result[key] = CommandSpec(key, parser.help or '', 'ask' if key in CURATED_WRITES else 'auto', parser)
     return result
 

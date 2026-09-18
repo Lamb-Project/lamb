@@ -40,18 +40,49 @@ class MoodleRuntime:
             keys=keys | FORUM_WRITES
         except PermissionError:
             pass
+        try:
+            snap['policy'].require_write('grade')
+            keys=keys | {'assign.grade'}
+        except PermissionError:
+            pass
         return {'moodle.'+key for key in keys} | {'moodle.sync','moodle.cache.show'}
 
-    def execute(self, key, params, *, confirmed=False):
+    def prepare_grade(self, params):
+        from .assessment import grade_review
+        snap=self.snapshot()
+        snap['policy'].require_write('grade')
+        record=snap['record']
+        if self.context.get('generation') != snap['generation']:
+            raise PermissionError('Select the instructor course again after reconnecting')
+        token=(self._cipher or TokenCipher()).decrypt(record['token_encrypted'],organization_id=self.store.organization_id,
+            owner_id=self.store.owner_id,base_url=record['base_url'])
+        with MoodleHTTPClient(record['base_url'],token,readonly=True) as client:
+            review=grade_review(client,params,owner_moodle_id=record['moodle_user_id'],context=self.context)
+        current=self.snapshot()
+        if current['generation']!=snap['generation'] or current['policy']!=snap['policy']:
+            raise PermissionError('Moodle connection changed during assessment review')
+        return dict(review, connection_generation=snap['generation'])
+
+    def execute(self, key, params, *, confirmed=False, review=None):
         snap=self.snapshot()
         record=snap['record']
         cipher=self._cipher or TokenCipher()
         token=cipher.decrypt(record['token_encrypted'],organization_id=self.store.organization_id,
                              owner_id=self.store.owner_id,base_url=record['base_url'])
-        if key not in SELF_READS | SCOPED_READS | FORUM_WRITES | {'sync','cache.show'}:
+        if key not in SELF_READS | SCOPED_READS | FORUM_WRITES | {'sync','cache.show','assign.grade'}:
             raise PermissionError('This Moodle command requires a verified course/resource scope')
         if self.context.get('generation') != snap['generation']:
             self.context.clear();self.context['generation']=snap['generation']
+        if key=='assign.grade':
+            from .assessment import save_grade
+            snap['policy'].require_write('grade')
+            if confirmed is not True or not review:
+                raise PermissionError('Grade saving requires teacher review and explicit confirmation')
+            fresh=self.prepare_grade(params)
+            if fresh!=review:
+                raise PermissionError('Submission or proposal changed; review the updated proposal before saving')
+            with MoodleHTTPClient(record['base_url'],token,readonly=False) as client:
+                return save_grade(client,params)
         if key in FORUM_WRITES:
             snap['policy'].require_write('forum')
             if confirmed is not True:
@@ -108,12 +139,13 @@ def attach_to_agent(agent, store):
     if snapshot:
         record=snapshot['record']
         facts={'base_url':record['base_url'],'username':record['username'],
-               'generation':snapshot['generation'],'commands':sorted(keys),'model':agent.model,'provider':getattr(getattr(agent,'llm_client',None),'_lamb_aac_driver',{}).get('provider','unknown'),'forum_write': 'moodle.forum.post' in keys}
+               'generation':snapshot['generation'],'commands':sorted(keys),'model':agent.model,'provider':getattr(getattr(agent,'llm_client',None),'_lamb_aac_driver',{}).get('provider','unknown'),'forum_write': 'moodle.forum.post' in keys,'grade_write': 'moodle.assign.grade' in keys}
     state=agent.skill_state
     if state.get('moodle_capability')==facts: return
     state['moodle_capability']=facts
     if facts:
         access="forum writes require explicit approval" if facts["forum_write"] else "read-only"
+        if facts["grade_write"]: access += "; grade writes require submission/proposal review and explicit approval"
         line=f"Moodle: {facts['base_url']} as {facts['username']}, {access}. AAC driver provider: {facts['provider']}; model: {agent.model}. Student names, posts and grades sent to this driver reach that provider. A hosted provider receives them off premises; a local deployment keeps them on premises."
         references=[spec.reference() for key,spec in command_specs().items() if 'moodle.'+key in keys]
         references += ['Select context with moodle course get COURSE_ID before activity or individual queries. A course ID in a learning scenario is a suggestion, not permission.',
