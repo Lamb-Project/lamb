@@ -24,8 +24,8 @@ logger = get_logger(__name__, component="AAC")
 COMMAND_CONTRACTS = {
     'learning-scenario.list': (0, 0, ''),
     'learning-scenario.get': (1, 1, ''),
-    'learning-scenario.create': (1, 1, 'content'),
-    'learning-scenario.update': (1, 1, 'revision title content'),
+    'learning-scenario.create': (1, 1, 'content moodle_course_id'),
+    'learning-scenario.update': (1, 1, 'revision title content moodle_course_id'),
     'learning-scenario.remove': (1, 1, 'revision'),
     'learning-scenario.duplicate': (1, 1, 'title'),
     'learning-scenario.default': (1, 1, ''),
@@ -169,10 +169,14 @@ def validate_command(key, args, kwargs):
         required = {'update': ['revision'], 'remove': ['revision'], 'duplicate': ['title']}.get(key.split('.')[1], [])
         if any(field not in kwargs for field in required):
             raise ValueError('Missing required options: '+', '.join('--'+field for field in required))
+        if 'moodle_course_id' in kwargs:
+            course = kwargs['moodle_course_id']
+            if not (key.endswith('.update') and course == 'none') and (not str(course).isdigit() or int(course) < 1):
+                raise ValueError('Use a positive Moodle course ID, or none when updating')
         if 'revision' in kwargs and int(kwargs['revision']) < 1:
             raise ValueError('Revision must be positive')
-        if key.endswith('.update') and not ({'title', 'content'} & kwargs.keys()):
-            raise ValueError('Provide --title or --content')
+        if key.endswith('.update') and not ({'title', 'content', 'moodle_course_id'} & kwargs.keys()):
+            raise ValueError('Provide --title, --content or --moodle-course-id')
     if key == "frontend-manage.open":
         from lamb.aac.frontend import destination
         destination(args, kwargs)

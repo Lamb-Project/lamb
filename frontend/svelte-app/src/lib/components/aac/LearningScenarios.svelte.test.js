@@ -4,7 +4,7 @@ import {get} from 'svelte/store';
 vi.mock('$app/navigation',()=>({beforeNavigate:vi.fn()}));
 vi.mock('$lib/services/learningScenarios',()=>({listScenarios:vi.fn(),getScenario:vi.fn(),selectedScenario:vi.fn(),createScenario:vi.fn(),updateScenario:vi.fn(),removeScenario:vi.fn(),duplicateScenario:vi.fn(),defaultScenario:vi.fn()}));
 vi.mock('$lib/services/aacService',()=>({createSession:vi.fn()}));
-import {listScenarios,getScenario,selectedScenario} from '$lib/services/learningScenarios';
+import {listScenarios,getScenario,selectedScenario,updateScenario} from '$lib/services/learningScenarios';
 import {createSession} from '$lib/services/aacService';
 import {sidebarBusy,activeTabId,resetSidebar,showSession} from '$lib/stores/aacStore.svelte';
 import Editor from './LearningScenarios.svelte';
@@ -35,4 +35,15 @@ it('preserves an unsaved manual draft when a newer revision is saved elsewhere',
  sidebarBusy.set(true);sidebarBusy.set(false);
  await screen.findByRole('status');expect(input.value).toBe('My unsaved draft');
  expect(screen.getByRole('button',{name:'Reload saved version'})).toBeVisible();
+});
+
+it('edits and displays the structured Moodle course link',async()=>{
+ getScenario.mockResolvedValue({...item,links:{moodle_course_id:10}});
+ updateScenario.mockImplementation(async draft=>({...draft,revision:2}));
+ render(Editor,{initialId:'owned'});await screen.findByText('Moodle course ID: 10');
+ await fireEvent.click(screen.getByRole('button',{name:'Edit',exact:true}));
+ await fireEvent.input(screen.getByRole('spinbutton'),{target:{value:'20'}});
+ await fireEvent.click(screen.getByRole('button',{name:'Save',exact:true}));
+ await screen.findByText('Moodle course ID: 20');
+ expect(updateScenario.mock.calls[0][0].links).toEqual({moodle_course_id:20});
 });

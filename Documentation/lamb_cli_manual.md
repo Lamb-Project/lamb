@@ -8,6 +8,9 @@ lamb learning-scenario create "Introduction to attention" --content "Learners: b
 lamb learning-scenario list
 lamb learning-scenario get SCENARIO_UUID
 lamb learning-scenario update SCENARIO_UUID --revision 1 --content "Revised goals"
+# Optional structured course link; this does not grant Moodle permissions.
+lamb learning-scenario update SCENARIO_UUID --revision 2 --moodle-course-id 10
+lamb learning-scenario update SCENARIO_UUID --revision 3 --moodle-course-id none
 lamb learning-scenario duplicate SCENARIO_UUID --title "Another course"
 lamb learning-scenario default SCENARIO_UUID
 lamb aac start --scenario default

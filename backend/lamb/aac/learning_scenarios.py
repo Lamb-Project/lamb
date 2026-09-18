@@ -67,13 +67,23 @@ class ScenarioStore:
         with self.transaction() as state:
             return dict(self._get(state, key))
 
-    def create(self, title, content=''):
+    def create(self, title, content='', links=None):
         self.validate(title, content)
+        links = self.validate_links({} if links is None else links)
         with self.transaction() as state:
-            item = dict(id=str(uuid4()), title=title.strip(), content=content, revision=1,
+            item = dict(id=str(uuid4()), title=title.strip(), content=content, links=links, revision=1,
                         updated_at=datetime.now(timezone.utc).isoformat(), archived=False)
             state['scenarios'][item['id']] = item
             return dict(item)
+
+    @staticmethod
+    def validate_links(links):
+        if not isinstance(links, dict) or set(links) - {'moodle_course_id'}:
+            raise HTTPException(400, 'Only moodle_course_id is supported in scenario links')
+        course = links.get('moodle_course_id')
+        if course is not None and (type(course) is not int or course < 1):
+            raise HTTPException(400, 'Moodle course ID must be a positive integer')
+        return {'moodle_course_id':course} if course is not None else {}
 
     @staticmethod
     def validate(title, content):
@@ -87,9 +97,10 @@ class ScenarioStore:
             item = self._get(state, key)
             if type(revision) is not int or revision != item['revision']:
                 raise HTTPException(409, 'Scenario changed; reload and review before saving')
-            if set(fields) - {'title', 'content', 'archived'}:
+            if set(fields) - {'title', 'content', 'archived', 'links'}:
                 raise HTTPException(400, 'Unknown scenario fields')
             self.validate(fields.get('title', item['title']), fields.get('content', item['content']))
+            if 'links' in fields: fields['links'] = self.validate_links(fields['links'])
             item.update(fields, revision=item['revision']+1, updated_at=datetime.now(timezone.utc).isoformat())
             if item.get('archived') and state['default_id'] == item['id']:
                 state['default_id'] = None

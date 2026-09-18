@@ -1099,12 +1099,13 @@ async def learning_scenario_get(ctx, args, kwargs):
 @register('learning-scenario.create')
 async def learning_scenario_create(ctx, args, kwargs):
     """Create TITLE --content TEXT. No local file; requires approval."""
-    return _unwrap(await ctx.http.post('/creator/aac/learning-scenarios', json={'title':args[0], 'content':kwargs.get('content', '')}))
+    return _unwrap(await ctx.http.post('/creator/aac/learning-scenarios', json={'title':args[0], 'content':kwargs.get('content', ''), **({'links':{'moodle_course_id':int(kwargs['moodle_course_id'])}} if 'moodle_course_id' in kwargs else {})}))
 
 @register('learning-scenario.update')
 async def learning_scenario_update(ctx, args, kwargs):
     """Update ID --revision N [--title TEXT] [--content TEXT]; show proposed content for approval."""
     body = _fields(kwargs, ('title', 'content'))
+    if 'moodle_course_id' in kwargs: body['links'] = {} if kwargs['moodle_course_id'] == 'none' else {'moodle_course_id':int(kwargs['moodle_course_id'])}
     body['revision'] = int(kwargs['revision'])
     return _unwrap(await ctx.http.put('/creator/aac/learning-scenarios/'+args[0], json=body))
 

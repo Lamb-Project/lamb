@@ -9,11 +9,13 @@ router = APIRouter()
 class Create(BaseModel):
     title: str
     content: str = ''
+    links: dict | None = None
 
 class Update(BaseModel):
     revision: StrictInt
     title: str | None = None
     content: str | None = None
+    links: dict | None = None
 
 class Selection(BaseModel):
     scenario_id: str | None = None
@@ -24,7 +26,7 @@ def list_scenarios(auth: AuthContext = Depends(get_auth_context)):
 
 @router.post('/learning-scenarios')
 def create(body: Create, auth: AuthContext = Depends(get_auth_context)):
-    return ScenarioStore(auth).create(body.title, body.content)
+    return ScenarioStore(auth).create(body.title, body.content, body.links)
 
 @router.put('/learning-scenarios/default')
 def default(body: Selection, auth: AuthContext = Depends(get_auth_context)):
@@ -46,7 +48,7 @@ def remove(key: str, revision: int, auth: AuthContext = Depends(get_auth_context
 def duplicate(key: str, body: Create, auth: AuthContext = Depends(get_auth_context)):
     store = ScenarioStore(auth)
     source = store.get(key)
-    return store.create(body.title, source['content'])
+    return store.create(body.title, source['content'], source.get('links', {}))
 
 @router.get('/sessions/{session_id}/learning-scenario')
 def selected(session_id: str, auth: AuthContext = Depends(get_auth_context)):

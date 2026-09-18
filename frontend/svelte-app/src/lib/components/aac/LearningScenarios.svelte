@@ -21,7 +21,7 @@
     async function action(fn) { busy=true; error=''; try { await fn(); } catch(e) { error=e.message; } finally { busy=false; } }
     async function open(id, edit=false) { if (!discard()) return; await action(async()=> { item=await getScenario(id); original=JSON.stringify(item); editing=edit; loadedId=id; remoteChanged=false; }); }
     function fresh() { if (!discard()) return; item={title:'',content:''}; original=JSON.stringify(item); loadedId=''; editing=true; }
-    async function save(event) { event.preventDefault(); await action(async()=> { item=item.id ? await updateScenario(item) : await createScenario(item.title,item.content); original=JSON.stringify(item); remoteChanged=false; loadedId=item.id; editing=false; clearDraft(); await load(); }); }
+    async function save(event) { event.preventDefault(); await action(async()=> { item=item.id ? await updateScenario(item) : await createScenario(item.title,item.content,item.links); original=JSON.stringify(item); remoteChanged=false; loadedId=item.id; editing=false; clearDraft(); await load(); }); }
     function back() { if (!discard()) return; clearDraft(); editing=false; item=null; loadedId=''; }
     function close() { if (discard()) { clearDraft(); onclose?.(); } }
     async function refreshFromServer() {
@@ -75,11 +75,13 @@
         <form bind:this={form} onsubmit={save} oninput={markWorkspaceDirty} onchange={markWorkspaceDirty}>
             <label>{t.title}<input required maxlength="200" bind:value={item.title} /></label>
             <label>{t.content}<textarea rows="14" maxlength="20000" bind:value={item.content}></textarea></label>
+            <label>Moodle course ID (optional)<input type="number" min="1" step="1" value={item.links?.moodle_course_id ?? ''} oninput={event => item.links = event.currentTarget.value ? {moodle_course_id:Number(event.currentTarget.value)} : {}} /></label>
             <button disabled={busy} type="submit">{t.save}</button>
             <button disabled={busy} type="button" onclick={()=> { if(discard()) { item=JSON.parse(original); editing=false; clearDraft(); if(!item.id) item=null; } }}>{t.cancel}</button>
         </form>
         {:else}
             <h3>{item.title}</h3><div class="content">{item.content}</div>
+            {#if item.links?.moodle_course_id}<p>Moodle course ID: {item.links.moodle_course_id}</p>{/if}
             <button disabled={busy} onclick={()=>{ original=JSON.stringify(item); editing=true; }}>{t.edit}</button>
             <button disabled={busy} onclick={()=>action(async()=>{item=await duplicateScenario(item.id, `${item.title.slice(0,180)} (${t.copy})`); loadedId=item.id; await load();})}>{t.duplicate}</button>
             <button disabled={busy} onclick={()=>action(async()=>{await defaultScenario(data.default_id===item.id ? null:item.id); await load();})}>{data.default_id===item.id ? t.clearDefault:t.setDefault}</button>

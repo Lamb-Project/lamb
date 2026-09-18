@@ -15,15 +15,19 @@ def get(key: str, output: str = typer.Option("json", "-o", "--output", help="Str
     with get_client() as c: print_json(c.get(BASE+'/'+key))
 
 @app.command('create')
-def create(title: str, content: str = typer.Option('', '--content'), output: str = typer.Option("json", "-o", "--output", help="Structured JSON output.")):
-    with get_client() as c: print_json(c.post(BASE, json={'title':title, 'content':content}))
+def create(title: str, content: str = typer.Option('', '--content'), moodle_course_id: int = typer.Option(None, '--moodle-course-id', min=1), output: str = typer.Option("json", "-o", "--output", help="Structured JSON output.")):
+    with get_client() as c: print_json(c.post(BASE, json={'title':title, 'content':content, **({'links':{'moodle_course_id':moodle_course_id}} if moodle_course_id is not None else {})}))
 
 @app.command('update')
-def update(key: str, revision: int = typer.Option(..., '--revision'), title: str = typer.Option(None, '--title'), content: str = typer.Option(None, '--content'), output: str = typer.Option("json", "-o", "--output", help="Structured JSON output.")):
+def update(key: str, revision: int = typer.Option(..., '--revision'), title: str = typer.Option(None, '--title'), content: str = typer.Option(None, '--content'), moodle_course_id: str = typer.Option(None, '--moodle-course-id', help='Positive course ID, or none to clear the link.'), output: str = typer.Option("json", "-o", "--output", help="Structured JSON output.")):
     body = {'revision':revision}
     if title is not None: body['title'] = title
     if content is not None: body['content'] = content
-    if len(body)==1: raise typer.BadParameter('Provide --title or --content')
+    if moodle_course_id is not None:
+        if moodle_course_id != 'none' and (not moodle_course_id.isdigit() or int(moodle_course_id) < 1):
+            raise typer.BadParameter('Use a positive Moodle course ID or none')
+        body['links'] = {} if moodle_course_id == 'none' else {'moodle_course_id':int(moodle_course_id)}
+    if len(body)==1: raise typer.BadParameter('Provide --title, --content or --moodle-course-id')
     with get_client() as c: print_json(c.put(BASE+'/'+key, json=body))
 
 @app.command('remove')
