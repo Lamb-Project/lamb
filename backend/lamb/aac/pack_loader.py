@@ -91,10 +91,11 @@ def load_pack(settings=None, *, version=None, root=None):
     raise ValueError(f'AAC pack {selected} is not installed; ask the administrator')
 
 
-def allowed_skills(pack, layers):
+def allowed_skills(pack, layers, integrations=None):
     from lamb.aac.skill_loader import list_skills
     assignments = pack.manifest.get('skill_layers', {'test-lti-tools':'admin'})
-    return {s['id'] for s in list_skills(pack.skills_dir) if assignments.get(s['id'],'creator') in layers}
+    return {s['id'] for s in list_skills(pack.skills_dir) if assignments.get(s['id'],'creator') in layers
+            and (integrations is None or not s.get('requires_integration') or s['requires_integration'] in integrations)}
 
 
 def allowed_commands(pack, layers):
@@ -115,5 +116,5 @@ def render_prefix(pack, brief):
         for file in pack.manifest['layers'].get(layer, []):
             parts.append(pack.text(file))
     parts.append(command_reference(allowed_commands(pack,layers)))
-    parts.append(catalogue_prompt(pack.skills_dir, allowed_skills(pack,layers)))
+    parts.append(catalogue_prompt(pack.skills_dir, allowed_skills(pack,layers,integrations=())))
     return '\n\n'.join(parts)

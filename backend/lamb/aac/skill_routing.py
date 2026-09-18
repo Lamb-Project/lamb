@@ -86,7 +86,7 @@ class SkillRouting:
         pack = getattr(self, 'pack', None)
         if pack:
             from lamb.aac.pack_loader import allowed_skills
-            if skill_id not in allowed_skills(pack, state['brief']['layers']):
+            if skill_id not in allowed_skills(pack, state['brief']['layers'], state.get('integrations',())):
                 raise ValueError('This workflow is outside your role; ask the appropriate administrator')
         cache_key = digest([skill_id, context, state.get("policy_version"), state.get('pack_version')])
         snapshots = state.setdefault('snapshots', {})
@@ -189,7 +189,7 @@ def select_workflow(message, state, pack=None):
     skill_id = rule['skill']
     if pack:
         from lamb.aac.pack_loader import allowed_skills
-        if skill_id not in allowed_skills(pack, state['brief']['layers']):
+        if skill_id not in allowed_skills(pack, state['brief']['layers'], state.get('integrations',())):
             return None
     context.setdefault('language', "the user's current conversation language")
     if skill_id == state.get('skill_id') and context == normalize_context(state.get('context')) and state.get('active_snapshot'):

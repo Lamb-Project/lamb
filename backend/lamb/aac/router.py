@@ -208,7 +208,8 @@ async def get_available_skills(auth: AuthContext = Depends(get_auth_context)):
     from lamb.aac.preferences import agent_settings
     from lamb.aac.brief import role_axes
     pack = load_pack(agent_settings(auth.organization.get('config', {})))
-    allowed = allowed_skills(pack, role_axes(auth)['layers'])
+    from lamb.moodle.runtime import integrations_for
+    allowed = allowed_skills(pack, role_axes(auth)['layers'], integrations_for(auth))
     return [s for s in list_skills(pack.skills_dir) if s['id'] in allowed]
 
 

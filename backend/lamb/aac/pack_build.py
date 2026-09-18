@@ -44,6 +44,9 @@ def validate_routing(pack):
     commands = set(COMMAND_CONTRACTS)
     layers = {'creator', 'lti', 'org_admin', 'admin'}
     routing = pack.data('routing.yaml')
+    if any(key.startswith('moodle.') for key in routing['DEFAULT_SKILL']):
+        from lamb.moodle.contract import command_specs
+        commands |= {'moodle.'+key for key in command_specs()} | {'moodle.sync','moodle.cache.show','moodle.import.file'}
     for field, known in [('skill_layers', skills), ('command_layers', commands)]:
         for key, layer in pack.manifest.get(field, {}).items():
             if key not in known or layer not in layers:

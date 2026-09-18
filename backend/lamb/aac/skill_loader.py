@@ -52,6 +52,7 @@ def list_skills(skills_dir=None) -> list[dict]:
                 "description": meta.get("description", ""),
                 "required_context": meta.get("required_context", []),
                 "optional_context": meta.get("optional_context", []),
+                "requires_integration": meta.get("requires_integration"),
             })
     return skills
 

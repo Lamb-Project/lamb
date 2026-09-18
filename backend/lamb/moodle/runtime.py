@@ -147,6 +147,7 @@ def attach_to_agent(agent, store):
         snapshot=runtime.snapshot() if keys else None
     except (MoodleConfigurationError,PermissionError):
         keys,snapshot=set(),None
+    agent.skill_state['integrations']=['moodle'] if keys else []
     agent.shell.moodle=runtime
     if hasattr(agent.shell, 'knowledge'): agent.shell.knowledge['moodle']=runtime
     allowed=agent.shell.allowed_commands
@@ -156,6 +157,7 @@ def attach_to_agent(agent, store):
     if snapshot:
         record=snapshot['record']
         facts={'base_url':record['base_url'],'username':record['username'],
+               'pack_version':getattr(getattr(agent,'pack',None),'version',None),
                'generation':snapshot['generation'],'commands':sorted(keys),'model':agent.model,'provider':getattr(getattr(agent,'llm_client',None),'_lamb_aac_driver',{}).get('provider','unknown'),'forum_write': 'moodle.forum.post' in keys,'grade_write': 'moodle.assign.grade' in keys}
     state=agent.skill_state
     if state.get('moodle_capability')==facts: return
@@ -169,7 +171,24 @@ def attach_to_agent(agent, store):
                        'moodle import file FILE_ID --to kb ID | --single-file (confirmation required; use file_id from moodle file list, not a local path)',
                        'moodle sync COURSE_ID [--section course|forums|assignments|enrolment|calendar]',
                        'moodle cache show COURSE_ID --section course|forums|assignments|enrolment|calendar']
+        pack=getattr(agent,'pack',None)
+        if pack:
+            from lamb.aac.skill_loader import list_skills
+            workflows=[s for s in list_skills(pack.skills_dir) if s.get('requires_integration')=='moodle']
+            references += ['Load the appropriate workflow with lamb skill load ID before acting:'] + [s['id']+': '+s['description'] for s in workflows]
         text=line+'\nOnly these Moodle commands are currently available:\n'+'\n\n'.join(references)
     else:
         text='Moodle is disconnected or disabled. Previously supplied Moodle commands are unavailable.'
     agent.conversation.append({'role':'user','content':'[System: Moodle capability update]\n'+text})
+
+
+def integrations_for(auth):
+    """Public capability discovery uses connection metadata, never decrypts tokens."""
+    from .router import database
+    from .store import ConnectionStore
+    from .policy import MoodleConfigurationError
+    try:
+        runtime=MoodleRuntime(ConnectionStore(database(),auth.organization['id'],auth.user['id']))
+        return ['moodle'] if runtime.available() else []
+    except (PermissionError, RuntimeError, MoodleConfigurationError):
+        return []

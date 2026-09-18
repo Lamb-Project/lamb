@@ -31,7 +31,7 @@ def skill_commands(text):
     for block in blocks + inline:
         for line in block.splitlines():
             line = line.strip()
-            if line.startswith(('lamb ', 'frontend-manage ')):
+            if line.startswith(('lamb ', 'frontend-manage ', 'moodle ')):
                 yield line
 
 
@@ -46,6 +46,8 @@ def validate_skill_contracts(pack):
                 example = re.sub(r'\b(?:RUBRIC_ID|LEARNING_SCENARIO_ID)\b', '00000000-0000-0000-0000-000000000001', command)
                 example = re.sub(r'\b(?:ASSISTANT|KB|SCENARIO|CASE|RUN|CHAT|TEMPLATE|JOB)_ID\b', '1', example)
                 example = re.sub(r'\{assistant_id\}|<assistant_id>|<id>', '1', example)
+                example = re.sub(r'\b(?:COURSE|FORUM|DISCUSSION|POST|CONTEXT|ASSIGNMENT|USER)_ID\b', '1', example)
+                example = example.replace('FILE_ID', 'mf_fixture')
                 prepare_command(example)
             except (ValueError, TypeError) as exc:
                 errors.append(f'{file.name}: {exc}: {command}')

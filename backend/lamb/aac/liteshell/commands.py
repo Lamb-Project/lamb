@@ -581,7 +581,7 @@ def skill_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     if not pack:
         return list_skills()
     from lamb.aac.pack_loader import allowed_skills
-    allowed = allowed_skills(pack, ctx.knowledge['brief']['layers'])
+    allowed = allowed_skills(pack, ctx.knowledge['brief']['layers'],ctx.knowledge.get('state',{}).get('integrations',()))
     return [s for s in list_skills(pack.skills_dir) if s['id'] in allowed]
 
 
@@ -602,7 +602,7 @@ def skill_load(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
     pack = ctx.knowledge.get('pack')
     if pack:
         from lamb.aac.pack_loader import allowed_skills
-        if skill_id not in allowed_skills(pack, ctx.knowledge['brief']['layers']):
+        if skill_id not in allowed_skills(pack, ctx.knowledge['brief']['layers'],ctx.knowledge.get('state',{}).get('integrations',())):
             raise ValueError('This workflow is outside your role; ask the appropriate administrator')
     skill = load_skill(skill_id, context, pack.skills_dir if pack else None)
     return {
