@@ -88,10 +88,22 @@ class SkillRouting:
             from lamb.aac.pack_loader import allowed_skills
             if skill_id not in allowed_skills(pack, state['brief']['layers'], state.get('integrations',())):
                 raise ValueError('This workflow is outside your role; ask the appropriate administrator')
-        cache_key = digest([skill_id, context, state.get("policy_version"), state.get('pack_version')])
+        moodle_permissions = None
+        if skill_id.startswith('moodle-'):
+            # Runtime facts, never caller-supplied skill context. Permission changes
+            # select a new appended snapshot without rewriting the pinned prefix.
+            facts = state.get('moodle_capability') or {}
+            moodle_permissions = sorted(facts.get('commands', []))
+        cache_identity = [skill_id, context, state.get("policy_version"), state.get('pack_version')]
+        if moodle_permissions is not None:
+            cache_identity.append(moodle_permissions)
+        cache_key = digest(cache_identity)
         snapshots = state.setdefault('snapshots', {})
         if cache_key not in snapshots:
             skill = load_skill(skill_id, dict(context), pack.skills_dir if pack else None)
+            if moodle_permissions is not None:
+                from lamb.moodle.workflow import render_permissions
+                skill['prompt'] = render_permissions(skill['prompt'], moodle_permissions)
             snapshots[cache_key] = {'id': skill['metadata']['id'], 'prompt': skill['prompt'],
                                     'version': digest(skill['prompt']), 'context': context}
         snapshot = snapshots[cache_key]
