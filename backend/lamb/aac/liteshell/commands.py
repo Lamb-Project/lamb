@@ -730,7 +730,7 @@ def help_cmd(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict[str, 
         from lamb.moodle.contract import command_specs
         for key in sorted(moodle.available()):
             spec=command_specs().get(key.removeprefix('moodle.'))
-            result[key.replace('.', ' ')]=spec.description if spec else 'Read or refresh the private Moodle course cache.'
+            result[key.replace('.', ' ')]=spec.description if spec else ('Import a listed Moodle file into owned LAMB grounding, after confirmation.' if key=='moodle.import.file' else 'Read or refresh the private Moodle course cache.')
 
     return result
 

@@ -163,6 +163,7 @@ class ActionAuthorizer:
             from lamb.moodle.contract import command_specs
             key=action_key.removeprefix('moodle.')
             if key in {'sync','cache.show'}: return 'auto'
+            if key=='import.file': return 'ask'
             spec=command_specs().get(key)
             return spec.policy if spec else 'never'
         return self.policy.get(action_key, "ask")

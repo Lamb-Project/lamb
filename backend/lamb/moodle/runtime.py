@@ -45,7 +45,7 @@ class MoodleRuntime:
             keys=keys | {'assign.grade'}
         except PermissionError:
             pass
-        return {'moodle.'+key for key in keys} | {'moodle.sync','moodle.cache.show'}
+        return {'moodle.'+key for key in keys} | {'moodle.sync','moodle.cache.show','moodle.import.file'}
 
     def prepare_grade(self, params):
         from .assessment import grade_review
@@ -69,10 +69,27 @@ class MoodleRuntime:
         cipher=self._cipher or TokenCipher()
         token=cipher.decrypt(record['token_encrypted'],organization_id=self.store.organization_id,
                              owner_id=self.store.owner_id,base_url=record['base_url'])
-        if key not in SELF_READS | SCOPED_READS | FORUM_WRITES | {'sync','cache.show','assign.grade'}:
+        if key not in SELF_READS | SCOPED_READS | FORUM_WRITES | {'sync','cache.show','assign.grade','import.file'}:
             raise PermissionError('This Moodle command requires a verified course/resource scope')
         if self.context.get('generation') != snap['generation']:
             self.context.clear();self.context['generation']=snap['generation']
+        if key=='import.file':
+            if confirmed is not True:
+                raise PermissionError('Importing a Moodle document requires explicit confirmation')
+            proof=self.context.get('files',{}).get(params['file_id'])
+            if not proof or proof['course_id']!=self.context.get('course_id'):
+                raise PermissionError('List files in the selected instructor course before importing')
+            with MoodleHTTPClient(record['base_url'],token,readonly=True) as client:
+                files=execute_scoped_read(client,'file.list',proof['listing'],owner_moodle_id=record['moodle_user_id'],context=self.context)
+            current=next((f for f in files if f.get('file_id')==params['file_id']),None)
+            if current!=proof['file']:
+                raise PermissionError('Moodle file changed or disappeared; list it again before approval')
+            from .documents import download_file
+            result=download_file(record['base_url'],token,current,single_file=params['single_file'])
+            current=self.snapshot()
+            if current['generation']!=snap['generation'] or current['policy']!=snap['policy']:
+                raise PermissionError('Moodle connection changed during download; import cancelled')
+            return result
         if key=='assign.grade':
             from .assessment import save_grade
             snap['policy'].require_write('grade')
@@ -149,6 +166,7 @@ def attach_to_agent(agent, store):
         line=f"Moodle: {facts['base_url']} as {facts['username']}, {access}. AAC driver provider: {facts['provider']}; model: {agent.model}. Student names, posts and grades sent to this driver reach that provider. A hosted provider receives them off premises; a local deployment keeps them on premises."
         references=[spec.reference() for key,spec in command_specs().items() if 'moodle.'+key in keys]
         references += ['Select context with moodle course get COURSE_ID before activity or individual queries. A course ID in a learning scenario is a suggestion, not permission.',
+                       'moodle import file FILE_ID --to kb ID | --single-file (confirmation required; use file_id from moodle file list, not a local path)',
                        'moodle sync COURSE_ID [--section course|forums|assignments|enrolment|calendar]',
                        'moodle cache show COURSE_ID --section course|forums|assignments|enrolment|calendar']
         text=line+'\nOnly these Moodle commands are currently available:\n'+'\n\n'.join(references)

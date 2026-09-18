@@ -37,7 +37,6 @@ BINDINGS = {
     'feedback.analysis': ('feedback','FeedbackService','get_analysis','feedback_id'),
     'feedback.list': ('feedback','FeedbackService','list_feedbacks','course_id'),
     'feedback.non-respondents': ('feedback','FeedbackService','non_respondents','feedback_id'),
-    'file.list': ('file','FileService','list_files','contextid component filearea itemid filepath'),
     'forum.discussions': ('forum','ForumService','get_discussions','forum_id'),
     'forum.list': ('forum','ForumService','list_forums','course_id'),
     'forum.posts': ('forum','ForumService','get_posts','discussion_id'),
@@ -65,7 +64,7 @@ BINDINGS = {
     'workshop.grades': ('activity_content','WorkshopService','grades_report','workshop_id'),
     'workshop.submissions': ('activity_content','WorkshopService','submissions','workshop_id'),
 }
-SPECIAL_READS = {'wiki.pages','content.types','enrol.my-courses','message.list','message.conversations','message.unread'}
+SPECIAL_READS = {'file.list','wiki.pages','content.types','enrol.my-courses','message.list','message.conversations','message.unread'}
 
 
 def service_class(module, name):
@@ -99,6 +98,9 @@ def execute_read(client, key, params, *, owner_moodle_id):
     # Never let an omitted user select a server-dependent class-wide default.
     if 'user_id' in params and params['user_id'] is None:
         params['user_id'] = owner_moodle_id
+    if key == 'file.list':
+        from .documents import FileInventoryService
+        return FileInventoryService(client).files(params)
     if key == 'wiki.pages':
         from .wiki import WikiPagesService
         return WikiPagesService(client).pages(params['wiki_id'])

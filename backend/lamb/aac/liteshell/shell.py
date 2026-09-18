@@ -320,6 +320,13 @@ class LiteShell:
                 raise ValueError('Moodle connector is unavailable in this conversation')
             import asyncio
             data=await asyncio.to_thread(self.moodle.execute,key.removeprefix('moodle.'),kwargs,confirmed=confirmed,review=review)
+            if key=='moodle.import.file':
+                if kwargs['single_file']:
+                    data=await self._get_http().post('/creator/aac/files',files={'file':(data.filename,data.content,data.content_type)})
+                else:
+                    data=await self._get_http().post(f"/creator/knowledgebases/kb/{kwargs['kb_id']}/files",files={'files':(data.filename,data.content,data.content_type)})
+                    if data.get('status')=='error' or data.get('kb_server_available') is False:
+                        raise ValueError(data.get('message','Knowledge base import failed'))
             return ShellResult(success=True,data=data)
         handler = COMMAND_REGISTRY[key]
         if help_requested:

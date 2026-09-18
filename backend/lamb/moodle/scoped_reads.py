@@ -125,6 +125,9 @@ def execute_scoped_read(client,key,params,*,owner_moodle_id,context):
                 if any((d.discussion or d.id)==params['discussion_id'] for d in discussions):
                     found=True;break
             if not found:raise PermissionError('Moodle discussion is outside the selected instructor course')
+    if key=='file.list':
+        from .documents import remember_files
+        return remember_files(execute_read(client,key,params,owner_moodle_id=owner_moodle_id),params,context)
     result=execute_read(client,key,params,owner_moodle_id=owner_moodle_id)
     if key=='wiki.pages':
         proofs=context.setdefault('wiki_pages',{})
