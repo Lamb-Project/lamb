@@ -1,4 +1,5 @@
 <script>
+    import MoodleSettings from '$lib/components/admin/MoodleSettings.svelte';
     import AgentSettings from '$lib/components/aac/AgentSettings.svelte';
     import { onMount, onDestroy } from 'svelte';
     import { page } from '$app/stores';
@@ -3304,7 +3305,8 @@
                         <!-- Settings Sub-Navigation -->
                         <div class="bg-white shadow-sm rounded-lg mb-4">
                             <div class="border-b border-gray-200">
-                                <nav class="flex -mb-px" aria-label="Settings Tabs">
+                                <nav class="flex flex-wrap -mb-px" aria-label="Settings Tabs">
+                                    <button class="px-6 py-3 border-b-2 font-medium text-sm {settingsSubView === 'moodle' ? 'border-brand text-brand' : 'border-transparent text-gray-500'}" onclick={() => {settingsSubView='moodle';}}>Moodle</button>
                                     <button
                                         class="px-6 py-3 border-b-2 font-medium text-sm transition-colors duration-200 {settingsSubView === 'general' ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
                                         onclick={() => { settingsSubView = 'general'; }}
@@ -3371,6 +3373,9 @@
                             </div>
                         </div>
 
+                        {#if settingsSubView === 'moodle'}
+                            {#key targetOrgSlug}<MoodleSettings org={targetOrgSlug} />{/key}
+                        {/if}
                         <!-- General Settings Tab -->
                         {#if settingsSubView === 'general'}
                         <!-- Signup Settings -->

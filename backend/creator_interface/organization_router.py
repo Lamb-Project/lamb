@@ -4970,3 +4970,47 @@ async def update_agent_settings(request: Request, settings: Dict[str, Any], org:
     if not db_manager.update_organization_config(admin['organization_id'], config):
         raise HTTPException(500, 'Failed to save agent settings')
     return {'settings': validated}
+
+
+@router.get('/org-admin/settings/moodle', dependencies=[Depends(security)])
+async def get_moodle_settings(request: Request, org: Optional[str] = None):
+    from lamb.moodle.policy import MoodlePolicy, MoodleConfigurationError
+    from lamb.moodle.router import settings_view, PRIVACY_NOTICE
+    admin = await _agent_settings_admin(request, org)
+    try:
+        settings = settings_view(MoodlePolicy.from_config(admin['organization'].get('config', {})))
+    except MoodleConfigurationError as exc:
+        raise HTTPException(503, str(exc)) from None
+    return {'settings': settings, 'privacy_notice': PRIVACY_NOTICE}
+
+
+@router.put('/org-admin/settings/moodle', dependencies=[Depends(security)])
+async def update_moodle_settings(request: Request, org: Optional[str] = None):
+    import json
+    import time
+    from pydantic import ValidationError
+    from lamb.moodle.policy import MoodlePolicy, MoodleConfigurationError
+    from lamb.moodle.router import SettingsBody, settings_view, PRIVACY_NOTICE
+    admin = await _agent_settings_admin(request, org)
+    try:
+        proposed = SettingsBody.model_validate(await request.json())
+        settings = settings_view(MoodlePolicy.from_config({'moodle': proposed.model_dump()}))
+    except (ValueError, ValidationError, MoodleConfigurationError):
+        raise HTTPException(400, 'Invalid Moodle settings') from None
+    connection = db_manager.get_connection()
+    if connection is None:
+        raise HTTPException(503, 'Organization settings storage is unavailable')
+    try:
+        with connection:
+            connection.execute('BEGIN IMMEDIATE')
+            row = connection.execute(f'SELECT config FROM {db_manager.table_prefix}organizations WHERE id=? AND status=?',
+                                     (admin['organization_id'], 'active')).fetchone()
+            if row is None:
+                raise HTTPException(404, 'Organization not found')
+            config = json.loads(row[0]) if row[0] else {}
+            config['moodle'] = settings
+            connection.execute(f'UPDATE {db_manager.table_prefix}organizations SET config=?, updated_at=? WHERE id=?',
+                               (json.dumps(config), int(time.time()), admin['organization_id']))
+    finally:
+        connection.close()
+    return {'settings': settings, 'privacy_notice': PRIVACY_NOTICE}

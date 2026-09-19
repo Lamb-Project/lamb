@@ -343,6 +343,13 @@ class AgentLoop(SkillRouting):
         kwargs = {"model": self.model, "messages": messages}
         if tools_enabled:
             kwargs.update(tools=TOOL_DEFINITIONS, tool_choice="auto")
+        # GPT-5.6 defaults to medium reasoning, which rejects function tools
+        # on Chat Completions. Scope this compatibility option to that provider
+        # and model family; Ollama and older OpenAI models keep their contract.
+        driver = getattr(self.llm_client, '_lamb_aac_driver', {})
+        if (tools_enabled and isinstance(driver, dict) and driver.get('provider') == 'openai'
+                and (self.model == 'gpt-5.6' or self.model.startswith('gpt-5.6-'))):
+            kwargs['reasoning_effort'] = 'none'
         started = time.monotonic()
         if not streaming:
             response = await self.llm_client.chat.completions.create(**kwargs)

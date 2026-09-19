@@ -1,5 +1,20 @@
 <script>
   import { scenarioText } from '$lib/utils/learningScenarioText';
+  import { moodleStatus } from '$lib/services/moodleService';
+  let moodleEnabled = $state(false);
+  async function refreshMoodle() {
+    try {moodleEnabled = (await moodleStatus()).settings.enabled === true;}
+    catch (_) {moodleEnabled=false;}
+  }
+  $effect(() => {
+    const identity = $user.isLoggedIn && ($user.email || $user.data?.id);
+    moodleEnabled=false;
+    if (identity) {
+      let active=true;
+      moodleStatus().then(s => {if(active) moodleEnabled=s.settings.enabled === true;}).catch(() => {});
+      return () => {active=false;};
+    }
+  });
   import { sidebarOpen } from '$lib/stores/aacStore.svelte';
   import { user } from '$lib/stores/userStore';
   import { clearCurrentSession, ensureProfileLoaded } from '$lib/session/sessionManager';
@@ -63,12 +78,14 @@
 
   // Set up event listeners for dropdown
   onMount(() => {
+    window.addEventListener('moodle-settings-changed', refreshMoodle);
     document.addEventListener('click', handleClickOutside);
     document.addEventListener('keydown', handleKeydown);
 
     ensureProfileLoaded();
 
     return () => {
+      window.removeEventListener('moodle-settings-changed', refreshMoodle);
       document.removeEventListener('click', handleClickOutside);
       document.removeEventListener('keydown', handleKeydown);
     };
@@ -108,7 +125,7 @@
           {#if $user.isLoggedIn}
           <a href="{base}/learning-scenarios" aria-current={$page.url.pathname === base + '/learning-scenarios' ? 'page' : undefined}
              class="inline-flex items-center px-2 pt-1 border-b-2 text-sm font-medium whitespace-nowrap {$page.url.pathname === base + '/learning-scenarios' ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}">{scenarioText($locale).plural}</a>
-          <a href="{base}/moodle" class="px-2 py-2 text-sm font-medium text-[#173f64]" aria-current={$page.url.pathname === base + '/moodle' ? 'page' : undefined}>Moodle</a>
+          {#if moodleEnabled}<a href="{base}/moodle" class="px-2 py-2 text-sm font-medium text-[#173f64]" aria-current={$page.url.pathname === base + '/moodle' ? 'page' : undefined}>Moodle</a>{/if}
           {/if}
 
           {#if $user.isLoggedIn && $user.data?.role === 'admin'} <!-- System Admin link -->
@@ -181,7 +198,7 @@
       
       {#if $user.isLoggedIn}
       <a href="{base}/learning-scenarios" class="sm:hidden order-last w-full py-2 text-sm font-medium text-[#173f64]" aria-current={$page.url.pathname === base + '/learning-scenarios' ? 'page' : undefined}>{scenarioText($locale).plural}</a>
-      <a href="{base}/moodle" class="sm:hidden order-last w-full py-2 text-sm font-medium text-[#173f64]">Moodle</a>
+      {#if moodleEnabled}<a href="{base}/moodle" class="sm:hidden order-last w-full py-2 text-sm font-medium text-[#173f64]">Moodle</a>{/if}
       {/if}
       <!-- User info and Language selector section -->
       <div class="flex items-center gap-3">

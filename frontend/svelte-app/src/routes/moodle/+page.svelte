@@ -1,33 +1,40 @@
 <script>
     import { onMount } from 'svelte';
-    import { moodleStatus, connectMoodleQrImage, connectMoodle, disconnectMoodle, configureMoodle } from '$lib/services/moodleService';
+    import { createSession } from '$lib/services/aacService';
+    import { showSession, sidebarBusy } from '$lib/stores/aacStore.svelte';
+    import { moodleStatus, connectMoodleQrImage, connectMoodle, disconnectMoodle } from '$lib/services/moodleService';
     import { clearWorkspaceDirty } from '$lib/services/frontendManage';
     let status = $state(null);
-    let settings = $state({enabled:false, base_url:'', mode:'readonly', write_groups:[], allow_grade_write:false});
     let method = $state('passport');
     let qrImage = $state(null);
-    let qrInput;
+    let qrInput = $state(null);
     let credential = $state('');
     let busy = $state(false);
     let error = $state('');
     let notice = $state('');
-    let forum = $state(false);
-    async function load(resetSettings = false) {
-        status = await moodleStatus();
-        if (resetSettings) {
-            settings = {...status.settings};
-            forum = settings.write_groups.includes('forum');
-        }
+
+    async function load() { status = await moodleStatus(); }
+    onMount(() => {load().catch(e => error=e.message);});
+    let onboardingPending = $state(false);
+    async function launchAgent() {
+        if ($sidebarBusy) {error='Finish or stop the current agent turn, then open the Moodle summary.'; return;}
+        busy=true; error=''; notice='Reading your Moodle course list…';
+        try {
+            const session = await createSession({moodleOnboarding:true});
+            showSession(session.id, session.title);
+            onboardingPending=false; notice='Moodle course summary opened in LAMB AGENT.';
+        } catch(e) {error='Connected, but the course summary could not be opened. '+e.message;}
+        finally {busy=false;}
     }
-    onMount(() => { load(true).catch(e => error=e.message); });
-    async function action(work, message, {form, resetSettings = false, clearCredential = false} = {}) {
+    async function action(work, message, {form, clearCredential = false, onboard = false} = {}) {
         busy=true;error='';notice='';
         try {
             await work();
             if (clearCredential) credential = '';
             if (form) clearWorkspaceDirty(form);
             notice=message;
-            await load(resetSettings);
+            await load();
+            if (onboard) {onboardingPending=true; await launchAgent();}
         }
         catch(e) {error=e.message;}
         finally {busy=false;}
@@ -39,6 +46,7 @@
     <p>Connect your instructor account to the Moodle site allowed by your organization. Enter credentials here, never in the agent chat.</p>
     {#if error}<p role="alert" class="error">{error}</p>{/if}
     {#if notice}<p role="status" class="notice">{notice}</p>{/if}
+    {#if onboardingPending}<button disabled={busy || $sidebarBusy} onclick={launchAgent}>Open Moodle summary in LAMB AGENT</button>{/if}
     {#if status}
         <aside aria-label="Moodle data and AI provider">
             <p>{status.privacy_notice}</p>
@@ -67,7 +75,7 @@
                     action(async () => {
                         try {await connectMoodleQrImage(selected);}
                         finally {qrImage=null; if(qrInput) qrInput.value='';}
-                    }, 'Moodle identity verified and connected.', {form:e.currentTarget});
+                    }, 'Moodle identity verified and connected.', {form:e.currentTarget, onboard:true});
                 }}>
                     <h3>Upload your Moodle login QR code</h3>
                     <p>In your Moodle profile, display a fresh QR code for automatic mobile login, then save an image or take a screenshot. Upload it within about three minutes.</p>
@@ -80,7 +88,7 @@
                 </form>
                 <details>
                     <summary>Advanced options: paste a passport or token</summary>
-                <form data-aac-edit-form onsubmit={e => {e.preventDefault();action(() => connectMoodle({[method]:credential}), 'Moodle identity verified and connected.', {form:e.currentTarget, clearCredential:true});}}>
+                <form data-aac-edit-form onsubmit={e => {e.preventDefault();action(() => connectMoodle({[method]:credential}), 'Moodle identity verified and connected.', {form:e.currentTarget, clearCredential:true, onboard:true});}}>
                     <label>Connection method
                         <select bind:value={method} disabled={busy}>
                             <option value="passport">Mobile QR passport</option>
@@ -96,19 +104,6 @@
                 </details>
             {/if}
         </div>
-        {#if status.can_configure}
-            <form class="card" data-aac-edit-form onsubmit={e => {e.preventDefault();action(() => configureMoodle({...settings, write_groups:forum ? ['forum'] : []}), 'Organization Moodle settings saved.', {form:e.currentTarget, resetSettings:true});}}>
-                <h2>Organization settings</h2>
-                <label class="check"><input type="checkbox" bind:checked={settings.enabled} disabled={busy} /> Enable Moodle connector</label>
-                <label>Allowed Moodle base URL<input type="url" bind:value={settings.base_url} required={settings.enabled} placeholder="https://moodle.example.org" disabled={busy} /></label>
-                <label>Access mode<select bind:value={settings.mode} disabled={busy}><option value="readonly">Read only</option><option value="full">Allow selected writes</option></select></label>
-                <label class="check"><input type="checkbox" bind:checked={forum} disabled={busy || settings.mode !== 'full'} /> Allow forum replies and new discussions</label>
-                <label class="check"><input type="checkbox" bind:checked={settings.allow_grade_write} disabled={busy || settings.mode !== 'full'} /> Allow reviewed grade proposals to be saved</label>
-                <p>Grade writes are off by default. The teacher must see the submission, proposed grade and rationale before confirming a save. AI assessment remains a proposal for teacher review.</p>
-                <p>{status.privacy_notice}</p>
-                <button disabled={busy}>Save organization settings</button>
-            </form>
-        {/if}
     {:else if !error}<p role="status">Loading Moodle settings…</p>{/if}
 </section>
 <style>
@@ -117,7 +112,7 @@
     h1{font-size:1.8rem;font-weight:700}h2{font-size:1.3rem;font-weight:600}p{margin:.8rem 0}
     .card{border:1px solid #cbd5e1;border-radius:.6rem;padding:1.25rem;margin:1.5rem 0;background:white}
     aside{background:#eff6ff;border-left:4px solid #2563eb;padding:.5rem 1rem;margin:1rem 0}
-    label{display:flex;flex-direction:column;gap:.4rem;margin:1rem 0;font-weight:500}.check{flex-direction:row;align-items:center}
+    label{display:flex;flex-direction:column;gap:.4rem;margin:1rem 0;font-weight:500}
     input:not([type=checkbox]),select{border:1px solid #94a3b8;border-radius:.3rem;padding:.6rem;width:100%;background:white}
     button{background:#173f64;color:white;padding:.6rem 1rem;border-radius:.35rem;min-height:44px;margin:.3rem 0}button.secondary{background:white;color:#173f64;border:1px solid #173f64}button:disabled{opacity:.55}
     .error{color:#991b1b;background:#fee2e2;padding:1rem}.notice{color:#166534;background:#dcfce7;padding:1rem}

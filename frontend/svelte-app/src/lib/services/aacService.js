@@ -49,9 +49,10 @@ export async function getSession(sessionId) {
  * @param {Object} [params.context]
  * @returns {Promise<AacSession>}
  */
-export async function createSession({ assistantId, skill, context, learningScenarioId = null } = {}) {
+export async function createSession({ assistantId, skill, context, learningScenarioId = null, moodleOnboarding = false } = {}) {
 	/** @type {Object} */
 	const body = { ui_language: get(locale) || "en", learning_scenario_id: learningScenarioId };
+	if (moodleOnboarding) body.moodle_onboarding = true;
 	if (assistantId != null) body.assistant_id = assistantId;
 	if (skill) {
 		body.skill = skill;

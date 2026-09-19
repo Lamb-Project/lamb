@@ -1,3 +1,4 @@
+import pytest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from lamb.moodle.router import effective_driver
@@ -41,3 +42,24 @@ def test_brief_appends_actual_provider_changes_without_rewriting_prefix(stores):
     attach_to_agent(agent,rt.store)
     assert 'provider: openai' in agent.conversation[-1]['content']
     assert len(agent.conversation)==3 and agent.conversation[0]['content']=='Pinned'
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+@pytest.mark.parametrize('provider,model,expected', [('openai','gpt-5.6-terra','none'),('openai','gpt-4o-mini',None),('ollama','gpt-5.6-terra',None)])
+def test_tools_compatibility_scoped_to_openai_56(provider,model,expected,streaming):
+    import asyncio
+    from unittest.mock import AsyncMock
+    from lamb.aac.agent.loop import AgentLoop
+    class Stream:
+        def __aiter__(self): return self
+        async def __anext__(self): raise StopAsyncIteration
+        async def close(self): pass
+    result = Stream() if streaming else SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='OK',tool_calls=[]))])
+    create=AsyncMock(return_value=result)
+    client=SimpleNamespace(_lamb_aac_driver={'provider':provider},chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    agent=AgentLoop(shell=Mock(),llm_client=client,model=model)
+    async def run():
+        return [e async for e in agent._request_message([{'role':'user','content':'courses?'}],True,streaming)]
+    asyncio.run(run())
+    assert create.call_args.kwargs.get('reasoning_effort') == expected
+    assert create.call_args.kwargs['tools']
