@@ -37,6 +37,10 @@
 	/** @type {boolean} */
 	let assistantCreating = $state(false);
 	/** @type {boolean} */
+	let uploading = $state(false);
+	/** @type {boolean} */
+	let probing = $state(false);
+	/** @type {boolean} */
 	let submitting = $state(false);
 
 	// ── Chat + observability ──
@@ -147,6 +151,16 @@
 				form.assistantId = assistantId = session.assistant_id;
 				form.assistantName = form.assistantName || 'My AI Assistant';
 			}
+			// Rehydrate step 2/3 from the session record (KB/document binding).
+			if (session.kb_id && !form.selectedKbId) form.selectedKbId = session.kb_id;
+			if (session.document_file_id) {
+				form.attachedFilePath = form.attachedFilePath || session.document_file_id;
+				form.attachedFileMeta = form.attachedFileMeta || {
+					name: session.document_name || 'document',
+					path: session.document_file_id,
+				};
+				form.documentStatus = session.document_status || form.documentStatus;
+			}
 			chatMessages = form.chatMessages || [];
 		} catch (/** @type {any} */ e) {
 			console.error('[workshop] session load failed:', e);
@@ -169,12 +183,12 @@
 				name: form.assistantName,
 				description: 'Built in the AI Workshop wizard',
 				system_prompt: form.instructions,
-				// Pass the student's text through verbatim (no "Answer:" / "Context:"
-				// wrapper) so the LLM sees the raw input — clearer for the student
-				// observability panel. RAG context is injected by the processor
-				// only when the template actually contains {context}.
+				// Pass the student's text through verbatim, then append the RAG
+				// context. The processor only injects {context} when the template
+				// contains it, so this is what makes retrieved excerpts reach the
+				// LLM (and the observability panel).
 				prompt_template:
-					'{user_input}',
+					'{user_input}\n\nContext:\n{context}',
 				// metadata (api_callback) — pin the connector/model so the
 				// assistant resolves to a real LLM (the backend's *default*
 				// plugin config falls back to an unavailable openai/gpt-4
@@ -187,10 +201,11 @@
 					prompt_processor: 'simple_augment',
 					connector: getWorkshopLlmConfig().connector,
 					llm: getWorkshopLlmConfig().llm,
-					rag_processor: '',
+					rag_processor: form.selectedKbId ? 'simple_rag' : '',
 				}),
 				rag_top_k: 3,
-				rag_collections: form.selectedKbId ? `["${form.selectedKbId}"]` : '[]',
+				// simple_rag parses comma-separated ids, not a JSON array.
+				rag_collections: form.selectedKbId || '',
 			};
 			const result = await wsPost(`/sessions/${sessionId}/assistant`, body);
 			form.assistantId = assistantId = result.assistant_id;
@@ -228,6 +243,118 @@
 		} catch (/** @type {any} */ e) {
 			// Non-fatal: the student can still chat; the next sync retries.
 			error = e?.message || 'Failed to save your instructions.';
+		}
+	}
+
+	/**
+	 * Upload a document to the session KB (step 2) and poll ingestion to
+	 * completion. On success the KB is also recorded as the selected KB so the
+	 * student can go straight to the retrieval test in step 3.
+	 * @param {File} file
+	 */
+	async function handleUploadDocument(file) {
+		if (!form || uploading) return;
+		if (!assistantId) {
+			const aid = await createAssistantIfNeeded();
+			if (!aid) {
+				error = 'Create the assistant first (finish step 1).';
+				return;
+			}
+		}
+		uploading = true;
+		error = '';
+		form.documentStatus = 'uploading';
+		try {
+			const fd = new FormData();
+			fd.append('file', file);
+			const res = await fetch(
+				`/lamb/v1/workshop/sessions/${encodeURIComponent(sessionId)}/assistant/${assistantId}/doc`,
+				{ method: 'POST', headers: { token }, body: fd }
+			);
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({}));
+				throw new Error(err.detail || `Upload failed (${res.status})`);
+			}
+			const data = await res.json();
+			form.attachedFilePath = data.file_registry_id || file.name;
+			form.attachedFileMeta = {
+				name: file.name,
+				path: data.file_registry_id || file.name,
+			};
+			form.documentStatus = data.status || 'processing';
+			if (data.kb_id) form.selectedKbId = data.kb_id;
+			persistBuildState();
+			if (data.file_registry_id) {
+				await pollDocumentStatus(data.file_registry_id);
+			} else {
+				form.documentStatus = 'completed';
+			}
+		} catch (/** @type {any} */ e) {
+			form.documentStatus = 'failed';
+			error = e?.message || 'Upload failed';
+		} finally {
+			uploading = false;
+		}
+	}
+
+	/**
+	 * Poll the KB server ingestion job until it completes or fails.
+	 * @param {string} jobId
+	 */
+	async function pollDocumentStatus(jobId) {
+		const maxAttempts = 60;
+		for (let attempt = 0; attempt < maxAttempts; attempt++) {
+			await new Promise((r) => setTimeout(r, 3000));
+			try {
+				const res = await fetch(
+					`/lamb/v1/workshop/sessions/${encodeURIComponent(sessionId)}/doc/status?job_id=${encodeURIComponent(jobId)}`,
+					{ headers: { token } }
+				);
+				if (!res.ok) continue;
+				const data = await res.json();
+				form.documentStatus = data.status;
+				if (data.status === 'completed') return;
+				if (data.status === 'failed' || data.status === 'cancelled') {
+					error = data.error_message || 'Document ingestion failed.';
+					return;
+				}
+			} catch {
+				// transient — keep polling
+			}
+		}
+		error = 'Ingestion is taking longer than expected. You can continue and check again later.';
+	}
+
+	/**
+	 * Run a real probe query against the session KB (step 3) and show the
+	 * retrieved excerpts + similarity.
+	 */
+	async function handleProbeKb() {
+		if (!form || probing) return;
+		if (!assistantId) {
+			const aid = await createAssistantIfNeeded();
+			if (!aid) {
+				error = 'Create the assistant first (finish step 1).';
+				return;
+			}
+		}
+		probing = true;
+		error = '';
+		try {
+			const data = await wsPost(
+				`/sessions/${sessionId}/assistant/${assistantId}/kb`,
+				{ kb_id: form.selectedKbId || undefined, query: form.kbQuery, top_k: 3 }
+			);
+			if (data.kb_id) {
+				form.selectedKbId = data.kb_id;
+				form.kbCollection = form.kbCollection || data.kb_id;
+			}
+			form.kbVerificationResult = data;
+			persistBuildState();
+		} catch (/** @type {any} */ e) {
+			error = e?.message || 'Knowledge base test failed.';
+		} finally {
+			probing = false;
 		}
 	}
 
@@ -446,7 +573,11 @@
 					onNext={handleNext}
 					onBack={handleBack}
 					onSubmit={form.currentStep === 5 ? handleSubmit : undefined}
+					onUploadDocument={handleUploadDocument}
+					onProbeKb={handleProbeKb}
 					submitting={submitting || assistantCreating}
+					uploading={uploading}
+					probing={probing}
 					nextDisabled={nextDisabled()}
 				/>
 				{#if assistantCreating}

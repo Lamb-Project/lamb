@@ -49,11 +49,13 @@ describe('createWorkshopFormState — step validity', () => {
 		expect(isStepComplete(1)).toBe(true);
 	});
 
-	test('step 2 valid when a file path is attached', () => {
+	test('step 2 valid only once the document is ingested', () => {
 		const { form, isStepComplete } = createWorkshopFormState();
 		expect(isStepComplete(2)).toBe(false);
 		form.attachedFilePath = '/uploads/lab.pdf';
 		form.attachedFileMeta = { name: 'lab.pdf', path: '/uploads/lab.pdf' };
+		expect(isStepComplete(2)).toBe(false); // still ingesting
+		form.documentStatus = 'completed';
 		expect(isStepComplete(2)).toBe(true);
 	});
 

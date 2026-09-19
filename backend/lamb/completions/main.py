@@ -676,6 +676,8 @@ async def run_lamb_assistant(
                             tools=tl,
                             tool_choice=tc,
                         ),
+                        assistant=assistant_details,
+                        request=request,
                     ):
                         if event["type"] in ("thinking", "tool", "tool_done"):
                             yield f"data: {json.dumps({'type': 'tool_event', 'data': event})}\n\n"

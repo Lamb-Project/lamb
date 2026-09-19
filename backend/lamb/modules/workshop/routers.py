@@ -4,10 +4,15 @@ Students get a virtual principal scoped to their activity. They can create an
 assistant and submit their work — but CANNOT publish, share, access other
 tenants' data, or touch other students' work.
 
-Document/KB attachment (content ingestion) is wired in a later phase; those
-routes validate scope + quota and return an accepted reference.
+Document/KB attachment is real: the backend acts as the activity instructor's
+creator identity to create/ingest/query the KB server, so students never call
+``/creator/*`` directly.
 
-- GET /sessions/{session_id}          — restore build progress after reload
+- GET  /sessions/{session_id}          — restore build progress after reload
+- POST /sessions/{session_id}/assistant/{assistant_id}/doc — multipart upload
+- GET  /sessions/{session_id}/doc/status — ingestion job polling
+- POST /sessions/{session_id}/assistant/{assistant_id}/kb — probe retrieval
+- POST /sessions/{session_id}/assistant/{assistant_id}/kb/query — KB query
 - POST /sessions/{session_id}/assistant/{assistant_id}/chat — streamed chat
   with observability + tool_event SSE frames (same SSE dialect the rest of
   LAMB emits).
@@ -18,13 +23,14 @@ import logging
 import os
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException, Header, Form, Request
+from fastapi import APIRouter, HTTPException, Header, Form, Request, File, UploadFile, Query
 from fastapi.responses import StreamingResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from lamb.completions.tools.definitions import WORKSHOP_TOOLS
 from lamb.database_manager import LambDatabaseManager
 from lamb.lamb_classes import Assistant
+from lamb.modules.workshop import kb as workshop_kb
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +46,8 @@ _templates = Jinja2Templates(directory=[
 # Workshop per-session quotas (Lean MVP)
 MAX_DOCUMENTS_PER_SESSION = 1
 MAX_KBS_PER_SESSION = 1
+MAX_DOCUMENT_BYTES = 10 * 1024 * 1024  # 10 MB upload cap
+
 
 
 def _verify_workshop_principal(session_id: str, token: str) -> Dict[str, Any]:
@@ -96,7 +104,64 @@ def _resolve_tool_definitions(tools: Any) -> Any:
     return resolved or None
 
 
+def _apply_rag_defaults(
+    api_callback: Any, rag_collections: Any
+) -> tuple[str, str]:
+    """Return (api_callback, rag_collections) with sane RAG wiring.
+
+    ``rag_collections`` is normalized to a comma-separated string (``simple_rag``
+    does not parse JSON arrays). When a collection is present, the metadata's
+    ``rag_processor`` defaults to ``simple_rag`` unless already set.
+    """
+    collections = rag_collections
+    if isinstance(collections, str):
+        stripped = collections.strip()
+        if stripped.startswith("["):
+            try:
+                parsed = json.loads(stripped)
+                if isinstance(parsed, (list, tuple)):
+                    collections = parsed
+            except (json.JSONDecodeError, TypeError):
+                pass
+    if isinstance(collections, (list, tuple)):
+        collections = ",".join(str(c) for c in collections)
+    collections = (collections or "").strip()
+    if collections in ("[]", "null"):
+        collections = ""
+
+    try:
+        metadata = json.loads(api_callback) if api_callback else {}
+    except (json.JSONDecodeError, TypeError):
+        metadata = {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    if collections and not metadata.get("rag_processor"):
+        metadata["rag_processor"] = "simple_rag"
+
+    return json.dumps(metadata), collections
+
+
+def _session_activity(session: Dict[str, Any]) -> Dict[str, Any]:
+    """Load the LTI activity a workshop session belongs to, or raise 404."""
+    activity = _db_manager.get_lti_activity_by_id(session.get("activity_id"))
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    return activity
+
+
+def _raise_kb_error(e: Exception) -> None:
+    """Translate KB helper failures into clean HTTP responses."""
+    if isinstance(e, HTTPException):
+        raise e
+    detail = str(e)
+    if "not found" in detail.lower():
+        raise HTTPException(status_code=404, detail=detail)
+    raise HTTPException(status_code=502, detail=f"Knowledge base error: {detail}")
+
+
 @router.get("/sessions/{session_id}")
+
 async def get_workshop_session(session_id: str, token: str = Header(...)):
     """Return the workshop session record so the frontend can restore progress.
 
@@ -123,6 +188,10 @@ async def get_workshop_session(session_id: str, token: str = Header(...)):
         "saved_chat": session.get("saved_chat"),
         "reflection": session.get("reflection"),
         "build_state": build_state,
+        "kb_id": session.get("kb_id"),
+        "document_file_id": session.get("document_file_id"),
+        "document_name": session.get("document_name"),
+        "document_status": session.get("document_status"),
         "created_at": session.get("created_at"),
         "updated_at": session.get("updated_at"),
     }
@@ -146,11 +215,14 @@ async def create_workshop_assistant(
     if not owner_email:
         raise HTTPException(status_code=403, detail="Missing principal email")
 
+    api_callback, rag_collections = _apply_rag_defaults(
+        body.get("api_callback", "{}"), body.get("rag_collections", ""))
+
     assistant = Assistant(
         name=body.get("name", "My AI Assistant"),
         description=body.get("description", ""),
         owner=owner_email,
-        api_callback=body.get("api_callback", "{}"),
+        api_callback=api_callback,
         system_prompt=body.get("system_prompt", ""),
         prompt_template=body.get("prompt_template", ""),
         organization_id=principal.get("organization_id"),
@@ -159,7 +231,7 @@ async def create_workshop_assistant(
         post_retrieval_endpoint="",
         RAG_endpoint="",
         RAG_Top_k=body.get("rag_top_k", 3),
-        RAG_collections=body.get("rag_collections", "[]"),
+        RAG_collections=rag_collections,
     )
     assistant_id = _db_manager.add_assistant(assistant)
     if not assistant_id:
@@ -205,11 +277,16 @@ async def update_workshop_assistant(
     if not existing:
         raise HTTPException(status_code=404, detail="Assistant not found")
 
+    api_callback, rag_collections = _apply_rag_defaults(
+        body.get("api_callback", existing.metadata),
+        body.get("rag_collections", existing.RAG_collections),
+    )
+
     updated = Assistant(
         name=body.get("name", existing.name),
         description=body.get("description", existing.description),
         owner=existing.owner,
-        api_callback=body.get("api_callback", existing.metadata),
+        api_callback=api_callback,
         system_prompt=body.get("system_prompt", existing.system_prompt),
         prompt_template=body.get("prompt_template", existing.prompt_template),
         organization_id=existing.organization_id,
@@ -218,9 +295,8 @@ async def update_workshop_assistant(
         post_retrieval_endpoint="",
         RAG_endpoint="",
         RAG_Top_k=body.get("rag_top_k", existing.RAG_Top_k),
-        RAG_collections=body.get("rag_collections", existing.RAG_collections),
+        RAG_collections=rag_collections,
     )
-
     if not _db_manager.update_assistant(assistant_id, updated):
         raise HTTPException(status_code=500, detail="Failed to update assistant")
 
@@ -231,16 +307,88 @@ async def update_workshop_assistant(
 async def attach_workshop_document(
     session_id: str,
     assistant_id: int,
-    body: Dict[str, Any],
+    file: UploadFile = File(...),
     token: str = Header(...),
 ):
-    """Student attaches a document to their assistant. Restricted scope.
+    """Student attaches a document to their assistant (multipart upload).
 
-    Placeholder: content ingestion is wired in a later phase. Validates scope.
+    Real ingestion: ensures a session KB, uploads the file to the KB server,
+    records the ingestion job on the session, and wires the KB into the
+    assistant's RAG config. Ingestion is async on the KB server; the client
+    polls ``GET .../doc/status?job_id=``.
     """
     principal = _verify_workshop_principal(session_id, token)
     _verify_assistant_ownership(assistant_id, principal)
-    return {"success": True, "document_id": None, "status": "pending"}
+
+    session = _db_manager.get_workshop_session_by_id(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Quota (Lean MVP: one document per session). Failed jobs may be retried.
+    if session.get("document_file_id") and session.get("document_status") != "failed":
+        raise HTTPException(status_code=429, detail="Document already attached")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(content) > MAX_DOCUMENT_BYTES:
+        raise HTTPException(status_code=413, detail="File too large")
+
+    activity = _session_activity(session)
+    try:
+        kb_id = await workshop_kb.ensure_session_kb(activity, session)
+        result = await workshop_kb.ingest_document(
+            kb_id,
+            file.filename or "document.txt",
+            content,
+            activity,
+            file.content_type or "application/octet-stream",
+        )
+    except Exception as e:
+        _raise_kb_error(e)
+
+    _db_manager.update_workshop_session_kb(
+        session_id,
+        kb_id=kb_id,
+        document_file_id=result.get("file_registry_id"),
+        document_name=result.get("original_filename") or file.filename,
+        document_status=result.get("status", "processing"),
+    )
+    workshop_kb.link_kb_to_assistant(assistant_id, kb_id)
+
+    return {
+        "success": True,
+        "kb_id": kb_id,
+        "file_registry_id": result.get("file_registry_id"),
+        "status": result.get("status", "processing"),
+    }
+
+
+@router.get("/sessions/{session_id}/doc/status")
+async def get_workshop_document_status(
+    session_id: str,
+    job_id: str = Query(...),
+    token: str = Header(...),
+):
+    """Proxy the KB server's ingestion job status for the session's document."""
+    _verify_workshop_principal(session_id, token)
+
+    session = _db_manager.get_workshop_session_by_id(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    kb_id = session.get("kb_id")
+    if not kb_id:
+        raise HTTPException(status_code=404, detail="No knowledge base for this session")
+
+    activity = _session_activity(session)
+    try:
+        result = await workshop_kb.get_ingestion_status(kb_id, job_id, activity)
+    except Exception as e:
+        _raise_kb_error(e)
+    _db_manager.update_workshop_session_kb(
+        session_id, document_status=result.get("status"))
+
+    return {"success": True, "kb_id": kb_id, **result}
 
 
 @router.post("/sessions/{session_id}/assistant/{assistant_id}/kb")
@@ -250,13 +398,79 @@ async def connect_workshop_kb(
     body: Dict[str, Any],
     token: str = Header(...),
 ):
-    """Student connects a knowledge base. Restricted scope.
+    """Connect the session KB and run a real probe query.
 
-    Placeholder: KB wiring is a later phase. Validates scope.
+    Returns the matched excerpts + similarity so the student sees exactly what
+    the assistant can retrieve. Also wires the KB into the assistant's RAG.
     """
     principal = _verify_workshop_principal(session_id, token)
     _verify_assistant_ownership(assistant_id, principal)
-    return {"success": True, "kb_id": body.get("kb_id"), "status": "pending"}
+
+    session = _db_manager.get_workshop_session_by_id(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    activity = _session_activity(session)
+    kb_id = body.get("kb_id") or session.get("kb_id")
+    try:
+        if not kb_id:
+            kb_id = await workshop_kb.ensure_session_kb(activity, session)
+
+        query_text = (body.get("query") or "").strip() or "What is this document about?"
+        top_k = int(body.get("top_k") or body.get("rag_top_k") or 3)
+        result = await workshop_kb.query_session_kb(kb_id, query_text, top_k, activity)
+    except Exception as e:
+        _raise_kb_error(e)
+
+    workshop_kb.link_kb_to_assistant(assistant_id, kb_id)
+
+    return {
+        "success": True,
+        "kb_id": kb_id,
+        "query": query_text,
+        "results": result.get("results", []),
+        "count": result.get("count", 0),
+    }
+
+
+@router.post("/sessions/{session_id}/assistant/{assistant_id}/kb/query")
+async def query_workshop_kb(
+    session_id: str,
+    assistant_id: int,
+    body: Dict[str, Any],
+    token: str = Header(...),
+):
+    """Real KB query against the session's collection (student/tool path)."""
+    principal = _verify_workshop_principal(session_id, token)
+    _verify_assistant_ownership(assistant_id, principal)
+
+    session = _db_manager.get_workshop_session_by_id(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    kb_id = body.get("kb_id") or session.get("kb_id")
+    if not kb_id:
+        raise HTTPException(status_code=400, detail="No knowledge base connected")
+
+    query_text = (body.get("query") or "").strip()
+    if not query_text:
+        raise HTTPException(status_code=400, detail="No query provided")
+
+    activity = _session_activity(session)
+    top_k = int(body.get("top_k") or body.get("rag_top_k") or 3)
+    try:
+        result = await workshop_kb.query_session_kb(
+            kb_id, query_text, top_k, activity)
+    except Exception as e:
+        _raise_kb_error(e)
+
+    return {
+        "success": True,
+        "kb_id": kb_id,
+        "query": query_text,
+        "results": result.get("results", []),
+        "count": result.get("count", 0),
+    }
 
 
 @router.post("/sessions/{session_id}/assistant/{assistant_id}/chat")

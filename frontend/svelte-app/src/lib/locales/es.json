@@ -1044,6 +1044,20 @@
     "systemInstructions": "Instrucciones activas",
     "retrievedContext": "Contexto recuperado",
     "finalMessages": "Mensajes enviados al LLM",
-    "toolTimeline": "Llamadas a herramientas"
+    "toolTimeline": "Llamadas a herramientas",
+    "attachDocHint": "Elige un archivo (PDF, texto o markdown). Se ingerirá en una base de conocimiento para tu asistente.",
+    "uploading": "Ingiriendo tu documento…",
+    "uploadDone": "Documento ingerido — ahora es conocimiento que tu asistente puede recuperar.",
+    "uploadFailed": "La ingesta ha fallado. Elimina el archivo e inténtalo con otro.",
+    "kbCollection": "Colección de la base de conocimiento",
+    "kbCollectionEmpty": "Se crea automáticamente al subir un documento en el paso 2.",
+    "kbTestQuestion": "Haz una pregunta de prueba",
+    "kbTestPlaceholder": "¿Qué dice el documento sobre…?",
+    "verifyKb": "Probar recuperación",
+    "probing": "Recuperando…",
+    "connected": "Conectado a",
+    "kbRetrieved": "Fragmentos que tu asistente puede recuperar",
+    "kbNoHits": "No hay fragmentos coincidentes — prueba otra pregunta o documento.",
+    "similarity": "similitud"
   }
 }

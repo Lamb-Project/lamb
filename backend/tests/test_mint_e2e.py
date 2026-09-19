@@ -12,25 +12,25 @@ from lamb.database_manager import LambDatabaseManager
 db = LambDatabaseManager()
 org_id = 1
 
-rl = f"p4e2e-{int(time.time())}"
+rl = f"e2e-{int(time.time())}"
 activity_id = db.create_lti_activity(
     resource_link_id=rl, organization_id=org_id,
-    owi_group_id="g-" + rl, owi_group_name="P4 E2E Group",
+    owi_group_id="g-" + rl, owi_group_name="E2E Group",
     configured_by_email="teacher@test.com", configured_by_name="Teacher",
-    context_title="Test Course", activity_name="P4 E2E Workshop")
-email = "p4e2e@lamb-lti.local"
+    context_title="Test Course", activity_name="E2E Workshop")
+email = "e2e@lamb-lti.local"
 activity_user_id = db.create_lti_activity_user(
     activity_id=activity_id, user_email=email,
-    user_name="p4e2e", user_display_name="P4 E2E Student",
-    lms_user_id="LMS-P4", owi_user_id="owi-p4e2e")
+    user_name="e2e", user_display_name="E2E Student",
+    lms_user_id="LMS-E2E", owi_user_id="owi-e2e")
 session = db.get_or_create_workshop_session(
-    activity_id=activity_id, activity_user_id=activity_user_id, owi_user_id="owi-p4e2e")
+    activity_id=activity_id, activity_user_id=activity_user_id, owi_user_id="owi-e2e")
 session_id = session["id"]
 
 principal = {
     "scope": "workshop_student", "type": "workshop_student",
     "session_id": session_id, "activity_id": activity_id,
-    "activity_user_id": activity_user_id, "owi_user_id": "owi-p4e2e",
+    "activity_user_id": activity_user_id, "owi_user_id": "owi-e2e",
     "email": email, "organization_id": org_id,
 }
 token = lamb_auth.create_token(principal, expires_delta=timedelta(seconds=7200))

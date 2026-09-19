@@ -139,8 +139,8 @@ class TestRestrictedOwnership:
 
         with pytest.raises(HTTPException) as exc:
             await routers.attach_workshop_document(
-                session_id="ws-1", assistant_id=7, body={"title": "Doc"},
-                token="tok")
+                session_id="ws-1", assistant_id=7,
+                file=MagicMock(filename="doc.txt"), token="tok")
         assert exc.value.status_code == 403
 
 

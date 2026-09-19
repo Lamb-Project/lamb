@@ -149,6 +149,28 @@ describe('ObservabilityPanel — renders observability data', () => {
 		expect(screen.getByText('No tools defined.')).toBeInTheDocument();
 	});
 
+	test('C8: renders multiple retrieved sources that share an empty chunk_id', () => {
+		// simple_rag emits document_id/chunk_id as "" for plain-text chunks, so
+		// several sources can share the same key. Keying the each block on
+		// chunk_id crashed the whole panel (each_key_duplicate) and aborted the
+		// SSE stream before [DONE], leaving the chat stuck at "streaming…".
+		render(ObservabilityPanel, {
+			props: {
+				obsData: {
+					rag_context: 'ctx',
+					retrieved_sources: [
+						{ document_id: '', chunk_id: '', similarity: 0.7, content: 'First excerpt' },
+						{ document_id: '', chunk_id: '', similarity: 0.6, content: 'Second excerpt' },
+					],
+					final_llm_messages: [],
+				},
+				toolEvents: [],
+			},
+		});
+		expect(screen.getByText(/First excerpt/)).toBeInTheDocument();
+		expect(screen.getByText(/Second excerpt/)).toBeInTheDocument();
+	});
+
 	test('C7: explains a missing system prompt when none is set', () => {
 		render(ObservabilityPanel, {
 			props: {

@@ -19,8 +19,10 @@
  * @property {string} [instructions]
  * @property {string} [attachedFilePath]
  * @property {{name: string, path: string} | null} [attachedFileMeta]
+ * @property {string} [documentStatus]
  * @property {string} [selectedKbId]
  * @property {string} [kbCollection]
+ * @property {string} [kbQuery]
  * @property {any} [kbVerificationResult]
  * @property {string[]} [selectedTools]
  * @property {boolean} [sandboxEnabled]
@@ -46,10 +48,12 @@ export function createWorkshopFormState(initial = {}) {
 		attachedFilePath: initial.attachedFilePath ?? '',
 		/** @type {{name: string, path: string} | null} */
 		attachedFileMeta: initial.attachedFileMeta ?? null,
+		documentStatus: initial.documentStatus ?? '',
 
 		// --- Step 3: Connect KB ---
 		selectedKbId: initial.selectedKbId ?? '',
 		kbCollection: initial.kbCollection ?? '',
+		kbQuery: initial.kbQuery ?? '',
 		/** @type {any | null} */
 		kbVerificationResult: initial.kbVerificationResult ?? null,
 
@@ -94,7 +98,7 @@ export function createWorkshopFormState(initial = {}) {
 		isStepComplete(step) {
 			switch (step) {
 				case 1: return !!form.instructions.trim();
-				case 2: return !!form.attachedFilePath;
+				case 2: return !!form.attachedFilePath && form.documentStatus === 'completed';
 				case 3: return !!form.selectedKbId;
 				case 4: return form.selectedTools.length > 0;
 				case 5: return false; // always actionable
@@ -112,8 +116,10 @@ export function createWorkshopFormState(initial = {}) {
 				instructions: form.instructions,
 				attachedFilePath: form.attachedFilePath,
 				attachedFileMeta: form.attachedFileMeta,
+				documentStatus: form.documentStatus,
 				selectedKbId: form.selectedKbId,
 				kbCollection: form.kbCollection,
+				kbQuery: form.kbQuery,
 				kbVerificationResult: form.kbVerificationResult,
 				selectedTools: form.selectedTools,
 				sandboxEnabled: form.sandboxEnabled,

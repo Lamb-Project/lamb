@@ -1040,6 +1040,20 @@
     "systemInstructions": "Indarrean dauden argibideak",
     "retrievedContext": "Berreskuratutako testuingurua",
     "finalMessages": "LLMra bidalitako mezuak",
-    "toolTimeline": "Tresna-deiak"
+    "toolTimeline": "Tresna-deiak",
+    "attachDocHint": "Aukeratu fitxategi bat (PDF, testua edo markdown). Zure laguntzailearentzako ezagutza-basean sartuko da.",
+    "uploading": "Zure dokumentua sartzen…",
+    "uploadDone": "Dokumentua sartu da — orain zure laguntzaileak berreskura dezakeen ezagutza da.",
+    "uploadFailed": "Sarrerak huts egin du. Kendu fitxategia eta probatu beste bat.",
+    "kbCollection": "Ezagutza-basearen bilduma",
+    "kbCollectionEmpty": "Automatikoki sortzen da 2. urratsean dokumentu bat igotzen duzunean.",
+    "kbTestQuestion": "Egin proba-galdera bat",
+    "kbTestPlaceholder": "Zer dio dokumentuak honi buruz…?",
+    "verifyKb": "Probatu berreskuratzea",
+    "probing": "Berreskuratzen…",
+    "connected": "Konektatuta",
+    "kbRetrieved": "Zure laguntzaileak berreskura ditzakeen zatiak",
+    "kbNoHits": "Ez dago bat datorren zatirik — probatu beste galdera edo dokumentu bat.",
+    "similarity": "antzekotasuna"
   }
 }

@@ -61,7 +61,7 @@
 					{/if}
 					{#if (obsData.retrieved_sources || []).length > 0}
 						<ol class="text-xs mt-2 space-y-1">
-							{#each obsData.retrieved_sources as src, i (src.chunk_id ?? i)}
+							{#each obsData.retrieved_sources as src, i (i)}
 								<li class="opacity-80">
 									<span class="font-mono">{src.similarity?.toFixed(3)}</span>
 									· {src.content}

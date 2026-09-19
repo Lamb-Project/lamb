@@ -42,6 +42,7 @@ def _migrate_schema():
     runner = MigrationRunner(_FakeDb())
     runner._migration_26(cursor)
     runner._migration_27(cursor)
+    runner._migration_28(cursor)
     conn.commit()
     return conn
 
@@ -69,13 +70,15 @@ def _migrate_schema_idempotent():
     runner._migration_26(cursor)  # run again — must be a no-op
     runner._migration_27(cursor)
     runner._migration_27(cursor)  # run again — must be a no-op
+    runner._migration_28(cursor)
+    runner._migration_28(cursor)  # run again — must be a no-op
     conn.commit()
     return conn
 
 
 def test_latest_version_incremented():
     """LATEST_VERSION covers the workshop migrations."""
-    assert LATEST_VERSION >= 27
+    assert LATEST_VERSION >= 28
 
 
 def test_mg1_activity_type_column():
@@ -119,4 +122,14 @@ def test_migration_idempotency():
         row[0] for row in cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")
     ]
+    conn.close()
+
+
+def test_mg3_session_kb_columns():
+    """MG3: v28 adds KB/document binding columns to lti_workshop_sessions."""
+    conn = _migrate_schema()
+    cursor = conn.cursor()
+    columns = [row[1] for row in cursor.execute("PRAGMA table_info(lti_workshop_sessions)")]
+    for col in ["kb_id", "document_file_id", "document_name", "document_status"]:
+        assert col in columns, f"Missing column: {col}"
     conn.close()

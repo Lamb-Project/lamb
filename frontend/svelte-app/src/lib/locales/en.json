@@ -1030,6 +1030,20 @@
     "systemInstructions": "Active instructions",
     "retrievedContext": "Retrieved context",
     "finalMessages": "Messages sent to LLM",
-    "toolTimeline": "Tool calls"
+    "toolTimeline": "Tool calls",
+    "attachDocHint": "Choose a file (PDF, text or markdown). It will be ingested into a knowledge base for your assistant.",
+    "uploading": "Ingesting your document…",
+    "uploadDone": "Document ingested — it is now knowledge your assistant can retrieve.",
+    "uploadFailed": "Ingestion failed. Remove and try another file.",
+    "kbCollection": "Knowledge base collection",
+    "kbCollectionEmpty": "Created automatically when you upload a document in step 2.",
+    "kbTestQuestion": "Ask a test question",
+    "kbTestPlaceholder": "What does the document say about…?",
+    "verifyKb": "Test retrieval",
+    "probing": "Retrieving…",
+    "connected": "Connected to",
+    "kbRetrieved": "Excerpts your assistant can retrieve",
+    "kbNoHits": "No matching excerpts — try a different question or document.",
+    "similarity": "similarity"
   }
 }

@@ -7866,6 +7866,29 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
+    def get_lti_activity_by_id(self, activity_id: int) -> Optional[Dict[str, Any]]:
+        """Get an LTI activity by its numeric id."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_activities
+                    WHERE id = ?
+                """, (activity_id,))
+                row = cursor.fetchone()
+                if row:
+                    columns = [col[0] for col in cursor.description]
+                    return dict(zip(columns, row))
+                return None
+        except sqlite3.Error as e:
+            logger.error(f"Error getting LTI activity by id: {e}")
+            return None
+        finally:
+            connection.close()
+
     def create_lti_activity(self, resource_link_id: str, organization_id: int,
                             owi_group_id: str, owi_group_name: str,
                             configured_by_email: str, configured_by_name: str = None,
@@ -8710,6 +8733,59 @@ class LambDatabaseManager:
                 return cursor.rowcount > 0
         except sqlite3.Error as e:
             logger.error(f"Error updating workshop session assistant: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def get_workshop_session_kb(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Read the KB/document binding columns for a workshop session."""
+        session = self.get_workshop_session_by_id(session_id)
+        if not session:
+            return None
+        return {
+            "kb_id": session.get("kb_id"),
+            "document_file_id": session.get("document_file_id"),
+            "document_name": session.get("document_name"),
+            "document_status": session.get("document_status"),
+        }
+
+    def update_workshop_session_kb(
+        self,
+        session_id: str,
+        *,
+        kb_id: Optional[str] = None,
+        document_file_id: Optional[str] = None,
+        document_name: Optional[str] = None,
+        document_status: Optional[str] = None,
+    ) -> bool:
+        """Update the session's KB/document binding (only provided fields)."""
+        fields = {
+            "kb_id": kb_id,
+            "document_file_id": document_file_id,
+            "document_name": document_name,
+            "document_status": document_status,
+        }
+        fields = {k: v for k, v in fields.items() if v is not None}
+        if not fields:
+            return True
+
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                set_clause = ", ".join(f"{k} = ?" for k in fields)
+                values = list(fields.values())
+                values.extend([int(time.time()), session_id])
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}lti_workshop_sessions
+                    SET {set_clause}, updated_at = ?
+                    WHERE id = ?
+                """, values)
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error updating workshop session KB: {e}")
             return False
         finally:
             connection.close()

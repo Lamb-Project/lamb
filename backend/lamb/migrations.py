@@ -20,7 +20,7 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="MIGRATIONS")
 
 # Increment this when adding a new migration method below.
-LATEST_VERSION = 27
+LATEST_VERSION = 28
 
 
 class MigrationRunner:
@@ -1105,3 +1105,19 @@ class MigrationRunner:
             f"CREATE INDEX IF NOT EXISTS "
             f"idx_{tp}ws_sessions_activity_user "
             f"ON {tp}lti_workshop_sessions(activity_user_id)")
+
+    def _migration_28(self, cursor):
+        """Track the session's KB + document binding on lti_workshop_sessions."""
+        tp = self.db.table_prefix
+        if not self._table_exists(cursor, 'lti_workshop_sessions'):
+            return
+        for col, decl in [
+            ("kb_id", "TEXT"),
+            ("document_file_id", "TEXT"),
+            ("document_name", "TEXT"),
+            ("document_status", "TEXT"),
+        ]:
+            if not self._column_exists(cursor, 'lti_workshop_sessions', col):
+                logger.info(f"Adding {col} column to lti_workshop_sessions")
+                cursor.execute(
+                    f"ALTER TABLE {tp}lti_workshop_sessions ADD COLUMN {col} {decl}")

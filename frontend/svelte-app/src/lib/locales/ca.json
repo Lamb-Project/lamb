@@ -1033,6 +1033,20 @@
     "systemInstructions": "Instruccions actives",
     "retrievedContext": "Context recuperat",
     "finalMessages": "Missatges enviats a l'LLM",
-    "toolTimeline": "Crides a eines"
+    "toolTimeline": "Crides a eines",
+    "attachDocHint": "Tria un fitxer (PDF, text o markdown). S'ingerirà en una base de coneixement per al teu assistent.",
+    "uploading": "Ingerint el teu document…",
+    "uploadDone": "Document ingerit — ara és coneixement que el teu assistent pot recuperar.",
+    "uploadFailed": "La ingesta ha fallat. Elimina el fitxer i prova'n un altre.",
+    "kbCollection": "Col·lecció de la base de coneixement",
+    "kbCollectionEmpty": "Es crea automàticament en pujar un document al pas 2.",
+    "kbTestQuestion": "Fes una pregunta de prova",
+    "kbTestPlaceholder": "Què diu el document sobre…?",
+    "verifyKb": "Prova la recuperació",
+    "probing": "Recuperant…",
+    "connected": "Connectat a",
+    "kbRetrieved": "Fragments que el teu assistent pot recuperar",
+    "kbNoHits": "No hi ha fragments coincidents — prova una altra pregunta o document.",
+    "similarity": "similitud"
   }
 }

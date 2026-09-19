@@ -224,72 +224,72 @@ def rag_processor(
                 # Extract file_urls and create source URLs
                 # Supports both legacy (file_url) and new (original_file_url, markdown_file_url) metadata
                 for doc in documents:
-                    if "metadata" in doc:
-                        metadata = doc["metadata"]
+                    metadata = doc.get("metadata", {}) or {}
 
-                        # Determine the best source URL (prefer remote sources like YouTube with timestamps)
-                        source_url = None
-                        original_url = None
-                        markdown_url = None
-                        images_folder = None
-                        remote_source_url = None
+                    # Determine the best source URL (prefer remote sources like YouTube with timestamps)
+                    source_url = None
+                    original_url = None
+                    markdown_url = None
+                    images_folder = None
+                    remote_source_url = None
 
-                        # Remote source URL (YouTube videos with timestamps, etc.)
-                        # This takes priority as it contains the exact timestamp
-                        if "source_url" in metadata:
-                            remote_source_url = metadata["source_url"]
+                    # Remote source URL (YouTube videos with timestamps, etc.)
+                    # This takes priority as it contains the exact timestamp
+                    if "source_url" in metadata:
+                        remote_source_url = metadata["source_url"]
 
-                        # Citation URL (external canonical URL for the source document)
-                        citation_url = None
-                        if "citation" in metadata:
-                            citation_url = metadata["citation"]
+                    # Citation URL (external canonical URL for the source document)
+                    citation_url = None
+                    if "citation" in metadata:
+                        citation_url = metadata["citation"]
 
-                        # New metadata fields from markitdown_plus_ingest plugin
-                        if "original_file_url" in metadata:
-                            original_url = f"{KB_SERVER_URL}{metadata['original_file_url']}"
-                        if "markdown_file_url" in metadata:
-                            markdown_url = f"{KB_SERVER_URL}{metadata['markdown_file_url']}"
-                        if "images_folder_url" in metadata:
-                            images_folder = f"{KB_SERVER_URL}{metadata['images_folder_url']}"
+                    # New metadata fields from markitdown_plus_ingest plugin
+                    if "original_file_url" in metadata:
+                        original_url = f"{KB_SERVER_URL}{metadata['original_file_url']}"
+                    if "markdown_file_url" in metadata:
+                        markdown_url = f"{KB_SERVER_URL}{metadata['markdown_file_url']}"
+                    if "images_folder_url" in metadata:
+                        images_folder = f"{KB_SERVER_URL}{metadata['images_folder_url']}"
 
-                        # Legacy file_url field
-                        if "file_url" in metadata:
-                            source_url = f"{KB_SERVER_URL}{metadata['file_url']}"
+                    # Legacy file_url field
+                    if "file_url" in metadata:
+                        source_url = f"{KB_SERVER_URL}{metadata['file_url']}"
 
-                        # Priority: citation > remote_source_url (YouTube) > original_file_url > file_url
-                        main_url = citation_url or remote_source_url or original_url or source_url
+                    # Priority: citation > remote_source_url (YouTube) > original_file_url > file_url
+                    main_url = citation_url or remote_source_url or original_url or source_url
 
-                        if main_url:
-                            # For YouTube videos, use video_title if available, otherwise video_id
-                            if "video_id" in metadata and metadata["video_id"]:
-                                # Check if we have the full video title
-                                if "video_title" in metadata and metadata["video_title"] and metadata["video_title"] != "Unknown":
-                                    title = metadata["video_title"]
-                                else:
-                                    # Fallback to video_id format
-                                    title = f"YouTube: {metadata['video_id']}"
-                            else:
-                                title = metadata.get("filename", metadata.get("original_filename", "Unknown"))
-                            
-                            source_entry = {
-                                "title": title,
-                                "url": main_url,
-                                "similarity": doc.get("similarity", 0)
-                            }
-                            # Include additional URLs from new plugins
-                            if original_url:
-                                source_entry["original_url"] = original_url
-                            if markdown_url:
-                                source_entry["markdown_url"] = markdown_url
-                            if images_folder:
-                                source_entry["images_folder"] = images_folder
-                            # Include chunk metadata if available
-                            if "chunk_index" in metadata:
-                                source_entry["chunk_index"] = metadata["chunk_index"]
-                            if "page" in metadata:
-                                source_entry["page"] = metadata["page"]
+                    # For YouTube videos, use video_title if available, otherwise video_id
+                    if "video_id" in metadata and metadata["video_id"]:
+                        if "video_title" in metadata and metadata["video_title"] and metadata["video_title"] != "Unknown":
+                            title = metadata["video_title"]
+                        else:
+                            title = f"YouTube: {metadata['video_id']}"
+                    else:
+                        title = metadata.get("filename", metadata.get("original_filename", "Unknown"))
 
-                            sources.append(source_entry)
+                    # Always emit a source entry so observability can show the
+                    # retrieved excerpt even for URL-less documents (plain text,
+                    # etc.). The URL is optional.
+                    source_entry = {
+                        "title": title,
+                        "url": main_url or "",
+                        "similarity": doc.get("similarity", 0),
+                        "content": doc.get("data", ""),
+                    }
+                    # Include additional URLs from new plugins
+                    if original_url:
+                        source_entry["original_url"] = original_url
+                    if markdown_url:
+                        source_entry["markdown_url"] = markdown_url
+                    if images_folder:
+                        source_entry["images_folder"] = images_folder
+                    # Include chunk metadata if available
+                    if "chunk_index" in metadata:
+                        source_entry["chunk_index"] = metadata["chunk_index"]
+                    if "page" in metadata:
+                        source_entry["page"] = metadata["page"]
+
+                    sources.append(source_entry)
 
                     # Add the document content to contexts
                     if "data" in doc:

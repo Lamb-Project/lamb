@@ -63,6 +63,8 @@ class ToolLoop:
         tools: list,
         tool_choice: Any,
         llm_call_fn: Callable,
+        assistant: Any = None,
+        request: Optional[dict] = None,
     ) -> AsyncIterator[dict]:
         """
         Run the tool loop.
@@ -79,6 +81,9 @@ class ToolLoop:
             tool_choice: Tool choice strategy ("auto", "none", or {"type":"function","function":{...}}).
             llm_call_fn: Async callable(messages, tools, tool_choice) returning an
                          OpenAI-compatible ChatCompletion response object.
+            assistant: Optional assistant object passed through to tool
+                       implementations that need RAG context (kb_query).
+            request: Optional original completion request passed through to tools.
 
         Yields:
             Event dicts (see above). The caller is responsible for SSE formatting.
@@ -135,7 +140,8 @@ class ToolLoop:
                 fn_args = tc.function.arguments
                 yield {"type": "tool", "name": fn_name, "args": fn_args}
 
-                result = await self._execute_tool(fn_name, fn_args)
+                result = await self._execute_tool(
+                    fn_name, fn_args, assistant=assistant, request=request)
                 success = result.get("success", False)
                 yield {"type": "tool_done", "name": fn_name, "success": success}
 
@@ -154,13 +160,18 @@ class ToolLoop:
                 yield {"type": "result", "messages": messages}
                 return
 
-    async def _execute_tool(self, name: str, args_json: str) -> dict:
+    async def _execute_tool(
+        self, name: str, args_json: str, assistant: Any = None,
+        request: Optional[dict] = None,
+    ) -> dict:
         """
         Dispatch a tool call to the appropriate implementation.
 
         Args:
             name: Tool name ("calculator", "kb_query", "sandbox_exec").
             args_json: JSON string of arguments.
+            assistant: Optional assistant object (kb_query RAG context).
+            request: Optional original completion request.
 
         Returns:
             dict with at least {"success": bool}.
@@ -175,7 +186,7 @@ class ToolLoop:
             return run_calculator(args)
         elif name == "kb_query":
             from .implementations.kb_query import run_kb_query
-            return await run_kb_query(args)
+            return await run_kb_query(args, assistant=assistant, request=request)
         elif name == "sandbox_exec":
             from .implementations.sandbox_exec import run_sandbox_exec
             return await run_sandbox_exec(args)
