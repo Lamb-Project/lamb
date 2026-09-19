@@ -32,7 +32,7 @@ def establish_connection(policy, cipher, *, organization_id, owner_id, token=Non
         except PermissionError:
             raise
         except Exception:
-            raise MoodleConnectionError('QR connection failed. Use a fresh passport from the allowed Moodle site') from None
+            raise MoodleConnectionError('QR connection failed. The passport may have expired or already been used. Generate a fresh login QR code from the allowed Moodle site') from None
     try:
         with MoodleHTTPClient(policy.base_url, token, readonly=True) as client:
             info = SiteService(client).get_site_info()

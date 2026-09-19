@@ -1,10 +1,12 @@
 <script>
     import { onMount } from 'svelte';
-    import { moodleStatus, connectMoodle, disconnectMoodle, configureMoodle } from '$lib/services/moodleService';
+    import { moodleStatus, connectMoodleQrImage, connectMoodle, disconnectMoodle, configureMoodle } from '$lib/services/moodleService';
     import { clearWorkspaceDirty } from '$lib/services/frontendManage';
     let status = $state(null);
     let settings = $state({enabled:false, base_url:'', mode:'readonly', write_groups:[], allow_grade_write:false});
     let method = $state('passport');
+    let qrImage = $state(null);
+    let qrInput;
     let credential = $state('');
     let busy = $state(false);
     let error = $state('');
@@ -57,6 +59,27 @@
                 <button class="secondary" disabled={busy} onclick={() => action(disconnectMoodle, 'Moodle disconnected. Stored credentials removed.')}>Disconnect Moodle</button>
             {/if}
             {#if status.settings.enabled}
+                <form data-aac-edit-form onsubmit={e => {
+                    e.preventDefault();
+                    if (!qrImage) return;
+                    if (qrImage.size > 5 * 1024 * 1024) {error='Select a QR image smaller than 5 MiB.'; return;}
+                    const selected = qrImage;
+                    action(async () => {
+                        try {await connectMoodleQrImage(selected);}
+                        finally {qrImage=null; if(qrInput) qrInput.value='';}
+                    }, 'Moodle identity verified and connected.', {form:e.currentTarget});
+                }}>
+                    <h3>Upload your Moodle login QR code</h3>
+                    <p>In your Moodle profile, display a fresh QR code for automatic mobile login, then save an image or take a screenshot. Upload it within about three minutes.</p>
+                    <label>QR code image
+                        <input bind:this={qrInput} type="file" accept="image/png,image/jpeg,image/webp" disabled={busy}
+                            onchange={e => {qrImage=e.currentTarget.files?.[0] || null; error='';}} />
+                    </label>
+                    <p>PNG, JPEG or WebP, up to 5 MiB. The image is used only to connect your account; it is not saved or sent to the agent.</p>
+                    <button disabled={busy || !qrImage}>{busy ? 'Connecting…' : 'Connect with QR image'}</button>
+                </form>
+                <details>
+                    <summary>Advanced options: paste a passport or token</summary>
                 <form data-aac-edit-form onsubmit={e => {e.preventDefault();action(() => connectMoodle({[method]:credential}), 'Moodle identity verified and connected.', {form:e.currentTarget, clearCredential:true});}}>
                     <label>Connection method
                         <select bind:value={method} disabled={busy}>
@@ -70,6 +93,7 @@
                     </label>
                     <button disabled={busy || !credential.trim()}>{busy ? 'Working…' : status.connection ? 'Reconnect Moodle' : 'Connect Moodle'}</button>
                 </form>
+                </details>
             {/if}
         </div>
         {#if status.can_configure}
@@ -89,6 +113,7 @@
 </section>
 <style>
     .moodle-settings{max-width:850px;margin:2rem auto;padding:0 1rem;color:#1f2937}
+    h3{font-weight:600;font-size:1.1rem}summary{cursor:pointer;margin:1rem 0}input[type=file]{max-width:100%}
     h1{font-size:1.8rem;font-weight:700}h2{font-size:1.3rem;font-weight:600}p{margin:.8rem 0}
     .card{border:1px solid #cbd5e1;border-radius:.6rem;padding:1.25rem;margin:1.5rem 0;background:white}
     aside{background:#eff6ff;border-left:4px solid #2563eb;padding:.5rem 1rem;margin:1rem 0}

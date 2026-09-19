@@ -436,3 +436,18 @@ storing the encrypted token. Moodle must expose the mobile web services, and the
 account needs instructor permissions for course-wide reads. Moodle's own
 permissions continue to apply. Disconnect on this page removes the stored token.
 Do not paste credentials into an agent conversation.
+
+
+### Connecting with a QR image
+
+On the LAMB Moodle page, select **QR code image** and upload a fresh PNG, JPEG or
+WebP screenshot of your Moodle automatic-login QR code, then click **Connect with
+QR image**. The complete QR code and its border should be visible. Images are
+limited to 5 MiB and 12 megapixels and are decoded in memory, not stored as
+uploaded documents or sent to the AAC. The selected image is cleared after each
+attempt. An expired or already-used passport requires a fresh QR code.
+
+The Moodle administrator must enable automatic-login QR codes on an HTTPS site.
+A QR containing only the site address cannot authenticate you. LAMB also rejects
+QR codes for a site other than the organization's configured Moodle URL.
+**Advanced options** retain pasted mobile passports and mobile-service tokens.

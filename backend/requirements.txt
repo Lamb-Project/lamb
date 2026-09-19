@@ -83,3 +83,6 @@ PyYAML==6.0.3
 # Moodle connector (#487): immutable upstream revision while release tag is pending.
 moodle-cli @ git+https://github.com/Lamb-Project/moodle-cli.git@b5652e47c78c4eda1dda684f4c564f30d5256997
 cryptography==50.0.1
+
+# In-memory Moodle login QR image decoding (#489).
+zxing-cpp==3.0.0

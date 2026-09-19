@@ -1,8 +1,8 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/svelte';
-vi.mock('$lib/services/moodleService', () => ({moodleStatus:vi.fn(),connectMoodle:vi.fn(),disconnectMoodle:vi.fn(),configureMoodle:vi.fn()}));
+vi.mock('$lib/services/moodleService', () => ({moodleStatus:vi.fn(),connectMoodleQrImage:vi.fn(),connectMoodle:vi.fn(),disconnectMoodle:vi.fn(),configureMoodle:vi.fn()}));
 vi.mock('$lib/services/frontendManage', () => ({clearWorkspaceDirty:vi.fn()}));
-import { moodleStatus, connectMoodle, configureMoodle } from '$lib/services/moodleService';
+import { moodleStatus, connectMoodleQrImage, connectMoodle, configureMoodle } from '$lib/services/moodleService';
 import { clearWorkspaceDirty } from '$lib/services/frontendManage';
 import Page from './+page.svelte';
 const status = () => ({settings:{enabled:true,base_url:'https://moodle.test',mode:'readonly',write_groups:[],allow_grade_write:false},can_configure:true,effective_driver:{provider:'ollama',model:'fixture'},privacy_notice:'Student data reaches the configured provider.',connection:null});
@@ -52,4 +52,27 @@ it('shows an unavailable driver while preserving connection controls', async () 
     render(Page);
     expect(await screen.findByRole('alert')).toHaveTextContent('correct the model');
     expect(screen.getByLabelText('QR passport')).toBeInTheDocument();
+});
+
+it('uploads QR as an image and clears it after success', async () => {
+    connectMoodleQrImage.mockResolvedValue({});
+    render(Page);
+    const input=await screen.findByLabelText('QR code image');
+    const image=new File(['synthetic'], 'qr.png', {type:'image/png'});
+    await fireEvent.change(input,{target:{files:[image]}});
+    await fireEvent.submit(input.closest('form'));
+    await screen.findByText('Moodle identity verified and connected.');
+    expect(connectMoodleQrImage).toHaveBeenCalledWith(image);
+    expect(connectMoodle).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByRole('button',{name:'Connect with QR image'})).toBeDisabled());
+});
+it('shows QR errors, clears stale image and allows a new attempt', async () => {
+    connectMoodleQrImage.mockRejectedValue(new Error('Use a fresh login QR'));
+    render(Page);
+    const input=await screen.findByLabelText('QR code image');
+    await fireEvent.change(input,{target:{files:[new File(['x'],'qr.png')]}});
+    await fireEvent.submit(input.closest('form'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('fresh login QR');
+    await waitFor(() => expect(screen.getByRole('button',{name:'Connect with QR image'})).toBeDisabled());
+    expect(clearWorkspaceDirty).not.toHaveBeenCalled();
 });

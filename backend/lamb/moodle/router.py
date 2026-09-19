@@ -1,6 +1,6 @@
 """Creator-only connection endpoints. Secret inputs never enter AAC conversation."""
 from functools import lru_cache
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, SecretStr, StrictBool
 from lamb.auth_context import AuthContext, get_auth_context
 from .connection import establish_connection, public_connection, MoodleConnectionError
@@ -114,3 +114,25 @@ def configure(body: SettingsBody, auth: AuthContext = Depends(get_auth_context),
         raise HTTPException(400, str(exc)) from None
     except (PermissionError, RuntimeError) as exc:
         translate_error(exc)
+
+
+@router.post('/connection/qr-image')
+async def connect_qr_image(request: Request, store=Depends(store_for)):
+    # Raw body avoids multipart temporary-file spooling. Authentication runs first.
+    from starlette.concurrency import run_in_threadpool
+    from .qr_image import MAX_IMAGE_BYTES, decode_passport
+    data = bytearray()
+    try:
+        snap = store.snapshot()
+        snap['policy'].require_connection_url(snap['policy'].base_url)
+        async for chunk in request.stream():
+            if len(data) + len(chunk) > MAX_IMAGE_BYTES:
+                raise HTTPException(413, 'Select a QR image smaller than 5 MiB.')
+            data.extend(chunk)
+        passport = await run_in_threadpool(decode_passport, bytes(data))
+        # Reuse site/identity verification, encrypted persistence and generation guard.
+        return await run_in_threadpool(connect, ConnectBody(passport=passport), store)
+    except (MoodleConfigurationError, MoodleConnectionError, PermissionError, RuntimeError) as exc:
+        translate_error(exc)
+    finally:
+        data.clear()
