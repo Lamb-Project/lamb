@@ -871,6 +871,7 @@ async def frontend_open(ctx, args, kwargs):
     if ctx.frontend is None:
         raise ValueError('No connected frontend for this turn. Guide the user; do not claim navigation.')
     paths = {'assistant': '/creator/assistant/get_assistant/', 'kb': '/creator/knowledgebases/kb/', 'rubric': '/creator/rubrics/', 'learning-scenario': '/creator/aac/learning-scenarios/'}
+    paths['moodle-result'] = '/creator/moodle/results/'
     if target['resource'] in paths:
         await ctx.http.get(paths[target['resource']] + target['id'])  # normal caller resource permissions, before emitting an action
     return await ctx.frontend({'operation': 'open', **target})

@@ -11,13 +11,21 @@ from lamb.moodle.runtime import attach_to_agent
 
 def test_moodle_recipes_and_generated_commands_validate():
     pack=load_pack()
-    assert pack.version=='1.3.1'
+    assert pack.version=='1.4.0'
     validate_routing(pack)
     assert validate_skill_contracts(pack)
     names={'moodle-triage','moodle-forums','moodle-course-documents','moodle-assessment-draft'}
     assert names<=allowed_skills(pack,['creator'],['moodle'])
     assert not names & allowed_skills(pack,['creator'],[])
     assert load_pack(version='1.2.4').version=='1.2.4'
+    assert load_pack(version='1.3.1').version=='1.3.1'
+
+
+def test_new_task_pack_requires_an_engine_with_task_support(monkeypatch):
+    monkeypatch.setattr('lamb.aac.pack_loader.ENGINE_VERSION', '0.7.0')
+    with pytest.raises(ValueError, match='newer LAMB engine'):
+        load_pack()
+    assert load_pack(version='1.3.1').version == '1.3.1'
 
 
 def test_runtime_guard_loads_recipe_before_execution_and_revokes_access(stores):

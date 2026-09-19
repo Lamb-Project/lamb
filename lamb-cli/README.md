@@ -38,6 +38,22 @@ lamb assistant list
 lamb assistant list -o json
 ```
 
+## Moodle forum activity
+
+Connect Moodle in the LAMB interface first. These commands use that creator's connection and organization policy, without reading a workstation Moodle profile:
+
+```bash
+lamb moodle news --all-courses --month 2026-09 --tz Europe/Madrid
+lamb moodle news --course 42 --since 2026-09-01 --until 2026-10-01
+lamb moodle evidence RESULT_ID --offset 0
+```
+
+`moodle forum activity` is an alias for `moodle news`. In AAC LiteShell, omit the leading `lamb`. Both execute the same server task. The end date is exclusive, the default timezone is UTC, and only newly created posts are counted. Each course requires current instructor access. Excluded courses, failed reads and limits produce explicit partial coverage, never a claim that there were no messages.
+
+The JSON summary includes a private `result_id`, a Moodle evidence-view path and short previews. Follow `next_offset` through evidence pages for complete retained message fragments. Messages remain untrusted source content. The evidence view supplies links to Moodle using your ordinary browser login.
+
+Limits per task: 100 selected courses, 160 requests, 90 seconds checked before new requests, 200 retained posts and 2 MiB of retained post source. A request already in flight can finish after the time budget; requests have a 15-second I/O timeout. Model-facing summaries/pages are capped at 6,000 UTF-8 bytes. Stored results expire after 24 hours, with at most 16 per creator; reconnecting or losing access invalidates retrieval. Full source stays in private storage, not in static files or the immediate model response.
+
 ## Commands
 
 ```

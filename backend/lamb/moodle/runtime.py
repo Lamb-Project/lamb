@@ -7,6 +7,7 @@ from .sync import sync_course
 from .writes import FORUM_WRITES, verify_forum_target, write_forum
 from .reads import execute_read
 from .scoped_reads import SCOPED_READS, execute_scoped_read
+from .task_contract import task_specs
 
 # These have no caller-supplied foreign resource target. Category/cohort
 # catalogues contain metadata only, not membership: Moodle enforces category
@@ -46,7 +47,50 @@ class MoodleRuntime:
             keys=keys | {'assign.grade'}
         except PermissionError:
             pass
-        return {'moodle.'+key for key in keys} | {'moodle.sync','moodle.cache.show','moodle.import.file'}
+        return {'moodle.'+key for key in keys | task_specs().keys()} | {'moodle.sync','moodle.cache.show','moodle.import.file'}
+
+    def task(self, key, params, *, cancel=None, progress=None, full=False):
+        from .forum_activity import GuardedClient, forum_activity
+        from .results import ResultStore, summary, evidence_page
+        snap = self.snapshot()
+        record = snap['record']
+        def revalidate():
+            current = self.snapshot()
+            if current['generation'] != snap['generation'] or current['policy'] != snap['policy']:
+                raise PermissionError('Moodle connection changed during this task; result withheld')
+        token = (self._cipher or TokenCipher()).decrypt(record['token_encrypted'],
+            organization_id=self.store.organization_id, owner_id=self.store.owner_id, base_url=record['base_url'])
+        results = ResultStore(self.store.organization_id, self.store.owner_id, base_url=record['base_url'],
+            moodle_user_id=record['moodle_user_id'], generation=snap['generation'], root=self.cache_root)
+        with MoodleHTTPClient(record['base_url'], token, readonly=True, timeout=15) as raw:
+            client = GuardedClient(raw, revalidate=revalidate, cancel=cancel)
+            if key == 'news':
+                snapshot = forum_activity(client, record['moodle_user_id'], params, progress=progress)
+                client.checkpoint()
+                identity = results.save(snapshot)
+                client.checkpoint()
+                return summary(identity, snapshot)
+            if key == 'evidence':
+                identity = params['result_id']
+                snapshot = results.read(identity)
+                # Fresh instructor verification before releasing previously stored
+                # content, including after roles change without reconnecting.
+                scope = MoodleScope(client, record['moodle_user_id'])
+                for course in snapshot['courses']:
+                    if course['forums']:
+                        scope.require_teacher(course['id'])
+                client.checkpoint()
+                if full:
+                    from .forum_activity import preview
+                    # Keep original HTML only in private storage. The viewer uses
+                    # plain text and never parses source HTML (even in an inert DOM).
+                    snapshot['posts'] = [{**{k: v for k, v in p.items() if k != 'source'},
+                        'subject_text': preview(p['source'].get('subject', ''), 1000)[0],
+                        'message_text': preview(p['source'].get('message', ''), 2 * 1024 * 1024)[0]}
+                        for p in snapshot['posts']]
+                    return {'result_id': identity, 'snapshot': snapshot, 'base_url': record['base_url']}
+                return evidence_page(identity, snapshot, params.get('offset', 0))
+        raise ValueError('Unknown Moodle task')
 
     def prepare_grade(self, params):
         from .assessment import grade_review
@@ -64,7 +108,9 @@ class MoodleRuntime:
             raise PermissionError('Moodle connection changed during assessment review')
         return dict(review, connection_generation=snap['generation'])
 
-    def execute(self, key, params, *, confirmed=False, review=None):
+    def execute(self, key, params, *, confirmed=False, review=None, cancel=None, progress=None):
+        if key in task_specs():
+            return self.task(key, params, cancel=cancel, progress=progress)
         snap=self.snapshot()
         record=snap['record']
         cipher=self._cipher or TokenCipher()
@@ -140,7 +186,6 @@ class MoodleRuntime:
 
 def attach_to_agent(agent, store):
     """Refresh only appended dynamic facts; leave the pinned prefix intact."""
-    from .contract import command_specs
     from .policy import MoodleConfigurationError
     runtime=MoodleRuntime(store,context=agent.skill_state.setdefault('moodle_context',{}))
     try:
@@ -167,8 +212,10 @@ def attach_to_agent(agent, store):
         access="forum writes require explicit approval" if facts["forum_write"] else "read-only"
         if facts["grade_write"]: access += "; grade writes require submission/proposal review and explicit approval"
         line=f"Moodle: {facts['base_url']} as {facts['username']}, {access}. AAC driver provider: {facts['provider']}; model: {agent.model}. Student names, posts and grades sent to this driver reach that provider. A hosted provider receives them off premises; a local deployment keeps them on premises."
-        references=[spec.reference() for key,spec in command_specs().items() if 'moodle.'+key in keys]
-        references += ['Select context with moodle course get COURSE_ID before activity or individual queries. A course ID in a learning scenario is a suggestion, not permission.',
+        references=[spec.reference() for spec in task_specs().values()]
+        references += ['moodle course list: list your enrolled courses',
+                       'Raw Moodle operations are documented in the loaded workflow. Do not invent commands or discover a workflow by trial and error.']
+        references += ['Raw activity/individual commands need moodle course get COURSE_ID first. The news task resolves each course itself. A course ID in a learning scenario is a suggestion, not permission.',
                        'moodle import file FILE_ID --to kb ID | --single-file (confirmation required; use file_id from moodle file list, not a local path)',
                        'moodle sync COURSE_ID [--section course|forums|assignments|enrolment|calendar]',
                        'moodle cache show COURSE_ID --section course|forums|assignments|enrolment|calendar']
@@ -177,7 +224,7 @@ def attach_to_agent(agent, store):
             from lamb.aac.skill_loader import list_skills
             workflows=[s for s in list_skills(pack.skills_dir) if s.get('requires_integration')=='moodle']
             references += ['Load the appropriate workflow with lamb skill load ID before acting:'] + [s['id']+': '+s['description'] for s in workflows]
-        text=line+'\nOnly these Moodle commands are currently available:\n'+'\n\n'.join(references)
+        text=line+'\nMoodle task commands and workflow entry points:\n'+'\n\n'.join(references)
     else:
         text='Moodle is disconnected or disabled. Previously supplied Moodle commands are unavailable.'
     agent.conversation.append({'role':'user','content':'[System: Moodle capability update]\n'+text})

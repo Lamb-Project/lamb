@@ -1,5 +1,8 @@
 <script>
     import { onMount } from 'svelte';
+    import { page } from '$app/stores';
+    import { base } from '$app/paths';
+    import MoodleEvidence from '$lib/components/MoodleEvidence.svelte';
     import { createSession } from '$lib/services/aacService';
     import { showSession, sidebarBusy } from '$lib/stores/aacStore.svelte';
     import { moodleStatus, connectMoodleQrImage, connectMoodle, disconnectMoodle } from '$lib/services/moodleService';
@@ -42,6 +45,10 @@
 </script>
 <svelte:head><title>Moodle connection | LAMB</title></svelte:head>
 <section class="moodle-settings">
+    {#if $page.url.searchParams.get('result')}
+        <a href={`${base}/moodle`}>Moodle connection</a>
+        <MoodleEvidence resultId={$page.url.searchParams.get('result')} />
+    {:else}
     <h1>Moodle connection</h1>
     <p>Connect your instructor account to the Moodle site allowed by your organization. Enter credentials here, never in the agent chat.</p>
     {#if error}<p role="alert" class="error">{error}</p>{/if}
@@ -105,6 +112,7 @@
             {/if}
         </div>
     {:else if !error}<p role="status">Loading Moodle settings…</p>{/if}
+    {/if}
 </section>
 <style>
     .moodle-settings{max-width:850px;margin:2rem auto;padding:0 1rem;color:#1f2937}

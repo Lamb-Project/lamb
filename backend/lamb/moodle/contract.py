@@ -70,6 +70,10 @@ def command_specs():
 def prepare_moodle(command):
     """Strict CLI tokenization and typed parameters without executing anything."""
     tokens = shlex.split(command)
+    from .task_contract import parse_task
+    task = parse_task(tokens)
+    if task is not None:
+        return task
     if len(tokens) >= 3 and tokens[:3] == ['moodle','import','file']:
         parser=click.Command('file',params=[click.Argument(['file_id']),
             click.Option(['--to'],type=click.Choice(['kb'])),click.Argument(['kb_id'],required=False,type=click.IntRange(min=1)),

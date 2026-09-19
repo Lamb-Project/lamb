@@ -9,6 +9,13 @@ from .secrets import TokenCipher
 from .store import ConnectionStore, ConnectionConflict
 
 router = APIRouter(prefix='/moodle', tags=['Moodle connector'])
+
+
+class TaskBody(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    command: str
+
+
 PRIVACY_NOTICE = ('Student names, posts and grades reach the AAC driver model, the organization’s configured provider. '
                   'On a local provider they stay on premises; on a hosted one they leave.')
 
@@ -136,3 +143,35 @@ async def connect_qr_image(request: Request, store=Depends(store_for)):
         translate_error(exc)
     finally:
         data.clear()
+
+
+@router.post('/tasks')
+def run_task(body: TaskBody, store=Depends(store_for)):
+    from .contract import prepare_moodle
+    from .task_contract import task_specs
+    from .runtime import MoodleRuntime
+    try:
+        if len(body.command) > 4096:
+            raise ValueError('Moodle task command is too long')
+        spec, params = prepare_moodle(body.command)
+        if spec.key not in task_specs():
+            raise ValueError('This endpoint accepts moodle news and moodle evidence only')
+        return MoodleRuntime(store).execute(spec.key, params)
+    except ValueError as exc:
+        if isinstance(exc, MoodleConfigurationError): translate_error(exc)
+        raise HTTPException(400, str(exc)) from None
+    except PermissionError as exc:
+        translate_error(exc)
+    except Exception:
+        raise HTTPException(503, 'Moodle task could not finish. Check the connection and retry.') from None
+
+
+@router.get('/results/{result_id}')
+def task_result(result_id: str, store=Depends(store_for)):
+    from .runtime import MoodleRuntime
+    try:
+        return MoodleRuntime(store).task('evidence', {'result_id': result_id}, full=True)
+    except PermissionError as exc:
+        raise HTTPException(404, str(exc)) from None
+    except Exception:
+        raise HTTPException(503, 'Moodle evidence cannot be verified now. Try again later.') from None

@@ -162,6 +162,8 @@ class ActionAuthorizer:
         if action_key.startswith('moodle.'):
             from lamb.moodle.contract import command_specs
             key=action_key.removeprefix('moodle.')
+            from lamb.moodle.task_contract import task_specs
+            if key in task_specs(): return 'auto'
             if key in {'sync','cache.show'}: return 'auto'
             if key=='import.file': return 'ask'
             spec=command_specs().get(key)

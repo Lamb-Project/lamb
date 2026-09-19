@@ -15,6 +15,7 @@ describe('frontend navigation contract', () => {
     });
     it('opens named pages, activity, edit and rubrics only after their ready marker appears', async () => {
         const cases = [
+            [{resource:'moodle-result',id:'11111111-1111-4111-8111-111111111111',tab:'view'}, '/moodle?result=11111111-1111-4111-8111-111111111111'],
             [{resource:'assistants',id:'',tab:''}, '/assistants?view=list'],
             [{resource:'assistant-create',id:'',tab:''}, '/assistants?view=create'],
             [{resource:'assistant',id:'80',tab:'activity'}, '/assistants?view=detail&id=80&aacTab=activity'],

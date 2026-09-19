@@ -319,7 +319,28 @@ class LiteShell:
             if self.moodle is None:
                 raise ValueError('Moodle connector is unavailable in this conversation')
             import asyncio
-            data=await asyncio.to_thread(self.moodle.execute,key.removeprefix('moodle.'),kwargs,confirmed=confirmed,review=review)
+            import threading
+            cancel = threading.Event()
+            loop = asyncio.get_running_loop()
+            bridge = getattr(self.frontend, '__self__', None)
+            def progress(index, total):
+                emit = getattr(bridge, 'emit', None)
+                if not emit or cancel.is_set() or loop.is_closed():
+                    return
+                future = asyncio.run_coroutine_threadsafe(emit({'status':'tool',
+                    'command':f'moodle news: {index}/{total}'}), loop)
+                try:
+                    future.result(timeout=1)
+                except Exception:
+                    future.cancel()
+            try:
+                data=await asyncio.to_thread(self.moodle.execute,key.removeprefix('moodle.'),kwargs,
+                    confirmed=confirmed,review=review,cancel=cancel,progress=progress)
+            except asyncio.CancelledError:
+                # Cancelling to_thread alone leaves the worker running. Task
+                # requests observe this flag before/after each read and publish.
+                cancel.set()
+                raise
             if key=='moodle.import.file':
                 if kwargs['single_file']:
                     data=await self._get_http().post('/creator/aac/files',files={'file':(data.filename,data.content,data.content_type)})

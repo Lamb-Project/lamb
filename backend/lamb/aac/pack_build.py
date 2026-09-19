@@ -46,7 +46,11 @@ def validate_routing(pack):
     routing = pack.data('routing.yaml')
     if any(key.startswith('moodle.') for key in routing['DEFAULT_SKILL']):
         from lamb.moodle.contract import command_specs
+        from lamb.moodle.task_contract import task_specs
         commands |= {'moodle.'+key for key in command_specs()} | {'moodle.sync','moodle.cache.show','moodle.import.file'}
+        # Historical immutable packs predate the task vocabulary.
+        if 'moodle.news' in routing['DEFAULT_SKILL']:
+            commands |= {'moodle.'+key for key in task_specs()}
     for field, known in [('skill_layers', skills), ('command_layers', commands)]:
         for key, layer in pack.manifest.get(field, {}).items():
             if key not in known or layer not in layers:

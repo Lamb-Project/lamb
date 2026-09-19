@@ -24,6 +24,7 @@ function hasUnsavedChanges() {
     return manualDirty || dirtyForms.size > 0;
 }
 export function destinationUrl(target) {
+    if (target.resource === 'moodle-result' && target.tab === 'view' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(target.id)) return `${base}/moodle?result=${target.id}`;
     if (target.resource === 'learning-scenarios' && target.id === '' && target.tab === '') return `${base}/learning-scenarios?view=list`;
     if (target.resource === 'learning-scenario' && ['view','edit'].includes(target.tab) && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(target.id)) return `${base}/learning-scenarios?id=${target.id}&aacTab=${target.tab}`;
 

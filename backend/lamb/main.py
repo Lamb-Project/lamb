@@ -13,7 +13,6 @@ from .lti_users_router import router as lti_users_router
 from .lti_creator_router import router as lti_creator_router
 # REMOVED: owi_router - OWI endpoints removed for security (Dec 27, 2025)
 # OWI managers are still used internally as service classes
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from .simple_lti.simple_lti_main import router as simple_lti_router
@@ -29,8 +28,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Mount the static directory
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Static files are served only by the guarded Creator application mount.
 
 db_manager = LambDatabaseManager()
 

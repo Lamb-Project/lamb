@@ -1,5 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/svelte';
+vi.mock('$app/stores', async () => {const {writable}=await import('svelte/store');return {page:writable({url:new URL('http://localhost/moodle')})};});
 vi.mock('$lib/services/moodleService', () => ({moodleStatus:vi.fn(),connectMoodleQrImage:vi.fn(),connectMoodle:vi.fn(),disconnectMoodle:vi.fn(),configureMoodle:vi.fn()}));
 vi.mock('$lib/services/aacService', () => ({createSession:vi.fn()}));
 vi.mock('$lib/stores/aacStore.svelte', async () => {const {writable}=await import('svelte/store');return {showSession:vi.fn(),sidebarBusy:writable(false)};});

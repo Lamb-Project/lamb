@@ -57,6 +57,8 @@ async def lifespan(app: FastAPI):
     """Handle startup and shutdown events and schedule DB maintenance jobs."""
     # Startup
     logger.info("Starting LAMB application")
+    from lamb.moodle.storage import migrate_legacy_cache
+    migrate_legacy_cache()
 
     # Run database migrations once at startup (idempotent — the
     # schema_version table ensures each migration only runs once even

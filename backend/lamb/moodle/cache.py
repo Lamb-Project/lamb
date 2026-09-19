@@ -9,7 +9,9 @@ from pathlib import Path
 
 from .policy import canonical_base_url
 
-ROOT = Path(__file__).resolve().parents[2] / 'static' / 'public' / '.moodle'
+from .storage import private_root
+
+ROOT = private_root()
 SECTIONS = frozenset({'course', 'forums', 'assignments', 'enrolment', 'calendar'})
 
 
