@@ -259,3 +259,19 @@ def test_restart_after_final_step_does_not_reuse_previous_pause_reason(tmp_path,
     monkeypatch.setattr(RunStore, 'save', original)
     final = execute(tmp_path, raw, first['result_id'])
     assert final['coverage']['complete'] and final['budget']['stopped_reason'] is None
+
+
+def test_revocation_during_result_publish_withholds_returned_source(tmp_path, monkeypatch):
+    raw = Fixture(); revoked = False
+    from lamb.moodle.results import ResultStore
+    original = ResultStore.save
+    def save(self, snapshot):
+        nonlocal revoked
+        identity = original(self, snapshot)
+        if snapshot['posts']: revoked = True
+        return identity
+    monkeypatch.setattr(ResultStore, 'save', save)
+    def revalidate():
+        if revoked: raise PermissionError('connection changed')
+    with pytest.raises(PermissionError):
+        RunStore(store(tmp_path)).execute(GuardedClient(raw, revalidate=revalidate), 70, params=PARAMS)

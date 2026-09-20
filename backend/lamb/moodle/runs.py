@@ -109,7 +109,9 @@ class RunStore:
                     require_retained_access(MoodleScope(client, owner_id), run['state'])
                     identity = run['next_results'][result_id]
                     client.checkpoint()
-                    return summary(identity, self.results.read(identity))
+                    snapshot = self.results.read(identity)
+                    client.checkpoint()
+                    return summary(identity, snapshot)
                 if result_id != run['last_result']:
                     raise ValueError('Use the latest result from moodle runs to continue this check.')
                 if run['state']['done']:
@@ -117,6 +119,7 @@ class RunStore:
                     client.checkpoint()
                     if run['working'] is not None:
                         identity, snapshot = self._publish(run, client, run['state'].get('stop_reason'), result_id)
+                        client.checkpoint()
                         return summary(identity, snapshot)
                     return summary(result_id, prior)
             else:
@@ -167,6 +170,7 @@ class RunStore:
             state['stop_reason'] = reason
             client.revalidate()
             identity, snapshot = self._publish(run, client, reason, result_id)
+            client.checkpoint()
             return summary(identity, snapshot)
 
     def _snapshot(self, run, client, reason):
