@@ -19,6 +19,7 @@ import json
 import anyio
 from contextlib import aclosing
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,6 +29,7 @@ from openai import AsyncOpenAI
 
 from lamb.aac.authorization import ActionAuthorizer, DEFAULT_POLICY, classify_user_confirmation
 from lamb.aac.liteshell.shell import LiteShell, CommandContext, ShellResult, prepare_command
+from lamb.aac.context_metrics import ContextSizeError, is_context_rejection, request_sizes, usage_counts
 from lamb.aac.session_logger import SessionLogger
 from lamb.aac.skill_routing import SkillRouting, catalogue_prompt
 from lamb.logging_config import get_logger
@@ -275,6 +277,9 @@ class AgentLoop(SkillRouting):
     pack: Any = None
     session_id: str = ""  # current AAC session ID (for self-referencing commands like session.rename)
 
+    _turn_id: str = field(default="", init=False)
+    _tool_rounds: int = field(default=0, init=False)
+
     def load_skills(self, skills_dir: Path | str) -> None:
         """Load the compact catalogue only; workflow bodies are activated on demand."""
         self.system_prompt += catalogue_prompt()
@@ -350,13 +355,37 @@ class AgentLoop(SkillRouting):
         if (tools_enabled and isinstance(driver, dict) and driver.get('provider') == 'openai'
                 and (self.model == 'gpt-5.6' or self.model.startswith('gpt-5.6-'))):
             kwargs['reasoning_effort'] = 'none'
+        if streaming:
+            kwargs.update(stream=True, stream_options={"include_usage": True})
+        request_id = str(uuid.uuid4())
+        observation = {'usage': None}
         started = time.monotonic()
+        outcome = 'interrupted'
+        slog = self.session_logger
+        if slog and slog.enabled:
+            slog.log('context_request', {**request_sizes(kwargs), 'request_id': request_id,
+                'turn_id': self._turn_id, 'model': self.model, 'streaming': streaming,
+                'tool_round': self._tool_rounds, 'tools_enabled': tools_enabled})
+        try:
+            async with aclosing(self._provider_message(kwargs, tools_enabled, streaming, observation)) as events:
+                async for event in events:
+                    yield event
+            outcome = 'completed'
+        except Exception as error:
+            outcome = 'context_rejected' if is_context_rejection(error) else 'error'
+            if outcome == 'context_rejected':
+                raise ContextSizeError(self.skill_state) from error
+            raise
+        finally:
+            if slog:
+                slog.log('context_response', {'request_id': request_id, 'turn_id': self._turn_id,
+                    'elapsed_ms': round((time.monotonic()-started)*1000, 1),
+                    'outcome': outcome, 'usage': observation['usage']})
+
+    async def _provider_message(self, kwargs, tools_enabled, streaming, observation):
         if not streaming:
             response = await self.llm_client.chat.completions.create(**kwargs)
-            if self.session_logger:
-                usage = getattr(response, "usage", None)
-                self.session_logger.log("provider_response", {"elapsed_ms": round((time.monotonic()-started)*1000,1),
-                    "usage": usage.model_dump() if hasattr(usage, "model_dump") else None})
+            observation['usage'] = usage_counts(getattr(response, 'usage', None))
             message = response.choices[0].message
             yield {"_message": {
                 "role": "assistant", "content": message.content or "",
@@ -366,11 +395,14 @@ class AgentLoop(SkillRouting):
             }}
             return
 
-        stream = await self.llm_client.chat.completions.create(**kwargs, stream=True)
+        stream = await self.llm_client.chat.completions.create(**kwargs)
         text = ""
         calls = {}
         try:
             async for chunk in stream:
+                usage = usage_counts(getattr(chunk, "usage", None))
+                if usage is not None:
+                    observation["usage"] = usage
                 if not chunk.choices:
                     continue
                 delta = chunk.choices[0].delta
@@ -409,10 +441,13 @@ class AgentLoop(SkillRouting):
     async def _run_agent_events(self, streaming: bool) -> AsyncIterator[dict | str]:
         """Preserve interrupted output and keep tool-call history resumable."""
         from lamb.aac.language import append_turn_language
+        self._turn_id = str(uuid.uuid4())
+        self._tool_rounds = 0
         self.announce_linked_context()
         append_turn_language(self)
         partial = ''
         completed = False
+        outcome = 'interrupted'
         start = len(self.conversation)
         events = self._generate_agent_events(streaming)
         try:
@@ -423,7 +458,15 @@ class AgentLoop(SkillRouting):
                     partial = ''
                 yield event
             completed = True
+            outcome = 'completed'
+        except Exception:
+            outcome = 'error'
+            raise
         finally:
+            if self.session_logger:
+                self.session_logger.log('context_turn', {'turn_id': self._turn_id, 'outcome': outcome,
+                    'tool_rounds': self._tool_rounds, 'round_limit': self.max_tool_rounds,
+                    'round_limit_reached': self._tool_rounds >= self.max_tool_rounds})
             try:
                 with anyio.CancelScope(shield=True):
                     await events.aclose()
@@ -473,6 +516,7 @@ class AgentLoop(SkillRouting):
             calls = message.pop("tool_calls", [])
             if calls and tools_enabled:
                 tool_rounds += 1
+                self._tool_rounds = tool_rounds
                 # Retain calls/results for the provider, without retaining an
                 # unverified tool preamble as if it were a completed action.
                 self.conversation.append({**message, "content": "", "tool_calls": calls})

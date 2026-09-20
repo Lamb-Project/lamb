@@ -21,6 +21,7 @@ from lamb.completions.org_config_resolver import OrganizationConfigResolver
 from lamb.aac.authorization import ActionAuthorizer
 from lamb.aac.session_manager import AACSessionManager
 from lamb.aac.turn_lock import TurnLock
+from lamb.aac.context_metrics import ContextSizeError
 from lamb.aac.session_logger import SessionLogger
 from lamb.aac.skill_loader import load_skill, list_skills
 from lamb.aac.liteshell.shell import LiteShell
@@ -399,6 +400,8 @@ async def _send_message(
     # Run agent loop
     try:
         response_text = await agent.chat(user_message)
+    except ContextSizeError as e:
+        raise HTTPException(status_code=413, detail=str(e)) from e
     except Exception as e:
         logger.error(f"Agent error in session {session_id}: {e}")
         if agent.session_logger:
@@ -465,6 +468,8 @@ async def _send_message_stream(
                     yield f"data: {json.dumps(event)}\n\n"
                 else:
                     yield f"data: {json.dumps({'content': event})}\n\n"
+        except ContextSizeError as e:
+            yield f"data: {json.dumps({'error': str(e), 'code': e.code, 'recovery': 'new_conversation'})}\n\n"
         except Exception as e:
             logger.error(f"Stream error in session {session_id}: {e}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
