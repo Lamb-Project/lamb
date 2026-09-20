@@ -315,3 +315,36 @@ lamb test run ASSISTANT_ID --scenario SCENARIO_ID -o json
 Only supplied fields change. Optional inline fields are `--title`, `--description`, `--message` (replaces the message list with one user message), and `--type`. An empty `--expected ""` clears the expectation. Scenario IDs, previous runs and evaluations are retained. At least one field is required.
 
 The same update command is available in AAC liteshell and requires confirmation. The API verifies assistant ownership and that the scenario belongs to that assistant.
+
+## Moodle document imports
+
+Use a document session to keep source references scoped to your account and one workflow:
+
+```sh
+lamb moodle documents start
+lamb moodle page list 42 --session SESSION_ID
+lamb moodle book list 42 --session SESSION_ID
+lamb moodle import page SOURCE_REF --to kb 12 --session SESSION_ID
+lamb moodle import page SOURCE_REF --to kb 12 --session SESSION_ID --confirm REVIEW_ID
+lamb moodle import book SOURCE_REF --single-file --session SESSION_ID
+lamb moodle course get 42 --session SESSION_ID
+lamb moodle file list CONTEXT_ID --component mod_resource --filearea content --session SESSION_ID
+lamb moodle import file FILE_REF --to kb 12 --session SESSION_ID
+lamb moodle import list --session SESSION_ID
+lamb moodle import check IMPORT_ID --session SESSION_ID
+lamb moodle import check IMPORT_ID --verify-content --session SESSION_ID
+lamb moodle import refresh IMPORT_ID --session SESSION_ID
+lamb moodle import refresh IMPORT_ID --session SESSION_ID --confirm REVIEW_ID
+```
+
+The initial import/refresh returns a one-hour review handle. `--confirm REVIEW_ID` approves that exact source and destination; a changed source, connection or session invalidates it. Equivalent AAC commands omit `lamb`, `--session` and `--confirm`; the conversation supplies the session and the application asks for one approval.
+
+KB imports accept txt, md, json, pdf, docx, pptx, xlsx, html, csv and epub. The server selects the ingestion plugin. Single-file imports accept UTF-8 txt/md/json/html and converted Pages/Books. Source and converted documents are limited to 10 MiB. Office/EPUB archives are limited to 50 MiB expanded and 5,000 entries; encrypted archives, audio, general ZIP and XML are rejected.
+
+Pages become Markdown. Books become one Markdown document in chapter order, skipping hidden chapters. Original HTML stays in private storage. Conversion retains headings, lists, links and simple tables, but omits images, media and image-based formulae; complex tables may flatten. No OCR or remote media fetching occurs.
+
+Single-file reviews show characters and estimated tokens (UTF-8 bytes divided by three, rounded up). Above 24,000 estimated tokens, use a KB unless you explicitly choose the full reference after considering your assistant model's context window. Documents are never silently truncated. This is a warning threshold, independent of AAC context requirements.
+
+Receipts record source links, identifiers, timestamps and hashes. A normal `check` compares metadata without downloading file bodies; equal metadata is not proof of equal content. `--verify-content` downloads and hashes explicitly. Re-import is always confirmed. Single-file references stay stable. KB replacements keep the old version until the new job succeeds. If ingestion remains in progress, run `lamb moodle import finish IMPORT_ID --session SESSION_ID`, then approve with `--confirm IMPORT_ID`. This resumes the recorded job without a second upload. Interrupted uploads without a returned job remain `outcome_unknown` and require destination inspection; automatic retries do not upload again.
+
+Private originals, receipts and revisions use at most 256 MiB per creator. An administrator must archive older imports when this quota is reached. They are not published through `/static` and do not enter AAC conversation history. The KB file view and retrieval citations link to the source Moodle activity; opening it requires your Moodle browser login.

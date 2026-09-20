@@ -71,11 +71,15 @@ def rag_processor(
             content = file.read()
             logger.debug(f"Successfully read {len(content)} characters from file")
 
+        from lamb.moodle.import_delivery import single_provenance
+        provenance = single_provenance(file_path, content)
         return {
             "context": content,
             "sources": [{
                 "source": file_path,
-                "title": os.path.basename(file_path),
+                "title": provenance.get("title", os.path.basename(file_path)),
+                "url": provenance.get("source_url"),
+                "moodle_provenance": provenance,
                 "content": content,
                 "score": 1.0
             }]

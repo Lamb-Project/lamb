@@ -22,10 +22,18 @@ class Surface(unittest.TestCase):
         for k in m['cli']:
             if k in m.get('integrated_shell', {}):
                 from lamb.moodle.task_contract import task_specs
+                from lamb.moodle.contract import command_specs
+                from lamb.moodle.document_contract import document_specs
+                specs = {**command_specs(), **task_specs(), **document_specs()}
                 canonical = m['integrated_shell'][k]
-                self.assertIn(canonical.removeprefix('moodle.'), task_specs())
+                self.assertIn(canonical.removeprefix('moodle.'), specs)
                 self.assertIn(canonical, DEFAULT_SKILL)
-                self.assertEqual(ActionAuthorizer().check(canonical), 'auto')
+                self.assertEqual(ActionAuthorizer().check(canonical), specs[canonical.removeprefix('moodle.')].policy)
+                continue
+            if k in m.get('cli_only_transport', {}):
+                self.assertEqual(k, 'moodle.documents.start')
+                with self.assertRaisesRegex(ValueError, 'Unknown or unavailable Moodle command'):
+                    prepare_command('lamb '+k.replace('.', ' '))
                 continue
             if k not in COMMAND_REGISTRY:
                 with self.subTest(command=k),self.assertRaisesRegex(ValueError,'Hold your horses' if k in FILESYSTEM_COMMANDS else 'does not exist and was not executed'):

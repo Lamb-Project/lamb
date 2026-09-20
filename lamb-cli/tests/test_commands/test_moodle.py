@@ -42,3 +42,33 @@ def test_continuation_and_recovery_use_the_same_authenticated_task_endpoint():
             call = client.return_value.__enter__.return_value.post.call_args
             assert call.args == ('/creator/moodle/tasks',)
             assert call.kwargs['json']['command'] == expected
+
+
+def test_document_commands_use_owned_session_and_exact_review_handle():
+    commands = [
+        (['page', 'list', '10'], 'moodle page list 10'),
+        (['book', 'list', '10'], 'moodle book list 10'),
+        (['import', 'page', 'md_opaque', '--single-file'], 'moodle import page md_opaque --single-file'),
+        (['import', 'book', 'md_opaque', '--to', 'kb', '12'], 'moodle import book md_opaque --to kb 12'),
+        (['import', 'file', 'mf_opaque', '--to', 'kb', '12'], 'moodle import file mf_opaque --to kb 12'),
+        (['import', 'check', 'receipt', '--verify-content'], 'moodle import check receipt --verify-content'),
+        (['import', 'refresh', 'receipt', '--confirm', 'review'], 'moodle import refresh receipt'),
+    ]
+    for args, expected in commands:
+        with patch('lamb_cli.commands.moodle.get_client') as client:
+            client.return_value.__enter__.return_value.post.return_value = {'status': 'test'}
+            result = runner.invoke(app, ['moodle', *args, '--session', 'owned-session'])
+            assert result.exit_code == 0, result.output
+            call = client.return_value.__enter__.return_value.post.call_args
+            assert call.args == ('/creator/moodle/documents/commands',)
+            assert call.kwargs['json'] == {'session': 'owned-session', 'command': expected,
+                                          'confirm': 'review' if '--confirm' in args else None}
+
+
+def test_document_session_is_required_and_start_is_authenticated():
+    assert runner.invoke(app, ['moodle', 'page', 'list', '10']).exit_code != 0
+    with patch('lamb_cli.commands.moodle.get_client') as client:
+        client.return_value.__enter__.return_value.post.return_value = {'session': 'owned'}
+        result = runner.invoke(app, ['moodle', 'documents', 'start'])
+        assert result.exit_code == 0, result.output
+        client.return_value.__enter__.return_value.post.assert_called_once_with('/creator/moodle/documents/sessions')

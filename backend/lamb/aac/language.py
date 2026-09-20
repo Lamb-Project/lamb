@@ -76,7 +76,11 @@ def confirmation_fallback(agent):
     review = agent.pending_action.get('moodle_review')
     if review:
         import json
-        command = json.dumps(review, ensure_ascii=False, indent=2) + '\n\n' + command
+        if review.get('review_id') and review.get('source'):
+            from lamb.moodle.import_review import render_review
+            command = render_review(review, code) + '\n\n' + command
+        else:
+            command = json.dumps(review, ensure_ascii=False, indent=2) + '\n\n' + command
     fence = '`' * max(3, max((len(part) for part in re.findall(r'`+', command)), default=0) + 1)
     return f'{intro}\n\n{fence}text\n{command}\n{fence}\n\n{question}'
 

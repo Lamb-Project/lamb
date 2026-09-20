@@ -175,3 +175,75 @@ def task_result(result_id: str, store=Depends(store_for)):
         raise HTTPException(404, str(exc)) from None
     except Exception:
         raise HTTPException(503, 'Moodle evidence cannot be verified now. Try again later.') from None
+
+
+class DocumentCommandBody(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    session: str
+    command: str
+    confirm: str | None = None
+
+
+@router.post('/documents/sessions')
+def start_document_session(store=Depends(store_for)):
+    import uuid
+    from .runtime import MoodleRuntime
+    from .imports import store_for_runtime
+    runtime = MoodleRuntime(store)
+    snap = runtime.snapshot()
+    key = str(uuid.uuid4())
+    context = {'generation': snap['generation'], 'document_scope': key}
+    storage = store_for_runtime(runtime)
+    with storage.lock(): storage.put('sessions', key, context)
+    return {'session': key}
+
+
+@router.post('/documents/commands')
+async def document_command(body: DocumentCommandBody, request: Request,
+                           auth: AuthContext = Depends(get_auth_context), store=Depends(store_for)):
+    import asyncio
+    import fcntl
+    import os
+    from .contract import prepare_moodle
+    from .document_contract import document_specs, IMPORT_KEYS
+    from .runtime import MoodleRuntime
+    from .imports import store_for_runtime
+    from lamb.aac.liteshell.shell import LiteShell
+    try:
+        if len(body.command) > 4096: raise ValueError('Moodle command is too long')
+        spec, params = prepare_moodle(body.command)
+        if spec.key not in document_specs() and spec.key not in {'course.get', 'file.list'}:
+            raise ValueError('Use document listing/import commands in this endpoint')
+        runtime = MoodleRuntime(store)
+        storage = store_for_runtime(runtime)
+        session_path = storage.path('sessions', body.session)
+        storage.get('sessions', body.session)  # Reject nonexistent handles before making a lock file.
+        fd = os.open(str(session_path) + '.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, 'w') as lock:
+            try: fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError: raise HTTPException(409, 'This document session is busy') from None
+            runtime.context = storage.get('sessions', body.session)
+            token = request.headers.get('authorization', '').split(' ', 1)[-1]
+            shell = LiteShell('', token, auth.user['email'], auth.organization['id'], user_id=auth.user['id'], moodle=runtime)
+            try:
+                if spec.key in IMPORT_KEYS and body.confirm is None:
+                    review = await asyncio.to_thread(runtime.prepare_import, spec.key, params)
+                    return {'awaiting_confirmation': True, 'review': review,
+                            'next': 'Repeat this command with --confirm REVIEW_ID to approve this exact review.'}
+                review = None
+                if body.confirm and spec.key in IMPORT_KEYS:
+                    review = storage.get('reviews', body.confirm)['review']
+                if spec.key == 'import.finish' and body.confirm != params['import_id']:
+                    return {'awaiting_confirmation': True, 'import_id': params['import_id'],
+                            'next': 'Use --confirm IMPORT_ID to finish the previously approved import/replacement.'}
+                result = await shell.execute(body.command, confirmed=body.confirm is not None, review=review)
+                if not result.success: raise ValueError(result.error)
+                return result.data
+            finally:
+                storage.put('sessions', body.session, runtime.context)
+                await shell.close()
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from None
+    except ValueError as exc:
+        if isinstance(exc, MoodleConfigurationError): translate_error(exc)
+        raise HTTPException(400, str(exc)) from None

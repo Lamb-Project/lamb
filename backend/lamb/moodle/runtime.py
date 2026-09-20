@@ -8,6 +8,7 @@ from .writes import FORUM_WRITES, verify_forum_target, write_forum
 from .reads import execute_read
 from .scoped_reads import SCOPED_READS, execute_scoped_read
 from .task_contract import task_specs
+from .document_contract import document_specs, IMPORT_KEYS
 
 # These have no caller-supplied foreign resource target. Category/cohort
 # catalogues contain metadata only, not membership: Moodle enforces category
@@ -69,7 +70,7 @@ class MoodleRuntime:
             keys=keys | {'assign.grade'}
         except PermissionError:
             pass
-        return {'moodle.'+key for key in keys | task_specs().keys()} | {'moodle.sync','moodle.cache.show','moodle.import.file'}
+        return {'moodle.'+key for key in keys | task_specs().keys() | document_specs().keys()} | {'moodle.sync','moodle.cache.show','moodle.import.file'}
 
     def task(self, key, params, *, cancel=None, progress=None, full=False):
         from .forum_activity import GuardedClient
@@ -133,6 +134,20 @@ class MoodleRuntime:
             raise PermissionError('Moodle connection changed during assessment review')
         return dict(review, connection_generation=snap['generation'])
 
+    def prepare_import(self, key, params):
+        from .imports import prepare
+        snap = self.snapshot(); record = snap['record']
+        if self.context.get('generation') != snap['generation']:
+            raise PermissionError('List sources again after reconnecting')
+        token = (self._cipher or TokenCipher()).decrypt(record['token_encrypted'],
+            organization_id=self.store.organization_id, owner_id=self.store.owner_id, base_url=record['base_url'])
+        with MoodleHTTPClient(record['base_url'], token, readonly=True) as client:
+            review = prepare(self, client, record, token, key, params)
+        current = self.snapshot()
+        if current['generation'] != snap['generation'] or current['policy'] != snap['policy']:
+            raise PermissionError('Moodle connection changed during import review')
+        return review
+
     def execute(self, key, params, *, confirmed=False, review=None, cancel=None, progress=None):
         if key in task_specs():
             return self.task(key, params, cancel=cancel, progress=progress)
@@ -141,26 +156,34 @@ class MoodleRuntime:
         cipher=self._cipher or TokenCipher()
         token=cipher.decrypt(record['token_encrypted'],organization_id=self.store.organization_id,
                              owner_id=self.store.owner_id,base_url=record['base_url'])
-        if key not in SELF_READS | SCOPED_READS | FORUM_WRITES | {'sync','cache.show','assign.grade','import.file'}:
+        if key not in SELF_READS | SCOPED_READS | FORUM_WRITES | {'sync','cache.show','assign.grade'} | document_specs().keys():
             raise PermissionError('This Moodle command requires a verified course/resource scope')
         if self.context.get('generation') != snap['generation']:
             self.context.clear();self.context['generation']=snap['generation']
-        if key=='import.file':
-            if confirmed is not True:
-                raise PermissionError('Importing a Moodle document requires explicit confirmation')
-            proof=self.context.get('files',{}).get(params['file_id'])
-            if not proof or proof['course_id']!=self.context.get('course_id'):
-                raise PermissionError('List files in the selected instructor course before importing')
-            with MoodleHTTPClient(record['base_url'],token,readonly=True) as client:
-                files=execute_scoped_read(client,'file.list',proof['listing'],owner_moodle_id=record['moodle_user_id'],context=self.context)
-            current=next((f for f in files if f.get('file_id')==params['file_id']),None)
-            if current!=proof['file']:
-                raise PermissionError('Moodle file changed or disappeared; list it again before approval')
-            from .documents import download_file
-            result=download_file(record['base_url'],token,current,single_file=params['single_file'])
-            current=self.snapshot()
-            if current['generation']!=snap['generation'] or current['policy']!=snap['policy']:
-                raise PermissionError('Moodle connection changed during download; import cancelled')
+        if key in document_specs():
+            with MoodleHTTPClient(record['base_url'], token, readonly=True) as client:
+                if key in {'page.list', 'book.list'}:
+                    from .document_sources import list_activities
+                    result = list_activities(client, key.split('.')[0], params['course_id'],
+                        record['moodle_user_id'], record['base_url'], self.context)
+                elif key == 'import.list':
+                    from .imports import store_for_runtime, public_receipt
+                    result = [public_receipt(r) for r in store_for_runtime(self).list('receipts')
+                              if r['binding'] == self.result_binding()]
+                elif key == 'import.check':
+                    from .imports import check
+                    result = check(self, client, record, token, params)
+                elif key == 'import.finish':
+                    from .imports import ResumeImport, load_receipt, store_for_runtime
+                    if confirmed is not True: raise PermissionError('Finishing a replacement requires approval')
+                    result = ResumeImport(load_receipt(self, params['import_id']), store_for_runtime(self))
+                else:
+                    from .imports import confirm
+                    if confirmed is not True: raise PermissionError('Importing a Moodle document requires explicit confirmation')
+                    result = confirm(self, client, record, token, key, params, review)
+            current = self.snapshot()
+            if current['generation'] != snap['generation'] or current['policy'] != snap['policy']:
+                raise PermissionError('Moodle connection changed during document operation; result withheld')
             return result
         if key=='assign.grade':
             from .assessment import save_grade
@@ -237,7 +260,7 @@ def attach_to_agent(agent, store):
         access="forum writes require explicit approval" if facts["forum_write"] else "read-only"
         if facts["grade_write"]: access += "; grade writes require submission/proposal review and explicit approval"
         line=f"Moodle: {facts['base_url']} as {facts['username']}, {access}. AAC driver provider: {facts['provider']}; model: {agent.model}. Student names, posts and grades sent to this driver reach that provider. A hosted provider receives them off premises; a local deployment keeps them on premises."
-        references=[spec.reference() for spec in task_specs().values()]
+        references=[spec.reference() for spec in (*task_specs().values(), *document_specs().values())]
         references += ['moodle course list: list your enrolled courses',
                        'Raw Moodle operations are documented in the loaded workflow. Do not invent commands or discover a workflow by trial and error.']
         references += ['Raw activity/individual commands need moodle course get COURSE_ID first. The news task resolves each course itself. A course ID in a learning scenario is a suggestion, not permission.',

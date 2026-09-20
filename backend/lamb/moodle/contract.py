@@ -74,16 +74,10 @@ def prepare_moodle(command):
     task = parse_task(tokens)
     if task is not None:
         return task
-    if len(tokens) >= 3 and tokens[:3] == ['moodle','import','file']:
-        parser=click.Command('file',params=[click.Argument(['file_id']),
-            click.Option(['--to'],type=click.Choice(['kb'])),click.Argument(['kb_id'],required=False,type=click.IntRange(min=1)),
-            click.Option(['--single-file'],is_flag=True)],add_help_option=False)
-        spec=CommandSpec('import.file','Import a listed Moodle file into owned LAMB grounding','ask',parser)
-        values=spec.parse(tokens[3:])
-        if not ((values['single_file'] and values['to'] is None and values['kb_id'] is None) or
-                (not values['single_file'] and values['to']=='kb' and values['kb_id'] is not None)):
-            raise ValueError('Choose --single-file or --to kb ID')
-        return spec,values
+    from .document_contract import parse_document
+    document = parse_document(tokens)
+    if document is not None:
+        return document
     if len(tokens) >= 2 and tokens[:2] == ['moodle', 'sync']:
         parser = click.Command('sync', params=[click.Argument(['course_id'],type=click.IntRange(min=1)), click.Option(['--section'],type=click.Choice(['course','forums','assignments','enrolment','calendar']))],add_help_option=False)
         spec=CommandSpec('sync','Refresh the private course cache','auto',parser)

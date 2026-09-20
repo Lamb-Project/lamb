@@ -47,6 +47,8 @@ def validate_routing(pack):
     if any(key.startswith('moodle.') for key in routing['DEFAULT_SKILL']):
         from lamb.moodle.contract import command_specs
         from lamb.moodle.task_contract import task_specs
+        from lamb.moodle.document_contract import document_specs
+        commands |= {'moodle.' + key for key in document_specs() if 'moodle.' + key in routing['DEFAULT_SKILL']}
         commands |= {'moodle.'+key for key in command_specs()} | {'moodle.sync','moodle.cache.show','moodle.import.file'}
         # Historical immutable packs predate the task vocabulary.
         if 'moodle.news' in routing['DEFAULT_SKILL']:

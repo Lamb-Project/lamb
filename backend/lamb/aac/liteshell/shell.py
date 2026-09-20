@@ -363,13 +363,10 @@ class LiteShell:
                 # requests observe this flag before/after each read and publish.
                 cancel.set()
                 raise
-            if key=='moodle.import.file':
-                if kwargs['single_file']:
-                    data=await self._get_http().post('/creator/aac/files',files={'file':(data.filename,data.content,data.content_type)})
-                else:
-                    data=await self._get_http().post(f"/creator/knowledgebases/kb/{kwargs['kb_id']}/files",files={'files':(data.filename,data.content,data.content_type)})
-                    if data.get('status')=='error' or data.get('kb_server_available') is False:
-                        raise ValueError(data.get('message','Knowledge base import failed'))
+            from lamb.moodle.imports import PreparedImport, ResumeImport
+            if isinstance(data, (PreparedImport, ResumeImport)):
+                from lamb.moodle.import_delivery import deliver
+                data = await deliver(data, self._get_http(), self.moodle, self.user_id)
             if self.moodle.result_binding() != binding:
                 raise PermissionError('Moodle connection changed; result withheld. Check the operation status before repeating it.')
             from lamb.moodle.runtime import SELF_READS

@@ -657,6 +657,13 @@ class AgentLoop(SkillRouting):
                     review = await asyncio.to_thread(self.shell.moodle.prepare_grade, parsed_kwargs)
                 except Exception as exc:
                     return {"success": False, "error": str(exc)}
+            from lamb.moodle.document_contract import IMPORT_KEYS
+            if action_key.removeprefix('moodle.') in IMPORT_KEYS and action_key.startswith('moodle.'):
+                import asyncio
+                try:
+                    review = await asyncio.to_thread(self.shell.moodle.prepare_import, action_key.removeprefix('moodle.'), parsed_kwargs)
+                except Exception as exc:
+                    return {'success': False, 'error': str(exc)}
             # Queue the command, don't execute
             self.pending_action = {
                 "command": command,
@@ -748,7 +755,7 @@ class AgentLoop(SkillRouting):
             # Execute the queued command
             self.pending_action = None
             try:
-                if action.get("action_key") == "moodle.assign.grade":
+                if action.get("action_key") == "moodle.assign.grade" or action.get("moodle_review") is not None:
                     result = await self.shell.execute(action["command"], confirmed=True, review=action.get('moodle_review'))
                 elif (action.get("action_key") or "").startswith("moodle."):
                     result = await self.shell.execute(action["command"], confirmed=True)

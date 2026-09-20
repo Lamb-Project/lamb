@@ -142,8 +142,12 @@ class GetIngestionPluginsResponse(BaseModel):
 # --- End Updated Ingestion Plugin Models ---
 
 class PluginIngestFileResponse(BaseModel):
-    # Assuming response from kb_server_manager.plugin_ingest_file
     status: str
+    file_registry_id: Optional[int] = None
+    collection_id: Optional[str] = None
+    file: Optional[Dict[str, Any]] = None
+    message: Optional[str] = None
+    document_count: Optional[int] = None
 
 class KBShareToggle(BaseModel):
     """Request model for toggling KB sharing"""

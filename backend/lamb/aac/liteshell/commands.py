@@ -734,8 +734,11 @@ def help_cmd(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict[str, 
     moodle=ctx.knowledge.get('moodle')
     if moodle:
         from lamb.moodle.contract import command_specs
+        from lamb.moodle.task_contract import task_specs
+        from lamb.moodle.document_contract import document_specs
+        specs = {**command_specs(), **task_specs(), **document_specs()}
         for key in sorted(moodle.available()):
-            spec=command_specs().get(key.removeprefix('moodle.'))
+            spec=specs.get(key.removeprefix('moodle.'))
             result[key.replace('.', ' ')]=spec.description if spec else ('Import a listed Moodle file into owned LAMB grounding, after confirmation.' if key=='moodle.import.file' else 'Read or refresh the private Moodle course cache.')
 
     return result

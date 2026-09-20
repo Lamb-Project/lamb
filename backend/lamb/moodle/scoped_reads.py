@@ -125,6 +125,11 @@ def execute_scoped_read(client,key,params,*,owner_moodle_id,context):
                 if any((d.discussion or d.id)==params['discussion_id'] for d in discussions):
                     found=True;break
             if not found:raise PermissionError('Moodle discussion is outside the selected instructor course')
+    if key == 'content.list' and params['module_type'] in {'page', 'book'}:
+        from .document_sources import list_activities
+        # The metadata-only view replaces the raw HTML-bearing activity result.
+        return list_activities(client, params['module_type'], course, owner_moodle_id,
+                               str(client.base_url).rstrip('/'), context)
     if key=='file.list':
         from .documents import remember_files
         return remember_files(execute_read(client,key,params,owner_moodle_id=owner_moodle_id),params,context)

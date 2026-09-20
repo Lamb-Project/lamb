@@ -18,9 +18,11 @@ def command_artifacts(command, result):
     if key == 'moodle.assign.grade':
         return [{'type': 'moodle_assignment', 'id': params['assignment_id'], 'action': 'grade',
                  'user_id': params['user_id']}]
-    if key == 'moodle.import.file':
+    if key in {'moodle.import.file', 'moodle.import.page', 'moodle.import.book'}:
         return [{'type': 'kb' if params['kb_id'] is not None else 'file',
-                 'id': params['kb_id'] if params['kb_id'] is not None else data.get('path'),
-                 'action': 'import', 'source_file_id': params['file_id']}]
+                 'id': params['kb_id'] if params['kb_id'] is not None else data.get('result', {}).get('path'),
+                 'action': 'import', 'source_file_id': params['source_ref']}]
+    if key in {'moodle.import.refresh', 'moodle.import.finish'}:
+        return [{'type': 'moodle_import', 'id': params['import_id'], 'action': key.rsplit('.', 1)[1]}]
     identifier = next((value for name, value in params.items() if name.endswith('_id') and value is not None), None)
     return [{'type': 'moodle', 'id': identifier, 'action': 'read'}]

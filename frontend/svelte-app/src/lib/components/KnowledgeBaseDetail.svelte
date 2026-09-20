@@ -447,15 +447,30 @@
         }
     }
     
+    /** @param {any} job */
+    function moodleSource(job) {
+        let source = job?.plugin_params?.moodle_provenance;
+        if (typeof source === 'string') {
+            try { source = JSON.parse(source); } catch { return null; }
+        }
+        try {
+            const url = new URL(source?.source_url);
+            return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? source : null;
+        } catch { return null; }
+    }
+
     /**
      * Get the most recent ingestion job for a file by filename
-     * @param {string} filename - The filename to search for
+     * @param {string} filename - Legacy filename fallback
+     * @param {string} [fileId] - File registry ID, shared with the ingestion job
      * @returns {IngestionJob | null} The most recent job for this file or null
      */
-    function getJobForFile(filename) {
+    function getJobForFile(filename, fileId) {
         if (!ingestionJobs || ingestionJobs.length === 0) return null;
         
-        // Find jobs matching this filename (most recent first since sorted by created_at desc)
+        // IDs prevent two same-named sources from showing each other's provenance.
+        if (fileId) return ingestionJobs.find(j => String(j.id) === String(fileId)) || null;
+        // Legacy files without registry IDs use the most recent filename match.
         const job = ingestionJobs.find(j => j.original_filename === filename);
         return job || null;
     }
@@ -1265,7 +1280,8 @@
                                         </thead>
                                         <tbody class="bg-white divide-y divide-gray-200">
                                             {#each kb.files as file (file.id)}
-                                                {@const job = getJobForFile(file.filename)}
+                                                {@const job = getJobForFile(file.filename, file.id)}
+                                                {@const moodleOrigin = moodleSource(job)}
                                                 {@const statusColors = job ? getStatusColors(job.status) : getStatusColors('unknown')}
                                                 <tr>
                                                     <td class="px-6 py-4 max-w-[20rem]">
@@ -1284,6 +1300,9 @@
                                                                     </a>
                                                                 {:else}
                                                                     <span class="truncate block">{file.filename}</span>
+                                                                {/if}
+                                                                {#if moodleOrigin}
+                                                                    <a class="block text-xs text-blue-700 underline" href={moodleOrigin.source_url} target="_blank" rel="noopener noreferrer" title={moodleOrigin.title}>Moodle: {moodleOrigin.title}</a>
                                                                 {/if}
                                                             </div>
                                                         </div>
