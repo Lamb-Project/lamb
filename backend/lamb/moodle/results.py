@@ -79,6 +79,9 @@ def summary(identity, snapshot):
         course_preview=[{k: c[k] for k in ('id', 'name', 'status')} for c in snapshot['courses'][:10]],
         course_preview_complete=len(snapshot['courses']) <= 10,
         post_preview=[], post_preview_complete=False)
+    if 'run' in snapshot:
+        result['run'] = snapshot['run']
+        result['continue_command'] = f'moodle continue {identity}' if snapshot['run']['can_continue'] else None
     for post in snapshot['posts'][:5]:
         text, shortened = preview(post['source'].get('message', ''), 200)
         subject, _ = preview(post['source'].get('subject', ''), 100)

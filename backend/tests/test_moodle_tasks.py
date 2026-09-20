@@ -88,7 +88,7 @@ def test_discussion_paging_includes_later_pages():
     result = run(raw)
     assert len(result['posts']) == 51
     assert result['coverage']['complete']
-    assert [p['page'] for f, p in raw.calls if f == 'mod_forum_get_forum_discussions'] == [0, 1]
+    assert [p['page'] for f, p in raw.calls if f == 'mod_forum_get_forum_discussions'] == [0, 1, 0, 1]
 
 
 @pytest.mark.parametrize('guard,limit', [({'max_calls': 4}, 'request_or_time_limit'), ({'max_seconds': 0}, None)])
@@ -106,7 +106,7 @@ def test_shared_call_and_time_limits(guard, limit):
 def test_post_cap_reports_partial_and_unchecked_courses():
     result = run(params={**PARAMS, 'max_posts': 1})
     assert len(result['posts']) == 1 and not result['coverage']['complete']
-    assert result['budget']['stopped_reason'] == 'post_or_storage_limit'
+    assert result['budget']['stopped_reason'] == 'step_post_limit'
 
 
 def test_half_open_window_and_timezone_are_explicit():
@@ -116,7 +116,8 @@ def test_half_open_window_and_timezone_are_explicit():
     raw = Fixture(); raw.post_time = int(end.timestamp())
     assert not run(raw, params)['posts']
     raw.post_time = int(start.timestamp())
-    assert len(run(raw, params)['posts']) == 2
+    with patch('lamb.moodle.forum_traversal.now', return_value='2026-12-01T00:00:00+00:00'):
+        assert len(run(raw, params)['posts']) == 2
 
 
 @pytest.mark.parametrize('args', ['--month September', '--month 2026-13', '--since 2026-09-01', '--month 2026-09 --tz Mars/Base', '--month 2026-09 --until 2026-10-01'])
@@ -214,7 +215,13 @@ def test_runtime_mid_read_disconnect_never_publishes_snapshot(tmp_path, stores):
     with patch('lamb.moodle.runtime.MoodleHTTPClient') as client:
         client.return_value.__enter__.return_value = raw
         with pytest.raises(PermissionError): rt.execute('news', PARAMS)
-    assert not list(tmp_path.rglob('*.json'))
+    # Recovery metadata may exist, but no post fetched after revocation is
+    # retained and no result is accessible through the disconnected runtime.
+    for path in tmp_path.rglob('*.json'):
+        envelope = json.loads(path.read_text())
+        snapshot = envelope.get('snapshot', envelope.get('state', {}).get('snapshot', {}))
+        assert not snapshot.get('posts')
+    with pytest.raises(PermissionError): rt.execute('runs', {})
 
 
 def test_shell_cancellation_signals_the_worker_before_more_reads():

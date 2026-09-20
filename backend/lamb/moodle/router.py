@@ -155,7 +155,7 @@ def run_task(body: TaskBody, store=Depends(store_for)):
             raise ValueError('Moodle task command is too long')
         spec, params = prepare_moodle(body.command)
         if spec.key not in task_specs():
-            raise ValueError('This endpoint accepts moodle news and moodle evidence only')
+            raise ValueError('This endpoint accepts Moodle news, continue, runs and evidence tasks only')
         return MoodleRuntime(store).execute(spec.key, params)
     except ValueError as exc:
         if isinstance(exc, MoodleConfigurationError): translate_error(exc)

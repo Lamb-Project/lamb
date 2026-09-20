@@ -11,7 +11,7 @@ from lamb.moodle.runtime import attach_to_agent
 
 def test_moodle_recipes_and_generated_commands_validate():
     pack=load_pack()
-    assert pack.version=='1.4.0'
+    assert pack.version=='1.4.1'
     validate_routing(pack)
     assert validate_skill_contracts(pack)
     names={'moodle-triage','moodle-forums','moodle-course-documents','moodle-assessment-draft'}
@@ -19,6 +19,7 @@ def test_moodle_recipes_and_generated_commands_validate():
     assert not names & allowed_skills(pack,['creator'],[])
     assert load_pack(version='1.2.4').version=='1.2.4'
     assert load_pack(version='1.3.1').version=='1.3.1'
+    validate_routing(load_pack(version='1.4.0'))
 
 
 def test_new_task_pack_requires_an_engine_with_task_support(monkeypatch):

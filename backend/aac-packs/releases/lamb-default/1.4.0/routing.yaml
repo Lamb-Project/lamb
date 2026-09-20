@@ -257,9 +257,7 @@
       "moodle.workshop.grades",
       "moodle.workshop.submissions",
       "moodle.news",
-      "moodle.evidence",
-      "moodle.continue",
-      "moodle.runs"
+      "moodle.evidence"
     ],
     "moodle-course-documents": [
       "moodle.assign.grades",
@@ -519,9 +517,7 @@
     "moodle.wiki.page": "moodle-triage",
     "moodle.enrol.my-courses": "moodle-triage",
     "moodle.news": "moodle-forums",
-    "moodle.evidence": "moodle-forums",
-    "moodle.continue": "moodle-forums",
-    "moodle.runs": "moodle-forums"
+    "moodle.evidence": "moodle-forums"
   },
   "USER_ROUTING": {
     "negative": "\\b(don't|do not|no|not|never|another|different|otro|otra|altre|altra)\\b",

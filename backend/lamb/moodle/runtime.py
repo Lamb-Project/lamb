@@ -50,7 +50,8 @@ class MoodleRuntime:
         return {'moodle.'+key for key in keys | task_specs().keys()} | {'moodle.sync','moodle.cache.show','moodle.import.file'}
 
     def task(self, key, params, *, cancel=None, progress=None, full=False):
-        from .forum_activity import GuardedClient, forum_activity
+        from .forum_activity import GuardedClient
+        from .runs import RunStore
         from .results import ResultStore, summary, evidence_page
         snap = self.snapshot()
         record = snap['record']
@@ -64,12 +65,14 @@ class MoodleRuntime:
             moodle_user_id=record['moodle_user_id'], generation=snap['generation'], root=self.cache_root)
         with MoodleHTTPClient(record['base_url'], token, readonly=True, timeout=15) as raw:
             client = GuardedClient(raw, revalidate=revalidate, cancel=cancel)
-            if key == 'news':
-                snapshot = forum_activity(client, record['moodle_user_id'], params, progress=progress)
+            if key in {'news', 'continue'}:
+                return RunStore(results).execute(client, record['moodle_user_id'],
+                    params=params if key == 'news' else None,
+                    result_id=params.get('result_id') if key == 'continue' else None,
+                    progress=progress)
+            if key == 'runs':
                 client.checkpoint()
-                identity = results.save(snapshot)
-                client.checkpoint()
-                return summary(identity, snapshot)
+                return RunStore(results).listing()
             if key == 'evidence':
                 identity = params['result_id']
                 snapshot = results.read(identity)

@@ -36,6 +36,25 @@
             <p>{data.snapshot.coverage.posts_found} posts found. {data.snapshot.coverage.courses.ok || 0} of {data.snapshot.coverage.requested_courses} requested courses fully checked.</p>
             <p>New posts from {dateLabel(data.snapshot.window.since)} to {dateLabel(data.snapshot.window.until)} (end excluded). {data.snapshot.window.timezone || 'UTC'}.</p>
             <p>Checked at {dateLabel(data.snapshot.completed_at)}. {data.snapshot.coverage.meaning}.</p>
+            {#if data.snapshot.run}
+                <p>{data.snapshot.coverage.discussions_checked || 0} discussions checked across this run.
+                    {data.snapshot.coverage.courses.failed || 0} courses failed;
+                    {data.snapshot.coverage.courses.excluded || 0} excluded;
+                    {data.snapshot.coverage.remaining_courses || 0} still to finish.</p>
+                {#if data.snapshot.coverage.forums}
+                    <p>{data.snapshot.coverage.forums.ok || 0} forums fully checked;
+                        {(data.snapshot.coverage.forums.failed || 0) + (data.snapshot.coverage.forums.denied || 0) + (data.snapshot.coverage.forums.unsupported || 0)} failed or unavailable.</p>
+                {/if}
+                {#if data.snapshot.run.can_continue}
+                    <p><strong>Check paused. Progress is saved.</strong> Ask LAMB AGENT to continue this check.</p>
+                {:else if !data.snapshot.coverage.complete}
+                    <p><strong>Check finished with gaps.</strong> Review the course details below. Finishing does not mean every message was checked.</p>
+                {:else}
+                    <p><strong>Check finished.</strong> These totals include all completed steps.</p>
+                {/if}
+                <p>Step {data.snapshot.run.step} of at most {data.snapshot.run.step_limit}.
+                    {#if data.snapshot.window.observed_before}New posts must be earlier than {dateLabel(data.snapshot.window.observed_before)}.{/if}</p>
+            {/if}
         </aside>
         <ul><li>New posts only; edits to older posts are not included.</li>
             <li>Messages visible to your instructor account when checked. Moodle may have changed since.</li></ul>

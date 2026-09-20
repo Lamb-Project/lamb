@@ -1,7 +1,7 @@
 {
   "name": "lamb-default",
-  "version": "1.4.1",
-  "requires": "lamb >= 0.7.2",
+  "version": "1.4.0",
+  "requires": "lamb >= 0.7.1",
   "compatibility": "knowledge-brief",
   "layers": {
     "creator": [
@@ -35,7 +35,7 @@
     "methodology/design-rubrics.md": "4e856ceb14acf3ab8391b8fe0fef6eff3df57d486607b01cb304deae04af2205",
     "methodology/design-testing.md": "1f2c69f02a6a2515cf63f8f2b3f84128445432e711e4f7735f144a4e8b4db20f",
     "persona.md": "1b0f4fc61c72916a9616f8a3b0626c97b30e710ff34c4fc8fb7d373ae788f770",
-    "routing.yaml": "8aab88cf9e76938e7430a105b3a4ff94036432d49e8e8c7d673ce82fabda6632",
+    "routing.yaml": "a7523884b35042edb477c3cc3b368efa32f25f7726cca03ac1fbc3bb5e8b9495",
     "skills/about_lamb.md": "eac1abcae105e03445dd5bb2e31aa69fcc82ce9646a307ef8622efa8030b2013",
     "skills/chat_with_assistant.md": "2cb8703c13b27b7a62f89cd7692aa33e53b6e1697aeb1318d76073d61c5a84f6",
     "skills/configure_agent.md": "7da8ccda54e24e038cc352eed410b91ca6bc8aec307dc5dd224adece85e16ab8",
@@ -49,8 +49,8 @@
     "skills/manage_templates.md": "9d3dcae2f0f69e10efab56c829f4107c7ad70b840e82a836f2cf1411d54d62c3",
     "skills/moodle_assessment_draft.md": "0aebf62a4484e35105f0ca2566a4379239008baeca089b10e7a55214497d7165",
     "skills/moodle_course_documents.md": "aac44be0e1b4dad68a9508281fb6ff01d982fd82bcd6eee4e7221cc749605254",
-    "skills/moodle_forums.md": "11e67f5d5d1aa430df1a926134c4c6b59605e492d9895a150415cd701b18ba64",
-    "skills/moodle_triage.md": "4648ca62f39037e817ac1af1fa5e97401ec98dadeeb1640ed2087f9a79b83991",
+    "skills/moodle_forums.md": "03ba698d86cb44f74e4b880b156e58c39c995e6a4ea47bd4a2f9db417261c7fe",
+    "skills/moodle_triage.md": "829b4f174849af605904b58cd07e71184f631bd4fcac89b6dc1ae2d0982bf8bb",
     "skills/publish_assistant.md": "2f49e67253d91765c867b393bdcd059d40768cd71584f3aac1032bf7358c011b",
     "skills/test_and_evaluate.md": "b8e56309ee9615999d9c961ed2304e568f39117a15f9419923044833e6243794",
     "skills/test_lti_tools.md": "14528d8e0b4988bb2044a17adb73fdf8d2a8878d8d13cb0a8ce8d791a7b9f7cf"

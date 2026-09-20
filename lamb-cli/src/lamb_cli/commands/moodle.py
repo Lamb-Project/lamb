@@ -25,7 +25,7 @@ def news(
     since: Optional[str] = typer.Option(None, '--since'),
     until: Optional[str] = typer.Option(None, '--until', help='Exclusive end date.'),
     tz: str = typer.Option('UTC', '--tz'),
-    max_posts: int = typer.Option(200, '--max-posts', min=1, max=200),
+    max_posts: int = typer.Option(200, '--max-posts', min=1, max=200, help="Matching posts per step."),
 ):
     """New forum posts in verified instructor courses, with coverage and evidence."""
     tokens = ['news', '--tz', tz, '--max-posts', str(max_posts)]
@@ -45,3 +45,15 @@ def evidence(result_id: str, offset: int = typer.Option(0, '--offset', min=0)):
 forum_app = typer.Typer(no_args_is_help=True)
 forum_app.command('activity')(news)
 app.add_typer(forum_app, name='forum')
+
+
+@app.command('continue')
+def continue_run(result_id: str):
+    """Continue a saved forum check; retrying the same result is idempotent."""
+    run(['continue', result_id])
+
+
+@app.command()
+def runs():
+    """List recovery handles for recent forum checks, including interrupted ones."""
+    run(['runs'])

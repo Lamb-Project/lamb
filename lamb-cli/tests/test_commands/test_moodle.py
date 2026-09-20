@@ -29,3 +29,16 @@ def test_evidence_passes_returned_cursor_to_server():
         result = runner.invoke(app, ['moodle', 'evidence', '11111111-1111-4111-8111-111111111111', '--offset', '8'])
         assert result.exit_code == 0, result.output
         assert client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'].endswith('--offset 8')
+
+
+def test_continuation_and_recovery_use_the_same_authenticated_task_endpoint():
+    for args, expected in [(['continue', '11111111-1111-4111-8111-111111111111'],
+                            'moodle continue 11111111-1111-4111-8111-111111111111'),
+                           (['runs'], 'moodle runs')]:
+        with patch('lamb_cli.commands.moodle.get_client') as client:
+            client.return_value.__enter__.return_value.post.return_value = {'continue_command': None}
+            result = runner.invoke(app, ['moodle', *args])
+            assert result.exit_code == 0, result.output
+            call = client.return_value.__enter__.return_value.post.call_args
+            assert call.args == ('/creator/moodle/tasks',)
+            assert call.kwargs['json']['command'] == expected

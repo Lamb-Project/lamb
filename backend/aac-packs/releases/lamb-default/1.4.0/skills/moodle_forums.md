@@ -16,17 +16,13 @@ Ask for the year only if it is not established in the conversation; never silent
 ```aac-command
 moodle news --all-courses --month 2026-09 --tz Europe/Madrid
 moodle news --course COURSE_ID --since 2026-09-01 --until 2026-10-01 --tz Europe/Madrid
-moodle continue 11111111-1111-4111-8111-111111111111
-moodle runs
 moodle evidence 11111111-1111-4111-8111-111111111111 --offset 0
 frontend-manage open moodle-result 11111111-1111-4111-8111-111111111111
 ```
 
 Use the actual `result_id` returned by news, never the example UUID. Open the corresponding evidence view when useful. The UI shows code-written coverage and safe links to the actual Moodle posts. Navigation still requires the browser acknowledgement; offering a link is not opening Moodle or confirming login.
 
-Lead the report with `coverage`, range and check time. `course_preview` and `post_preview` are excerpts, not the whole result. Inspect the bounded evidence pages with `moodle evidence RESULT_ID --offset NEXT_OFFSET` before summarizing unseen content; `next_offset: null` ends the pages. A post may span several numbered fragments. Read all its fragments before interpreting it. Never claim all courses checked when coverage is partial. A failed or excluded course is not empty. When `continue_command` is present, the check is paused with saved progress. Execute that exact command to advance the same run when the user asked for the whole check. Each response is cumulative, not an extra batch to add to the previous count. Use the newest returned result and continue until the command is null or the user stops. Do not restart news, narrow the request or ask for a course simply because a step paused. Repeating an older continuation returns its same next result; it does not advance again. `moodle runs` recovers recent result handles after Stop, a lost response or a restart.
-
-A null continuation means traversal ended or reached an overall limit. It does not mean complete coverage: inspect `coverage.complete`, failures/exclusions and `budget.stopped_reason`. A changed page, overlarge response or hard run limit remains an explicit gap; do not retry forever. The created-post cutoff is fixed at the start. This is observed content, not a historical transaction. Separate content inspection from collection: continue collecting first, then read the final result's evidence pages needed for the question. Counts and coverage can be reported directly from the structured result; do not read hundreds of posts merely to count them. Do not claim to have summarized unread posts. Results expire after 24 hours (at most 16 results and four runs retained per creator).
+Lead the report with `coverage`, range and check time. `course_preview` and `post_preview` are excerpts, not the whole result. Inspect the bounded evidence pages with `moodle evidence RESULT_ID --offset NEXT_OFFSET` before summarizing unseen content; `next_offset: null` ends the pages. A post may span several numbered fragments. Read all its fragments before interpreting it. Never claim all courses checked when coverage is partial. A failed or excluded course is not empty. If a limit is reached, narrow the date range or select fewer courses and report both runs' scopes. Do not repeat a broad task until it fits by chance. Results expire after 24 hours (at most 16 retained per creator); rerun if needed.
 
 The task is read-only and needs no approval. Do not claim permission errors persisted unless a read was actually retried. Raw Moodle commands below are for focused work, using their explicit instructor course context.
 

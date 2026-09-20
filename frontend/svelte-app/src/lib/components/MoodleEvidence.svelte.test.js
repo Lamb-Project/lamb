@@ -26,3 +26,21 @@ it('does not mark denied evidence as a loaded navigation destination',async()=>{
     await screen.findByRole('alert');
     expect(document.querySelector('[data-aac-resource]')).toBeNull();
 });
+
+it('shows saved progress and cumulative counts without calling a paused run complete',async()=>{
+    const data=fixture();data.snapshot.run={can_continue:true,step:1,step_limit:12};
+    Object.assign(data.snapshot.coverage,{posts_found:155,discussions_checked:155,remaining_courses:2});
+    moodleResult.mockResolvedValue(data);render(MoodleEvidence,{resultId:id});
+    const coverage=await screen.findByLabelText('Coverage');
+    expect(coverage).toHaveTextContent('Check paused. Progress is saved.');
+    expect(coverage).toHaveTextContent('155 discussions checked');
+    expect(coverage).toHaveTextContent('2 still to finish');
+    expect(coverage).not.toHaveTextContent('Complete coverage');
+});
+it('distinguishes terminal gaps from resumable work',async()=>{
+    const data=fixture();data.snapshot.run={can_continue:false,step:12,step_limit:12};
+    moodleResult.mockResolvedValue(data);render(MoodleEvidence,{resultId:id});
+    const coverage=await screen.findByLabelText('Coverage');
+    expect(coverage).toHaveTextContent('Check finished with gaps.');
+    expect(coverage).not.toHaveTextContent('Ask LAMB AGENT to continue');
+});
