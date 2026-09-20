@@ -11,13 +11,11 @@ Use only the connected Moodle capability and commands shown in this session. Nev
 
 For forum activity across courses, use the deterministic task. Do not make the user select one course when they asked for all courses. Do not loop over course selections and then reuse the last selection for earlier forums. The task checks instructor scope separately for each course, pages discussions, and returns coverage even when some reads fail.
 
-For several named course IDs in one date window, make ONE news call with repeated --course options. For example, courses 12 and 34 use `moodle news --course 12 --course 34 --month 2026-09`; substitute the actual requested IDs and dates. Do not start one run per course or manually combine separate totals. For all enrolled instructor courses, use --all-courses instead. One combined run gives one cumulative coverage report, continuation chain and evidence view.
-
 Ask for the year only if it is not established in the conversation; never silently guess which September. Use the user's known timezone; otherwise report the explicit UTC default. `--until` is exclusive. This finds newly created posts, not every edit to an older post. It does not decide whether a thread needs an instructor response.
 
 ```aac-command
 moodle news --all-courses --month 2026-09 --tz Europe/Madrid
-moodle news --course COURSE_ID --course COURSE_ID --since 2026-09-01 --until 2026-10-01 --tz Europe/Madrid
+moodle news --course COURSE_ID --since 2026-09-01 --until 2026-10-01 --tz Europe/Madrid
 moodle continue 11111111-1111-4111-8111-111111111111
 moodle runs
 moodle evidence 11111111-1111-4111-8111-111111111111 --offset 0

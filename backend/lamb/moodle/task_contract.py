@@ -8,7 +8,7 @@ def task_specs():
     from .contract import CommandSpec
     news = click.Command('news', params=[
         click.Option(['--all-courses'], is_flag=True),
-        click.Option(['--course', 'course_ids'], multiple=True, type=click.IntRange(min=1)),
+        click.Option(['--course', 'course_ids'], multiple=True, type=click.IntRange(min=1), help='Repeat in ONE call for several selected courses: --course 12 --course 34.'),
         click.Option(['--month'], help='Explicit YYYY-MM, new posts only.'),
         click.Option(['--since'], help='Inclusive YYYY-MM-DD.'),
         click.Option(['--until'], help='Exclusive YYYY-MM-DD; required with --since.'),

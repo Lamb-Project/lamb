@@ -20,7 +20,7 @@ def run(tokens):
 @app.command()
 def news(
     all_courses: bool = typer.Option(False, '--all-courses'),
-    course: Optional[list[int]] = typer.Option(None, '--course'),
+    course: Optional[list[int]] = typer.Option(None, '--course', help='Repeat for several courses in one run.'),
     month: Optional[str] = typer.Option(None, '--month'),
     since: Optional[str] = typer.Option(None, '--since'),
     until: Optional[str] = typer.Option(None, '--until', help='Exclusive end date.'),
