@@ -50,7 +50,7 @@ class Download:
 
 def validate_archive(content, suffix):
     """Office/EPUB are archives, but general ZIP imports remain unavailable."""
-    if suffix not in {'.docx', '.pptx', '.xlsx', '.epub'}:
+    if suffix not in {'.docx', '.pptx', '.xlsx', '.epub'} and not zipfile.is_zipfile(io.BytesIO(content)):
         return
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as archive:

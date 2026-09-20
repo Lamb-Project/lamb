@@ -3,7 +3,6 @@ import hashlib
 import json
 from pathlib import PurePosixPath
 from moodle_cli.services.course import CourseService
-from moodle_cli.services.content import ContentService
 from .scope import MoodleScope
 from .documents import Download, download_file, session_scope, MAX_BYTES
 from .html_document import convert_html, LOSS_NOTICE
@@ -46,31 +45,36 @@ def book_chapters(module):
     return visible, hidden
 
 
-def activity_sources(client, kind, course, owner_moodle_id, base_url):
+def activity_sources(client, kind, course, owner_moodle_id, base_url, selected=None):
     course = MoodleScope(client, owner_moodle_id).require_teacher(course)
-    available = {int(m['instance']): m for m in modules(client, course) if m.get('modname') == kind}
-    records = ContentService(client).list_activities(kind, course)
-    if isinstance(records, dict): records = records.get(kind + 's', [])
     result = []
-    for item in records:
-        module = available.get(int(item['id']))
-        if not module or int(item.get('course', course)) != course: continue
+    for module in modules(client, course):
+        if module.get('modname') != kind: continue
         if module.get('uservisible') is False or module.get('visible') == 0: continue
-        proof = {'kind': kind, 'course_id': course, 'module_id': int(module['id']), 'item_id': int(item['id']),
-            'title': str(item['name'])[:1000], 'timemodified': item.get('timemodified', 0),
+        if selected is not None and int(module['instance']) != selected: continue
+        proof = {'kind': kind, 'course_id': course, 'module_id': int(module['id']),
+            'item_id': int(module['instance']), 'title': str(module.get('name', ''))[:1000],
             'source_url': base_url.rstrip('/') + '/mod/' + kind + '/view.php?id=' + str(module['id'])}
-        raw = item.get('content', '') if kind == 'page' else None
+        entries = module.get('contents', [])
         if kind == 'page':
-            encoded = raw.encode('utf-8')
-            if len(encoded) > MAX_BYTES: raise ValueError('Moodle page exceeds the 10 MiB import limit')
-            proof.update(size_bytes=len(encoded), source_hash=digest(encoded))
-        else:
-            chapters, hidden = book_chapters(module)
-            proof.update(chapters=chapters, hidden_chapters_skipped=hidden,
-                         size_bytes=sum(c['filesize'] for c in chapters),
+            # Moodle exports an index.html plugin-file URL. Listing never needs
+            # mod_page_get_pages_by_courses (which returns every Page body).
+            entry = next((e for e in entries if e.get('filename') == 'index.html' and e.get('filepath', '/') == '/'), {})
+            proof.update(timemodified=entry.get('timemodified'), size_bytes=entry.get('filesize') or None,
                          size_is_estimate=True)
+            if entry.get('fileurl'):
+                proof['file'] = {'filename': 'index.html', 'url': entry['fileurl'], 'filesize': entry.get('filesize') or 0}
+            elif selected is not None:
+                raise ValueError('Moodle did not export this Page as an importable file')
+        else:
+            proof.update(timemodified=max((e.get('timemodified') or 0 for e in entries), default=0),
+                         size_bytes=sum(e.get('filesize') or 0 for e in entries), size_is_estimate=True)
+            # A malformed/large Book must not block other items in the listing.
+            if selected is not None:
+                chapters, hidden = book_chapters(module)
+                proof.update(chapters=chapters, hidden_chapters_skipped=hidden)
         proof['metadata_hash'] = digest(proof)
-        result.append((proof, raw))
+        result.append((proof, None))
     return result
 
 
@@ -93,6 +97,8 @@ def resolve_source(client, base_url, owner_moodle_id, context, kind, ref=None, s
     proof = saved or (context.get('files', {}).get(ref) if kind == 'file' else context.get('documents', {}).get(ref))
     if not proof or (not saved and proof['course_id'] != context.get('course_id')):
         raise PermissionError('List this source in the selected instructor course and this conversation before importing')
+    if proof.get('kind', 'file') != kind:
+        raise PermissionError('Source reference has a different document type; list the requested source')
     course = MoodleScope(client, owner_moodle_id).require_teacher(proof['course_id'])
     if kind == 'folder_file':
         from .folders import folder_files
@@ -115,7 +121,7 @@ def resolve_source(client, base_url, owner_moodle_id, context, kind, ref=None, s
             'source_url': base_url.rstrip('/') + '/mod/' + module['modname'] + '/view.php?id=' + str(module['id']),
             'metadata_hash': digest(clean)}
         return current, None
-    candidates = activity_sources(client, kind, course, owner_moodle_id, base_url)
+    candidates = activity_sources(client, kind, course, owner_moodle_id, base_url, selected=proof['item_id'])
     found = next((row for row in candidates if row[0]['item_id'] == proof['item_id']), None)
     if not found: raise PermissionError('Moodle source disappeared or is no longer accessible')
     return found
@@ -137,6 +143,8 @@ def materialize(proof, raw, base_url, token, single_file):
             name = path.stem[:120] + '-' + digest([proof['module_id'], proof['source_path']])[:12] + path.suffix
             download = Download(name, download.content, download.content_type)
     elif kind == 'page':
+        if raw is None:
+            raw = download_file(base_url, token, proof['file'], single_file=True).content.decode('utf-8')
         originals['original.html'] = raw.encode()
         text, losses = convert_html(raw, proof['source_url'])
         download = Download('page-' + str(proof['item_id']) + '.md', text.encode(), 'text/markdown')

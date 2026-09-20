@@ -11,6 +11,7 @@ def safe_link(value, base):
     target = urlsplit(urljoin(base, value))
     if target.scheme not in {'http', 'https'} or target.username or target.password:
         return ''
+    if '/tokenpluginfile.php/' in target.path.lower(): return ''
     query = [(k, v) for k, v in parse_qsl(target.query) if k.lower() not in
              {'token', 'wstoken', 'access_token', 'sesskey', 'password', 'secret'}]
     return urlunsplit((target.scheme, target.netloc, target.path, urlencode(query), target.fragment))
@@ -47,14 +48,17 @@ class Tree(HTMLParser):
 def convert_html(html, base_url):
     parser = Tree()
     parser.feed(html)
-    losses = {'images': 0, 'media': 0, 'complex_tables': 0, 'active_content': 0}
+    malformed = bool(parser.rawdata.strip())
+    parser.close()
+    losses = {'images': 0, 'media': 0, 'complex_tables': 0, 'active_content': 0, 'formatting': 0, 'authenticated_links': 0, 'malformed_html': int(malformed)}
     has_text = False
 
     def render(node):
         nonlocal has_text
         if isinstance(node, str):
             has_text = has_text or bool(node.strip())
-            return re.sub(r'\s+', ' ', node)
+            text = re.sub(r'\s+', ' ', node)
+            return re.sub(r'([\\`*_{}\[\]()<>#!|])', r'\\\1', text)
         tag, attrs, children = node
         if tag in {'script', 'style', 'head', 'form', 'template'}:
             losses['active_content'] += 1
@@ -65,8 +69,15 @@ def convert_html(html, base_url):
         if tag in {'iframe', 'object', 'embed', 'video', 'audio', 'canvas', 'svg', 'math'}:
             losses['media'] += 1
             return '[Media or formula omitted]'
+        if tag in {'sup', 'sub', 'ol', 'caption'}:
+            losses['formatting'] += 1
+        if tag in {'sup', 'sub'}:
+            return ('^(' if tag == 'sup' else '_(') + ''.join(render(c) for c in children) + ')'
         if tag == 'table':
             rows = []
+            def nested_table(item):
+                return not isinstance(item, str) and (item[0] == 'table' or any(nested_table(c) for c in item[2]))
+            if any(nested_table(child) for child in children): losses['complex_tables'] += 1
             def collect(item):
                 if isinstance(item, str): return
                 if item[0] == 'tr': rows.append(item)
@@ -82,7 +93,8 @@ def convert_html(html, base_url):
                 return '\n\n[Complex table flattened]\n' + '\n'.join(' | '.join(r) for r in values) + '\n\n'
             lines = ['| ' + ' | '.join(r) + ' |' for r in values]
             lines.insert(1, '| ' + ' | '.join('---' for _ in values[0]) + ' |')
-            return '\n\n' + '\n'.join(lines) + '\n\n'
+            captions = ''.join(render(c) for c in children if not isinstance(c, str) and c[0] == 'caption')
+            return '\n\n' + captions + '\n' + '\n'.join(lines) + '\n\n'
         text = ''.join(render(child) for child in children)
         if tag in {'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}:
             return '\n\n' + '#' * int(tag[1]) + ' ' + text.strip() + '\n\n'
@@ -94,7 +106,10 @@ def convert_html(html, base_url):
         if tag in {'strong', 'b'}: return '**' + text + '**'
         if tag in {'em', 'i'}: return '*' + text + '*'
         if tag == 'a':
-            url = safe_link(attrs.get('href', ''), base_url)
+            href = attrs.get('href', '')
+            if 'pluginfile.php/' in href.lower() or '@@PLUGINFILE@@' in href:
+                losses['authenticated_links'] += 1
+            url = safe_link(href, base_url)
             return '[' + text.strip() + '](' + url.replace(')', '%29') + ')' if url else text
         return text
 
@@ -106,4 +121,5 @@ def convert_html(html, base_url):
 
 LOSS_NOTICE = ('Text conversion preserves headings, lists, links and simple tables. '
                'Images, media and image-based formulae are omitted; complex tables may be flattened. '
+               'Numbering, nesting and scientific formatting may change. Protected links require Moodle access. '
                'No OCR or rendering is performed. Review the imported document before using it.')

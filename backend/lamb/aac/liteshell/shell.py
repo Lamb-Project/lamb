@@ -328,6 +328,7 @@ class LiteShell:
         try:
             store = ResultStore(int(self.organization_id), int(self.user_id))
         except (ValueError, TypeError):
+            logger.warning('Private AAC result storage unavailable; full readback caching is disabled for this result')
             store = None
         return compact(payload, store=store, origin=origin,
                        trusted_workflow=bool(payload.get('skill_loaded')) or key == 'skill.load')
@@ -376,7 +377,13 @@ class LiteShell:
             from lamb.moodle.task_contract import task_specs
             unscoped = SELF_READS | task_specs().keys()
             if key.removeprefix('moodle.') not in unscoped:
-                binding['course_id'] = kwargs.get('course_id') or self.moodle.context.get('course_id')
+                course = kwargs.get('course_id') or self.moodle.context.get('course_id')
+                if key == 'moodle.calendar.events' or (key == 'moodle.badge.user' and kwargs.get('user_id') in (None, binding.get('moodle_user_id'))):
+                    course = kwargs.get('course_id')  # self-scoped without an explicit filter
+                if isinstance(course, (tuple, list)):
+                    binding['course_ids'] = sorted(set(map(int, course)))
+                elif course:
+                    binding['course_id'] = int(course)
             return ShellResult(success=True,data=data,result_binding=binding)
         handler = COMMAND_REGISTRY[key]
         if help_requested:

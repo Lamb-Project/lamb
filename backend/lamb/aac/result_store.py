@@ -18,11 +18,11 @@ TTL_SECONDS = 24 * 60 * 60
 
 
 def encode(value):
-    return json.dumps(value, ensure_ascii=False, default=str, separators=(',', ':')).encode('utf-8')
+    return json.dumps(value, ensure_ascii=False, default=str, separators=(',', ':')).encode('utf-8', errors='backslashreplace')
 
 
 def excerpt(text, limit=240):
-    return text.encode('utf-8')[:limit].decode('utf-8', errors='ignore')
+    return text.encode('utf-8', errors='backslashreplace')[:limit].decode('utf-8', errors='ignore')
 
 
 def command(identity, path='', offset=0):
@@ -147,16 +147,23 @@ def page(envelope, path='', offset=0):
     if isinstance(value, str):
         if offset>len(value): raise ValueError('Offset exceeds this string')
         # Character offsets never split UTF-8. Count JSON escaping in the final envelope.
-        end=min(len(value), offset+4000)
-        while True:
+        low, high = offset, min(len(value), offset+RESULT_BYTES)
+        best = None
+        while low <= high:
+            end = (low + high) // 2
             candidate = dict(result, kind='string', total_characters=len(value), text=value[offset:end],
                              range_start=offset, range_end=end, complete_field=offset == 0 and end == len(value),
                              coverage_notice='This page proves only this character range was read; next_command=null means the end, not that earlier ranges were read.',
                              next_offset=end if end<len(value) else None,
                              next_command=command(identity,path,end) if end<len(value) else None)
-            if fits(candidate): return candidate
-            if end == offset: raise ValueError('Result path metadata exceeds page limit')
-            end=offset+(end-offset)//2
+            if fits(candidate):
+                best = candidate
+                low = end + 1
+            else:
+                high = end - 1
+        if best is None or (best['range_end'] == offset and offset < len(value)):
+            raise ValueError('Result path metadata exceeds page limit')
+        return best
     if isinstance(value, (dict, list)):
         entries = list(value.items()) if isinstance(value,dict) else list(enumerate(value))
         if offset>len(entries): raise ValueError('Offset exceeds this collection')
@@ -216,7 +223,7 @@ def provider_messages(messages):
     """Use fixed projections without changing saved content or earlier request prefixes."""
     result=[]
     for message in messages:
-        copied={k:v for k,v in message.items() if k!='_aac_model_content'}
+        copied={k:v for k,v in message.items() if k not in {'_aac_model_content', '_aac_result_command', '_aac_result_kind'}}
         if '_aac_model_content' in message: copied['content']=message['_aac_model_content']
         result.append(copied)
     return result

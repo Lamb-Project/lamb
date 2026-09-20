@@ -21,15 +21,21 @@ def summarize(paths):
     all_sessions, measured_sessions = set(), set()
     malformed = 0
     for path in paths:
-        with open(path, encoding='utf-8') as file:
+        with open(path, encoding='utf-8', errors='replace') as file:
             for line in file:
                 try:
+                    if '\ufffd' in line: raise ValueError('invalid encoding')
                     entry = json.loads(line)
                     sid, event, data = entry['session_id'], entry['event'], entry.get('data', {})
                     if not isinstance(data, dict):
                         raise ValueError('invalid data')
                     all_sessions.add(sid)
                     if event == 'context_request' and data.get('measurement_version') == 1:
+                        if not isinstance(data.get('model'), str) or not isinstance(data.get('tool_results'), list): raise ValueError('invalid request')
+                        for field in ('request_json_bytes', 'system_prompt_bytes', 'tool_schema_json_bytes'):
+                            if type(data.get(field)) is not int: raise ValueError('invalid measurement')
+                        for result in data['tool_results']:
+                            if not isinstance(result, dict) or not isinstance(result.get('command'), str) or type(result.get('content_bytes')) is not int or type(result.get('message_index')) is not int: raise ValueError('invalid tool measurement')
                         requests[(sid, data['request_id'])] = data
                         measured_sessions.add(sid)
                         for result in data['tool_results']:
@@ -37,8 +43,12 @@ def summarize(paths):
                             if result['content_bytes'] >= tools.get(key, {}).get('content_bytes', -1):
                                 tools[key] = result
                     elif event == 'context_response':
+                        from lamb.aac.context_metrics import usage_counts
+                        if not isinstance(data.get('outcome'), str): raise ValueError('invalid response')
+                        data['usage'] = usage_counts(data.get('usage'))
                         responses[(sid, data['request_id'])] = data
                     elif event == 'context_turn':
+                        if type(data.get('round_limit_reached')) is not bool: raise ValueError('invalid turn')
                         turns[(sid, data['turn_id'])] = data
                 except (ValueError, KeyError, TypeError):
                     malformed += 1

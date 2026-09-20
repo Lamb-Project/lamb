@@ -42,15 +42,24 @@ class MoodleRuntime:
                           'write_groups':sorted(policy.write_groups), 'allow_grade_write':policy.allow_grade_write}}
 
     def validate_result_binding(self, binding, key):
-        expected = {k:v for k,v in binding.items() if k != 'course_id'}
+        expected = {k:v for k,v in binding.items() if k not in {'course_id', 'course_ids'}}
         if self.result_binding() != expected or key not in self.available():
             raise PermissionError('Moodle snapshot is no longer accessible; run a fresh read')
-        if binding.get('course_id'):
+        courses = binding.get('course_ids', binding.get('course_id'))
+        if courses:
             snap = self.snapshot(); record = snap['record']
             token = (self._cipher or TokenCipher()).decrypt(record['token_encrypted'],
                 organization_id=self.store.organization_id, owner_id=self.store.owner_id, base_url=record['base_url'])
-            with MoodleHTTPClient(record['base_url'], token, readonly=True) as client:
-                MoodleScope(client, record['moodle_user_id']).require_teacher(binding['course_id'])
+            try:
+                with MoodleHTTPClient(record['base_url'], token, readonly=True) as client:
+                    scope = MoodleScope(client, record['moodle_user_id'])
+                    for course in courses if isinstance(courses, (tuple, list)) else [courses]:
+                        scope.require_teacher(course)
+            except Exception as error:
+                from .forum_activity import transient_failure
+                if transient_failure(error):
+                    raise ConnectionError('Moodle is temporarily unavailable. Retry this saved read when it recovers.') from None
+                raise
         if self.result_binding() != expected:
             raise PermissionError('Moodle connection changed; snapshot withheld')
 
@@ -181,16 +190,18 @@ class MoodleRuntime:
                     result = list_activities(client, key.split('.')[0], params['course_id'],
                         record['moodle_user_id'], record['base_url'], self.context)
                 elif key == 'import.list':
-                    from .imports import store_for_runtime, public_receipt
+                    from .imports import store_for_runtime, public_receipt, same_import_account
                     result = [public_receipt(r) for r in store_for_runtime(self).list('receipts')
-                              if r['binding'] == self.result_binding()]
+                              if same_import_account(r['binding'], self.result_binding())]
                 elif key == 'import.check':
                     from .imports import check
                     result = check(self, client, record, token, params)
                 elif key == 'import.finish':
                     from .imports import ResumeImport, load_receipt, store_for_runtime
                     if confirmed is not True: raise PermissionError('Finishing a replacement requires approval')
-                    result = ResumeImport(load_receipt(self, params['import_id']), store_for_runtime(self))
+                    receipt = load_receipt(self, params['import_id'])
+                    MoodleScope(client, record['moodle_user_id']).require_teacher(receipt['source']['course_id'])
+                    result = ResumeImport(receipt, store_for_runtime(self))
                 else:
                     from .imports import confirm
                     if confirmed is not True: raise PermissionError('Importing a Moodle document requires explicit confirmation')

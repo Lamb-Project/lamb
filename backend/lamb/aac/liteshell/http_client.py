@@ -17,6 +17,13 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="AAC")
 
 
+class APIResponseError(ValueError):
+    def __init__(self, status_code, detail):
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(f"API error ({status_code}): {detail}")
+
+
 class AsyncLambClient:
     """In-process async HTTP client for LAMB Creator Interface.
 
@@ -84,4 +91,4 @@ class AsyncLambClient:
             detail = resp.json().get("detail", resp.text)
         except Exception:
             detail = resp.text or f"HTTP {resp.status_code}"
-        raise ValueError(f"API error ({resp.status_code}): {detail}")
+        raise APIResponseError(resp.status_code, detail)

@@ -38,11 +38,20 @@ class ResultStore:
         with os.fdopen(fd, 'w') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             # Bounded derived data retention; authored user documents are separate.
+            protected = set()
+            for run_path in (self.folder.parent / 'runs').glob('*.json'):
+                if run_path.is_symlink(): continue
+                try:
+                    run = json.loads(run_path.read_text())
+                    if run['binding'] == self.binding and run['expires_at'] > time.time():
+                        protected.add(run['last_result'])
+                except (OSError, ValueError, KeyError, TypeError):
+                    continue
             files = sorted(self.folder.glob('*.json'), key=lambda p: p.stat().st_mtime)
             for path in files:
                 if path.is_symlink():
                     raise ValueError('Unsafe Moodle evidence storage')
-                if path.stat().st_mtime < time.time() - TTL_SECONDS or len(files) >= MAX_RESULTS:
+                if path.stem not in protected and (path.stat().st_mtime < time.time() - TTL_SECONDS or len(files) >= MAX_RESULTS):
                     path.unlink()
                 else:
                     continue

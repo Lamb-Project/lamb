@@ -23,7 +23,7 @@ def command_name(call: dict) -> str:
         return 'unknown'
 
 
-def request_sizes(kwargs: dict) -> dict:
+def request_sizes(kwargs: dict, originals: list | None = None) -> dict:
     messages = kwargs['messages']
     tools = kwargs.get('tools', [])
     names = {}
@@ -31,9 +31,11 @@ def request_sizes(kwargs: dict) -> dict:
     for index, message in enumerate(messages):
         for call in message.get('tool_calls', []) or []:
             names[call.get('id')] = command_name(call)
-        if message.get('role') == 'tool':
+        origin = originals[index] if originals and index < len(originals) else {}
+        workflow = str(message.get('content', '')).startswith('[System: Workflow instructions]')
+        if message.get('role') == 'tool' or origin.get('_aac_result_command') or workflow:
             content = message.get('content', '')
-            results.append({'message_index': index, 'command': names.get(message.get('tool_call_id'), 'unknown'),
+            results.append({'message_index': index, 'command': 'workflow.instructions' if workflow or origin.get('_aac_result_kind') == 'workflow' else origin.get('_aac_result_command', names.get(message.get('tool_call_id'), 'unknown')),
                             'content_bytes': len(content.encode('utf-8')) if isinstance(content, str) else json_bytes(content)})
     return {
         'measurement_version': 1,
@@ -62,9 +64,19 @@ def usage_counts(usage: Any) -> dict | None:
     return result if any(v is not None for v in result.values()) else None
 
 
+def unsupported_stream_usage(error: Exception) -> bool:
+    if getattr(error, 'status_code', None) not in (400, 422): return False
+    text = str(getattr(error, 'body', '')).lower()
+    return ('stream_options' in text or 'include_usage' in text) and bool(re.search(
+        r'not supported|unsupported|unknown|unrecognized|unexpected|extra (?:inputs|fields)', text))
+
+
 def is_context_rejection(error: Exception) -> bool:
     # Do not relabel authentication, rate limits or arbitrary application errors.
-    if getattr(error, 'status_code', None) not in (400, 413, 422):
+    from openai import APIError
+    if getattr(error, 'status_code', None) is None and not isinstance(error, APIError) and type(error).__name__ != 'ContextWindowExceededError':
+        return False
+    if getattr(error, 'status_code', None) not in (None, 400, 413, 422):
         return False
     body = getattr(error, 'body', None)
     if isinstance(body, dict) and isinstance(body.get('error'), dict):
@@ -72,11 +84,17 @@ def is_context_rejection(error: Exception) -> bool:
     code = body.get('code') if isinstance(body, dict) else getattr(error, 'code', None)
     if code in ('context_length_exceeded', 'context_window_exceeded', 'input_too_long'):
         return True
-    message = body.get('message', '') if isinstance(body, dict) else (body if isinstance(body, str) else '')
+    message = (body.get('message') or body.get('detail') or '') if isinstance(body, dict) else (body if isinstance(body, str) else '')
+    if not message and getattr(error, 'status_code', None) is None:
+        message = str(error)
+    if getattr(error, 'status_code', None) == 413:
+        return True  # Request rejected before generation; include proxy body limits.
+    if type(error).__name__ == 'ContextWindowExceededError': return True
     # Compatible local servers often provide only a message, without an error code.
     return bool(re.search(r'(maximum context length|context (?:length|window|size).{0,80}(?:exceed|too (?:large|long))|'
                           r'(?:exceed|too (?:large|long)).{0,80}context (?:length|window|size)|'
-                          r'(?:input|prompt) (?:is )?too long|exceeds the available context size)', str(message), re.I))
+                          r'(?:input|prompt) (?:is )?too long|exceeds the available context size|input token count.{0,80}(?:exceed|maximum)|'
+                          r'(?:requested|trying to keep).{0,80}tokens.{0,80}(?:context|loaded)|maximum number of tokens)', str(message), re.I | re.S))
 
 
 class ContextSizeError(Exception):

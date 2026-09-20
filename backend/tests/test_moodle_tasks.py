@@ -40,7 +40,7 @@ class Fixture:
             forum = params['forumid']
             if forum in self.fail_forums:
                 raise RuntimeError('upstream error with token=should-not-be-exposed')
-            return {'discussions': self.pages.get((forum, params['page']), [{'id': forum*10, 'discussion': forum*10}])}
+            return {'discussions': self.pages.get((forum, params['page']), [{'id': forum*10, 'discussion': forum*10}] if params['page'] == 0 else [])}
         if function == 'mod_forum_get_discussion_posts':
             did = params['discussionid']
             return {'posts': [{'id': did*10, 'discussionid': did, 'timecreated': self.post_time,
@@ -88,7 +88,7 @@ def test_discussion_paging_includes_later_pages():
     result = run(raw)
     assert len(result['posts']) == 51
     assert result['coverage']['complete']
-    assert [p['page'] for f, p in raw.calls if f == 'mod_forum_get_forum_discussions'] == [0, 1, 0, 1]
+    assert [p['page'] for f, p in raw.calls if f == 'mod_forum_get_forum_discussions'] == [0, 1, 2, 0, 1, 2]
 
 
 @pytest.mark.parametrize('guard,limit', [({'max_calls': 4}, 'request_or_time_limit'), ({'max_seconds': 0}, None)])

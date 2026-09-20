@@ -38,7 +38,7 @@ def source(stores, tmp_path):
         if fn == 'core_course_get_contents':
             return Response(200, json=[{'id': 1, 'name': 'Section', 'modules': [
                 {'id': 21, 'instance': 31, 'modname': 'resource', 'contextid': 201},
-                {'id': 22, 'instance': 32, 'modname': 'page', 'contextid': 202}]}])
+                {'id': 22, 'instance': 32, 'modname': 'page', 'contextid': 202, 'name': 'Guide', 'contents': [{'filename':'index.html', 'filepath':'/', 'fileurl':'https://moodle.test/pluginfile.php/202/mod_page/content/index.html', 'filesize':0}]}]}])
         if fn == 'core_files_get_files':
             return Response(200, json={'files': [{'filename': 'lesson.txt',
                 'url': 'https://moodle.test/pluginfile.php/201/mod_resource/content/0/lesson.txt',
@@ -50,6 +50,8 @@ def source(stores, tmp_path):
     respx.post('https://moodle.test/webservice/rest/server.php').mock(side_effect=respond)
     fetched = respx.post('https://moodle.test/webservice/pluginfile.php/201/mod_resource/content/0/lesson.txt').mock(
         side_effect=lambda request: Response(200, content=state['content'], headers={'content-type': 'text/plain'}))
+    respx.post('https://moodle.test/webservice/pluginfile.php/202/mod_page/content/index.html').mock(
+        side_effect=lambda request: Response(200, content=state['content'], headers={'content-type': 'text/html'}))
     return rt, state, fetched
 
 
@@ -153,7 +155,7 @@ def test_html_conversion_and_losses():
     assert '[Guide](https://moodle.test/guide?id=2)' in text
     assert '| A | B |\n| --- | --- |\n| 1 | 2 |' in text
     assert 'SECRET' not in text and 'BAD' not in text and 'evil.test' not in text
-    assert losses == {'images': 1, 'media': 1, 'complex_tables': 1, 'active_content': 1}
+    assert losses == {'images': 1, 'media': 1, 'complex_tables': 1, 'active_content': 1, 'formatting': 0, 'authenticated_links': 0, 'malformed_html': 0}
 
 
 def test_book_hidden_chapters_are_not_downloaded():
@@ -175,6 +177,8 @@ def test_replacement_waits_for_new_job_and_retries_do_not_upload(tmp_path):
     key = str(uuid.uuid4())
     receipt = {'import_id': key, 'status': 'processing', 'binding': {'generation': 1},
                'destination': {'kb_id': 12}, 'result': {'file_registry_id': 44}, 'replaced_file_id': 43}
+    previous_id = str(uuid.uuid4())
+    store.put('versions', previous_id, {'review': {'source_hash': 'old'}})
     runtime = SimpleNamespace(result_binding=lambda: {'generation': 1})
     http = SimpleNamespace(get=AsyncMock(return_value={'status': 'failed'}), delete=AsyncMock(), post=AsyncMock())
     async def run():
@@ -182,7 +186,8 @@ def test_replacement_waits_for_new_job_and_retries_do_not_upload(tmp_path):
         assert failed['status'] == 'failed'
         http.delete.assert_not_awaited()
         receipt['status'] = 'processing'
-        http.get.return_value = {'status': 'completed'}
+        receipt['previous_version'] = previous_id
+        http.get.return_value = {'status': 'completed', 'plugin_params': {'moodle_provenance': {'import_id': key, 'source_hash': 'old'}}}
         done = await finish(receipt, store, http, runtime)
         assert done['status'] == 'completed'
         http.delete.assert_awaited_once_with('/creator/knowledgebases/kb/12/files/43')
@@ -250,7 +255,9 @@ def test_import_review_is_localized_and_does_not_dump_internal_hashes():
 
 
 def test_single_file_citation_is_hash_bound_and_optional(tmp_path, monkeypatch):
-    from lamb.moodle.import_delivery import save_single_provenance, single_provenance
+    from lamb.moodle.import_delivery import save_single_provenance
+    from lamb.document_provenance import single_provenance
+    monkeypatch.setattr('lamb.document_provenance.private_root', lambda: tmp_path)
     from lamb.moodle.document_sources import digest
     monkeypatch.setattr('lamb.moodle.import_delivery.private_root', lambda: tmp_path)
     receipt = {'review': {'converted_hash': digest(b'Evidence')},

@@ -38,12 +38,12 @@
             <p>Checked at {dateLabel(data.snapshot.completed_at)}. {data.snapshot.coverage.meaning}.</p>
             {#if data.snapshot.run}
                 <p>{data.snapshot.coverage.discussions_checked || 0} discussions checked across this run.
-                    {data.snapshot.coverage.courses.failed || 0} courses failed;
+                    {(data.snapshot.coverage.courses.failed || 0) + (data.snapshot.coverage.courses.partial || 0)} courses failed or partially checked;
                     {data.snapshot.coverage.courses.excluded || 0} excluded;
                     {data.snapshot.coverage.remaining_courses || 0} still to finish.</p>
                 {#if data.snapshot.coverage.forums}
                     <p>{data.snapshot.coverage.forums.ok || 0} forums fully checked;
-                        {(data.snapshot.coverage.forums.failed || 0) + (data.snapshot.coverage.forums.denied || 0) + (data.snapshot.coverage.forums.unsupported || 0)} failed or unavailable.</p>
+                        {(data.snapshot.coverage.forums.failed || 0) + (data.snapshot.coverage.forums.denied || 0) + (data.snapshot.coverage.forums.unsupported || 0) + (data.snapshot.coverage.forums.partial || 0)} failed, partially checked or unavailable.</p>
                 {/if}
                 {#if data.snapshot.run.can_continue}
                     <p><strong>Check paused. Progress is saved.</strong> Ask LAMB AGENT to continue this check.</p>
@@ -75,7 +75,7 @@
                 <a href={link(post.discussion_id, post.id)} target="_blank" rel="noopener noreferrer">Open post in Moodle</a>
             </article>
         {:else}<p>No matching posts were retained. Check the coverage above before drawing conclusions.</p>{/each}
-        <small>Evidence {data.result_id}. Stored for up to 24 hours; older results may be evicted after 16 runs.</small>
+        <small>Evidence {data.result_id}. Stored for up to 24 hours; older results may be evicted after 16 results (up to 4 recent runs; the latest recovery handle is retained).</small>
     </section>
 {/if}
 

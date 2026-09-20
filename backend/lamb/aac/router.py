@@ -237,6 +237,8 @@ async def read_tool_result(result_id: str, path: str = '', offset: int = 0,
     import asyncio
     try:
         return await asyncio.to_thread(read_result, auth, result_id, path, offset)
+    except ConnectionError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
     except PermissionError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except ValueError as error:

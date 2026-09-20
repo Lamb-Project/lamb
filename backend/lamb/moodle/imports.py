@@ -27,10 +27,20 @@ def store_for_runtime(runtime):
     return ImportStore(runtime.store.organization_id, runtime.store.owner_id, runtime.cache_root)
 
 
+def import_identity(binding):
+    # Owner/org are enforced by the private store. Durable receipts survive a
+    # credential rotation or policy edit, but never a different site/account.
+    return {k: binding.get(k) for k in ('base_url', 'moodle_user_id')}
+
+
+def same_import_account(binding, current):
+    return import_identity(binding) == import_identity(current)
+
+
 def load_receipt(runtime, import_id):
     receipt = store_for_runtime(runtime).get('receipts', import_id)
-    if receipt['binding'] != runtime.result_binding():
-        raise PermissionError('Import belongs to a different Moodle connection; reconnecting requires a new import')
+    if not same_import_account(receipt['binding'], runtime.result_binding()):
+        raise PermissionError('Import belongs to a different Moodle site or account')
     return receipt
 
 

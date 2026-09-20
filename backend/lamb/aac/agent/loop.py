@@ -21,6 +21,7 @@ from contextlib import aclosing
 import time
 import uuid
 from dataclasses import dataclass, field
+from collections import OrderedDict
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, AsyncIterator
@@ -38,6 +39,9 @@ logger = get_logger(__name__, component="AAC")
 
 from lamb.aac.pack_loader import load_pack
 DEFAULT_SYSTEM_PROMPT = load_pack(version='1.0.0').text('persona.md')
+
+# Bounded process-local capability cache, keyed by endpoint and model, never token.
+_STREAM_USAGE_UNSUPPORTED = OrderedDict()
 
 TOOL_DEFINITIONS = [
     {
@@ -356,14 +360,18 @@ class AgentLoop(SkillRouting):
                 and (self.model == 'gpt-5.6' or self.model.startswith('gpt-5.6-'))):
             kwargs['reasoning_effort'] = 'none'
         if streaming:
-            kwargs.update(stream=True, stream_options={"include_usage": True})
+            kwargs['stream'] = True
+            endpoint = getattr(self.llm_client, 'base_url', None)
+            driver_key = (str(endpoint), self.model) if endpoint is not None else None
+            if not getattr(self.llm_client, '_lamb_no_stream_usage', False) and driver_key not in _STREAM_USAGE_UNSUPPORTED:
+                kwargs['stream_options'] = {"include_usage": True}
         request_id = str(uuid.uuid4())
-        observation = {'usage': None}
+        observation = {'usage': None, 'request_id': request_id}
         started = time.monotonic()
         outcome = 'interrupted'
         slog = self.session_logger
         if slog and slog.enabled:
-            slog.log('context_request', {**request_sizes(kwargs), 'request_id': request_id,
+            slog.log('context_request', {**request_sizes(kwargs, [{}] + self.conversation), 'request_id': request_id,
                 'turn_id': self._turn_id, 'model': self.model, 'streaming': streaming,
                 'tool_round': self._tool_rounds, 'tools_enabled': tools_enabled})
         try:
@@ -378,7 +386,7 @@ class AgentLoop(SkillRouting):
             raise
         finally:
             if slog:
-                slog.log('context_response', {'request_id': request_id, 'turn_id': self._turn_id,
+                slog.log('context_response', {'request_id': observation['request_id'], 'turn_id': self._turn_id,
                     'elapsed_ms': round((time.monotonic()-started)*1000, 1),
                     'outcome': outcome, 'usage': observation['usage']})
 
@@ -395,7 +403,28 @@ class AgentLoop(SkillRouting):
             }}
             return
 
-        stream = await self.llm_client.chat.completions.create(**kwargs)
+        try:
+            stream = await self.llm_client.chat.completions.create(**kwargs)
+        except Exception as error:
+            from lamb.aac.context_metrics import unsupported_stream_usage
+            if 'stream_options' not in kwargs or not unsupported_stream_usage(error):
+                raise
+            self.llm_client._lamb_no_stream_usage = True
+            endpoint = getattr(self.llm_client, 'base_url', None)
+            if endpoint is not None:
+                _STREAM_USAGE_UNSUPPORTED[(str(endpoint), self.model)] = True
+                while len(_STREAM_USAGE_UNSUPPORTED) > 128:
+                    _STREAM_USAGE_UNSUPPORTED.popitem(last=False)
+            if self.session_logger:
+                self.session_logger.log('context_response', {'request_id': observation['request_id'],
+                    'turn_id': self._turn_id, 'outcome': 'unsupported_stream_options', 'usage': None})
+            observation['request_id'] = str(uuid.uuid4())
+            kwargs = {k: v for k, v in kwargs.items() if k != 'stream_options'}
+            if self.session_logger and self.session_logger.enabled:
+                self.session_logger.log('context_request', {**request_sizes(kwargs, [{}] + self.conversation),
+                    'request_id': observation['request_id'], 'turn_id': self._turn_id, 'model': self.model,
+                    'streaming': streaming, 'tool_round': self._tool_rounds, 'tools_enabled': tools_enabled})
+            stream = await self.llm_client.chat.completions.create(**kwargs)
         text = ""
         calls = {}
         try:
@@ -566,7 +595,12 @@ class AgentLoop(SkillRouting):
             return
 
     def _result_message(self, payload, command, *, role, tool_call_id=None, prefix='', suffix=''):
-        message = {'role':role, 'content':prefix + json.dumps(payload, default=str, ensure_ascii=False) + suffix}
+        from lamb.aac.result_store import encode
+        message = {'role':role, 'content':prefix + json.dumps(payload, default=str, ensure_ascii=False).encode('utf-8', errors='backslashreplace').decode() + suffix}
+        try: result_key = prepare_command(command)[0]
+        except (ValueError, TypeError): result_key = 'unknown'
+        message['_aac_result_command'] = result_key
+        message['_aac_result_kind'] = ('workflow' if payload.get('skill_loaded') or payload.get('code') == 'workflow_required' else 'command')
         if tool_call_id is not None:
             message['tool_call_id'] = tool_call_id
         projector = getattr(self.shell, 'model_result', None)

@@ -7,7 +7,7 @@ import json
 import time
 
 from .forum_activity import (PAGE_SIZE, MAX_SOURCE_BYTES, TaskLimit, TaskCancelled,
-                             failure_reason, validate_request)
+                             failure_reason, validate_request, transient_failure)
 from .scope import MoodleScope
 
 MAX_RUN_POSTS = 2000
@@ -44,14 +44,14 @@ def page_data(client, forum_id, page):
     rows = data['discussions']
     if not isinstance(rows, list) or len(rows) > PAGE_SIZE:
         raise ValueError('Invalid discussion page')
-    # Include visible activity signals, not message text or names. Moodle's
-    # modified field does not cover every edit; never claim otherwise.
+    # sortorder=4 orders by creation time. Replies and edits do not move a
+    # discussion; only identity/order and pinned state affect this cursor.
     signature = []
     for row in rows:
         did = int(row.get('discussion') or row['id'])
         if did <= 0 or ('forum' in row and int(row['forum']) != forum_id):
             raise ValueError('Mismatched discussion inventory')
-        signature.append([did, row.get('timemodified'), row.get('numreplies'), row.get('pinned')])
+        signature.append([did, row.get('pinned')])
     return [r[0] for r in signature], hashlib.sha256(json.dumps(signature).encode()).hexdigest(), bool(data.get('warnings'))
 
 
@@ -163,7 +163,7 @@ def advance(client, owner_id, state, *, save=lambda: None, progress=None):
                     save()
                 if cur['index'] >= len(cur['ids']):
                     cur['hashes'].append(cur['digest'])
-                    if len(cur['ids']) < PAGE_SIZE:
+                    if not cur['ids'] and not warned:
                         cur['phase'] = 'verify'
                     else:
                         cur['page'] += 1
@@ -212,6 +212,9 @@ def advance(client, owner_id, state, *, save=lambda: None, progress=None):
             except (TaskCancelled, PermissionError, CheckpointError):
                 raise
             except Exception as exc:
+                if transient_failure(exc):
+                    save()
+                    raise TaskLimit('temporary_moodle_error') from exc
                 status, reason = failure_reason(exc)
                 entry.update(status=status, reason=reason)
                 _next_forum(state); save()
@@ -228,6 +231,9 @@ def advance(client, owner_id, state, *, save=lambda: None, progress=None):
             course.update(status='excluded', reason='instructor_scope_not_verified')
             _next_course(state); save()
         except Exception as exc:
+            if transient_failure(exc):
+                save()
+                raise TaskLimit('temporary_moodle_error') from exc
             status, reason = failure_reason(exc)
             course.update(status=status, reason=reason)
             _next_course(state); save()
@@ -272,7 +278,8 @@ def project(state, client, reason=None):
     snapshot['coverage'] = {'complete': complete, 'requested_courses': len(snapshot['courses']),
         'courses': dict(Counter(c['status'] for c in snapshot['courses'])),
         'forums': dict(Counter(f['status'] for c in snapshot['courses'] for f in c['forums'])),
-        'posts_found': len(snapshot['posts']), 'traversal_finished': state['done'],
+        'posts_found': len(snapshot['posts']),
+        'traversal_finished': state['course_index'] >= len(snapshot['courses']) and state['initialized'],
         'scope_discovered': state['initialized'],
         'remaining_courses': max(0, len(snapshot['courses']) - state['course_index']),
         'discussions_checked': sum(f['discussions_checked'] for c in snapshot['courses'] for f in c['forums']),

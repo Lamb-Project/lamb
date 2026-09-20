@@ -59,7 +59,7 @@ class GuardedClient:
 
     def checkpoint(self):
         if self.cancel is not None and self.cancel.is_set():
-            raise TaskCancelled('Moodle read stopped; no result published')
+            raise TaskCancelled('Moodle read stopped. Saved progress may be available in moodle runs.')
         self.revalidate()
 
     def call(self, function, **params):
@@ -100,6 +100,25 @@ def preview(value, limit=240):
     parser.feed(str(value))
     text = ' '.join(' '.join(parser.parts).split())
     return text[:limit], len(text) > limit
+
+
+def transient_failure(exc):
+    """Retry read-only transport failures, never permission/validation errors."""
+    import httpx
+    from moodle_cli.client.exceptions import MoodleAPIError
+    cause = exc
+    while cause is not None:
+        if isinstance(cause, (httpx.TransportError, TimeoutError, ConnectionError)):
+            return True
+        status = getattr(cause, 'status_code', None)
+        if status is None:
+            status = getattr(getattr(cause, 'response', None), 'status_code', None)
+        if status in {408, 429, 500, 502, 503, 504}:
+            return True
+        if isinstance(cause, MoodleAPIError) and getattr(cause, 'error_code', '') in {'ratelimitexceeded', 'servicenotavailable'}:
+            return True
+        cause = cause.__cause__
+    return False
 
 
 def failure_reason(exc):

@@ -158,7 +158,7 @@ class RunStore:
                     state['done'] = True
                     if not reason.startswith('run_') and reason != 'response_size_limit': reason = 'run_step_limit'
             except TaskCancelled:
-                reason = 'interrupted'
+                reason = None if state['done'] else 'interrupted'
                 if state['steps'] >= MAX_STEPS: state['done'] = True
                 client.revalidate()
                 self._publish(run, client, reason, result_id)
