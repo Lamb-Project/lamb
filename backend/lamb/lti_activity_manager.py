@@ -212,6 +212,7 @@ class LtiActivityManager:
         activity_name: str = None,
         chat_visibility_enabled: bool = False,
         activity_type: str = "chat",
+        rubric_id: str = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Configure a new LTI activity.
@@ -239,6 +240,7 @@ class LtiActivityManager:
                 activity_name=activity_name,
                 chat_visibility_enabled=chat_visibility_enabled,
                 activity_type=activity_type,
+                rubric_id=rubric_id,
             )
             if not activity_id:
                 logger.error(f"Failed to create LTI activity record for {resource_link_id}")
@@ -293,6 +295,7 @@ class LtiActivityManager:
             activity_name=activity_name,
             chat_visibility_enabled=chat_visibility_enabled,
             activity_type=activity_type,
+            rubric_id=rubric_id,
         )
         if not activity_id:
             logger.error(f"Failed to create LTI activity record for {resource_link_id}")

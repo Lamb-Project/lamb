@@ -16,6 +16,9 @@ creator identity to create/ingest/query the KB server, so students never call
 - POST /sessions/{session_id}/assistant/{assistant_id}/chat — streamed chat
   with observability + tool_event SSE frames (same SSE dialect the rest of
   LAMB emits).
+- POST /sessions/{session_id}/submit    — persist chat + reflection
+- POST /sessions/{session_id}/evaluate  — rubric-based formative feedback
+- GET  /sessions/{session_id}/evaluation — restore generated feedback
 """
 
 import json
@@ -528,6 +531,51 @@ async def submit_workshop(
         reflection=body.get("reflection"),
     )
     return {"success": True, "status": "submitted"}
+
+
+@router.post("/sessions/{session_id}/evaluate")
+async def evaluate_workshop_session(
+    session_id: str,
+    body: Dict[str, Any],
+    token: str = Header(...),
+):
+    """Generate rubric-based formative feedback for a submitted session.
+
+    Triggered by the student after submit (and retryable). When the activity
+    has no rubric attached, returns ``{"configured": false}`` without calling
+    any LLM. The feedback is advisory — it never writes a grade.
+    """
+    from lamb.modules.workshop.evaluation import evaluate_session
+
+    _verify_workshop_principal(session_id, token)
+
+    session = _db_manager.get_workshop_session_by_id(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    activity = _session_activity(session)
+    result = await evaluate_session(
+        session, activity, rubric_id=body.get("rubric_id"))
+    return result
+
+
+@router.get("/sessions/{session_id}/evaluation")
+async def get_workshop_evaluation(
+    session_id: str,
+    token: str = Header(...),
+):
+    """Return the stored evaluation for a session (page-reload restore)."""
+    _verify_workshop_principal(session_id, token)
+
+    session = _db_manager.get_workshop_session_by_id(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    activity = _session_activity(session)
+    evaluation = _db_manager.get_workshop_evaluation(session_id)
+    configured = bool(activity.get("rubric_id")) or evaluation is not None
+
+    return {"configured": configured, "evaluation": evaluation}
 
 
 def _decode_workshop_student(token: str) -> Dict[str, Any]:

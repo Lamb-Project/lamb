@@ -1047,6 +1047,17 @@
     "connected": "Connectat a",
     "kbRetrieved": "Fragments que el teu assistent pot recuperar",
     "kbNoHits": "No hi ha fragments coincidents — prova una altra pregunta o document.",
-    "similarity": "similitud"
+    "similarity": "similitud",
+    "evaluate": "Obtén comentaris",
+    "evaluating": "Generant els teus comentaris…",
+    "feedbackTitle": "Els teus comentaris formatius",
+    "criterion": "Criteri",
+    "level": "Nivell",
+    "score": "Puntuació",
+    "suggestedScore": "Suggerida",
+    "overallFeedback": "Comentaris generals",
+    "feedbackUnavailable": "No s'han pogut generar els comentaris.",
+    "teacherDecides": "Això és una orientació formativa, no una nota. El teu professor decideix la puntuació final.",
+    "noRubric": "No hi ha cap rúbrica configurada per a aquesta activitat, així que no s'han generat comentaris."
   }
 }

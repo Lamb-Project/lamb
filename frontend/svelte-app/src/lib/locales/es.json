@@ -1058,6 +1058,17 @@
     "connected": "Conectado a",
     "kbRetrieved": "Fragmentos que tu asistente puede recuperar",
     "kbNoHits": "No hay fragmentos coincidentes — prueba otra pregunta o documento.",
-    "similarity": "similitud"
+    "similarity": "similitud",
+    "evaluate": "Obtener comentarios",
+    "evaluating": "Generando tus comentarios…",
+    "feedbackTitle": "Tus comentarios formativos",
+    "criterion": "Criterio",
+    "level": "Nivel",
+    "score": "Puntuación",
+    "suggestedScore": "Sugerida",
+    "overallFeedback": "Comentarios generales",
+    "feedbackUnavailable": "No se han podido generar los comentarios.",
+    "teacherDecides": "Esto es una orientación formativa, no una nota. Tu profesor decide la puntuación final.",
+    "noRubric": "No hay una rúbrica configurada para esta actividad, así que no se han generado comentarios."
   }
 }

@@ -43,6 +43,8 @@ def _migrate_schema():
     runner._migration_26(cursor)
     runner._migration_27(cursor)
     runner._migration_28(cursor)
+    runner._migration_29(cursor)
+    runner._migration_30(cursor)
     conn.commit()
     return conn
 
@@ -72,13 +74,17 @@ def _migrate_schema_idempotent():
     runner._migration_27(cursor)  # run again — must be a no-op
     runner._migration_28(cursor)
     runner._migration_28(cursor)  # run again — must be a no-op
+    runner._migration_29(cursor)
+    runner._migration_29(cursor)  # run again — must be a no-op
+    runner._migration_30(cursor)
+    runner._migration_30(cursor)  # run again — must be a no-op
     conn.commit()
     return conn
 
 
 def test_latest_version_incremented():
     """LATEST_VERSION covers the workshop migrations."""
-    assert LATEST_VERSION >= 28
+    assert LATEST_VERSION >= 30
 
 
 def test_mg1_activity_type_column():
@@ -131,5 +137,30 @@ def test_mg3_session_kb_columns():
     cursor = conn.cursor()
     columns = [row[1] for row in cursor.execute("PRAGMA table_info(lti_workshop_sessions)")]
     for col in ["kb_id", "document_file_id", "document_name", "document_status"]:
+        assert col in columns, f"Missing column: {col}"
+    conn.close()
+
+
+def test_mg4_activity_rubric_column():
+    """MG4: v29 adds an optional rubric_id to lti_activities."""
+    conn = _migrate_schema()
+    cursor = conn.cursor()
+    columns = [row[1] for row in cursor.execute("PRAGMA table_info(lti_activities)")]
+    assert "rubric_id" in columns
+    conn.close()
+
+
+def test_mg5_evaluations_table():
+    """MG5: v30 creates workshop_evaluations with the expected columns."""
+    conn = _migrate_schema()
+    cursor = conn.cursor()
+    columns = [
+        row[1] for row in cursor.execute(
+            "PRAGMA table_info(workshop_evaluations)")
+    ]
+    for col in ["id", "session_id", "activity_id", "rubric_id", "evaluator",
+                "model_used", "status", "total_score", "max_score", "criteria",
+                "overall_feedback", "raw_response", "error_message",
+                "created_at", "updated_at"]:
         assert col in columns, f"Missing column: {col}"
     conn.close()

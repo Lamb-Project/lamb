@@ -1054,6 +1054,17 @@
     "connected": "Konektatuta",
     "kbRetrieved": "Zure laguntzaileak berreskura ditzakeen zatiak",
     "kbNoHits": "Ez dago bat datorren zatirik — probatu beste galdera edo dokumentu bat.",
-    "similarity": "antzekotasuna"
+    "similarity": "antzekotasuna",
+    "evaluate": "Lortu iritzia",
+    "evaluating": "Zure iritzia sortzen…",
+    "feedbackTitle": "Zure iritzi formatzailea",
+    "criterion": "Irizpidea",
+    "level": "Maila",
+    "score": "Puntuazioa",
+    "suggestedScore": "Iradokitakoa",
+    "overallFeedback": "Iritzi orokorra",
+    "feedbackUnavailable": "Ezin izan da iritzia sortu.",
+    "teacherDecides": "Hau orientazio formatzailea da, ez da nota bat. Zure irakasleak erabakitzen du azken puntuazioa.",
+    "noRubric": "Jarduera honetarako errubrikarik ez dago konfiguratuta, beraz, ez da iritzirik sortu."
   }
 }

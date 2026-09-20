@@ -96,6 +96,18 @@
                     </p>
                 </div>
 
+                <div id="rubricBlock" class="hidden mb-3">
+                    <label for="rubricId" class="block font-medium text-gray-900 mb-1">Evaluation rubric (optional)</label>
+                    <select id="rubricId" name="rubric_id"
+                            class="w-full border border-gray-300 rounded-lg p-2 text-sm text-gray-800">
+                        <option value="">No rubric — no formative feedback generated</option>
+                    </select>
+                    <p class="text-sm text-gray-500 mt-1">
+                        Students who submit will get formative, rubric-based feedback. This is a learning aid —
+                        the final grade is always yours to decide. You can leave this empty.
+                    </p>
+                </div>
+
                 <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors">
                     <input type="checkbox" name="chat_visibility_enabled" value="1" class="mt-1 text-blue-600 rounded">
                     <div>
@@ -118,6 +130,7 @@
 
     <script>
         const orgsData = {{ orgs_json | safe }};
+        const rubricsData = {{ rubrics_json | safe }};
         const needsOrgSelection = {{ 'true' if needs_org_selection else 'false' }};
         const assistantList = document.getElementById('assistantList');
         const assistantStep = document.getElementById('assistantStep');
@@ -125,9 +138,39 @@
         const optionsStep = document.getElementById('optionsStep');
         const submitBtn = document.getElementById('submitBtn');
         const activityTypeSelect = document.getElementById('activityType');
+        const rubricBlock = document.getElementById('rubricBlock');
+        const rubricSelect = document.getElementById('rubricId');
 
         function isWorkshop() {
             return !!activityTypeSelect && activityTypeSelect.value === 'workshop';
+        }
+
+        function currentOrgId() {
+            if (needsOrgSelection) {
+                const selected = document.querySelector('input[name="organization_id"]:checked');
+                return selected ? selected.value : null;
+            }
+            const hidden = document.querySelector('input[name="organization_id"]');
+            return hidden ? hidden.value : null;
+        }
+
+        function populateRubrics() {
+            if (!rubricSelect) return;
+            const orgId = currentOrgId();
+            const rubrics = rubricsData[orgId] || [];
+            rubricSelect.innerHTML = '<option value="">No rubric — no formative feedback generated</option>';
+            rubrics.forEach(r => {
+                const opt = document.createElement('option');
+                opt.value = r.rubric_id;
+                opt.textContent = r.title;
+                rubricSelect.appendChild(opt);
+            });
+        }
+
+        function updateRubricVisibility() {
+            if (!rubricBlock) return;
+            rubricBlock.classList.toggle('hidden', !isWorkshop());
+            if (isWorkshop()) populateRubrics();
         }
 
         function renderAssistants(orgId) {
@@ -171,6 +214,7 @@
                     assistantStep.classList.remove('hidden');
                     if (optionsStep) optionsStep.classList.remove('hidden');
                     renderAssistants(e.target.value);
+                    populateRubrics();
                 });
             });
         }
@@ -180,13 +224,18 @@
             cb.addEventListener('change', updateSubmitState);
         });
 
-        // Activity type toggles whether an assistant must be selected.
+        // Activity type toggles whether an assistant must be selected, and
+        // reveals the optional rubric picker for workshop activities.
         if (activityTypeSelect) {
-            activityTypeSelect.addEventListener('change', updateSubmitState);
+            activityTypeSelect.addEventListener('change', () => {
+                updateSubmitState();
+                updateRubricVisibility();
+            });
         }
 
         // Initial state
         updateSubmitState();
+        updateRubricVisibility();
     </script>
 </body>
 </html>

@@ -20,7 +20,7 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="MIGRATIONS")
 
 # Increment this when adding a new migration method below.
-LATEST_VERSION = 28
+LATEST_VERSION = 30
 
 
 class MigrationRunner:
@@ -1121,3 +1121,60 @@ class MigrationRunner:
                 logger.info(f"Adding {col} column to lti_workshop_sessions")
                 cursor.execute(
                     f"ALTER TABLE {tp}lti_workshop_sessions ADD COLUMN {col} {decl}")
+
+    def _migration_29(self, cursor):
+        """Attach an optional rubric to LTI activities (workshop grading).
+
+        Teachers pick a rubric when configuring a workshop activity; students
+        submit and get formative feedback evaluated against it. NULL means no
+        evaluation is generated.
+        """
+        tp = self.db.table_prefix
+        if not self._table_exists(cursor, 'lti_activities'):
+            return
+        if self._column_exists(cursor, 'lti_activities', 'rubric_id'):
+            return
+        logger.info("Adding rubric_id column to lti_activities")
+        cursor.execute(
+            f"ALTER TABLE {tp}lti_activities ADD COLUMN rubric_id TEXT")
+
+    def _migration_30(self, cursor):
+        """Store formative evaluations for workshop submissions.
+
+        One row per workshop session (upsert on resubmit/regrade). `criteria`
+        is a JSON array of criterion decompositions; `total_score` is a
+        *suggestion* — the final grade is always decided by the teacher.
+        """
+        tp = self.db.table_prefix
+        if self._table_exists(cursor, 'workshop_evaluations'):
+            return
+        logger.info("Creating workshop_evaluations table")
+        cursor.execute(f"""
+            CREATE TABLE {tp}workshop_evaluations (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                activity_id INTEGER NOT NULL,
+                rubric_id TEXT,
+                evaluator TEXT NOT NULL DEFAULT 'llm',
+                model_used TEXT,
+                status TEXT NOT NULL DEFAULT 'completed',
+                total_score REAL,
+                max_score REAL,
+                criteria JSON NOT NULL DEFAULT '[]',
+                overall_feedback TEXT,
+                raw_response TEXT,
+                error_message TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (session_id)
+                    REFERENCES {tp}lti_workshop_sessions(id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}workshop_eval_session "
+            f"ON {tp}workshop_evaluations(session_id)")
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}workshop_eval_activity "
+            f"ON {tp}workshop_evaluations(activity_id)")

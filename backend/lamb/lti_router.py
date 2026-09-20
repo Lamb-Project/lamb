@@ -276,6 +276,9 @@ async def lti_setup_page(request: Request, token: str = ""):
         if org:
             org_names[org_id] = org.get('name', f'Organization {org_id}')
 
+    # Rubrics the instructor can attach to a workshop activity, per org.
+    rubrics_by_org = _accessible_rubrics_by_org(creator_users, orgs_with_assistants)
+
     needs_org_selection = len(orgs_with_assistants) > 1
 
     return templates.TemplateResponse("lti_activity_setup.html", {
@@ -294,7 +297,53 @@ async def lti_setup_page(request: Request, token: str = ""):
             ]
             for org_id, assistants in orgs_with_assistants.items()
         }),
+        "rubrics_json": json.dumps(rubrics_by_org),
     })
+
+
+def _accessible_rubrics_by_org(creator_users, orgs_with_assistants):
+    """Map org id (string) → accessible rubrics for the setup page's picker.
+
+    Includes the instructor's own rubrics plus public rubrics in the org. Fails
+    soft: any lookup error yields an empty list for that org (the rubric is
+    optional — a workshop without one simply produces no feedback).
+    """
+    try:
+        from lamb.evaluaitor import rubric_service
+    except Exception as e:  # pragma: no cover - import guard
+        logger.warning(f"Rubric service unavailable for setup page: {e}")
+        return {}
+
+    result = {}
+    for org_id in orgs_with_assistants:
+        creator_user = next(
+            (cu for cu in creator_users if cu["organization_id"] == org_id), None)
+        if not creator_user:
+            result[str(org_id)] = []
+            continue
+
+        email = creator_user["user_email"]
+        rubrics = {}
+        try:
+            for r in rubric_service.list_rubrics_logic(
+                    user_email=email, limit=200).get("rubrics", []):
+                if r.get("rubric_id"):
+                    rubrics[r["rubric_id"]] = r.get("title") or "Untitled"
+        except Exception as e:
+            logger.warning(f"Could not list rubrics for {email}: {e}")
+        try:
+            for r in rubric_service.list_public_rubrics_logic(
+                    organization_id=org_id, limit=200).get("rubrics", []):
+                if r.get("rubric_id"):
+                    rubrics.setdefault(r["rubric_id"], r.get("title") or "Untitled")
+        except Exception as e:
+            logger.warning(f"Could not list public rubrics for org {org_id}: {e}")
+
+        result[str(org_id)] = [
+            {"rubric_id": rid, "title": title}
+            for rid, title in rubrics.items()
+        ]
+    return result
 
 
 # =============================================================================
@@ -323,6 +372,8 @@ async def lti_configure_activity(request: Request):
         activity_type = form_data.get("activity_type", "chat")
         if activity_type not in ("chat", "workshop"):
             activity_type = "chat"
+        # Optional formative-evaluation rubric (workshop activities only).
+        rubric_id = form_data.get("rubric_id") or None
 
         if not organization_id:
             return HTMLResponse("<h2>Error</h2><p>No organization selected.</p>", status_code=400)
@@ -362,6 +413,7 @@ async def lti_configure_activity(request: Request):
                 activity_name=context_title or resource_link_id,
                 chat_visibility_enabled=chat_visibility_enabled,
                 activity_type=activity_type,
+                rubric_id=rubric_id,
             )
 
             if not activity:

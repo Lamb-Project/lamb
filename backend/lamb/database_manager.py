@@ -7895,7 +7895,8 @@ class LambDatabaseManager:
                             context_id: str = None, context_title: str = None,
                             activity_name: str = None,
                             chat_visibility_enabled: bool = False,
-                            activity_type: str = 'chat') -> Optional[int]:
+                            activity_type: str = 'chat',
+                            rubric_id: str = None) -> Optional[int]:
         """Create a new LTI activity. Returns the activity id."""
         connection = self.get_connection()
         if not connection:
@@ -7909,13 +7910,14 @@ class LambDatabaseManager:
                     (resource_link_id, organization_id, context_id, context_title, activity_name,
                      owi_group_id, owi_group_name, owner_email, owner_name,
                      configured_by_email, configured_by_name,
-                     chat_visibility_enabled, activity_type, status, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                     chat_visibility_enabled, activity_type, rubric_id, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
                 """, (resource_link_id, organization_id, context_id, context_title,
                       activity_name, owi_group_id, owi_group_name,
                       configured_by_email, configured_by_name,
                       configured_by_email, configured_by_name,
-                      1 if chat_visibility_enabled else 0, activity_type or 'chat', now, now))
+                      1 if chat_visibility_enabled else 0, activity_type or 'chat',
+                      rubric_id, now, now))
                 return cursor.lastrowid
         except sqlite3.Error as e:
             logger.error(f"Error creating LTI activity: {e}")
@@ -7946,7 +7948,7 @@ class LambDatabaseManager:
 
     def update_lti_activity(self, activity_id: int, **kwargs) -> bool:
         """Update an LTI activity. Pass fields to update as keyword arguments."""
-        allowed_fields = {'activity_name', 'status', 'context_title', 'chat_visibility_enabled', 'owner_email', 'owner_name'}
+        allowed_fields = {'activity_name', 'status', 'context_title', 'chat_visibility_enabled', 'owner_email', 'owner_name', 'rubric_id'}
         updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
         if not updates:
             return False
@@ -8815,3 +8817,145 @@ class LambDatabaseManager:
             return False
         finally:
             connection.close()
+
+    def get_workshop_evaluation(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch the stored formative evaluation for a workshop session, or None.
+
+        `criteria` is decoded from its JSON text column so callers get a list.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}workshop_evaluations
+                    WHERE session_id = ?
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """, (session_id,))
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                columns = [col[0] for col in cursor.description]
+                result = dict(zip(columns, row))
+                result["criteria"] = decode_evaluation_criteria(
+                    result.get("criteria"))
+                return result
+        except sqlite3.Error as e:
+            logger.error(f"Error getting workshop evaluation: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_workshop_evaluations_by_activity(
+        self, activity_id: int
+    ) -> List[Dict[str, Any]]:
+        """List all evaluations for an activity (teacher dashboard, Phase 6)."""
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}workshop_evaluations
+                    WHERE activity_id = ?
+                    ORDER BY updated_at DESC
+                """, (activity_id,))
+                columns = [col[0] for col in cursor.description]
+                results = []
+                for row in cursor.fetchall():
+                    record = dict(zip(columns, row))
+                    record["criteria"] = decode_evaluation_criteria(
+                        record.get("criteria"))
+                    results.append(record)
+                return results
+        except sqlite3.Error as e:
+            logger.error(f"Error listing workshop evaluations: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def upsert_workshop_evaluation(
+        self,
+        session_id: str,
+        activity_id: int,
+        rubric_id: Optional[str] = None,
+        criteria: Optional[List[Dict[str, Any]]] = None,
+        overall_feedback: Optional[str] = None,
+        total_score: Optional[float] = None,
+        max_score: Optional[float] = None,
+        model_used: Optional[str] = None,
+        status: str = "completed",
+        raw_response: Optional[str] = None,
+        error_message: Optional[str] = None,
+        evaluator: str = "llm",
+    ) -> Optional[str]:
+        """Insert or overwrite the (single) evaluation for a workshop session.
+
+        Resubmitting/regrading overwrites the previous row — one evaluation
+        per session (Lean MVP). Returns the evaluation id, or None on failure.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        evaluation_id = f"eval-{session_id}"
+        now = int(time.time())
+        criteria_json = json.dumps(criteria or [], ensure_ascii=False)
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT id FROM {self.table_prefix}workshop_evaluations
+                    WHERE session_id = ?
+                """, (session_id,))
+                existing = cursor.fetchone()
+                if existing:
+                    cursor.execute(f"""
+                        UPDATE {self.table_prefix}workshop_evaluations
+                        SET activity_id = ?, rubric_id = ?, evaluator = ?,
+                            model_used = ?, status = ?, total_score = ?,
+                            max_score = ?, criteria = ?, overall_feedback = ?,
+                            raw_response = ?, error_message = ?, updated_at = ?
+                        WHERE session_id = ?
+                    """, (activity_id, rubric_id, evaluator, model_used, status,
+                          total_score, max_score, criteria_json,
+                          overall_feedback, raw_response, error_message, now,
+                          session_id))
+                else:
+                    cursor.execute(f"""
+                        INSERT INTO {self.table_prefix}workshop_evaluations
+                        (id, session_id, activity_id, rubric_id, evaluator,
+                         model_used, status, total_score, max_score, criteria,
+                         overall_feedback, raw_response, error_message,
+                         created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (evaluation_id, session_id, activity_id, rubric_id,
+                          evaluator, model_used, status, total_score, max_score,
+                          criteria_json, overall_feedback, raw_response,
+                          error_message, now, now))
+                return evaluation_id
+        except sqlite3.Error as e:
+            logger.error(f"Error upserting workshop evaluation: {e}")
+            return None
+        finally:
+            connection.close()
+
+
+def decode_evaluation_criteria(criteria: Any) -> List[Dict[str, Any]]:
+    """Decode stored criteria JSON text into a list of dicts (best effort).
+
+    Module-level so it can be used by the DB methods even when they are invoked
+    against a lightweight test double (unbound-method test pattern).
+    """
+    if isinstance(criteria, list):
+        return criteria
+    if not criteria:
+        return []
+    try:
+        parsed = json.loads(criteria)
+        return parsed if isinstance(parsed, list) else []
+    except (json.JSONDecodeError, TypeError):
+        return []

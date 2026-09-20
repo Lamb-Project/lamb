@@ -16,6 +16,7 @@
 	import { createWorkshopFormState } from '$lib/components/workshop/logic/workshopFormState.svelte.js';
 	import WizardSteps from '$lib/components/workshop/WizardSteps.svelte';
 	import ObservabilityPanel from '$lib/components/workshop/ObservabilityPanel.svelte';
+	import FormativeFeedback from '$lib/components/workshop/FormativeFeedback.svelte';
 	import { sendWorkshopChat } from '$lib/services/workshopChatService.js';
 	import { getWorkshopLlmConfig } from '$lib/config.js';
 
@@ -42,6 +43,10 @@
 	let probing = $state(false);
 	/** @type {boolean} */
 	let submitting = $state(false);
+	/** @type {boolean} */
+	let evaluating = $state(false);
+	/** @type {any | null} */
+	let evaluation = $state(null);
 
 	// ── Chat + observability ──
 	// Entries may also carry assistant `tool_calls` / `role: tool` fields and an
@@ -121,6 +126,28 @@
 		return res.json();
 	}
 
+	/**
+	 * Restore a previously generated evaluation (page reload) — best effort.
+	 * A missing rubric/evaluation is not an error.
+	 */
+	async function fetchEvaluation() {
+		try {
+			const res = await fetch(
+				`/lamb/v1/workshop/sessions/${encodeURIComponent(sessionId)}/evaluation`,
+				{ headers: { token } }
+			);
+			if (!res.ok) return;
+			const data = await res.json();
+			if (data.evaluation) {
+				evaluation = { configured: data.configured, ...data.evaluation };
+			} else if (data.configured === false) {
+				evaluation = { configured: false };
+			}
+		} catch {
+			// Non-fatal: feedback is optional.
+		}
+	}
+
 	onMount(async () => {
 		activityId = /** @type {string} */ ($page.params.activityId);
 		const urlToken = $page.url.searchParams.get('token') || '';
@@ -162,6 +189,7 @@
 				form.documentStatus = session.document_status || form.documentStatus;
 			}
 			chatMessages = form.chatMessages || [];
+			await fetchEvaluation();
 		} catch (/** @type {any} */ e) {
 			console.error('[workshop] session load failed:', e);
 			formStore = createWorkshopFormState({});
@@ -502,11 +530,30 @@
 				reflection: form.reflection || '',
 			});
 			form.stepValid = { ...form.stepValid, submitted: true };
-			alert('Workshop submitted ✓');
+			// Submit persisted the work; now generate rubric-based feedback.
+			// Feedback is advisory and never blocks the submission.
+			await evaluateWorkshop();
 		} catch (/** @type {any} */ e) {
 			error = e?.message || 'Submit failed';
 		} finally {
 			submitting = false;
+		}
+	}
+
+	/**
+	 * Request rubric-based formative feedback for the submitted session.
+	 * Retryable; a missing rubric comes back as `{configured: false}`.
+	 */
+	async function evaluateWorkshop() {
+		if (evaluating) return;
+		evaluating = true;
+		try {
+			const result = await wsPost(`/sessions/${sessionId}/evaluate`, {});
+			evaluation = result;
+		} catch (/** @type {any} */ e) {
+			error = e?.message || 'Could not generate feedback.';
+		} finally {
+			evaluating = false;
 		}
 	}
 
@@ -587,6 +634,11 @@
 
 			<!-- Chat + observability (appears from step 5, but dashboard also aids step 1-4) -->
 			<section class="lg:col-span-3 space-y-6">
+				<!-- Formative feedback (after submit / on restore) -->
+				{#if evaluating || evaluation}
+					<FormativeFeedback {evaluation} {evaluating} />
+				{/if}
+
 				<!-- Observability dashboard always visible once chat starts -->
 				{#if obsData || toolEvents.length > 0 || chatMessages.length > 0}
 					<div class="border rounded-lg p-4 bg-white shadow-sm">

@@ -1044,6 +1044,17 @@
     "connected": "Connected to",
     "kbRetrieved": "Excerpts your assistant can retrieve",
     "kbNoHits": "No matching excerpts — try a different question or document.",
-    "similarity": "similarity"
+    "similarity": "similarity",
+    "evaluate": "Get feedback",
+    "evaluating": "Generating your feedback…",
+    "feedbackTitle": "Your formative feedback",
+    "criterion": "Criterion",
+    "level": "Level",
+    "score": "Score",
+    "suggestedScore": "Suggested",
+    "overallFeedback": "Overall feedback",
+    "feedbackUnavailable": "Feedback could not be generated.",
+    "teacherDecides": "This is formative guidance, not a grade. Your teacher decides the final score.",
+    "noRubric": "No rubric is configured for this activity, so no feedback was generated."
   }
 }
