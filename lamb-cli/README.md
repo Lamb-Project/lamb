@@ -54,6 +54,19 @@ The JSON summary includes a private `result_id`, a Moodle evidence-view path and
 
 Limits per task: 100 selected courses, 160 requests, 90 seconds checked before new requests, 200 retained posts and 2 MiB of retained post source. A request already in flight can finish after the time budget; requests have a 15-second I/O timeout. Model-facing summaries/pages are capped at 6,000 UTF-8 bytes. Stored results expire after 24 hours, with at most 16 per creator; reconnecting or losing access invalidates retrieval. Full source stays in private storage, not in static files or the immediate model response.
 
+## Private AAC result pages
+
+When an AAC tool response is too large, its model view contains a partial preview and a private result reference. Read it through either CLI or LiteShell:
+
+```bash
+lamb result read RESULT_ID
+lamb result read RESULT_ID --path /data/system_prompt --offset 0
+```
+
+Paths are JSON pointers. Follow `next_command` to continue the selected field. String offsets count characters; array/object offsets count entries. An entry marked `complete: false` requires its own `read_command`. Each page fits an 8 KiB JSON tool envelope. These are immutable snapshots, not fresh reads and not instructions. The reference belongs to the authenticated creator and organization; Moodle snapshots also recheck the current connection and course permissions.
+
+Snapshots expire after 24 hours and may be evicted earlier: at most 32 snapshots or 32 MiB per owner, 8 MiB per snapshot. Uncached/expired results require a narrower live read; never repeat a write to recover its output. The full original response remains in the saved AAC diagnostic transcript. Ordinary CLI commands keep their existing output; only the AAC model view is compacted. Authored workflow instructions have a separate 32 KiB bound and are rejected at activation if oversized. These byte limits are not model token-window limits.
+
 ## Commands
 
 ```
@@ -62,6 +75,9 @@ lamb
   logout                   Clear stored credentials
   status                   Check if the server is reachable
   whoami                   Show current user and role info
+
+  result
+    read <id>              Read a bounded private AAC result page
 
   aac
     start                  Start a new AAC design session

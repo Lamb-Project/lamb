@@ -1,7 +1,7 @@
 {
   "name": "lamb-default",
-  "version": "1.4.2",
-  "requires": "lamb >= 0.7.2",
+  "version": "1.5.1",
+  "requires": "lamb >= 0.7.4",
   "compatibility": "knowledge-brief",
   "layers": {
     "creator": [
@@ -26,7 +26,7 @@
     "glossary/eu.yaml": "5d53111da3bc0cab96d66afc13e9ee88c0cf5192a67df08af3683ad8d589ef73",
     "glossary/ui-keys.json": "a9296211a52ad932ab0b58c46843820c3c80b940daab8fa526931831701cd5be",
     "layers/admin/guidance.md": "b5506b6e269120de70d0d0b9246522618484f135516cbbdd162b692f27e4a6d6",
-    "layers/creator/guidance.md": "4515da1590b7d777f3d8f8faed87081ee85c7942bc69a81a240cc1247eb6c540",
+    "layers/creator/guidance.md": "d92ead5ca365e03701180597671f0014770c96c250d2f10511b256748b582c49",
     "layers/lti/guidance.md": "7abb65ae6bb8280ebe8cb3cf5193ea53adf6533f50528614692ead3075f0cbbd",
     "layers/org_admin/guidance.md": "8d6b57fa6a970250e086a76da5766aa751f5b0e48f835babf131535d8e613c01",
     "methodology/design-grounding.md": "f6c23c8c9c7ce54156b0568111d5a18c249c7c4eef04825bd1d832947a5903c4",
@@ -35,7 +35,7 @@
     "methodology/design-rubrics.md": "4e856ceb14acf3ab8391b8fe0fef6eff3df57d486607b01cb304deae04af2205",
     "methodology/design-testing.md": "1f2c69f02a6a2515cf63f8f2b3f84128445432e711e4f7735f144a4e8b4db20f",
     "persona.md": "1b0f4fc61c72916a9616f8a3b0626c97b30e710ff34c4fc8fb7d373ae788f770",
-    "routing.yaml": "8aab88cf9e76938e7430a105b3a4ff94036432d49e8e8c7d673ce82fabda6632",
+    "routing.yaml": "e483a45c9f8d730ec0d5fb64490e76a2d89a1c1f26b036e9cf78084fd47d2f07",
     "skills/about_lamb.md": "eac1abcae105e03445dd5bb2e31aa69fcc82ce9646a307ef8622efa8030b2013",
     "skills/chat_with_assistant.md": "2cb8703c13b27b7a62f89cd7692aa33e53b6e1697aeb1318d76073d61c5a84f6",
     "skills/configure_agent.md": "7da8ccda54e24e038cc352eed410b91ca6bc8aec307dc5dd224adece85e16ab8",

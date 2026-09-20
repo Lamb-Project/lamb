@@ -666,6 +666,19 @@
           "is_flag": false
         },
         {
+          "name": "moodle_course_id",
+          "kind": "TyperOption",
+          "opts": [
+            "--moodle-course-id"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<IntRange x>=1>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
           "name": "output",
           "kind": "TyperOption",
           "opts": [
@@ -727,6 +740,19 @@
           "kind": "TyperOption",
           "opts": [
             "--content"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "moodle_course_id",
+          "kind": "TyperOption",
+          "opts": [
+            "--moodle-course-id"
           ],
           "secondary_opts": [],
           "required": false,
@@ -1133,6 +1159,7 @@
           "name": "file_path",
           "kind": "TyperOption",
           "opts": [
+            "--file-reference",
             "--file-path"
           ],
           "secondary_opts": [],
@@ -1380,6 +1407,7 @@
           "name": "file_path",
           "kind": "TyperOption",
           "opts": [
+            "--file-reference",
             "--file-path"
           ],
           "secondary_opts": [],
@@ -6032,6 +6060,289 @@
           "is_flag": true
         }
       ]
+    },
+    "result.read": {
+      "params": [
+        {
+          "name": "result_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "result_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "path",
+          "kind": "TyperOption",
+          "opts": [
+            "--path"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "offset",
+          "kind": "TyperOption",
+          "opts": [
+            "--offset"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "0",
+          "type": "<IntRange x>=0>",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "moodle.forum.activity": {
+      "params": [
+        {
+          "name": "all_courses",
+          "kind": "TyperOption",
+          "opts": [
+            "--all-courses"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "course",
+          "kind": "TyperOption",
+          "opts": [
+            "--course"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "month",
+          "kind": "TyperOption",
+          "opts": [
+            "--month"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "since",
+          "kind": "TyperOption",
+          "opts": [
+            "--since"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "until",
+          "kind": "TyperOption",
+          "opts": [
+            "--until"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "tz",
+          "kind": "TyperOption",
+          "opts": [
+            "--tz"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "UTC",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "max_posts",
+          "kind": "TyperOption",
+          "opts": [
+            "--max-posts"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "200",
+          "type": "<IntRange 1<=x<=200>",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "moodle.news": {
+      "params": [
+        {
+          "name": "all_courses",
+          "kind": "TyperOption",
+          "opts": [
+            "--all-courses"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "course",
+          "kind": "TyperOption",
+          "opts": [
+            "--course"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "month",
+          "kind": "TyperOption",
+          "opts": [
+            "--month"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "since",
+          "kind": "TyperOption",
+          "opts": [
+            "--since"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "until",
+          "kind": "TyperOption",
+          "opts": [
+            "--until"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "tz",
+          "kind": "TyperOption",
+          "opts": [
+            "--tz"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "UTC",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "max_posts",
+          "kind": "TyperOption",
+          "opts": [
+            "--max-posts"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "200",
+          "type": "<IntRange 1<=x<=200>",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "moodle.runs": {
+      "params": []
+    },
+    "moodle.evidence": {
+      "params": [
+        {
+          "name": "result_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "result_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "offset",
+          "kind": "TyperOption",
+          "opts": [
+            "--offset"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "0",
+          "type": "<IntRange x>=0>",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "moodle.continue": {
+      "params": [
+        {
+          "name": "result_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "result_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
     }
   },
   "shell_contracts": {
@@ -6293,12 +6604,12 @@
     "assistant.create": [
       1,
       1,
-      "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format vision no_vision image_generation no_image_generation"
+      "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor file_reference rubric_id rubric_format vision no_vision image_generation no_image_generation"
     ],
     "assistant.update": [
       1,
       1,
-      "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format vision no_vision image_generation no_image_generation"
+      "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor file_reference rubric_id rubric_format vision no_vision image_generation no_image_generation"
     ],
     "assistant.publish": [
       1,
@@ -6464,6 +6775,11 @@
       2,
       2,
       ""
+    ],
+    "result.read": [
+      1,
+      1,
+      "path offset"
     ]
   },
   "dispositions": {
@@ -6591,7 +6907,13 @@
     "learning-scenario.select": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
     "test.cases": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
     "test.case-detail": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
-    "test.delete-case": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations"
+    "test.delete-case": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "result.read": "supported: authenticated private snapshot readback, bounded JSON pages; no local filesystem",
+    "moodle.continue": "supported: shared deterministic Moodle task contract, current instructor access and bounded private evidence; routed through Moodle runtime",
+    "moodle.evidence": "supported: shared deterministic Moodle task contract, current instructor access and bounded private evidence; routed through Moodle runtime",
+    "moodle.forum.activity": "supported: shared deterministic Moodle task contract, current instructor access and bounded private evidence; routed through Moodle runtime",
+    "moodle.news": "supported: shared deterministic Moodle task contract, current instructor access and bounded private evidence; routed through Moodle runtime",
+    "moodle.runs": "supported: shared deterministic Moodle task contract, current instructor access and bounded private evidence; routed through Moodle runtime"
   },
   "shell_only": [
     "assistant.chat",
@@ -6608,5 +6930,12 @@
     "skill.list",
     "skill.load",
     "translate"
-  ]
+  ],
+  "integrated_shell": {
+    "moodle.continue": "moodle.continue",
+    "moodle.evidence": "moodle.evidence",
+    "moodle.forum.activity": "moodle.news",
+    "moodle.news": "moodle.news",
+    "moodle.runs": "moodle.runs"
+  }
 }

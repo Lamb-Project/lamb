@@ -1147,3 +1147,12 @@ async def learning_scenario_selected(ctx, args, kwargs):
 async def learning_scenario_select(ctx, args, kwargs):
     """Select ID|none|default for an idle SESSION_ID; busy/pending sessions refuse changes."""
     return _unwrap(await ctx.http.put('/creator/aac/sessions/'+args[0]+'/learning-scenario', json={'scenario_id':None if args[1]=='none' else args[1]}))
+
+
+@register("result.read")
+async def result_read(ctx: "CommandContext", args: list[str], kwargs: dict):
+    """Read a private result page; use --path JSON_POINTER and follow next_command."""
+    import uuid
+    identity = str(uuid.UUID(args[0]))
+    return await ctx.http.get(f'/creator/aac/results/{identity}', params={
+        'path':kwargs.get('path',''), 'offset':int(kwargs.get('offset',0))})

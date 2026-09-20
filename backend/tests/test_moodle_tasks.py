@@ -228,6 +228,7 @@ def test_shell_cancellation_signals_the_worker_before_more_reads():
     from lamb.aac.liteshell.shell import LiteShell
     started, finished = threading.Event(), threading.Event()
     class Slow:
+        def result_binding(self): return {'generation':1}
         def execute(self, key, params, *, cancel, **kwargs):
             started.set()
             if not cancel.wait(2): raise AssertionError('Cancellation flag not delivered')

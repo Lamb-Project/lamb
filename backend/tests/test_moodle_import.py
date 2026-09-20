@@ -90,7 +90,8 @@ def test_single_file_import_uses_real_owned_upload_route(tmp_path,monkeypatch):
     async def run():
         client=AsyncLambClient.__new__(AsyncLambClient)
         client._client=httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test')
-        source=SimpleNamespace(execute=lambda *args,**kwargs:Download('lesson.txt',b'Evidence','text/plain'))
+        source=SimpleNamespace(execute=lambda *args,**kwargs:Download('lesson.txt',b'Evidence','text/plain'),
+            result_binding=lambda:{'generation':1},context={'course_id':42})
         shell=LiteShell('','','fixture',1,user_id=7,moodle=source);shell._http_client=client
         try:
             result=await shell.execute('moodle import file mf_fixture --single-file',confirmed=True)

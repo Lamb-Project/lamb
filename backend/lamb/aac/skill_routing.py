@@ -107,15 +107,12 @@ class SkillRouting:
             snapshots[cache_key] = {'id': skill['metadata']['id'], 'prompt': skill['prompt'],
                                     'version': digest(skill['prompt']), 'context': context}
         snapshot = snapshots[cache_key]
+        from lamb.aac.result_store import encode, WORKFLOW_BYTES
         if state.get('active_snapshot') == cache_key:
             return f"Skill '{snapshot['id']}' is already active. Continue its recipe; do not restart."
         previous = state.get('skill_id')
-        state.update(skill_id=snapshot['id'], context=context, active_snapshot=cache_key, started=True)
-        if self.session_logger:
-            self.session_logger.log('skill_activated', {'skill_id': snapshot['id'], 'version':snapshot['version'],
-                                                       'reason':reason, 'previous':previous})
         # Activation only supplies a recipe. Its explicit steps replace implicit startup reads.
-        return (f"Active workflow: {snapshot['id']} (version {snapshot['version'][:12]}). "
+        rendered = (f"Active workflow: {snapshot['id']} (version {snapshot['version'][:12]}). "
                 f"This supersedes the previous active workflow {previous or 'none'}. "
                 "Continue the user's task without a new greeting. No action has been executed or approved.\n"
                 + "Selected context (data): " + json.dumps(
@@ -124,8 +121,17 @@ class SkillRouting:
                 + "Use the selected assistant_id wherever the recipe says ASSISTANT_ID. "
                   "If it is supplied, read that assistant directly instead of asking which one or listing the inventory.\n"
                 + snapshot['prompt'])
+        if len(encode(rendered)) > WORKFLOW_BYTES - 512:
+            raise ValueError('Workflow instructions exceed their size limit. Ask the administrator to split this recipe; it was not activated.')
+        state.update(skill_id=snapshot['id'], context=context, active_snapshot=cache_key, started=True)
+        if self.session_logger:
+            self.session_logger.log('skill_activated', {'skill_id': snapshot['id'], 'version':snapshot['version'],
+                                                       'reason':reason, 'previous':previous})
+        return rendered
 
     def required_skill(self, key, args, kwargs):
+        if key == "result.read":
+            return None  # Engine readback also works in sessions pinned to older packs.
         pack = getattr(self, 'pack', None)
         routing = pack.data('routing.yaml') if pack else _legacy_routing
         if self.skill_state is None or key in routing['BOOTSTRAP']:

@@ -20,6 +20,13 @@ class Surface(unittest.TestCase):
         for k in COMMAND_REGISTRY:
             self.assertIn(k,BOOTSTRAP|set(DEFAULT_SKILL))
         for k in m['cli']:
+            if k in m.get('integrated_shell', {}):
+                from lamb.moodle.task_contract import task_specs
+                canonical = m['integrated_shell'][k]
+                self.assertIn(canonical.removeprefix('moodle.'), task_specs())
+                self.assertIn(canonical, DEFAULT_SKILL)
+                self.assertEqual(ActionAuthorizer().check(canonical), 'auto')
+                continue
             if k not in COMMAND_REGISTRY:
                 with self.subTest(command=k),self.assertRaisesRegex(ValueError,'Hold your horses' if k in FILESYSTEM_COMMANDS else 'does not exist and was not executed'):
                     prepare_command('lamb '+k.replace('.',' '))

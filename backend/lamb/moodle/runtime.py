@@ -31,6 +31,28 @@ class MoodleRuntime:
         snap['policy'].require_connection_url(record['base_url'])
         return snap
 
+    def result_binding(self):
+        """Credential-free binding for generic AAC result snapshots."""
+        snap = self.snapshot()
+        policy = snap['policy']
+        return {'generation':snap['generation'], 'base_url':snap['record']['base_url'],
+                'moodle_user_id':snap['record']['moodle_user_id'],
+                'policy':{'enabled':policy.enabled, 'mode':policy.mode,
+                          'write_groups':sorted(policy.write_groups), 'allow_grade_write':policy.allow_grade_write}}
+
+    def validate_result_binding(self, binding, key):
+        expected = {k:v for k,v in binding.items() if k != 'course_id'}
+        if self.result_binding() != expected or key not in self.available():
+            raise PermissionError('Moodle snapshot is no longer accessible; run a fresh read')
+        if binding.get('course_id'):
+            snap = self.snapshot(); record = snap['record']
+            token = (self._cipher or TokenCipher()).decrypt(record['token_encrypted'],
+                organization_id=self.store.organization_id, owner_id=self.store.owner_id, base_url=record['base_url'])
+            with MoodleHTTPClient(record['base_url'], token, readonly=True) as client:
+                MoodleScope(client, record['moodle_user_id']).require_teacher(binding['course_id'])
+        if self.result_binding() != expected:
+            raise PermissionError('Moodle connection changed; snapshot withheld')
+
     def available(self):
         try:
             snap=self.snapshot()

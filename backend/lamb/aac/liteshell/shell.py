@@ -22,6 +22,7 @@ logger = get_logger(__name__, component="AAC")
 # Explicit supported shell surface. Unsupported CLI options fail instead of being ignored.
 # key: (minimum positional arguments, maximum, accepted option names)
 COMMAND_CONTRACTS = {
+    'result.read': (1, 1, 'path offset'),
     'learning-scenario.list': (0, 0, ''),
     'learning-scenario.get': (1, 1, ''),
     'learning-scenario.create': (1, 1, 'content moodle_course_id'),
@@ -235,6 +236,7 @@ class ShellResult:
     error: str | None = None
     command: str = ""
     elapsed_ms: float = 0.0
+    result_binding: dict | None = None
 
     def to_dict(self) -> dict:
         d: dict[str, Any] = {"success": self.success}
@@ -311,6 +313,25 @@ class LiteShell:
         self.history.append(result)
         return result
 
+    def model_result(self, command_str, payload):
+        """Bound the model view while raw ShellResult/audit/transcript stay intact."""
+        from lamb.aac.result_store import ResultStore, compact
+        try:
+            key = prepare_command(command_str)[0]
+        except (ValueError, TypeError):
+            key = 'unknown'
+        origin = {'command': key}
+        if payload.get('skill_loaded'):
+            origin['skill_id'] = payload['skill_loaded']
+        if self.history and self.history[-1].command == command_str and self.history[-1].result_binding:
+            origin['moodle'] = self.history[-1].result_binding
+        try:
+            store = ResultStore(int(self.organization_id), int(self.user_id))
+        except (ValueError, TypeError):
+            store = None
+        return compact(payload, store=store, origin=origin,
+                       trusted_workflow=bool(payload.get('skill_loaded')) or key == 'skill.load')
+
     async def _dispatch(self, command_str: str, *, confirmed: bool = False, review: dict | None = None) -> ShellResult:
         key, args, kwargs, help_requested = prepare_command(command_str, self.allowlist)
         if self.allowed_commands is not None and key not in self.allowed_commands:
@@ -333,6 +354,7 @@ class LiteShell:
                     future.result(timeout=1)
                 except Exception:
                     future.cancel()
+            binding = self.moodle.result_binding()
             try:
                 data=await asyncio.to_thread(self.moodle.execute,key.removeprefix('moodle.'),kwargs,
                     confirmed=confirmed,review=review,cancel=cancel,progress=progress)
@@ -348,7 +370,14 @@ class LiteShell:
                     data=await self._get_http().post(f"/creator/knowledgebases/kb/{kwargs['kb_id']}/files",files={'files':(data.filename,data.content,data.content_type)})
                     if data.get('status')=='error' or data.get('kb_server_available') is False:
                         raise ValueError(data.get('message','Knowledge base import failed'))
-            return ShellResult(success=True,data=data)
+            if self.moodle.result_binding() != binding:
+                raise PermissionError('Moodle connection changed; result withheld. Check the operation status before repeating it.')
+            from lamb.moodle.runtime import SELF_READS
+            from lamb.moodle.task_contract import task_specs
+            unscoped = SELF_READS | task_specs().keys()
+            if key.removeprefix('moodle.') not in unscoped:
+                binding['course_id'] = kwargs.get('course_id') or self.moodle.context.get('course_id')
+            return ShellResult(success=True,data=data,result_binding=binding)
         handler = COMMAND_REGISTRY[key]
         if help_requested:
             return ShellResult(success=True, data={"command": key, "help": handler.__doc__ or "",

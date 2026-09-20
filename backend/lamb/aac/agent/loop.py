@@ -499,7 +499,8 @@ class AgentLoop(SkillRouting):
                 return
             yield {"status": "thinking"}
             tools_enabled = tool_rounds < self.max_tool_rounds and not self.pending_action
-            conversation = self.conversation
+            from lamb.aac.result_store import provider_messages
+            conversation = provider_messages(self.conversation)
             if self.pack and self.skill_state.get('brief'):
                 from lamb.aac.glossary import model_messages
                 conversation = model_messages(conversation, self.skill_state['brief']['glossary'])
@@ -530,8 +531,12 @@ class AgentLoop(SkillRouting):
                     else:
                         result = await self._execute_tool(tc)
                     waiting = waiting or bool(result.get("awaiting_user_confirmation") or result.get("skill_loaded"))
-                    self.conversation.append({"role": "tool", "tool_call_id": tc.id,
-                        "content": json.dumps(result, default=str, ensure_ascii=False)})
+                    try:
+                        model_command = json.loads(tc.function.arguments).get('command', '')
+                        if not isinstance(model_command, str): model_command = ''
+                    except (ValueError, AttributeError, TypeError):
+                        model_command = ''
+                    self.conversation.append(self._result_message(result, model_command, role="tool", tool_call_id=tc.id))
                     yield {"status": "tool_done", "command": command, "success": result.get("success", False),
                            "awaiting_user_confirmation": bool(result.get("awaiting_user_confirmation"))}
                 if tool_rounds >= self.max_tool_rounds:
@@ -559,6 +564,23 @@ class AgentLoop(SkillRouting):
             if self.session_logger:
                 self.session_logger.log_agent_response(text)
             return
+
+    def _result_message(self, payload, command, *, role, tool_call_id=None, prefix='', suffix=''):
+        message = {'role':role, 'content':prefix + json.dumps(payload, default=str, ensure_ascii=False) + suffix}
+        if tool_call_id is not None:
+            message['tool_call_id'] = tool_call_id
+        projector = getattr(self.shell, 'model_result', None)
+        if callable(projector):
+            from lamb.aac.result_store import encode
+            projected = projector(command, payload)
+            message['_aac_model_content'] = prefix + encode(projected).decode() + suffix
+            if projected.get('context_result') and self.session_logger:
+                try: key = prepare_command(command)[0]
+                except (ValueError, TypeError): key = 'unknown'
+                self.session_logger.log('context_result', {'command':key,
+                    'original_bytes':projected['context_result']['original_bytes'],
+                    'model_bytes':len(encode(projected)), 'stored':projected['context_result']['stored']})
+        return message
 
     async def _execute_tool(self, tool_call: Any) -> dict:
         """Execute a tool call, checking authorization policy."""
@@ -752,11 +774,8 @@ class AgentLoop(SkillRouting):
 
             # Inject into conversation: user message + system result
             self.conversation.append({"role": "user", "content": user_message})
-            result_summary = json.dumps(result.to_dict(), default=str, ensure_ascii=False)
-            self.conversation.append({
-                "role": "user",
-                "content": f"[System: User approved. Action executed. Result: {result_summary}]",
-            })
+            self.conversation.append(self._result_message(result.to_dict(), action['command'], role='user',
+                prefix='[System: User approved. Action executed. Result: ', suffix=']'))
             return ""
 
         elif classification == "reject":

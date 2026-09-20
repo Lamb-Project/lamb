@@ -230,6 +230,19 @@ async def get_available_skills(auth: AuthContext = Depends(get_auth_context)):
     return [s for s in list_skills(pack.skills_dir) if s['id'] in allowed]
 
 
+@router.get("/results/{result_id}")
+async def read_tool_result(result_id: str, path: str = '', offset: int = 0,
+                           auth: AuthContext = Depends(get_auth_context)):
+    from lamb.aac.result_reader import read_result
+    import asyncio
+    try:
+        return await asyncio.to_thread(read_result, auth, result_id, path, offset)
+    except PermissionError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
 @router.get("/sessions")
 async def list_sessions(auth: AuthContext = Depends(get_auth_context)):
     """List the current user's AAC sessions."""
