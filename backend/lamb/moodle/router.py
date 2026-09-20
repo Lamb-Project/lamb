@@ -212,7 +212,7 @@ async def document_command(body: DocumentCommandBody, request: Request,
     try:
         if len(body.command) > 4096: raise ValueError('Moodle command is too long')
         spec, params = prepare_moodle(body.command)
-        if spec.key not in document_specs() and spec.key not in {'course.get', 'file.list'}:
+        if spec.key not in document_specs() and spec.key not in {'course.get', 'course.contents', 'file.list'}:
             raise ValueError('Use document listing/import commands in this endpoint')
         runtime = MoodleRuntime(store)
         storage = store_for_runtime(runtime)
@@ -233,9 +233,14 @@ async def document_command(body: DocumentCommandBody, request: Request,
                 review = None
                 if body.confirm and spec.key in IMPORT_KEYS:
                     review = storage.get('reviews', body.confirm)['review']
-                if spec.key == 'import.finish' and body.confirm != params['import_id']:
-                    return {'awaiting_confirmation': True, 'import_id': params['import_id'],
-                            'next': 'Use --confirm IMPORT_ID to finish the previously approved import/replacement.'}
+                if spec.key in {'import.finish', 'folder.finish'}:
+                    identity = params.get('import_id') or params['batch_id']
+                    if spec.key == 'folder.finish':
+                        current = await asyncio.to_thread(runtime.execute, 'folder.status', params)
+                        if current['status'] == 'completed': return current
+                    if body.confirm != identity:
+                        return {'awaiting_confirmation': True, 'id': identity,
+                                'next': 'Use --confirm with this returned ID to finish the previously approved operation.'}
                 result = await shell.execute(body.command, confirmed=body.confirm is not None, review=review)
                 if not result.success: raise ValueError(result.error)
                 return result.data

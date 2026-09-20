@@ -162,7 +162,21 @@ class MoodleRuntime:
             self.context.clear();self.context['generation']=snap['generation']
         if key in document_specs():
             with MoodleHTTPClient(record['base_url'], token, readonly=True) as client:
-                if key in {'page.list', 'book.list'}:
+                if key.startswith('folder.'):
+                    from .folders import listing, inventory, load_batch, status, confirm_folder
+                    if key == 'folder.list':
+                        result = listing(client, record, self.context, params['course_id'])
+                    elif key == 'folder.inspect':
+                        result = inventory(self, client, record, params)[0]
+                    else:
+                        ticket = load_batch(self, params['batch_id'])
+                        MoodleScope(client, record['moodle_user_id']).require_teacher(ticket['review']['source']['course_id'])
+                        current_status = status(self, ticket)
+                        if key == 'folder.status' or current_status['status'] == 'completed': result = current_status
+                        else:
+                            if confirmed is not True: raise PermissionError('Continuing a folder batch requires approval')
+                            result = confirm_folder(self, client, record, token, ticket['params'], ticket['review'], resume=True)
+                elif key in {'page.list', 'book.list'}:
                     from .document_sources import list_activities
                     result = list_activities(client, key.split('.')[0], params['course_id'],
                         record['moodle_user_id'], record['base_url'], self.context)

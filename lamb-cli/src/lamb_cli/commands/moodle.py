@@ -78,7 +78,8 @@ def documents_start():
     typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
 
 
-for _kind in ('page', 'book'):
+document_groups = {}
+for _kind in ('page', 'book', 'folder'):
     def make_listing(kind):
         def listing(course_id: int, session: str = typer.Option(..., '--session')):
             document_run([kind, 'list', str(course_id)], session)
@@ -86,6 +87,7 @@ for _kind in ('page', 'book'):
     group = typer.Typer(no_args_is_help=True)
     group.command('list')(make_listing(_kind))
     app.add_typer(group, name=_kind)
+    document_groups[_kind] = group
 
 
 course_app = typer.Typer(no_args_is_help=True)
@@ -98,6 +100,12 @@ def document_course(course_id: int, session: str = typer.Option(..., '--session'
     document_run(['course', 'get', str(course_id)], session)
 
 
+@course_app.command('contents')
+def document_contents(course_id: int, session: str = typer.Option(..., '--session')):
+    """Inspect course modules and their file context IDs."""
+    document_run(['course', 'contents', str(course_id)], session)
+
+
 file_app = typer.Typer(no_args_is_help=True)
 app.add_typer(file_app, name='file')
 
@@ -105,12 +113,46 @@ app.add_typer(file_app, name='file')
 @file_app.command('list')
 def document_files(contextid: int, component: str = typer.Option(..., '--component'),
                    filearea: str = typer.Option('content', '--filearea'),
+                   filepath: str = typer.Option('/', '--filepath'),
+                   itemid: int = typer.Option(0, '--itemid'),
                    session: str = typer.Option(..., '--session')):
-    document_run(['file', 'list', str(contextid), '--component', component, '--filearea', filearea], session)
+    document_run(['file', 'list', str(contextid), '--component', component, '--filearea', filearea,
+                  '--filepath', filepath, '--itemid', str(itemid)], session)
 
 
 import_app = typer.Typer(no_args_is_help=True)
 app.add_typer(import_app, name='import')
+
+
+def folder_selection(kind, source_ref, path, exclude):
+    tokens = [*kind, source_ref, '--path', path]
+    for value in exclude: tokens += ['--exclude', value]
+    return tokens
+
+
+@document_groups['folder'].command('inspect')
+def inspect_folder(source_ref: str, session: str = typer.Option(..., '--session'),
+                   path: str = typer.Option('/', '--path'), exclude: list[str] = typer.Option([], '--exclude')):
+    """Preview a recursive folder selection without downloading file contents."""
+    document_run(folder_selection(['folder', 'inspect'], source_ref, path, exclude), session)
+
+
+@import_app.command('folder')
+def import_folder(source_ref: str, kb_id: int = typer.Argument(...), to: str = typer.Option(..., '--to'),
+                  session: str = typer.Option(..., '--session'), path: str = typer.Option('/', '--path'),
+                  exclude: list[str] = typer.Option([], '--exclude'), confirm: Optional[str] = typer.Option(None, '--confirm')):
+    """Review and import a folder tree to one KB. Confirm the returned review ID once."""
+    document_run(folder_selection(['import', 'folder'], source_ref, path, exclude) + ['--to', to, str(kb_id)], session, confirm)
+
+
+@document_groups['folder'].command('status')
+def folder_status(batch_id: str, session: str = typer.Option(..., '--session')):
+    document_run(['folder', 'status', batch_id], session)
+
+
+@document_groups['folder'].command('finish')
+def folder_finish(batch_id: str, session: str = typer.Option(..., '--session'), confirm: Optional[str] = typer.Option(None, '--confirm')):
+    document_run(['folder', 'finish', batch_id], session, confirm)
 
 
 for _kind in ('file', 'page', 'book'):

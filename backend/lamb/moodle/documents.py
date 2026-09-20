@@ -6,7 +6,7 @@ import io
 import uuid
 import zipfile
 from pathlib import PurePosixPath
-from urllib.parse import urlsplit, urlunsplit, unquote
+from urllib.parse import urlsplit, urlunsplit, unquote, quote, parse_qsl
 import httpx
 from moodle_cli.services.base import BaseService
 
@@ -66,7 +66,11 @@ def download_file(base_url, token, item, *, single_file):
     base=urlsplit(base_url);url=urlsplit(item['url'])
     path=unquote(url.path)
     prefix=base.path.rstrip('/')
-    if (url.scheme!=base.scheme or url.netloc!=base.netloc or url.query or url.fragment
+    query = parse_qsl(url.query, keep_blank_values=True)
+    # Course exports add this presentation hint to Folder files. It does not
+    # select different content; strip it, while rejecting every other query.
+    allowed_query = not url.query or query in [[('forcedownload', '0')], [('forcedownload', '1')]]
+    if (url.scheme!=base.scheme or url.netloc!=base.netloc or not allowed_query or url.fragment
             or '\\' in path or any(p in {'.','..'} for p in path.split('/'))):
         raise PermissionError('Moodle file URL is outside the configured source')
     if path.startswith(prefix+'/pluginfile.php/'):
@@ -82,7 +86,7 @@ def download_file(base_url, token, item, *, single_file):
         raise ValueError('Single-file imports accept UTF-8 txt/md/json/html. KB imports also accept pdf/docx/pptx/xlsx/csv/epub; audio, zip and xml are unavailable.')
     if item.get('filesize',0)>MAX_BYTES:
         raise ValueError('Moodle import limit is 10 MiB')
-    endpoint=urlunsplit((base.scheme,base.netloc,path,'',''))
+    endpoint=urlunsplit((base.scheme,base.netloc,quote(path, safe='/'),'',''))
     try:
         with httpx.Client(timeout=httpx.Timeout(60,connect=10),follow_redirects=False) as client:
             # Moodle required_param accepts form fields. Never put a credential

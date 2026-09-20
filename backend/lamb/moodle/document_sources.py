@@ -94,6 +94,12 @@ def resolve_source(client, base_url, owner_moodle_id, context, kind, ref=None, s
     if not proof or (not saved and proof['course_id'] != context.get('course_id')):
         raise PermissionError('List this source in the selected instructor course and this conversation before importing')
     course = MoodleScope(client, owner_moodle_id).require_teacher(proof['course_id'])
+    if kind == 'folder_file':
+        from .folders import folder_files
+        _, files = folder_files(client, base_url, owner_moodle_id, proof)
+        found = next((f for f in files if f['source_path'] == proof['source_path']), None)
+        if not found: raise PermissionError('Moodle folder file disappeared or is no longer accessible')
+        return found, None
     if kind == 'file':
         from .scoped_reads import execute_scoped_read
         fresh_context = dict(context, course_id=course)
@@ -119,12 +125,17 @@ def materialize(proof, raw, base_url, token, single_file):
     """Return a download, private originals and losses; never return these to AAC."""
     kind = proof['kind']
     originals, losses = {}, {}
-    if kind == 'file':
+    if kind in {'file', 'folder_file'}:
         download = download_file(base_url, token, proof['file'], single_file=single_file)
         originals[download.filename] = download.content
         if PurePosixPath(download.filename).suffix.lower() == '.html':
             text, losses = convert_html(download.content.decode('utf-8'), proof['source_url'])
             download = Download(PurePosixPath(download.filename).stem + '.md', text.encode(), 'text/markdown')
+        if kind == 'folder_file':
+            # Preserve stable, distinct destination names for duplicate basenames.
+            path = PurePosixPath(download.filename)
+            name = path.stem[:120] + '-' + digest([proof['module_id'], proof['source_path']])[:12] + path.suffix
+            download = Download(name, download.content, download.content_type)
     elif kind == 'page':
         originals['original.html'] = raw.encode()
         text, losses = convert_html(raw, proof['source_url'])

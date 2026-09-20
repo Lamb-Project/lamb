@@ -333,12 +333,7 @@
       "moodle.import.list",
       "moodle.import.check",
       "moodle.import.refresh",
-      "moodle.import.finish",
-      "moodle.folder.list",
-      "moodle.folder.inspect",
-      "moodle.folder.status",
-      "moodle.folder.finish",
-      "moodle.import.folder"
+      "moodle.import.finish"
     ],
     "moodle-assessment-draft": [
       "moodle.assign.grade",
@@ -543,12 +538,7 @@
     "moodle.import.list": "moodle-course-documents",
     "moodle.import.check": "moodle-course-documents",
     "moodle.import.refresh": "moodle-course-documents",
-    "moodle.import.finish": "moodle-course-documents",
-    "moodle.folder.list": "moodle-course-documents",
-    "moodle.folder.inspect": "moodle-course-documents",
-    "moodle.folder.status": "moodle-course-documents",
-    "moodle.folder.finish": "moodle-course-documents",
-    "moodle.import.folder": "moodle-course-documents"
+    "moodle.import.finish": "moodle-course-documents"
   },
   "USER_ROUTING": {
     "negative": "\\b(don't|do not|no|not|never|another|different|otro|otra|altre|altra)\\b",
@@ -634,7 +624,7 @@
       },
       {
         "skill": "about-lamb",
-        "pattern": "\\b(how should i design|when should i use|single file or|should i use a rubric|como disenar|cuando usar|fitxer o|com dissenyar|quan conv[e\u00e9]|quin tipus de)\\b",
+        "pattern": "\\b(how should i design|when should i use|single file or|should i use a rubric|como disenar|cuando usar|fitxer o|com dissenyar|quan conv[eé]|quin tipus de)\\b",
         "priority": 1
       },
       {

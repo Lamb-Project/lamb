@@ -50,6 +50,10 @@ def resolve(runtime, client, record, kind, params):
 
 def prepared(runtime, client, record, token, key, params):
     source, raw, destination, previous = resolve(runtime, client, record, key.split('.')[1], params)
+    return prepared_source(runtime, record, token, key, params, source, raw, destination, previous)
+
+
+def prepared_source(runtime, record, token, key, params, source, raw, destination, previous=None):
     download, originals, losses = materialize(source, raw, record['base_url'], token, destination['single_file'])
     source_hash = digest({name: digest(body) for name, body in sorted(originals.items())})
     conversion_hash = digest(download.content)
@@ -78,11 +82,17 @@ def prepared(runtime, client, record, token, key, params):
 
 
 def prepare(runtime, client, record, token, key, params):
+    if key == 'import.folder':
+        from .folders import prepare_folder
+        return prepare_folder(runtime, client, record, token, params)
     data = prepared(runtime, client, record, token, key, params)
     return store_for_runtime(runtime).review(data)
 
 
 def confirm(runtime, client, record, token, key, params, review):
+    if key == 'import.folder':
+        from .folders import confirm_folder
+        return confirm_folder(runtime, client, record, token, params, review)
     if not review: raise PermissionError('Review the document, conversion and size before confirming an import')
     store = store_for_runtime(runtime)
     approved = store.consume(review, session_scope(runtime.context), runtime.result_binding())
@@ -134,4 +144,10 @@ def check(runtime, client, record, token, params):
 
 
 def public_receipt(receipt):
-    return {k: receipt.get(k) for k in ('import_id', 'status', 'imported_at', 'revision', 'review', 'destination', 'result')}
+    result = {k: receipt.get(k) for k in ('import_id', 'status', 'imported_at', 'revision', 'review', 'destination', 'result')}
+    if receipt.get('status') == 'completed' and receipt.get('destination', {}).get('kb_id'):
+        # The original upload response said processing/zero documents. It is
+        # historical transport data, not the current completed ingestion state.
+        result['result'] = dict(receipt.get('result', {}), status='completed', job_status='completed', message='Ingestion completed')
+        result['result'].pop('document_count', None)
+    return result

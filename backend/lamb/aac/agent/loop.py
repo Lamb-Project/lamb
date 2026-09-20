@@ -651,6 +651,13 @@ class AgentLoop(SkillRouting):
                     "error": "An action is already awaiting confirmation"}
         if policy == "ask":
             review = None
+            if action_key == 'moodle.folder.finish':
+                import shlex
+                current = await self.shell.execute('moodle folder status ' + shlex.quote(parsed_kwargs['batch_id']))
+                if not current.success or current.data.get('status') == 'completed':
+                    # A completed batch has no remaining write to authorize.
+                    self._record_audit(command, action_key, current.success, current.elapsed_ms, current)
+                    return dict(current.to_dict(), action_executed=False)
             if action_key == "moodle.assign.grade":
                 import asyncio
                 try:

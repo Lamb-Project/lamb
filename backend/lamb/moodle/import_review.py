@@ -34,6 +34,26 @@ def render_review(review, language):
     lines = [f"{l[0]}: {source['title']}", source['source_url'],
              f"{l[1]}: {source['course_id']} / {source['module_id']}",
              f"{l[2]}: {l[3] if dest['single_file'] else l[4] + ' ' + str(dest['kb_id'])}"]
+    if review.get('kind') == 'folder':
+        words = {
+            'en': ('Files to import', 'Skipped files', 'One approval covers the listed files, including subfolders.'),
+            'es': ('Archivos para importar', 'Archivos excluidos', 'Una aprobación cubre los archivos indicados, incluidas las subcarpetas.'),
+            'ca': ('Fitxers per importar', 'Fitxers exclosos', 'Una aprovació cobreix els fitxers indicats, incloses les subcarpetes.'),
+            'eu': ('Inportatzeko fitxategiak', 'Baztertutako fitxategiak', 'Onarpen bakarrak zerrendatutako fitxategiak hartzen ditu, azpikarpetak barne.'),
+        }.get(language, ('Files to import', 'Skipped files', 'One approval covers the listed files, including subfolders.'))
+        lines += [f"{words[0]}: {review['file_count']}", f"{l[5]}: {review['bytes']} bytes"]
+        for file in review['files']:
+            losses = file['conversion_losses']
+            lines.append(f"- {file['path']} ({file['bytes']} bytes; {l[8]}: {losses.get('images', 0) + losses.get('media', 0)}; {l[9]}: {losses.get('complex_tables', 0)})")
+        lines.append(f"{words[1]}: {len(review['skipped'])}")
+        reasons = dict(zip(('excluded_by_user', 'unsupported_format', 'external_repository_file', 'over_10_MiB'), {
+            'en': ('excluded by you', 'unsupported format', 'external repository link', 'over 10 MiB'),
+            'es': ('excluido por ti', 'formato no compatible', 'enlace a repositorio externo', 'supera 10 MiB'),
+            'ca': ('exclòs per tu', 'format no compatible', 'enllaç a un repositori extern', 'supera 10 MiB'),
+            'eu': ('zuk baztertua', 'formatu onartugabea', 'kanpoko biltegirako esteka', '10 MiB baino gehiago'),
+        }.get(language, ('excluded by you', 'unsupported format', 'external repository link', 'over 10 MiB'))))
+        lines += [f"- {file['path']}: {reasons.get(file['reason'], file['reason'])}" for file in review['skipped']]
+        return '\n'.join(lines + [l[12], words[2]])
     if review.get('replacement_of'): lines.append(l[11])
     if 'characters' in review:
         lines += [f"{l[5]}: {review['characters']} {l[6]}, ~{review['estimated_tokens']} {l[7]}", l[13]]

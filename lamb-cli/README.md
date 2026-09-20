@@ -348,3 +348,24 @@ Single-file reviews show characters and estimated tokens (UTF-8 bytes divided by
 Receipts record source links, identifiers, timestamps and hashes. A normal `check` compares metadata without downloading file bodies; equal metadata is not proof of equal content. `--verify-content` downloads and hashes explicitly. Re-import is always confirmed. Single-file references stay stable. KB replacements keep the old version until the new job succeeds. If ingestion remains in progress, run `lamb moodle import finish IMPORT_ID --session SESSION_ID`, then approve with `--confirm IMPORT_ID`. This resumes the recorded job without a second upload. Interrupted uploads without a returned job remain `outcome_unknown` and require destination inspection; automatic retries do not upload again.
 
 Private originals, receipts and revisions use at most 256 MiB per creator. An administrator must archive older imports when this quota is reached. They are not published through `/static` and do not enter AAC conversation history. The KB file view and retrieval citations link to the source Moodle activity; opening it requires your Moodle browser login.
+
+
+### Moodle Folders and subfolders
+
+A folder import targets one owned KB. The server inventories the entire subtree, prepares one exact review, then imports each supported file after approval. Source paths remain distinct even when basenames match. No local filesystem is involved.
+
+```sh
+lamb moodle documents start
+lamb moodle folder list 12 --session SESSION
+lamb moodle folder inspect FOLDER_REF --exclude /archive/ --session SESSION
+lamb moodle import folder FOLDER_REF --exclude /archive/ --to kb 34 --session SESSION
+# Read the review, then repeat with its returned REVIEW_ID.
+lamb moodle import folder FOLDER_REF --exclude /archive/ --to kb 34 --session SESSION --confirm REVIEW_ID
+lamb moodle folder status BATCH_ID --session SESSION
+```
+
+`--path /Unit/` selects a subtree; repeat `--exclude` for absolute Moodle file paths or subfolders ending in `/`. An unknown exclusion is an error. The review lists unsupported, externally linked and oversized files as skipped. Batches accept 1-20 supported files, at most 20 MiB total and 10 MiB per file. Inspection accepts at most 100 files; select smaller subfolders when necessary. Conversion failures stop preparation before any KB upload. The source is rechecked before approval is executed.
+
+A partial result lists completed, processing, failed, unknown and not-started files. `lamb moodle folder finish BATCH_ID --session SESSION --confirm BATCH_ID` explicitly continues the approved set after fresh checks. Completed files are not uploaded again; uncertain uploads require inspection. Keep the session and batch IDs for recovery. Running a new `import folder` creates a new batch, not an idempotent retry. Use individual returned import IDs with `import check`/`refresh` for later source updates; no automatic folder synchronization runs.
+
+Individual nested-file inspection is also available through `lamb moodle file list CONTEXT_ID --component mod_folder --filepath '/Unit 1/' --itemid 0 --session SESSION`. Course/module context IDs come from `lamb moodle course contents COURSE_ID --session SESSION`.

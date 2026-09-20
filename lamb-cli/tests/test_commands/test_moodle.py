@@ -72,3 +72,26 @@ def test_document_session_is_required_and_start_is_authenticated():
         result = runner.invoke(app, ['moodle', 'documents', 'start'])
         assert result.exit_code == 0, result.output
         client.return_value.__enter__.return_value.post.assert_called_once_with('/creator/moodle/documents/sessions')
+
+
+def test_folder_and_nested_file_options_reach_shared_backend_unchanged():
+    examples = [
+        (['folder', 'list', '10'], ['folder', 'list', '10']),
+        (['course', 'contents', '10'], ['course', 'contents', '10']),
+        (['file', 'list', '22', '--component', 'mod_folder', '--filepath', '/Unit 1/deep/', '--itemid', '0'],
+         ['file', 'list', '22', '--component', 'mod_folder', '--filearea', 'content', '--filepath', '/Unit 1/deep/', '--itemid', '0']),
+        (['folder', 'inspect', 'ref', '--path', '/Unit 1/', '--exclude', '/Unit 1/old/'],
+         ['folder', 'inspect', 'ref', '--path', '/Unit 1/', '--exclude', '/Unit 1/old/']),
+        (['import', 'folder', 'ref', '--to', 'kb', '12', '--exclude', '/a.md', '--exclude', '/b.md', '--confirm', 'review'],
+         ['import', 'folder', 'ref', '--path', '/', '--exclude', '/a.md', '--exclude', '/b.md', '--to', 'kb', '12']),
+        (['folder', 'status', 'batch'], ['folder', 'status', 'batch']),
+        (['folder', 'finish', 'batch', '--confirm', 'batch'], ['folder', 'finish', 'batch'])]
+    for args, expected in examples:
+        with patch('lamb_cli.commands.moodle.get_client') as client:
+            client.return_value.__enter__.return_value.post.return_value = {}
+            result = runner.invoke(app, ['moodle', *args, '--session', 'owned'])
+            assert result.exit_code == 0, result.output
+            body = client.return_value.__enter__.return_value.post.call_args.kwargs['json']
+            assert shlex.split(body['command']) == ['moodle', *expected]
+            assert body['session'] == 'owned'
+            assert body['confirm'] == (args[args.index('--confirm') + 1] if '--confirm' in args else None)

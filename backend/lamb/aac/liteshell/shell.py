@@ -364,6 +364,9 @@ class LiteShell:
                 cancel.set()
                 raise
             from lamb.moodle.imports import PreparedImport, ResumeImport
+            from lamb.moodle.folders import PreparedFolder, deliver_folder
+            if isinstance(data, PreparedFolder):
+                data = await deliver_folder(data, self._get_http(), self.moodle, self.user_id)
             if isinstance(data, (PreparedImport, ResumeImport)):
                 from lamb.moodle.import_delivery import deliver
                 data = await deliver(data, self._get_http(), self.moodle, self.user_id)
