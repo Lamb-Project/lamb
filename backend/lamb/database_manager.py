@@ -2226,7 +2226,7 @@ class LambDatabaseManager:
                     return False
                 current = json_lib.loads(row[0]) if row[0] else {}
                 updated = dict(user_config)
-                for key in ('moodle_connection', 'moodle_connection_generation'):
+                for key in ('moodle_connection', 'moodle_connection_generation', 'aac_approval_preferences'):
                     updated.pop(key, None)
                     if key in current:
                         updated[key] = current[key]

@@ -108,7 +108,7 @@ def build(runtime, client, record, token, params, saved=None):
     destination = {'single_file': False, 'kb_id': params['kb_id']}
     children, size = [], 0
     for source in sources:
-        child = prepared_source(runtime, record, token, 'import.folder-file', {}, source, None, destination)
+        child = prepared_source(runtime, record, token, 'import.folder-file', params, source, None, destination)
         size += sum(len(ImportStore.decode(v)) for v in child['originals'].values())
         if size > MAX_BATCH_BYTES: raise ValueError('Downloaded folder exceeds 20 MiB; nothing imported')
         children.append(child)
@@ -148,6 +148,9 @@ def confirm_folder(runtime, client, record, token, params, review, resume=False)
     if not ticket.get('approved') and review['expires_at'] < time.time():
         raise PermissionError('Folder review expired; inspect it again')
     fresh, children = build(runtime, client, record, token, params, saved=review['source'] if resume else None)
+    for old, current in zip(review.get('files', []), fresh.get('files', [])):
+        if 'ingestion' not in old:
+            current.pop('ingestion', None)
     if fresh != {k:v for k,v in review.items() if k not in {'review_id','expires_at'}}:
         raise PermissionError('Folder contents changed after review; no further files imported. Review again.')
     for child, key in zip(children, ticket['children']):

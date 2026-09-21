@@ -5,7 +5,8 @@
     import MoodleEvidence from '$lib/components/MoodleEvidence.svelte';
     import { createSession } from '$lib/services/aacService';
     import { showSession, sidebarBusy } from '$lib/stores/aacStore.svelte';
-    import { moodleStatus, connectMoodleQrImage, connectMoodle, disconnectMoodle } from '$lib/services/moodleService';
+    import { moodleStatus, connectMoodleQrImage, connectMoodle, disconnectMoodle, setApprovalPreferences } from '$lib/services/moodleService';
+    import { locale } from '$lib/i18n';
     import { clearWorkspaceDirty } from '$lib/services/frontendManage';
     let status = $state(null);
     let method = $state('passport');
@@ -15,6 +16,25 @@
     let busy = $state(false);
     let error = $state('');
     let notice = $state('');
+    let savingPreferences = $state(false);
+    const approvalLabels = {
+        en: ['LAMB AGENT approvals', 'Advanced mode', 'Show the exact command as well as the explanation when an action needs approval. This is a personal setting for all LAMB AGENT conversations. Changes apply to the next approval message.', 'Read-only Moodle commands run without asking for approval. Changes to Moodle or LAMB still require confirmation.', 'Preference saved.'],
+        es: ['Aprobaciones de LAMB AGENT', 'Modo avanzado', 'Mostrar el comando exacto junto a la explicación cuando una acción requiere aprobación. Es una preferencia personal para todas las conversaciones de LAMB AGENT. Se aplica al siguiente mensaje de aprobación.', 'Las consultas de solo lectura en Moodle se ejecutan sin pedir aprobación. Los cambios en Moodle o LAMB siguen requiriendo confirmación.', 'Preferencia guardada.'],
+        ca: ['Aprovacions de LAMB AGENT', 'Mode avançat', 'Mostrar l’ordre exacta al costat de l’explicació quan una acció requereix aprovació. És una preferència personal per a totes les converses de LAMB AGENT. S’aplica al següent missatge d’aprovació.', 'Les consultes de només lectura a Moodle s’executen sense demanar aprovació. Els canvis a Moodle o LAMB continuen requerint confirmació.', 'Preferència desada.'],
+        eu: ['LAMB AGENTen onarpenak', 'Modu aurreratua', 'Erakutsi komando zehatza azalpenarekin batera ekintza batek onarpena behar duenean. LAMB AGENTeko elkarrizketa guztietarako ezarpen pertsonala da. Hurrengo onarpen-mezuan aplikatuko da.', 'Moodleko irakurketa-komandoak onarpenik eskatu gabe exekutatzen dira. Moodle edo LAMB aldatzeko berrespena behar da.', 'Ezarpena gordeta.']
+    };
+    let approvalText = $derived(approvalLabels[$locale] || approvalLabels.en);
+
+    async function saveAdvanced(event) {
+        const input = event.currentTarget;
+        const prior = status.approval_preferences?.advanced_mode === true;
+        savingPreferences = true; error = ''; notice = '';
+        try {
+            status.approval_preferences = await setApprovalPreferences(input.checked);
+            notice = approvalText[4];
+        } catch (e) { input.checked = prior; error = e.message; }
+        finally { savingPreferences = false; }
+    }
 
     async function load() { status = await moodleStatus(); }
     onMount(() => {load().catch(e => error=e.message);});
@@ -63,6 +83,13 @@
         </aside>
         <div class="card">
             <h2>Your connection</h2>
+            <fieldset class="approval-settings">
+                <legend>{approvalText[0]}</legend>
+                <label class="toggle"><input type="checkbox" checked={status.approval_preferences?.advanced_mode === true}
+                    disabled={savingPreferences} onchange={saveAdvanced} aria-describedby="approval-help" />{approvalText[1]}</label>
+                <p id="approval-help">{approvalText[2]}</p>
+                <p>{approvalText[3]}</p>
+            </fieldset>
             {#if !status.settings.enabled}
                 <p>The Moodle connector is disabled. Your organization administrator can enable it.</p>
             {:else}
@@ -121,6 +148,8 @@
     .card{border:1px solid #cbd5e1;border-radius:.6rem;padding:1.25rem;margin:1.5rem 0;background:white}
     aside{background:#eff6ff;border-left:4px solid #2563eb;padding:.5rem 1rem;margin:1rem 0}
     label{display:flex;flex-direction:column;gap:.4rem;margin:1rem 0;font-weight:500}
+    .approval-settings{margin:1rem 0;padding:1rem;border:1px solid #cbd5e1;border-radius:.4rem}
+    .approval-settings legend{font-weight:600}.toggle{flex-direction:row;align-items:center;gap:.7rem;min-height:44px}
     input:not([type=checkbox]),select{border:1px solid #94a3b8;border-radius:.3rem;padding:.6rem;width:100%;background:white}
     button{background:#173f64;color:white;padding:.6rem 1rem;border-radius:.35rem;min-height:44px;margin:.3rem 0}button.secondary{background:white;color:#173f64;border:1px solid #173f64}button:disabled{opacity:.55}
     .error{color:#991b1b;background:#fee2e2;padding:1rem}.notice{color:#166534;background:#dcfce7;padding:1rem}

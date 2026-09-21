@@ -3,6 +3,7 @@ export const moodleStatus = () => apiJson('/moodle/connection');
 export const moodleResult = id => apiJson(`/moodle/results/${encodeURIComponent(id)}`);
 export const connectMoodle = credentials => apiJson('/moodle/connection', {method:'POST', body:JSON.stringify(credentials)});
 export const disconnectMoodle = () => apiJson('/moodle/connection', {method:'DELETE'});
+export const setApprovalPreferences = advanced_mode => apiJson('/moodle/approval-preferences', {method:'PUT', body:JSON.stringify({advanced_mode})});
 const settingsUrl = org => '/admin/org-admin/settings/moodle' + (org ? `?org=${encodeURIComponent(org)}` : '');
 export const getMoodleSettings = org => apiJson(settingsUrl(org));
 export const configureMoodle = (settings, org = null) => apiJson(settingsUrl(org), {method:'PUT', body:JSON.stringify(settings)});

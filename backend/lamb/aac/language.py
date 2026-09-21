@@ -72,17 +72,9 @@ def confirmation_fallback(agent):
         'eu': ('Ekintza hau zure onarpenaren zain dago; ez da exekutatu:', 'Ekintza onartzen duzu? Erantzun bai edo ez.'),
     }
     intro, question = messages.get(code, messages['en'])
-    command = agent.pending_action.get('command', '')
-    review = agent.pending_action.get('moodle_review')
-    if review:
-        import json
-        if review.get('review_id') and review.get('source'):
-            from lamb.moodle.import_review import render_review
-            command = render_review(review, code) + '\n\n' + command
-        else:
-            command = json.dumps(review, ensure_ascii=False, indent=2) + '\n\n' + command
-    fence = '`' * max(3, max((len(part) for part in re.findall(r'`+', command)), default=0) + 1)
-    return f'{intro}\n\n{fence}text\n{command}\n{fence}\n\n{question}'
+    from lamb.aac.approvals import render_details
+    details = render_details(agent.pending_action, code, getattr(agent, 'approval_preferences', {}).get('advanced_mode') is True)
+    return f'{intro}\n\n{details}\n\n{question}'
 
 
 def translation_confirmation(agent):

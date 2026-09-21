@@ -34,6 +34,17 @@ def render_review(review, language):
     lines = [f"{l[0]}: {source['title']}", source['source_url'],
              f"{l[1]}: {source['course_id']} / {source['module_id']}",
              f"{l[2]}: {l[3] if dest['single_file'] else l[4] + ' ' + str(dest['kb_id'])}"]
+    def chunking(item):
+        config = item.get('ingestion')
+        if not config: return ''
+        words = {'en': ('Chunk size', 'overlap', 'characters', 'tokens'),
+                 'es': ('Tamaño de fragmento', 'solapamiento', 'caracteres', 'tokens'),
+                 'ca': ('Mida del fragment', 'solapament', 'caràcters', 'tokens'),
+                 'eu': ('Zatiaren tamaina', 'gainjartzea', 'karaktere', 'token')}.get(language)
+        words = words or ('Chunk size', 'overlap', 'characters', 'tokens')
+        units = words[3] if config['units'] == 'tokens' else words[2]
+        return f"{words[0]}: {config['chunk_size']} {units}; {words[1]}: {config['chunk_overlap']} {units}. {config['splitter_type']} ({config['plugin_name']})"
+    if chunking(review): lines.append(chunking(review))
     if review.get('kind') == 'folder':
         words = {
             'en': ('Files to import', 'Skipped files', 'One approval covers the listed files, including subfolders.'),
@@ -45,6 +56,7 @@ def render_review(review, language):
         for file in review['files']:
             losses = file['conversion_losses']
             lines.append(f"- {file['path']} ({file['bytes']} bytes; {l[8]}: {losses.get('images', 0) + losses.get('media', 0)}; {l[9]}: {sum(v for k, v in losses.items() if k not in {'images', 'media'})})")
+            if chunking(file): lines.append('  ' + chunking(file))
         lines.append(f"{words[1]}: {len(review['skipped'])}")
         reasons = dict(zip(('excluded_by_user', 'unsupported_format', 'external_repository_file', 'over_10_MiB'), {
             'en': ('excluded by you', 'unsupported format', 'external repository link', 'over 10 MiB'),

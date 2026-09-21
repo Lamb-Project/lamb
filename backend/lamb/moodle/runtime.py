@@ -285,6 +285,7 @@ def attach_to_agent(agent, store):
         access="forum writes require explicit approval" if facts["forum_write"] else "read-only"
         if facts["grade_write"]: access += "; grade writes require submission/proposal review and explicit approval"
         line=f"Moodle: {facts['base_url']} as {facts['username']}, {access}. AAC driver provider: {facts['provider']}; model: {agent.model}. Student names, posts and grades sent to this driver reach that provider. A hosted provider receives them off premises; a local deployment keeps them on premises."
+        line += ' Read-only Moodle commands are automatically authorized: perform the relevant reads for the user request without asking approval. Clarify only genuinely missing or ambiguous scope. Imports are LAMB writes and still require the application approval, even with read-only Moodle access. Never add a preliminary approval menu.'
         references=[spec.reference() for spec in (*task_specs().values(), *document_specs().values())]
         references += ['moodle course list: list your enrolled courses',
                        'Raw Moodle operations are documented in the loaded workflow. Do not invent commands or discover a workflow by trial and error.']

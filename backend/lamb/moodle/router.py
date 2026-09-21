@@ -17,6 +17,7 @@ class TaskBody(BaseModel):
 
 
 PRIVACY_NOTICE = ('Student names, posts and grades reach the AAC driver model, the organization’s configured provider. '
+                  'Proposed action details also reach the organization’s small/fast model to explain approval requests. '
                   'On a local provider they stay on premises; on a hosted one they leave.')
 
 @lru_cache(maxsize=1)
@@ -42,6 +43,19 @@ class SettingsBody(BaseModel):
     mode: str = 'readonly'
     write_groups: list[str] = []
     allow_grade_write: StrictBool = False
+
+
+class ApprovalPreferencesBody(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    advanced_mode: StrictBool
+
+
+@router.put('/approval-preferences')
+def approval_preferences(body: ApprovalPreferencesBody, store=Depends(store_for)):
+    try:
+        return store.set_approval_preferences(body.advanced_mode)
+    except (MoodleConfigurationError, PermissionError, RuntimeError) as exc:
+        translate_error(exc)
 
 
 def translate_error(exc):
@@ -79,6 +93,7 @@ def connection_status(auth: AuthContext = Depends(get_auth_context), store=Depen
         return {'connected': connected, 'connection': public_connection(record) if record else None,
                 'settings': settings_view(policy), 'can_configure': bool(auth.is_system_admin or auth.is_org_admin),
                 'effective_driver': driver,
+                'approval_preferences': store.approval_preferences(),
                 'privacy_notice': PRIVACY_NOTICE}
     except (MoodleConfigurationError, PermissionError, RuntimeError) as exc:
         translate_error(exc)

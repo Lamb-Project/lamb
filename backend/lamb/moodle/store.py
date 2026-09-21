@@ -56,6 +56,21 @@ class ConnectionStore:
             SET user_config=?, updated_at=? WHERE id=? AND organization_id=?''',
             (json.dumps(user), int(time.time()), self.owner_id, self.organization_id))
 
+    def approval_preferences(self):
+        from lamb.aac.preferences import approval_preferences
+        with self.transaction() as connection:
+            user, _ = self._read(connection)
+        return approval_preferences(user)
+
+    def set_approval_preferences(self, advanced_mode):
+        if type(advanced_mode) is not bool:
+            raise ValueError('Advanced mode must be a boolean')
+        with self.transaction(write=True) as connection:
+            user, _ = self._read(connection)
+            user['aac_approval_preferences'] = {'advanced_mode': advanced_mode}
+            self._write_user(connection, user)
+        return {'advanced_mode': advanced_mode}
+
     def save(self, record, *, expected_generation, expected_policy):
         with self.transaction(write=True) as connection:
             user, org = self._read(connection)

@@ -95,3 +95,19 @@ def test_folder_and_nested_file_options_reach_shared_backend_unchanged():
             assert shlex.split(body['command']) == ['moodle', *expected]
             assert body['session'] == 'owned'
             assert body['confirm'] == (args[args.index('--confirm') + 1] if '--confirm' in args else None)
+
+
+def test_ingestion_options_forwarded_for_all_sources_and_refresh():
+    for kind in ('file', 'page', 'book', 'folder', 'refresh'):
+        args = ['import', kind, 'ref'] + ([] if kind == 'refresh' else ['--to', 'kb', '12'])
+        args += ['--chunk-size', '2000', '--chunk-overlap', '0', '--splitter-type', 'TokenTextSplitter']
+        with patch('lamb_cli.commands.moodle.get_client') as client:
+            client.return_value.__enter__.return_value.post.return_value = {}
+            result = runner.invoke(app, ['moodle', *args, '--session', 'owned', '--confirm', 'review'])
+            assert result.exit_code == 0, result.output
+            body = client.return_value.__enter__.return_value.post.call_args.kwargs['json']
+            tokens = shlex.split(body['command'])
+            assert tokens[tokens.index('--chunk-size') + 1] == '2000'
+            assert tokens[tokens.index('--chunk-overlap') + 1] == '0'
+            assert tokens[tokens.index('--splitter-type') + 1] == 'TokenTextSplitter'
+            assert body['confirm'] == 'review' and body['session'] == 'owned'

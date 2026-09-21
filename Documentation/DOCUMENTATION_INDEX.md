@@ -36,6 +36,7 @@ This index helps you find exactly what you need in the LAMB documentation. Start
 | Understand database schema | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §4 Data Architecture |
 | Work with authentication | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §5 Authentication |
 | Configure logging | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §11 Logging |
+| Understand Moodle approval modes and ingestion choices | [moodle-approvals-and-ingestion.md](./moodle-approvals-and-ingestion.md) | Full doc |
 
 ### Work with the Frontend
 
@@ -313,4 +314,3 @@ Browser → Creator Interface API (/creator) → LAMB Core API (/lamb/v1) → Da
 ---
 
 *Last Updated: September 13, 2026*
-

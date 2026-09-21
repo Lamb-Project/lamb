@@ -2,6 +2,16 @@
 from lamb.aac.language import LANGUAGES
 
 
+def approval_preferences(user_config):
+    """Presentation only; malformed/absent preferences use the basic view."""
+    import json
+    try:
+        config = json.loads(user_config) if isinstance(user_config, str) else user_config
+        return {'advanced_mode': (config or {}).get('aac_approval_preferences', {}).get('advanced_mode') is True}
+    except (AttributeError, TypeError, ValueError):
+        return {'advanced_mode': False}
+
+
 def language_code(value):
     if not isinstance(value, str) or value not in LANGUAGES:
         raise ValueError('Language must be en, es, ca or eu')

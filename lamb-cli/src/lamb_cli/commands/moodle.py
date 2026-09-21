@@ -130,6 +130,13 @@ def folder_selection(kind, source_ref, path, exclude):
     return tokens
 
 
+def ingestion_options(chunk_size, chunk_overlap, splitter_type):
+    tokens = []
+    for name, value in [('chunk-size', chunk_size), ('chunk-overlap', chunk_overlap), ('splitter-type', splitter_type)]:
+        if value is not None: tokens += ['--' + name, str(value)]
+    return tokens
+
+
 @document_groups['folder'].command('inspect')
 def inspect_folder(source_ref: str, session: str = typer.Option(..., '--session'),
                    path: str = typer.Option('/', '--path'), exclude: list[str] = typer.Option([], '--exclude')):
@@ -140,9 +147,13 @@ def inspect_folder(source_ref: str, session: str = typer.Option(..., '--session'
 @import_app.command('folder')
 def import_folder(source_ref: str, kb_id: int = typer.Argument(...), to: str = typer.Option(..., '--to'),
                   session: str = typer.Option(..., '--session'), path: str = typer.Option('/', '--path'),
+                  chunk_size: Optional[int] = typer.Option(None, '--chunk-size', min=1),
+                  chunk_overlap: Optional[int] = typer.Option(None, '--chunk-overlap', min=0),
+                  splitter_type: Optional[str] = typer.Option(None, '--splitter-type'),
                   exclude: list[str] = typer.Option([], '--exclude'), confirm: Optional[str] = typer.Option(None, '--confirm')):
     """Review and import a folder tree to one KB. Confirm the returned review ID once."""
-    document_run(folder_selection(['import', 'folder'], source_ref, path, exclude) + ['--to', to, str(kb_id)], session, confirm)
+    document_run(folder_selection(['import', 'folder'], source_ref, path, exclude) + ['--to', to, str(kb_id)]
+                 + ingestion_options(chunk_size, chunk_overlap, splitter_type), session, confirm)
 
 
 @document_groups['folder'].command('status')
@@ -160,13 +171,16 @@ for _kind in ('file', 'page', 'book'):
         def import_source(source_ref: str, kb_id: Optional[int] = typer.Argument(None),
                           to: Optional[str] = typer.Option(None, '--to'),
                           single_file: bool = typer.Option(False, '--single-file'),
+                          chunk_size: Optional[int] = typer.Option(None, '--chunk-size', min=1),
+                          chunk_overlap: Optional[int] = typer.Option(None, '--chunk-overlap', min=0),
+                          splitter_type: Optional[str] = typer.Option(None, '--splitter-type'),
                           session: str = typer.Option(..., '--session'),
                           confirm: Optional[str] = typer.Option(None, '--confirm', help='Review ID returned by the server.')):
             tokens = ['import', kind, source_ref]
             if to: tokens += ['--to', to]
             if kb_id is not None: tokens += [str(kb_id)]
             if single_file: tokens += ['--single-file']
-            document_run(tokens, session, confirm)
+            document_run(tokens + ingestion_options(chunk_size, chunk_overlap, splitter_type), session, confirm)
         return import_source
     import_app.command(_kind)(make_import(_kind))
 
@@ -186,8 +200,11 @@ def import_check(import_id: str, session: str = typer.Option(..., '--session'),
 
 @import_app.command('refresh')
 def import_refresh(import_id: str, session: str = typer.Option(..., '--session'),
+                   chunk_size: Optional[int] = typer.Option(None, '--chunk-size', min=1),
+                   chunk_overlap: Optional[int] = typer.Option(None, '--chunk-overlap', min=0),
+                   splitter_type: Optional[str] = typer.Option(None, '--splitter-type'),
                    confirm: Optional[str] = typer.Option(None, '--confirm')):
-    document_run(['import', 'refresh', import_id], session, confirm)
+    document_run(['import', 'refresh', import_id] + ingestion_options(chunk_size, chunk_overlap, splitter_type), session, confirm)
 
 
 @import_app.command('finish')

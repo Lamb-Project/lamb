@@ -85,3 +85,25 @@ def test_public_user_configuration_redacts_connector_record():
     for value in (raw, json.dumps(raw)):
         assert public_user_config(value) == {'can_share': True}
     assert raw['moodle_connection'] == record()
+
+
+def test_approval_preference_is_personal_strict_and_survives_disconnect(client, stores):
+    c, auth, store = client
+    from lamb.moodle.store import ConnectionStore
+    from lamb.database_manager import LambDatabaseManager
+    db, _ = stores
+    assert c.get('/moodle/connection').json()['approval_preferences'] == {'advanced_mode': False}
+    generation = store.snapshot()['generation']
+    assert c.put('/moodle/approval-preferences', json={'advanced_mode': True}).json() == {'advanced_mode': True}
+    assert store.snapshot()['generation'] == generation
+    assert ConnectionStore(db, 1, 8).approval_preferences() == {'advanced_mode': False}
+    assert ConnectionStore(db, 2, 9).approval_preferences() == {'advanced_mode': False}
+    c.delete('/moodle/connection')
+    assert LambDatabaseManager.update_user_config(db, 7, {'can_share': True})
+    assert c.get('/moodle/connection').json()['approval_preferences'] == {'advanced_mode': True}
+    assert c.put('/moodle/approval-preferences', json={'advanced_mode': 'true'}).status_code == 422
+    assert c.put('/moodle/approval-preferences', json={'advanced_mode': True, 'owner_id': 8}).status_code == 422
+    auth.organization['id'] = 2
+    assert c.put('/moodle/approval-preferences', json={'advanced_mode': False}).status_code == 403
+    c.app.dependency_overrides.clear()
+    assert c.put('/moodle/approval-preferences', json={'advanced_mode': False}).status_code in (401, 403)

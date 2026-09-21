@@ -64,6 +64,9 @@ def prepared(runtime, client, record, token, key, params):
 
 
 def prepared_source(runtime, record, token, key, params, source, raw, destination, previous=None):
+    from .ingestion import configuration
+    ingestion = configuration(params, single_file=destination['single_file'],
+        previous=(previous or {}).get('review', {}).get('ingestion'))
     download, originals, losses = materialize(source, raw, record['base_url'], token, destination['single_file'])
     source_hash = digest({name: digest(body) for name, body in sorted(originals.items())})
     conversion_hash = digest(download.content)
@@ -76,6 +79,11 @@ def prepared_source(runtime, record, token, key, params, source, raw, destinatio
         'conversion_losses': losses, 'conversion_notice': LOSS_NOTICE,
         'hidden_chapters_skipped': source.get('hidden_chapters_skipped', 0),
         'replacement_of': previous['import_id'] if previous else None}
+    if ingestion is not None:
+        from pathlib import PurePosixPath
+        from .documents import CONVERT_TYPES
+        review['ingestion'] = dict(ingestion, plugin_name='markitdown_ingest'
+            if PurePosixPath(download.filename).suffix.lower() in CONVERT_TYPES else 'simple_ingest')
     if text is not None:
         review.update(characters=len(text), estimated_tokens=tokens,
             token_estimate_method='UTF-8 bytes / 3, rounded up; estimate, not the assistant model tokenizer',
@@ -110,6 +118,9 @@ def confirm(runtime, client, record, token, key, params, review):
         raise PermissionError('Import command changed after review')
     fresh = prepared(runtime, client, record, token, key, params)
     expected = {k: v for k, v in review.items() if k not in {'review_id', 'expires_at'}}
+    if 'ingestion' not in expected:
+        # Pre-option pending approvals used the fixed 1000/100 defaults.
+        fresh['review'].pop('ingestion', None)
     if fresh['review'] != expected or fresh['binding'] != approved['binding']:
         raise PermissionError('Moodle source or destination changed after review; nothing imported. Review it again.')
     download = Download(fresh['filename'], store.decode(fresh['content']), fresh['content_type'])

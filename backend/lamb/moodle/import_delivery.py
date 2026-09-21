@@ -175,13 +175,16 @@ async def deliver(prepared, http, runtime, owner_id):
             else:
                 suffix = PurePosixPath(download.filename).suffix.lower()
                 plugin = 'markitdown_ingest' if suffix in CONVERT_TYPES else 'simple_ingest'
+                from .ingestion import configuration, DEFAULTS
+                ingestion = configuration({}, previous=data['review'].get('ingestion'))
                 kid = data['destination']['kb_id']
                 provenance = dict(public_source(data['source']), imported_at=receipt['imported_at'],
                                   source_hash=data['review']['source_hash'], import_id=import_id)
                 result = await http.post(f'/creator/knowledgebases/kb/{kid}/plugin-ingest-file',
                     files={'file': (download.filename, download.content, download.content_type)},
                     data={'plugin_name': plugin, 'citation': data['source']['source_url'],
-                          'moodle_provenance': json.dumps(provenance), 'chunk_size': '1000', 'chunk_overlap': '100'})
+                          'moodle_provenance': json.dumps(provenance),
+                          **{key: str(ingestion[key]) for key in DEFAULTS}})
                 if result.get('status') == 'error' or not result.get('file_registry_id'):
                     raise ValueError('KB did not return an ingestion job. Import outcome is unknown; inspect the KB before retrying.')
                 receipt.update(status='processing', result=result)

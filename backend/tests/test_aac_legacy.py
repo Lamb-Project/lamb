@@ -128,6 +128,7 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         for streaming in [False, True]:
             a,p,s=agent([message(tools=[tool('lamb assistant create two')])],
                          pending_action={'command':'lamb assistant create one','action_key':'assistant.create'})
+            a.approval_preferences={'advanced_mode':True}
             a.skill_state={'ui_language':'es'}
             reply=await turn(a,streaming)
             self.assertIn('Responde sí o no',reply)

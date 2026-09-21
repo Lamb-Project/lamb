@@ -6574,6 +6574,45 @@
           "is_flag": true
         },
         {
+          "name": "chunk_size",
+          "kind": "TyperOption",
+          "opts": [
+            "--chunk-size"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<IntRange x>=1>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "chunk_overlap",
+          "kind": "TyperOption",
+          "opts": [
+            "--chunk-overlap"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<IntRange x>=0>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "splitter_type",
+          "kind": "TyperOption",
+          "opts": [
+            "--splitter-type"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
           "name": "session",
           "kind": "TyperOption",
           "opts": [
@@ -6656,6 +6695,45 @@
           "is_flag": true
         },
         {
+          "name": "chunk_size",
+          "kind": "TyperOption",
+          "opts": [
+            "--chunk-size"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<IntRange x>=1>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "chunk_overlap",
+          "kind": "TyperOption",
+          "opts": [
+            "--chunk-overlap"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<IntRange x>=0>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "splitter_type",
+          "kind": "TyperOption",
+          "opts": [
+            "--splitter-type"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
           "name": "session",
           "kind": "TyperOption",
           "opts": [
@@ -6736,6 +6814,45 @@
           "type": "BOOL",
           "nargs": 1,
           "is_flag": true
+        },
+        {
+          "name": "chunk_size",
+          "kind": "TyperOption",
+          "opts": [
+            "--chunk-size"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<IntRange x>=1>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "chunk_overlap",
+          "kind": "TyperOption",
+          "opts": [
+            "--chunk-overlap"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<IntRange x>=0>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "splitter_type",
+          "kind": "TyperOption",
+          "opts": [
+            "--splitter-type"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
         },
         {
           "name": "session",
@@ -6848,6 +6965,45 @@
           ],
           "secondary_opts": [],
           "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "chunk_size",
+          "kind": "TyperOption",
+          "opts": [
+            "--chunk-size"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<IntRange x>=1>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "chunk_overlap",
+          "kind": "TyperOption",
+          "opts": [
+            "--chunk-overlap"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<IntRange x>=0>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "splitter_type",
+          "kind": "TyperOption",
+          "opts": [
+            "--splitter-type"
+          ],
+          "secondary_opts": [],
+          "required": false,
           "default": "None",
           "type": "STRING",
           "nargs": 1,
@@ -7163,6 +7319,45 @@
           "secondary_opts": [],
           "required": false,
           "default": "/",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "chunk_size",
+          "kind": "TyperOption",
+          "opts": [
+            "--chunk-size"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<IntRange x>=1>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "chunk_overlap",
+          "kind": "TyperOption",
+          "opts": [
+            "--chunk-overlap"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<IntRange x>=0>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "splitter_type",
+          "kind": "TyperOption",
+          "opts": [
+            "--splitter-type"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
           "type": "STRING",
           "nargs": 1,
           "is_flag": false

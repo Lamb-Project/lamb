@@ -276,6 +276,8 @@ class AgentLoop(SkillRouting):
     conversation: list[dict] = field(default_factory=list)
     session_logger: SessionLogger | None = None
     pending_action: dict | None = None
+    approval_owner: str | None = None
+    approval_preferences: dict = field(default_factory=dict)
     tool_audit: list[dict] = field(default_factory=list)
     skill_state: dict | None = None
     pack: Any = None
@@ -519,6 +521,9 @@ class AgentLoop(SkillRouting):
         tool_rounds = 0
         while True:
             if self.pending_action:
+                from lamb.aac.approvals import explain_pending_action
+                yield {"status": "thinking"}
+                await explain_pending_action(self)
                 from lamb.aac.language import confirmation_fallback, translation_confirmation, documentation_fallback_notice
                 text = confirmation_fallback(self) + documentation_fallback_notice(self) + translation_confirmation(self)
                 self.conversation.append({"role": "assistant", "content": text})

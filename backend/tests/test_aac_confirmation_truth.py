@@ -9,6 +9,7 @@ class ConfirmationTruth(unittest.IsolatedAsyncioTestCase):
                 command = 'lamb assistant update 97 --description "New description"'
                 a,p,s = agent([message('I have applied the change.', [tool(command)]), message('Saved.')])
                 a.skill_state = {'ui_language':'es'}
+                a.approval_preferences = {'advanced_mode': True}
                 # Do not load a recipe in this boundary test.
                 a.required_skill = lambda *args: None
                 answer = await turn(a, streaming, 'Change the description')
