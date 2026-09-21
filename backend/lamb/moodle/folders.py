@@ -106,6 +106,8 @@ def build(runtime, client, record, token, params, saved=None):
     if not inv['ready']:
         raise ValueError('Choose 1-20 supported files totalling at most 20 MiB; narrow --path or use --exclude')
     destination = {'single_file': False, 'kb_id': params['kb_id']}
+    if params.get('new_kb'):
+        destination.update(new_kb=params['new_kb'], description=params.get('description', ''))
     children, size = [], 0
     for source in sources:
         child = prepared_source(runtime, record, token, 'import.folder-file', params, source, None, destination)
@@ -179,8 +181,13 @@ def status(runtime, ticket):
         files.append(row)
     counts = dict(Counter(f['status'] for f in files))
     done = counts.get('completed', 0) == len(files)
+    creation = ticket.get('kb_creation')
+    destination = ticket['review']['destination']
+    if creation and creation.get('kb_id'):
+        destination = {'single_file': False, 'kb_id': creation['kb_id'], 'name': destination['new_kb']}
     return {'batch_id': ticket['review']['review_id'], 'status': 'completed' if done else 'partial',
-            'source': ticket['review']['source'], 'destination': ticket['review']['destination'],
+            'source': ticket['review']['source'], 'destination': destination,
+            **({'kb_creation': creation} if creation else {}),
             'files': files, 'counts': counts, 'skipped': ticket['review']['skipped'],
             'next_command': None if done else 'moodle folder finish ' + ticket['review']['review_id']}
 
@@ -191,12 +198,23 @@ async def deliver_folder(prepared, http, runtime, owner):
     identity = ticket['review']['review_id']
     with storage.lock():
         ticket = storage.get('reviews', identity)
+        if runtime.result_binding() != ticket['binding']:
+            raise PermissionError('Moodle connection changed before folder delivery')
         ticket['approved'] = True
         storage.put('reviews', identity, ticket)
+    if ticket['review']['destination'].get('new_kb'):
+        from .folder_destination import create_destination
+        if not await create_destination(storage, identity, http, runtime):
+            return status(runtime, storage.get('reviews', identity))
+        ticket = storage.get('reviews', identity)
     started = time.monotonic()
     for child in prepared.children:
         if time.monotonic() - started > 60: break
         if runtime.result_binding() != ticket['binding']: raise PermissionError('Moodle connection changed; inspect batch status')
+        if ticket.get('kb_creation'):
+            # The approved virtual destination stays in the immutable review.
+            # Receipts bind its actual created id for uploads and future refreshes.
+            child = dict(child, destination={'single_file': False, 'kb_id': ticket['kb_creation']['kb_id']})
         download = Download(child['filename'], storage.decode(child['content']), child['content_type'])
         try:
             await deliver(PreparedImport(download, child, storage), http, runtime, owner)

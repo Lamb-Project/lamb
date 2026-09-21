@@ -7278,7 +7278,7 @@
             "kb_id"
           ],
           "secondary_opts": [],
-          "required": true,
+          "required": false,
           "default": "None",
           "type": "INT",
           "nargs": 1,
@@ -7291,7 +7291,33 @@
             "--to"
           ],
           "secondary_opts": [],
-          "required": true,
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "new_kb",
+          "kind": "TyperOption",
+          "opts": [
+            "--new-kb"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "description",
+          "kind": "TyperOption",
+          "opts": [
+            "--description"
+          ],
+          "secondary_opts": [],
+          "required": false,
           "default": "None",
           "type": "STRING",
           "nargs": 1,

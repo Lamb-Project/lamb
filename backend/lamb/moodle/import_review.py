@@ -27,13 +27,18 @@ LABELS = {
 }
 
 
-def render_review(review, language):
+def render_review(review, language, advanced=True):
     l = LABELS.get(language, LABELS['en'])
     source, dest = review['source'], review['destination']
     loss = review.get('conversion_losses', {})
     lines = [f"{l[0]}: {source['title']}", source['source_url'],
              f"{l[1]}: {source['course_id']} / {source['module_id']}",
-             f"{l[2]}: {l[3] if dest['single_file'] else l[4] + ' ' + str(dest['kb_id'])}"]
+             f"{l[2]}: {l[3] if dest['single_file'] else l[4] + ' ' + str(dest.get('new_kb') or dest['kb_id'])}"]
+    if dest.get('new_kb'):
+        lines.append({'en': 'A new knowledge base will be created before importing these files.',
+                      'es': 'Se creará una base de conocimiento nueva antes de importar estos archivos.',
+                      'ca': 'Es crearà una base de coneixement nova abans d’importar aquests fitxers.',
+                      'eu': 'Ezagutza-base berria sortuko da fitxategiak inportatu aurretik.'}.get(language, 'A new knowledge base will be created before importing these files.'))
     def chunking(item):
         config = item.get('ingestion')
         if not config: return ''
@@ -43,7 +48,8 @@ def render_review(review, language):
                  'eu': ('Zatiaren tamaina', 'gainjartzea', 'karaktere', 'token')}.get(language)
         words = words or ('Chunk size', 'overlap', 'characters', 'tokens')
         units = words[3] if config['units'] == 'tokens' else words[2]
-        return f"{words[0]}: {config['chunk_size']} {units}; {words[1]}: {config['chunk_overlap']} {units}. {config['splitter_type']} ({config['plugin_name']})"
+        text = f"{words[0]}: {config['chunk_size']} {units}; {words[1]}: {config['chunk_overlap']} {units}."
+        return text + (f" {config['splitter_type']} ({config['plugin_name']})" if advanced else '')
     if chunking(review): lines.append(chunking(review))
     if review.get('kind') == 'folder':
         words = {

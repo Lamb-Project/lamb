@@ -264,7 +264,10 @@ async def get_session(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     from lamb.aac.session_guidance import browser_session
-    return session if diagnostics else browser_session(session)
+    if diagnostics:
+        return session
+    from lamb.aac.preferences import approval_preferences
+    return {**browser_session(session), 'advanced_mode': approval_preferences(auth.user.get('user_config')).get('advanced_mode') is True}
 
 
 @router.delete("/sessions/{session_id}")
@@ -410,7 +413,10 @@ async def _send_message(
     bearer_token = auth_header.removeprefix("Bearer ").strip() if auth_header.startswith("Bearer") else ""
 
     # Build agent — handle skill startup if needed
+    from lamb.aac.approval_controls import validate_decision
+    decision = validate_decision(session, await request.json())
     agent, user_message, skill_info = await _prepare_agent_and_message(auth, session, user_message, token=bearer_token, ui_language=(await request.json()).get('ui_language'))
+    agent.approval_decision = decision
 
     # Run agent loop
     try:
@@ -431,9 +437,11 @@ async def _send_message(
     if agent.session_logger:
         agent.session_logger.log("turn_complete", stats)
 
+    from lamb.aac.approval_controls import card
     return {
         "response": ((getattr(agent, "scenario_notice", None) or "") + "\n\n" + response_text).lstrip(),
         "stats": stats,
+        "approval": card(agent.pending_action, getattr(agent, 'skill_state', None)),
     }
 
 
@@ -456,7 +464,10 @@ async def _send_message_stream(
 
     auth_header = request.headers.get("authorization", "")
     bearer_token = auth_header.removeprefix("Bearer ").strip() if auth_header.startswith("Bearer") else ""
+    from lamb.aac.approval_controls import validate_decision
+    decision = validate_decision(session, await request.json())
     agent, user_message, skill_info = await _prepare_agent_and_message(auth, session, user_message, token=bearer_token, ui_language=(await request.json()).get('ui_language'))
+    agent.approval_decision = decision
 
     from lamb.aac.frontend import FrontendBridge
     body = await request.json()
@@ -467,14 +478,16 @@ async def _send_message_stream(
         except (ValueError, TypeError, AttributeError):
             raise HTTPException(400, 'Invalid frontend channel')
         agent.shell.frontend = bridge.request
+        agent.interactive_approvals = True
 
     async def generate():
-        policy = (getattr(agent, 'skill_state', None) or {}).get('response_language_policy')
-        if policy:
-            yield f"data: {json.dumps({'status': 'policy', 'policy': policy})}\n\n"
         from lamb.aac.frontend import stream_with_frontend
         events = stream_with_frontend(agent.chat_stream(user_message), bridge)
         try:
+            yield f"data: {json.dumps({'status': 'preferences', 'advanced_mode': getattr(agent, 'approval_preferences', {}).get('advanced_mode') is True})}\n\n"
+            policy = (getattr(agent, 'skill_state', None) or {}).get('response_language_policy')
+            if policy:
+                yield f"data: {json.dumps({'status': 'policy', 'policy': policy})}\n\n"
             notice = getattr(agent, "scenario_notice", None)
             if isinstance(notice, str) and notice:
                 yield f"data: {json.dumps({'content': notice + chr(10) + chr(10)})}\n\n"

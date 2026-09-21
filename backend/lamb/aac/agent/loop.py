@@ -278,6 +278,8 @@ class AgentLoop(SkillRouting):
     pending_action: dict | None = None
     approval_owner: str | None = None
     approval_preferences: dict = field(default_factory=dict)
+    approval_decision: str | None = None
+    interactive_approvals: bool = False
     tool_audit: list[dict] = field(default_factory=list)
     skill_state: dict | None = None
     pack: Any = None
@@ -530,6 +532,8 @@ class AgentLoop(SkillRouting):
                 if self.session_logger:
                     self.session_logger.log_agent_response(text)
                 yield text
+                from lamb.aac.approval_controls import card
+                yield {"status": "approval", "approval": card(self.pending_action, self.skill_state)}
                 return
             yield {"status": "thinking"}
             tools_enabled = tool_rounds < self.max_tool_rounds and not self.pending_action
@@ -711,7 +715,9 @@ class AgentLoop(SkillRouting):
                 except Exception as exc:
                     return {'success': False, 'error': str(exc)}
             # Queue the command, don't execute
+            import uuid
             self.pending_action = {
+                "nonce": str(uuid.uuid4()),
                 "command": command,
                 "action_key": action_key,
                 "machine_translation_interpretations": [dict(item) for item in interpretations],
@@ -795,7 +801,13 @@ class AgentLoop(SkillRouting):
             self._record_audit(action["command"], action.get("action_key"), False, 0, result)
             self.conversation.append({"role": "user", "content": f"[System: Removed invalid pending action; nothing executed. {error}]"})
             return None
-        classification = classify_user_confirmation(user_message)
+        classification = self.approval_decision or classify_user_confirmation(user_message)
+        self.approval_decision = None
+        if classification == 'edit':
+            self.pending_action = None
+            self.conversation.append({'role': 'user', 'content':
+                '[System: The user is revising the proposal. Nothing was executed. Prepare a new action with their changes; do not ask for a preliminary approval.]'})
+            return None
 
         if classification == "approve":
             # Execute the queued command

@@ -63,7 +63,7 @@ async def small_model_sentence(owner, language, facts):
 async def explain_pending_action(agent):
     action = agent.pending_action
     language = response_language(agent)
-    fingerprint = hashlib.sha256(json.dumps([action['command'], action.get('moodle_review'), language], sort_keys=True).encode()).hexdigest()
+    fingerprint = hashlib.sha256(json.dumps(['review-v2', action['command'], action.get('moodle_review'), language], sort_keys=True).encode()).hexdigest()
     if (action.get('explanation') or {}).get('fingerprint') == fingerprint:
         return
     # Cache failure too; repeated confirmation questions must not trigger more calls.
@@ -71,6 +71,12 @@ async def explain_pending_action(agent):
     if not agent.approval_owner:
         return
     facts = action_values(action)
+    review = action.get('moodle_review')
+    if review and review.get('source'):
+        # Use the reviewed effective values, including defaults and their units.
+        facts = {'action': action.get('action_key'), 'source': review['source'],
+                 'destination': review['destination'], 'file_count': review.get('file_count', 1),
+                 'ingestion': review.get('ingestion') or [f.get('ingestion') for f in review.get('files', [])]}
     # Only action values, not conversation, retrieved content or full submissions.
     encoded = json.dumps(facts, ensure_ascii=False)
     if len(encoded) > 12000:
@@ -86,7 +92,7 @@ async def explain_pending_action(agent):
 
 def plain(text):
     # Model prose and resource labels cannot insert links or HTML controls.
-    return re.sub(r'([\\`*_{}\[\]()#+.!|>~-])', r'\\\1', escape(str(text))).replace('\n', ' ')
+    return escape(re.sub(r'([\\`*_{}\[\]()#+.!|>~-])', r'\\\1', str(text)), quote=False).replace('\n', ' ')
 
 
 def block(text):
@@ -109,6 +115,53 @@ def human_values(values, depth=0):
     return lines
 
 
+FIELD_LABELS = {
+    'en': ('Name', 'Purpose', 'Assistant', 'Knowledge base', 'Documents', 'Rubric', 'Instructions will be updated. Full configuration is available in Advanced mode.'),
+    'es': ('Nombre', 'Propósito', 'Asistente', 'Base de conocimiento', 'Documentos', 'Rúbrica', 'Se actualizarán las instrucciones. La configuración completa está disponible en el modo avanzado.'),
+    'ca': ('Nom', 'Propòsit', 'Assistent', 'Base de coneixement', 'Documents', 'Rúbrica', 'S’actualitzaran les instruccions. La configuració completa està disponible en el mode avançat.'),
+    'eu': ('Izena', 'Helburua', 'Laguntzailea', 'Ezagutza-basea', 'Dokumentuak', 'Errubrika', 'Jarraibideak eguneratuko dira. Konfigurazio osoa modu aurreratuan dago.'),
+}
+
+
+def basic_values(action, language):
+    parsed = action_values(action)
+    key, args, values = parsed['action'], parsed.get('arguments', []), parsed.get('values', {})
+    labels = FIELD_LABELS.get(language, FIELD_LABELS['en'])
+    if key.startswith(('assistant.', 'kb.')):
+        verbs = {
+            'en': {'create':'Create', 'update':'Update', 'delete':'Delete', 'delete-file':'Delete file', 'publish':'Publish', 'unpublish':'Unpublish', 'share':'Change sharing', 'ingest':'Ingest content'},
+            'es': {'create':'Crear', 'update':'Actualizar', 'delete':'Eliminar', 'delete-file':'Eliminar archivo', 'publish':'Publicar', 'unpublish':'Retirar publicación', 'share':'Cambiar acceso compartido', 'ingest':'Ingerir contenido'},
+            'ca': {'create':'Crear', 'update':'Actualitzar', 'delete':'Eliminar', 'delete-file':'Eliminar fitxer', 'publish':'Publicar', 'unpublish':'Retirar publicació', 'share':'Canviar accés compartit', 'ingest':'Ingerir contingut'},
+            'eu': {'create':'Sortu', 'update':'Eguneratu', 'delete':'Ezabatu', 'delete-file':'Fitxategia ezabatu', 'publish':'Argitaratu', 'unpublish':'Argitalpena kendu', 'share':'Partekatzea aldatu', 'ingest':'Edukia inportatu'},
+        }
+        operation = key.split('.')[-1]
+        heading = verbs.get(language, verbs['en']).get(operation, operation)
+        fields = {}
+        if args:
+            label = labels[0] if key.endswith('.create') else labels[2 if key.startswith('assistant.') else 3]
+            fields[label] = args[0]
+        for names, label in [(('name', 'n'), labels[0]), (('description', 'd'), labels[1]),
+                             (('rag_collections',), labels[3]), (('file_reference',), labels[4]), (('rubric_id',), labels[5])]:
+            for name in names:
+                if name in values:
+                    fields[label] = values[name]
+                    break
+        # Other meaningful choices (permissions, publication, deletion) remain
+        # explicit. Only implementation configuration is hidden in basic mode.
+        hidden = {'system_prompt', 's', 'prompt_template', 'connector', 'llm', 'prompt_processor',
+                  'rag_processor', 'rag_top_k', 'rubric_format', 'name', 'n', 'description', 'd',
+                  'rag_collections', 'file_reference', 'rubric_id'}
+        fields.update({k: v for k, v in values.items() if k not in hidden})
+        if len(args) > 1: fields[labels[4]] = args[1:]
+        lines = [f'**{plain(heading)}**', *human_values(fields)]
+        if key == 'assistant.update' and any(k in values for k in ('system_prompt', 's')):
+            lines.append(plain(labels[6]))
+        return '\n'.join(lines)
+    # Published message bodies, grades, rubric criteria and scenario text must
+    # remain visible even if the auxiliary summarizer is unavailable.
+    return '\n'.join(human_values({'identifier': args, **values}))
+
+
 def render_details(action, language, advanced):
     review = action.get('moodle_review')
     parts = []
@@ -118,15 +171,17 @@ def render_details(action, language, advanced):
     if review and review.get('source') and review.get('review_id'):
         from lamb.moodle.import_review import render_review
         # This text includes exact source/destination, exclusions and conversion losses.
-        parts.append('  \n'.join(plain(line) for line in render_review(review, language).splitlines()))
+        parts.append('  \n'.join(plain(line) for line in render_review(review, language, advanced=advanced).splitlines()))
     elif review:
         # Keep the exact grade proposal and submission, even in basic mode.
         parts.append('\n'.join(human_values(review)))
-    else:
+    elif advanced:
         values = action_values(action)
         values['action'] = values['action'].replace('.', ' ')
         fields = {'action': values['action'], 'identifier': values.get('arguments'), **values.get('values', {})}
         parts.append('\n'.join(human_values(fields)))
+    else:
+        parts.append(basic_values(action, language))
     if advanced:
         parts.append(block(action.get('command', '')))
     return '\n\n'.join(parts)

@@ -20,8 +20,9 @@ def document_specs():
         return [click.Argument(['source_ref']), click.Option(['--path'], default='/'),
                 click.Option(['--exclude'], multiple=True)]
     add('folder.inspect', selection(), 'Scan a Moodle Folder recursively; report supported and excluded paths without downloading bodies.')
-    add('import.folder', selection() + [click.Option(['--to'], type=click.Choice(['kb']), required=True),
-        click.Argument(['kb_id'], type=click.IntRange(min=1))] + options(),
+    add('import.folder', selection() + [click.Option(['--to'], type=click.Choice(['kb'])),
+        click.Argument(['kb_id'], required=False, type=click.IntRange(min=1)),
+        click.Option(['--new-kb']), click.Option(['--description'])] + options(),
         'Review a bounded recursive folder import into an owned KB; one approval covers the exact file set.', 'ask')
     add('folder.status', [click.Argument(['batch_id'])], 'Report each file in your approved folder batch; status inspection never starts uploads.')
     add('folder.finish', [click.Argument(['batch_id'])], 'Resume the exact approved folder batch after rechecking scope and sources; never duplicate completed uploads.', 'ask')
@@ -44,6 +45,14 @@ def parse_document(tokens):
     spec = document_specs().get(key)
     if not spec: return None
     params = spec.parse(tokens[3:])
+    if key == 'import.folder':
+        new = params.get('new_kb')
+        existing = params.get('to') == 'kb' and params.get('kb_id') is not None
+        if not ((new and new.strip() and len(new) <= 200 and params.get('to') is None and params.get('kb_id') is None)
+                or (existing and new is None and params.get('description') is None)):
+            raise ValueError('Choose --to kb ID or --new-kb NAME [--description TEXT]')
+        if params.get('description') and len(params['description']) > 4000:
+            raise ValueError('Knowledge base description is limited to 4000 characters')
     if key in IMPORT_KEYS - {'import.refresh', 'import.folder'}:
         if not ((params['single_file'] and params['to'] is None and params['kb_id'] is None) or
                 (not params['single_file'] and params['to'] == 'kb' and params['kb_id'] is not None)):
@@ -51,5 +60,5 @@ def parse_document(tokens):
     if key in IMPORT_KEYS and key != 'import.refresh':
         configuration(params, single_file=params.get('single_file', False))
     # Omitted options stay absent so old pending reviews/batches remain comparable.
-    params = {k: v for k, v in params.items() if v is not None or k not in {'chunk_size', 'chunk_overlap', 'splitter_type'}}
+    params = {k: v for k, v in params.items() if v is not None or k not in {'chunk_size', 'chunk_overlap', 'splitter_type', 'new_kb', 'description'}}
     return spec, params

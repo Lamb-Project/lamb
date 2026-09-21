@@ -84,6 +84,8 @@ def test_folder_and_nested_file_options_reach_shared_backend_unchanged():
          ['folder', 'inspect', 'ref', '--path', '/Unit 1/', '--exclude', '/Unit 1/old/']),
         (['import', 'folder', 'ref', '--to', 'kb', '12', '--exclude', '/a.md', '--exclude', '/b.md', '--confirm', 'review'],
          ['import', 'folder', 'ref', '--path', '/', '--exclude', '/a.md', '--exclude', '/b.md', '--to', 'kb', '12']),
+        (['import', 'folder', 'ref', '--new-kb', 'Teacher readings', '--description', 'For teachers', '--confirm', 'review'],
+         ['import', 'folder', 'ref', '--path', '/', '--new-kb', 'Teacher readings', '--description', 'For teachers']),
         (['folder', 'status', 'batch'], ['folder', 'status', 'batch']),
         (['folder', 'finish', 'batch', '--confirm', 'batch'], ['folder', 'finish', 'batch'])]
     for args, expected in examples:

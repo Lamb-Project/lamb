@@ -352,13 +352,15 @@ Private originals, receipts and revisions use at most 256 MiB per creator. An ad
 
 ### Moodle Folders and subfolders
 
-A folder import targets one owned KB. The server inventories the entire subtree, prepares one exact review, then imports each supported file after approval. Source paths remain distinct even when basenames match. No local filesystem is involved.
+A folder import targets an existing owned KB with `--to kb ID`, or creates one with `--new-kb NAME [--description TEXT]`. One review covers KB creation and the selected files. The server inventories the entire subtree, prepares one exact review, then imports each supported file after approval. Source paths remain distinct even when basenames match. No local filesystem is involved.
 
 ```sh
 lamb moodle documents start
 lamb moodle folder list 12 --session SESSION
 lamb moodle folder inspect FOLDER_REF --exclude /archive/ --session SESSION
 lamb moodle import folder FOLDER_REF --exclude /archive/ --to kb 34 --session SESSION
+# Or create a new KB and import with one review
+lamb moodle import folder FOLDER_REF --exclude /archive/ --new-kb "Teacher readings" --chunk-size 2000 --session SESSION
 # Read the review, then repeat with its returned REVIEW_ID.
 lamb moodle import folder FOLDER_REF --exclude /archive/ --to kb 34 --session SESSION --confirm REVIEW_ID
 lamb moodle folder status BATCH_ID --session SESSION

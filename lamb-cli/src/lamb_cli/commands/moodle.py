@@ -145,14 +145,20 @@ def inspect_folder(source_ref: str, session: str = typer.Option(..., '--session'
 
 
 @import_app.command('folder')
-def import_folder(source_ref: str, kb_id: int = typer.Argument(...), to: str = typer.Option(..., '--to'),
+def import_folder(source_ref: str, kb_id: Optional[int] = typer.Argument(None), to: Optional[str] = typer.Option(None, '--to'),
+                  new_kb: Optional[str] = typer.Option(None, '--new-kb'), description: Optional[str] = typer.Option(None, '--description'),
                   session: str = typer.Option(..., '--session'), path: str = typer.Option('/', '--path'),
                   chunk_size: Optional[int] = typer.Option(None, '--chunk-size', min=1),
                   chunk_overlap: Optional[int] = typer.Option(None, '--chunk-overlap', min=0),
                   splitter_type: Optional[str] = typer.Option(None, '--splitter-type'),
                   exclude: list[str] = typer.Option([], '--exclude'), confirm: Optional[str] = typer.Option(None, '--confirm')):
     """Review and import a folder tree to one KB. Confirm the returned review ID once."""
-    document_run(folder_selection(['import', 'folder'], source_ref, path, exclude) + ['--to', to, str(kb_id)]
+    destination = []
+    if to is not None: destination += ['--to', to]
+    if kb_id is not None: destination += [str(kb_id)]
+    if new_kb is not None: destination += ['--new-kb', new_kb]
+    if description is not None: destination += ['--description', description]
+    document_run(folder_selection(['import', 'folder'], source_ref, path, exclude) + destination
                  + ingestion_options(chunk_size, chunk_overlap, splitter_type), session, confirm)
 
 

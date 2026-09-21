@@ -74,6 +74,8 @@ def confirmation_fallback(agent):
     intro, question = messages.get(code, messages['en'])
     from lamb.aac.approvals import render_details
     details = render_details(agent.pending_action, code, getattr(agent, 'approval_preferences', {}).get('advanced_mode') is True)
+    if getattr(agent, 'interactive_approvals', False):
+        return f'{intro}\n\n{details}'
     return f'{intro}\n\n{details}\n\n{question}'
 
 

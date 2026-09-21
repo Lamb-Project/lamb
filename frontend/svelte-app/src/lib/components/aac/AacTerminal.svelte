@@ -44,8 +44,43 @@
         updateProgress({status: 'thinking'});
     }
     let responsePolicy = $state(null);
+    let advancedMode = $state(false);
+    let approval = $state(null);
+    let editingApproval = $state(null);
+    function loadApproval(session) {
+        approval = session.approval || null;
+        advancedMode = session.advanced_mode === true;
+        if (editingApproval?.action_id !== approval?.action_id) editingApproval = null;
+    }
+    async function decideApproval(decision) {
+        if (!approval || loading || historyLoading) return;
+        if (decision === 'edit') {
+            editingApproval = approval;
+            await tick();
+            inputEl?.focus();
+            return;
+        }
+        const selected = approval;
+        await handleSend({decision, action_id: selected.action_id},
+            decision === 'approve' ? selected.approve_label : selected.cancel_label);
+    }
+    function toolActivity(command) {
+        if (advancedMode) return command || 'Using a tool…';
+        const language = responsePolicy?.effective_language || 'en';
+        const terms = {
+            en: ['Working with Moodle', 'Working with assistants', 'Working with knowledge bases', 'Using a tool'],
+            es: ['Trabajando con Moodle', 'Trabajando con asistentes', 'Trabajando con bases de conocimiento', 'Usando una herramienta'],
+            ca: ['Treballant amb Moodle', 'Treballant amb assistents', 'Treballant amb bases de coneixement', 'Utilitzant una eina'],
+            eu: ['Moodle-rekin lanean', 'Laguntzaileekin lanean', 'Ezagutza-baseekin lanean', 'Tresna erabiltzen']
+        };
+        const labels = terms[language] || terms.en;
+        const text = command || '';
+        return labels[text.startsWith('moodle ') ? 0 : /(?:^| )assistant /.test(text) ? 1 : /(?:^| )kb /.test(text) ? 2 : 3] + '…';
+    }
     const languageNames = {en:'English',es:'Español',ca:'Català',eu:'Euskara'};
     function updateProgress(event) {
+        if (event.status === 'approval') { approval = event.approval; editingApproval = null; return; }
+        if (event.status === 'preferences') { advancedMode = event.advanced_mode === true; return; }
         if (event.status === 'policy') { responsePolicy = event.policy; return; }
         if (stopped) return;
         activityStarted = Date.now();
@@ -53,9 +88,9 @@
         if (event.status === 'thinking') {
             statusText = lastActivity ? 'Reviewing the tool result…' : 'Preparing a response…';
         } else if (event.status === 'tool') {
-            statusText = event.command || 'Using a tool…';
+            statusText = toolActivity(event.command);
         } else if (event.status === 'tool_done') {
-            lastActivity = `${event.awaiting_user_confirmation ? 'Awaiting your approval; not executed' : event.success ? 'Tool completed' : 'Tool reported a problem'}: ${event.command || 'Command'}`;
+            lastActivity = `${event.awaiting_user_confirmation ? 'Awaiting your approval; not executed' : event.success ? 'Tool completed' : 'Tool reported a problem'}: ${toolActivity(event.command)}`;
             statusText = 'Reviewing the tool result…';
         } else if (event.status === 'responding') {
             statusText = '';
@@ -70,6 +105,7 @@
             const session = await getSession(sessionId);
             if(!isMounted)return;
             responsePolicy=session.skill_info?.response_language_policy || null;
+            loadApproval(session);
             sessionTitle=session.display_title || session.title || 'New conversation';
             openTabs.update(tabs=>tabs.map(t=>t.id===sessionId?{...t,title:sessionTitle}:t));
         } catch (_) { /* transcript remains usable if metadata refresh fails */ }
@@ -127,6 +163,7 @@
 				const session = await getSession(sessionId);
 				if (!isMounted) return;
                 responsePolicy=session.skill_info?.response_language_policy || null;
+            loadApproval(session);
             sessionTitle=session.display_title || session.title || 'New conversation';
 				const conv = (session.conversation || []).filter(
 					m => (m.role === 'user' && !(m.content || '').startsWith('[System:') && !(m.content || '').startsWith('[Application workflow instructions]'))
@@ -195,9 +232,14 @@
 		inputEl?.focus();
 	}
 
-	async function handleSend() {
-		const text = inputText.trim();
+	async function handleSend(decision = null, decisionText = null) {
+		const text = decisionText || inputText.trim();
 		if (!text || loading || historyLoading) return;
+
+        // DOM click events are not approval decisions.
+        if (!decision?.action_id) decision = editingApproval ? {action_id: editingApproval.action_id, decision: 'edit'} : null;
+        approval = null;
+        editingApproval = null;
 
 		// Send the user's exact reply so resumed approvals and cancellations
 		// reach the server's confirmation classifier without a hidden prefix.
@@ -242,6 +284,7 @@
 				},
 				updateProgress,
 				streamAbort.signal,
+                decision,
 			);
 		} catch (e) {
 			if (isMounted && e?.name !== 'AbortError') {
@@ -251,7 +294,7 @@
 		} finally {
 			// Defensive: guarantee loading flag is cleared on every exit
 			// path so the send button never gets stuck disabled. (#352, Pattern A)
-			if (isMounted) loading = false;
+			if (isMounted) { await refreshSessionInfo(); loading = false; }
 		}
 
 		if (!isMounted) return;
@@ -322,7 +365,7 @@
 	>
 		<span class="opacity-60 truncate" title={sessionTitle}>{sessionTitle}</span>
 		<div class="flex gap-2 items-center">
-			{#if lastStats}
+			{#if advancedMode && lastStats}
 				<button
 					onclick={() => showStats = !showStats}
 					class="opacity-40 hover:opacity-80 transition-opacity cursor-pointer"
@@ -343,7 +386,7 @@
 	</div>
 
 	<!-- Stats Panel (collapsible) -->
-	{#if showStats && lastStats}
+	{#if advancedMode && showStats && lastStats}
 		<div
 			class="px-4 py-2 text-xs border-b flex flex-wrap gap-x-6 gap-y-1"
 			class:border-gray-700={darkMode}
@@ -387,6 +430,18 @@
 			{/if}
 		{/each}
 
+        {#if approval && !loading && !historyLoading}
+        <section aria-label="Approval" class="approval-controls">
+            {#if editingApproval}
+                <p role="status">{approval.edit_hint}</p>
+            {/if}
+            <div class="flex flex-wrap gap-2">
+                <button class="approval-primary" disabled={!!editingApproval} onclick={() => decideApproval('approve')}>{approval.approve_label}</button>
+                <button onclick={() => decideApproval('edit')}>{approval.edit_label}</button>
+                <button onclick={() => decideApproval('reject')}>{approval.cancel_label}</button>
+            </div>
+        </section>
+        {/if}
         {#if canvasData}
         <button class="canvas-preview" onclick={expandCanvas}><strong>{canvasData.title || 'Canvas'}</strong><span>Expand canvas</span></button>
         {/if}
@@ -454,6 +509,12 @@
 </div>
 
 <style>
+    .approval-controls { border: 1px solid #94a3b8; border-radius: .6rem; padding: .8rem; }
+    .approval-controls button { border: 1px solid #64748b; border-radius: .4rem; padding: .5rem .8rem; background: #fff; color: #1e293b; cursor: pointer; }
+    .approval-controls .approval-primary { background: #1e40af; color: #fff; border-color: #1e40af; }
+    .approval-controls button:disabled { opacity: .45; cursor: default; }
+    .approval-controls p { margin-bottom: .6rem; }
+
     .canvas-preview { display: flex; justify-content: space-between; gap: 12px; width: 100%; padding: 14px; border: 1px solid #b3cce5; border-radius: 10px; background: #edf5fd; color: #173f64; text-align: left; }
     .canvas-preview span { flex-shrink: 0; }
     .canvas-dialog { position: fixed; inset: 0; margin: auto; width: min(960px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid #bcccdc; border-radius: 12px; background: white; color: #172b40; }

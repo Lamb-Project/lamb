@@ -41,6 +41,8 @@ def browser_session(session):
     result['skill_info']['snapshots_count'] = len(state.get('snapshots', {}))
     result['tool_audit_count'] = len(session.get('tool_audit') or [])
     result.pop('tool_audit', None)
+    from lamb.aac.approval_controls import card
+    result['approval'] = card(result.pop('pending_action', None), state)
     return result
 
 

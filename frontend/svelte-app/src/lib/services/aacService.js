@@ -97,7 +97,7 @@ export async function sendMessage(sessionId, message) {
  * @param {(status: Object) => void} [onStatus] - called for tool/status events
  * @param {AbortSignal} [signal] - abort signal to cancel the stream
  */
-export async function sendMessageStream(sessionId, message, onChunk, onDone, onError, onStatus, signal) {
+export async function sendMessageStream(sessionId, message, onChunk, onDone, onError, onStatus, signal, approval = null) {
     const frontendChannel = crypto.randomUUID();
     const frontendAbort = new AbortController();
     const abortFrontend = () => frontendAbort.abort();
@@ -109,7 +109,7 @@ export async function sendMessageStream(sessionId, message, onChunk, onDone, onE
 		res = await apiFetch(`/aac/sessions/${sessionId}/message/stream`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ message, frontend_channel: frontendChannel, ui_language: get(locale) || "en" }),
+			body: JSON.stringify({ message, frontend_channel: frontendChannel, ui_language: get(locale) || "en", ...(approval ? {approval} : {}) }),
 			signal,
 		});
 	} catch (e) {
