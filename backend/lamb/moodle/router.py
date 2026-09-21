@@ -170,7 +170,7 @@ def run_task(body: TaskBody, store=Depends(store_for)):
             raise ValueError('Moodle task command is too long')
         spec, params = prepare_moodle(body.command)
         if spec.key not in task_specs():
-            raise ValueError('This endpoint accepts Moodle news, continue, runs and evidence tasks only')
+            raise ValueError('This endpoint accepts registered read-only Moodle tasks only')
         return MoodleRuntime(store).execute(spec.key, params)
     except ValueError as exc:
         if isinstance(exc, MoodleConfigurationError): translate_error(exc)
@@ -267,3 +267,37 @@ async def document_command(body: DocumentCommandBody, request: Request,
     except ValueError as exc:
         if isinstance(exc, MoodleConfigurationError): translate_error(exc)
         raise HTTPException(400, str(exc)) from None
+
+
+@router.get('/charts/{chart_id}')
+def chart_snapshot(chart_id: str, store=Depends(store_for)):
+    from .runtime import MoodleRuntime
+    from .charts import ChartStore
+    from fastapi.responses import JSONResponse
+    try:
+        data = ChartStore(MoodleRuntime(store)).read(chart_id)
+        return JSONResponse(data, headers={'Cache-Control': 'private, no-store'})
+    except PermissionError:
+        raise HTTPException(404, 'Chart is unavailable for this connection') from None
+    except Exception:
+        raise HTTPException(503, 'Chart access cannot be verified now') from None
+
+
+@router.get('/charts/{chart_id}/image.svg')
+def chart_image(chart_id: str, store=Depends(store_for)):
+    from .runtime import MoodleRuntime
+    from .charts import ChartStore, render_svg
+    from fastapi.responses import Response
+    try:
+        runtime = MoodleRuntime(store)
+        data = ChartStore(runtime).read(chart_id)
+        svg = render_svg(data)
+        # Revalidate after rendering; no public static path or credential in URL.
+        ChartStore(runtime).read(chart_id)
+        return Response(svg, media_type='image/svg+xml', headers={
+            'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
+            'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox"})
+    except PermissionError:
+        raise HTTPException(404, 'Chart is unavailable for this connection') from None
+    except Exception:
+        raise HTTPException(503, 'Chart could not be rendered or access verified') from None

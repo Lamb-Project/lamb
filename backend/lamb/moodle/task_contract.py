@@ -21,15 +21,22 @@ def task_specs():
     continuation = click.Command('continue', params=[click.Argument(['result_id'])],
         help='Continue a paused forum run from its result_id. Repeating the same handle returns the same next result.', add_help_option=False)
     runs = click.Command('runs', help='List private recent forum-run recovery handles after Stop or a lost response.', add_help_option=False)
+    chart = click.Command('submissions', params=[
+        click.Option(['--course', 'course_id'], required=True, type=click.IntRange(min=1)),
+        click.Option(['--tz'], default='UTC'),
+        click.Option(['--language'], default='en', type=click.Choice(['en', 'es', 'ca', 'eu'])),
+    ], help='Pilot: chart current assignment submissions against course deadlines. Read-only; at most 20 assignments. Team/offline assignments are excluded explicitly.', add_help_option=False)
     return {key: CommandSpec(key, parser.help, 'auto', parser)
-            for key, parser in [('news', news), ('evidence', evidence), ('continue', continuation), ('runs', runs)]}
+            for key, parser in [('news', news), ('evidence', evidence), ('continue', continuation), ('runs', runs), ('chart.submissions', chart)]}
 
 
 def parse_task(tokens):
     if not tokens or tokens[0] != 'moodle':
         return None
     # Descriptive spelling is an alias, not a second implementation.
-    if tokens[:3] == ['moodle', 'forum', 'activity']:
+    if tokens[:3] == ['moodle', 'chart', 'submissions']:
+        key, tail = 'chart.submissions', tokens[3:]
+    elif tokens[:3] == ['moodle', 'forum', 'activity']:
         key, tail = 'news', tokens[3:]
     elif len(tokens) >= 2 and tokens[1] in task_specs():
         key, tail = tokens[1], tokens[2:]
@@ -37,6 +44,10 @@ def parse_task(tokens):
         return None
     spec = task_specs()[key]
     params = spec.parse(tail)
+    if key == 'chart.submissions':
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        try: ZoneInfo(params['tz'])
+        except (ValueError, ZoneInfoNotFoundError): raise ValueError('Use an IANA timezone') from None
     if key == 'news':
         from .forum_activity import validate_request
         validate_request(params)

@@ -40,6 +40,8 @@ def browser_session(session):
     result['skill_info'] = {k: state[k] for k in ('learning_scenario_id', 'skill_id', 'context', 'ui_language', 'language_pinned', 'started', 'policy_version', 'brief', 'pack_version', 'response_language_policy') if k in state}
     result['skill_info']['snapshots_count'] = len(state.get('snapshots', {}))
     result['tool_audit_count'] = len(session.get('tool_audit') or [])
+    result['charts'] = [dict(a) for event in session.get('tool_audit', []) if event.get('success')
+                        for a in event.get('artifacts', []) if a.get('type') == 'chart']
     result.pop('tool_audit', None)
     from lamb.aac.approval_controls import card
     result['approval'] = card(result.pop('pending_action', None), state)

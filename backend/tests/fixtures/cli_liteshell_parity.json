@@ -7415,6 +7415,49 @@
           "is_flag": false
         }
       ]
+    },
+    "moodle.chart.submissions": {
+      "params": [
+        {
+          "name": "course",
+          "kind": "TyperOption",
+          "opts": [
+            "--course"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "<IntRange x>=1>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "tz",
+          "kind": "TyperOption",
+          "opts": [
+            "--tz"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "UTC",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "language",
+          "kind": "TyperOption",
+          "opts": [
+            "--language"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "en",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
     }
   },
   "shell_contracts": {
@@ -8003,7 +8046,8 @@
     "moodle.folder.status": "supported: shared Moodle folder/document contract; --session and --confirm are CLI transport fields",
     "moodle.folder.finish": "supported: shared Moodle folder/document contract; --session and --confirm are CLI transport fields",
     "moodle.course.contents": "supported: shared Moodle folder/document contract; --session and --confirm are CLI transport fields",
-    "moodle.import.folder": "supported: shared Moodle folder/document contract; --session and --confirm are CLI transport fields"
+    "moodle.import.folder": "supported: shared Moodle folder/document contract; --session and --confirm are CLI transport fields",
+    "moodle.chart.submissions": "supported: shared read-only assignment chart recipe, current instructor access, owner-bound aggregate snapshot and authenticated SVG"
   },
   "shell_only": [
     "assistant.chat",
@@ -8022,6 +8066,7 @@
     "translate"
   ],
   "integrated_shell": {
+    "moodle.chart.submissions": "moodle.chart.submissions",
     "moodle.continue": "moodle.continue",
     "moodle.evidence": "moodle.evidence",
     "moodle.forum.activity": "moodle.news",

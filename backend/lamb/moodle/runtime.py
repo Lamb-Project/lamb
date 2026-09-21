@@ -97,6 +97,9 @@ class MoodleRuntime:
             moodle_user_id=record['moodle_user_id'], generation=snap['generation'], root=self.cache_root)
         with MoodleHTTPClient(record['base_url'], token, readonly=True, timeout=15) as raw:
             client = GuardedClient(raw, revalidate=revalidate, cancel=cancel)
+            if key == 'chart.submissions':
+                from .charts import chart_task
+                return chart_task(self, client, record['moodle_user_id'], params, progress=progress)
             if key in {'news', 'continue'}:
                 return RunStore(results).execute(client, record['moodle_user_id'],
                     params=params if key == 'news' else None,

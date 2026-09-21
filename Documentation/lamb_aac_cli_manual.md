@@ -18,3 +18,21 @@ Moodle single-file import. The server validates ownership before saving the assi
 This option does not read local files or upload anything. Local file selection still
 belongs in the frontend. LiteShell continues to reject `--file-path`; the standalone
 CLI retains that spelling as a compatibility alias for `--file-reference`.
+
+### Assignment submission chart pilot
+
+`moodle chart submissions --course COURSE_ID --tz Europe/Madrid --language es`
+
+This read-only recipe saves an owned aggregate snapshot and exposes a chart card in
+LAMB AGENT. It uses Moodle's all-groups grading summary, not course enrolment totals.
+It checks at most 20 assignments. Team and offline assignments, missing summaries
+and inconsistent counts are explicitly excluded, never shown as zero. Outstanding
+includes drafts; a passed course deadline does not prove individual lateness because
+personal extensions and overrides are not inspected. No student-level records or
+grades are retained by this recipe. Reopening preserves the original figures;
+running the command again creates a new snapshot. The pilot retains up to 100 charts
+per creator. Image and table access require the owning connection and current
+instructor access. Languages: `en`, `es`, `ca`, `eu`; timezone defaults to `UTC`.
+
+The terminal equivalent is `lamb moodle chart submissions` with the same options;
+it returns the chart handle and aggregate figures as JSON.

@@ -113,3 +113,12 @@ def test_ingestion_options_forwarded_for_all_sources_and_refresh():
             assert tokens[tokens.index('--chunk-overlap') + 1] == '0'
             assert tokens[tokens.index('--splitter-type') + 1] == 'TokenTextSplitter'
             assert body['confirm'] == 'review' and body['session'] == 'owned'
+
+
+def test_chart_recipe_uses_same_readonly_task_contract():
+    with patch('lamb_cli.commands.moodle.get_client') as client:
+        client.return_value.__enter__.return_value.post.return_value = {'chart_id': 'saved'}
+        result = runner.invoke(app, ['moodle', 'chart', 'submissions', '--course', '7', '--tz', 'Europe/Madrid', '--language', 'es'])
+        assert result.exit_code == 0, result.output
+        assert client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'] == 'moodle chart submissions --course 7 --tz Europe/Madrid --language es'
+        assert json.loads(result.output)['chart_id'] == 'saved'

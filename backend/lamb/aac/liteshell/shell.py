@@ -350,7 +350,7 @@ class LiteShell:
                 if not emit or cancel.is_set() or loop.is_closed():
                     return
                 future = asyncio.run_coroutine_threadsafe(emit({'status':'tool',
-                    'command':f'moodle news: {index}/{total}'}), loop)
+                    'command':f"{key.replace('.', ' ')}: {index}/{total}"}), loop)
                 try:
                     future.result(timeout=1)
                 except Exception:
@@ -384,6 +384,11 @@ class LiteShell:
                     binding['course_ids'] = sorted(set(map(int, course)))
                 elif course:
                     binding['course_id'] = int(course)
+            if key == 'moodle.chart.submissions':
+                binding['course_id'] = kwargs['course_id']
+                emit = getattr(bridge, 'emit', None)
+                if emit:
+                    await emit({'status': 'chart', 'chart_id': data['chart_id'], 'title': data['title']})
             return ShellResult(success=True,data=data,result_binding=binding)
         handler = COMMAND_REGISTRY[key]
         if help_requested:

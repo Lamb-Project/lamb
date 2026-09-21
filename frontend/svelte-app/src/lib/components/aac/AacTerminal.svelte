@@ -1,4 +1,5 @@
 <script>
+    import AacChart from './AacChart.svelte';
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { _ } from 'svelte-i18n';
 	import { sidebarBusy, startupSessions, openTabs } from '$lib/stores/aacStore.svelte';
@@ -47,7 +48,12 @@
     let advancedMode = $state(false);
     let approval = $state(null);
     let editingApproval = $state(null);
+    let charts = $state([]);
+    let chartDialog = $state(null);
+    let selectedChart = $state(null);
+    async function showChart(chart) { selectedChart = chart; await tick(); chartDialog?.showModal(); }
     function loadApproval(session) {
+        charts = session.charts || [];
         approval = session.approval || null;
         advancedMode = session.advanced_mode === true;
         if (editingApproval?.action_id !== approval?.action_id) editingApproval = null;
@@ -79,6 +85,10 @@
     }
     const languageNames = {en:'English',es:'Español',ca:'Català',eu:'Euskara'};
     function updateProgress(event) {
+        if (event.status === 'chart') {
+            if (!charts.some(c => c.id === event.chart_id)) charts = [...charts, {id:event.chart_id, title:event.title}];
+            return;
+        }
         if (event.status === 'approval') { approval = event.approval; editingApproval = null; return; }
         if (event.status === 'preferences') { advancedMode = event.advanced_mode === true; return; }
         if (event.status === 'policy') { responsePolicy = event.policy; return; }
@@ -442,6 +452,9 @@
             </div>
         </section>
         {/if}
+        {#each charts as chart}
+        <button class="canvas-preview" data-chart-card={chart.id} onclick={() => showChart(chart)}><strong>{chart.title}</strong><span>↗</span></button>
+        {/each}
         {#if canvasData}
         <button class="canvas-preview" onclick={expandCanvas}><strong>{canvasData.title || 'Canvas'}</strong><span>Expand canvas</span></button>
         {/if}
@@ -495,6 +508,10 @@
         {/if}
 	</div>
 </div>
+<dialog bind:this={chartDialog} onclose={() => { selectedChart = null; }} class="canvas-dialog" aria-label={selectedChart?.title || 'Chart'}>
+    <div class="canvas-heading"><h2>{selectedChart?.title || 'Chart'}</h2><button aria-label="Back to conversation" onclick={() => chartDialog.close()}>←</button></div>
+    {#if selectedChart}<AacChart chartId={selectedChart.id} />{/if}
+</dialog>
 {#if canvasData}
 <dialog bind:this={canvasDialog} class="canvas-dialog" aria-label={canvasData.title || 'Canvas'}>
     <div class="canvas-heading">

@@ -217,3 +217,14 @@ def import_refresh(import_id: str, session: str = typer.Option(..., '--session')
 def import_finish(import_id: str, session: str = typer.Option(..., '--session'),
                   confirm: Optional[str] = typer.Option(None, '--confirm')):
     document_run(['import', 'finish', import_id], session, confirm)
+
+
+chart_app = typer.Typer(help='Read-only chart pilot', no_args_is_help=True)
+app.add_typer(chart_app, name='chart')
+
+@chart_app.command('submissions')
+def chart_submissions(course: int = typer.Option(..., '--course', min=1),
+                      tz: str = typer.Option('UTC', '--tz'),
+                      language: str = typer.Option('en', '--language')):
+    """Save a private assignment-submission chart and return its figures/handle."""
+    run(['chart', 'submissions', '--course', str(course), '--tz', tz, '--language', language])
