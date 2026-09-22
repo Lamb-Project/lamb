@@ -16,11 +16,20 @@ COMPLETION_SCOPE_FUNCTION = 'local_lambanalytics_completion_scope'
 MAX_EVENT_BYTES = 256 * 1024
 GRADE_FUNCTION = 'mod_assign_get_grades'
 MAX_GRADE_BYTES = 1024 * 1024
+COMPLETION_FUNCTION = 'core_completion_get_activities_completion_status'
+MAX_COMPLETION_BYTES = 256 * 1024
 EVENT_PARAMETERS = frozenset({'courseid', 'since', 'until', 'groupid', 'afterid', 'throughid', 'limit'})
 
 
 class AnalyticsHTTPClient(MoodleHTTPClient):
     def call(self, wsfunction, **params):
+        if wsfunction == COMPLETION_FUNCTION:
+            if self.readonly and wsfunction not in READ_ALLOWLIST:
+                raise ReadOnlyViolation('Activity-completion source is outside the upstream read allowlist')
+            if (set(params)-{'courseid','userid'} or type(params.get('courseid')) is not int or
+                    params['courseid'] < 1 or type(params.get('userid',0)) is not int or params.get('userid',0)<0):
+                raise ValueError('Invalid activity-completion parameters')
+            return self._bounded_read(wsfunction, params, MAX_COMPLETION_BYTES, 'Activity-completion')
         if wsfunction == GRADE_FUNCTION:
             # Preserve upstream read-only authority; do not extend its allowlist.
             if self.readonly and wsfunction not in READ_ALLOWLIST:

@@ -6,6 +6,7 @@ from moodle_cli.client.exceptions import ReadOnlyViolation, MoodleAPIError, Conn
 from moodle_cli.client.readonly import READ_ALLOWLIST
 from lamb.moodle.analytics.client import AnalyticsHTTPClient, EVENT_FUNCTION, SCOPE_FUNCTION, MAX_EVENT_BYTES
 from lamb.moodle.analytics.client import GRADE_FUNCTION, MAX_GRADE_BYTES
+from lamb.moodle.analytics.client import COMPLETION_FUNCTION, MAX_COMPLETION_BYTES
 
 
 def client(handler):
@@ -123,3 +124,80 @@ def test_grade_budget_applies_to_decoded_content():
     assert len(payload)<MAX_GRADE_BYTES
     with client(lambda request:httpx.Response(200,content=payload,headers={'Content-Encoding':'gzip'})) as c:
         with pytest.raises(ValueError,match='byte budget'):c.call(GRADE_FUNCTION,assignmentids=[1])
+
+
+@pytest.mark.parametrize('user', [None,0,12])
+def test_completion_transport_preserves_states_and_current_user_default(user):
+    data={'statuses':[{'cmid':42,'state':3,'isoverallcomplete':True,'overrideby':99}], 'warnings':[]}
+    params={'courseid':7} if user is None else {'courseid':7,'userid':user}
+    def respond(request):
+        form=parse_qs(request.content.decode())
+        assert form['wsfunction']==[COMPLETION_FUNCTION] and form['courseid']==['7']
+        assert form.get('userid')==(None if user is None else [str(user)])
+        return httpx.Response(200,json=data)
+    with client(respond) as c: assert c.call(COMPLETION_FUNCTION,**params)==data
+
+
+@pytest.mark.parametrize('params', [{},{'courseid':0},{'courseid':True},{'courseid':'7'},
+    {'courseid':7,'userid':-1},{'courseid':7,'userid':True},{'courseid':7,'userid':'12'},
+    {'courseid':7,'wstoken':'override'},{'courseid':7,'sql':'anything'}])
+def test_completion_transport_rejects_bad_request_before_network(params):
+    with client(lambda request:pytest.fail('No network expected')) as c:
+        with pytest.raises(ValueError):c.call(COMPLETION_FUNCTION,**params)
+
+
+def test_completion_stream_stops_and_closes_at_byte_limit():
+    class Stream(httpx.SyncByteStream):
+        read=0
+        closed=False
+        def __iter__(self):
+            for _ in range(1000):
+                self.read+=1
+                yield b' '*(16*1024)
+        def close(self):self.closed=True
+    stream=Stream()
+    with client(lambda request:httpx.Response(200,stream=stream)) as c:
+        with pytest.raises(ValueError,match='byte budget'):c.call(COMPLETION_FUNCTION,courseid=7,userid=12)
+    assert stream.closed and stream.read==MAX_COMPLETION_BYTES//(16*1024)+1
+
+
+def test_completion_budget_applies_to_decoded_content():
+    import gzip
+    payload=gzip.compress(b' '*(MAX_COMPLETION_BYTES+1))
+    with client(lambda request:httpx.Response(200,content=payload,headers={'Content-Encoding':'gzip'})) as c:
+        with pytest.raises(ValueError,match='byte budget'):c.call(COMPLETION_FUNCTION,courseid=7)
+
+
+def test_completion_preserves_upstream_readonly_authority(monkeypatch):
+    monkeypatch.setattr('lamb.moodle.analytics.client.READ_ALLOWLIST',set())
+    with client(lambda request:pytest.fail('No network expected')) as c:
+        with pytest.raises(ReadOnlyViolation):c.call(COMPLETION_FUNCTION,courseid=7)
+
+
+@pytest.mark.parametrize('payload', [b'not-json',b'[]'])
+def test_completion_malformed_response_fails_closed(payload):
+    with client(lambda request:httpx.Response(200,content=payload)) as c:
+        with pytest.raises(ValueError):c.call(COMPLETION_FUNCTION,courseid=7)
+
+
+def test_completion_errors_do_not_expose_debug_details():
+    with client(lambda request:httpx.Response(200,json={'exception':'error','errorcode':'nopermissions',
+        'message':'private-path','debuginfo':'private-test-token'})) as c:
+        with pytest.raises(MoodleAPIError) as exc:c.call(COMPLETION_FUNCTION,courseid=7)
+    assert exc.value.error_code=='nopermissions'
+    assert 'private-path' not in str(exc.value) and 'private-test-token' not in str(exc.value)
+
+
+def test_completion_exact_byte_boundary_succeeds():
+    data={'statuses':[],'warnings':[]}
+    payload=json.dumps(data).encode()
+    payload+=b' '*(MAX_COMPLETION_BYTES-len(payload))
+    with client(lambda request:httpx.Response(200,content=payload)) as c:
+        assert c.call(COMPLETION_FUNCTION,courseid=7)==data
+
+
+def test_completion_transport_failure_suppresses_request_details():
+    def fail(request):raise httpx.ReadTimeout('private-test-token private-path',request=request)
+    with client(fail) as c:
+        with pytest.raises(ConnectionError) as exc:c.call(COMPLETION_FUNCTION,courseid=7)
+    assert str(exc.value)=='Activity-completion transport failed'
