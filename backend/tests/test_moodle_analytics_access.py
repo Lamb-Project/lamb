@@ -34,6 +34,7 @@ def test_recency_uses_course_access_not_site_access():
 def test_teacher_and_unknown_role_do_not_become_inactive_students():
     result = collect(Client([[user(1,0,roles=[{'shortname':'editingteacher'}]),{'id':2}]]))
     assert result['rows'] == [] and result['coverage']['role_unknown'] == 1
+    assert result['coverage']['non_student_rows'] == 1
     assert not result['coverage']['complete']
 
 

@@ -11,7 +11,7 @@ from lamb.moodle.runtime import attach_to_agent
 
 def test_moodle_recipes_and_generated_commands_validate():
     pack=load_pack()
-    assert pack.version=='1.12.1'
+    assert pack.version=='1.12.2'
     validate_routing(pack)
     assert validate_skill_contracts(pack)
     names={'moodle-triage','moodle-forums','moodle-course-documents','moodle-assessment-draft'}
@@ -34,6 +34,8 @@ def test_triage_distinguishes_grading_from_missing_submissions():
     assert 'It NEVER means ungraded submissions' in text
     assert 'reconsider the requested metric before retrying' in text
     assert 'Never refresh an analytics chart with the submission-chart recipe' in text
+    assert 'all_enrolments_scanned includes teachers' in text
+    assert 'copy snapshot_date_label' in text
     assert load_pack(version='1.12.0').version == '1.12.0'
 
 

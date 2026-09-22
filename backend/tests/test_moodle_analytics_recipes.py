@@ -24,7 +24,8 @@ def test_analytics_contracts_are_strict_and_readonly():
 def test_course_access_saves_aggregates_not_learner_records(tmp_path):
     runtime = SimpleNamespace(cache_root=tmp_path,store=SimpleNamespace(organization_id=1,owner_id=2),
                               result_binding=lambda:{'generation':1},validate_result_binding=lambda *args:None)
-    source = {'course_id':7, 'as_of':'2026-09-22T12:00:00Z','coverage':{'complete':True},
+    source = {'course_id':7, 'as_of':'2026-09-22T12:00:00Z',
+              'coverage':{'complete':True,'student_rows':6,'non_student_rows':1,'role_unknown':0,'users_scanned':7},
               'window':{'since':1788213600},
               'metrics':{'recent':3,'older':2,'unknown':1}, 'rows':[{'user_id':SECRET_ID}],
               'limitations':['Not a resource view history.']}
@@ -37,6 +38,9 @@ def test_course_access_saves_aggregates_not_learner_records(tmp_path):
     assert snapshot['view_kind'] == 'metric-bars-v1'
     assert '<svg' in render_svg(snapshot)
     assert result['refreshed'] is False
+    assert result['population_counts'] == {'included_students':6,'excluded_non_students':1,
+        'unknown_role_enrolments':0,'all_enrolments_scanned':7}
+    assert result['snapshot_date_label'] == '2026-09-22T12:00:00+00:00 (UTC)'
 
 
 SECRET_ID=123456789
@@ -45,13 +49,15 @@ SECRET_ID=123456789
 def test_grading_rows_with_same_name_remain_distinct(tmp_path):
     runtime = SimpleNamespace(cache_root=tmp_path,store=SimpleNamespace(organization_id=1,owner_id=2),
                               result_binding=lambda:{'generation':1},validate_result_binding=lambda *args:None)
-    source = {'course_id':7,'coverage':{'complete':True},'limitations':[],
+    source = {'course_id':7,'as_of':'2026-09-22T12:00:00Z','coverage':{'complete':True},'limitations':[],
               'rows':[{'assignment_id':identity,'name':'Essay','needs_grading':identity,
                        'status':'ok','reason':None} for identity in (1,2)]}
     with patch('lamb.moodle.analytics.recipes.grading_queue',return_value=source):
         result=run_recipe(runtime,SimpleNamespace(checkpoint=lambda:None),12,
-            {'recipe':'grading-queue','course_id':7,'tz':'UTC','language':'en'})
+            {'recipe':'grading-queue','course_id':7,'tz':'Europe/Madrid','language':'en'})
     assert [row['name'] for row in result['rows']] == ['Essay (#1)','Essay (#2)']
+    assert result['as_of_local'] == '2026-09-22T14:00:00+02:00'
+    assert result['snapshot_date_label'].endswith('(Europe/Madrid)')
     assert '<svg' in render_svg(ChartStore(runtime).read(result['chart_id']))
 
 

@@ -47,6 +47,17 @@ def run_recipe(runtime, client, owner_id, params, *, progress=None):
                 'course_name':data.get('course_name', f"{TEXT[params['language']]['course']} {course}"),
                 'timezone':params['tz'],
                 **present(recipe, params['language'], params['tz'], data, rows)}
+    snapshot['as_of_local'] = datetime.fromisoformat(data['as_of'].replace('Z', '+00:00')).astimezone(
+        ZoneInfo(params['tz'])).isoformat()
+    snapshot['snapshot_date_label'] = f"{snapshot['as_of_local']} ({params['tz']})"
+    if recipe == 'course-access':
+        coverage = data['coverage']
+        snapshot['population_counts'] = {
+            'included_students': coverage['student_rows'],
+            'excluded_non_students': coverage['non_student_rows'],
+            'unknown_role_enrolments': coverage['role_unknown'],
+            'all_enrolments_scanned': coverage['users_scanned'],
+        }
     client.checkpoint()
     identity = ChartStore(runtime).save(snapshot, binding, command='moodle.analytics.run')
     client.checkpoint()

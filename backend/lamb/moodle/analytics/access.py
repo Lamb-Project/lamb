@@ -67,7 +67,8 @@ def course_access(client, owner_id, course_id, *, since, until=None):
             'rows':rows, 'metrics':{status:sum(row['status'] == status for row in rows)
                 for status in ('recent','older','no_course_access_recorded','unknown')},
             'coverage':{'population_exhausted':exhausted,'users_scanned':len(seen),
-                        'student_rows':len(rows),'role_unknown':role_unknown,
+                        'student_rows':len(rows),'non_student_rows':len(seen)-len(rows)-role_unknown,
+                        'role_unknown':role_unknown,
                         'complete':exhausted and role_unknown == 0 and all(row['status'] != 'unknown' for row in rows)},
             'source':'core_enrol_get_enrolled_users.lastcourseaccess',
             'limitations':['Last course access is not last site access or a resource-opening history.',
