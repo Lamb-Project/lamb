@@ -43,7 +43,7 @@ def validate_skill_contracts(pack):
             # Use the production parser, substituting only authored placeholder
             # identifiers. No handler or HTTP operation is executed by preflight.
             try:
-                example = re.sub(r'\b(?:RUBRIC_ID|LEARNING_SCENARIO_ID|CHART_ID)\b', '00000000-0000-0000-0000-000000000001', command)
+                example = re.sub(r'\b(?:RUBRIC_ID|LEARNING_SCENARIO_ID|CHART_ID|RUN_ID)\b', '00000000-0000-0000-0000-000000000001', command)
                 example = re.sub(r'\b(?:ASSISTANT|KB|SCENARIO|CASE|RUN|CHAT|TEMPLATE|JOB)_ID\b', '1', example)
                 example = re.sub(r'\{assistant_id\}|<assistant_id>|<id>', '1', example)
                 example = re.sub(r'\b(?:COURSE|FORUM|DISCUSSION|POST|CONTEXT|ASSIGNMENT|USER)_ID\b', '1', example)

@@ -43,9 +43,7 @@ When forum news returns `continue_command`, follow it to advance the same saved 
 
 ## Deterministic analytics recipes
 
-For new completion charts, use the recoverable workflow below. Do not execute the one-shot analytics run command unless the user explicitly requests one-shot collection. If a guard just blocked that command and loaded this skill, switch to analytics start rather than repeating it. Start creates a run, not a chart. Follow the returned continue_command exactly until a chart_id is returned. Processed students means collection progress, not students who completed an activity. Never chart or interpret intermediate progress as completion rates. After a lost response, retry the exact continuation command, including its step number; do not increment it yourself. After Stop or a lost run handle, list analytics runs and resume the matching course/run; ask if the intended run is ambiguous. Do not start another run to recover an existing one. Completed runs link to their saved charts; follow-up questions use chart read, not continuation or recollection. At the tool-round limit, retain the next command and explain that collection remains unfinished; never claim a chart exists before publication.
-
-Tracking mode and manual overrides are different fields. An automatically tracked activity can have a manually overridden completion record. An overridden count of one does not mean one manually tracked student or one manual activity. Use "manual override recorded" for that count and do not infer the actor's role.
+For completion charts, prefer the recoverable workflow below. Start creates a run, not a chart. Follow the returned continue_command exactly until a chart_id is returned. Processed students means collection progress, not students who completed an activity. Never chart or interpret intermediate progress as completion rates. After a lost response, retry the exact continuation command, including its step number; do not increment it yourself. After Stop or a lost run handle, list analytics runs and resume the matching course/run; ask if the intended run is ambiguous. Do not start another run to recover an existing one. Completed runs link to their saved charts; follow-up questions use chart read, not continuation or recollection. At the tool-round limit, retain the next command and explain that collection remains unfinished; never claim a chart exists before publication.
 
 ```aac-command
 moodle analytics start activity-completion --course COURSE_ID --tz Europe/Madrid --language es
@@ -67,6 +65,7 @@ moodle analytics run grade-distribution --course COURSE_ID --assignment ASSIGNME
 moodle analytics run grading-queue --course COURSE_ID --tz Europe/Madrid --language es
 moodle analytics run course-access --course COURSE_ID --since 2026-09-01 --tz Europe/Madrid --language es
 moodle analytics run resource-reach --course COURSE_ID --since 2026-09-01 --tz Europe/Madrid --language es
+moodle analytics run activity-completion --course COURSE_ID --tz Europe/Madrid --language es
 moodle analytics result CHART_ID --offset 0
 ```
 
