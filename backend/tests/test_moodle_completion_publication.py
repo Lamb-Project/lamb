@@ -39,6 +39,7 @@ def test_finished_projection_preserves_scope_date_language_but_no_private_cursor
     assert saved['collection_completed_at']==saved['as_of']=='2026-09-22T12:00:00+00:00'
     assert saved['completion_scopes']==[{'course_id':7,'module_ids':[10]}]
     assert saved['rows'][0]['overall_complete']==3 and len(saved['completion_columns'])==13
+    assert saved['rows'][0]['overall_by_state'] is None
     encoded=json.dumps(saved)
     for private in ('9123456','DO_NOT_PUBLISH','PRIVATE_FINGERPRINT','next_student'):
         assert private not in encoded
@@ -90,3 +91,25 @@ def test_unfinished_run_cannot_publish_even_if_marked_done_incorrectly(tmp_path)
     s.replace(identity,state,expected_revision=record['revision'])
     with pytest.raises(ValueError,match='not finished'):publish(s,rt,c,identity)
     assert not list((tmp_path/'moodle'/'charts').glob('**/*.json'))
+
+
+@pytest.mark.parametrize('defect',[None,'missing','boolean','state_total','overall_total','unknown_total'])
+def test_overall_cross_tab_projection_checks_marginals_and_strips_extras(tmp_path,defect):
+    s,rt,c,identity=fixture(tmp_path);record=s.read(identity);state=record['state']
+    matrix={key:{'true':int(key!='incomplete'),'false':int(key=='incomplete'),'unknown':0,
+        'actor_id':'PRIVATE_ACTOR'} for key in ('incomplete','complete','complete_pass','complete_fail')}
+    matrix['private_students']=['PRIVATE_STUDENT']
+    if defect=='missing':matrix['complete'].pop('unknown')
+    if defect=='boolean':matrix['complete']['true']=True
+    if defect=='state_total':matrix['complete']['true']=2
+    if defect=='overall_total':matrix['complete'].update(true=0,false=1)
+    if defect=='unknown_total':matrix['incomplete'].update(false=0,unknown=1)
+    state['cursor']['rows'][0]['overall_by_state']=matrix
+    s.replace(identity,state,expected_revision=record['revision'])
+    if defect:
+        with pytest.raises(ValueError,match='breakdown'):publish(s,rt,c,identity)
+        assert not list((tmp_path/'moodle'/'charts').glob('**/*.json'))
+    else:
+        result=publish(s,rt,c,identity)
+        assert result['rows'][0]['overall_by_state']['complete_fail']['true']==1
+        assert 'PRIVATE_' not in json.dumps(result)

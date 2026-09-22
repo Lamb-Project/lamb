@@ -75,9 +75,12 @@ def test_overall_completion_is_not_inferred_from_state():
     c=Client(); c.records[3]['isoverallcomplete']=True
     row=collect(c)['rows'][0]
     assert row['complete_fail']==1 and row['overall_complete']==3
+    assert row['overall_by_state']['complete_fail']=={'true':1,'false':0,'unknown':0}
+    assert row['overall_by_state']['incomplete']=={'true':0,'false':1,'unknown':0}
     c.records[3].pop('isoverallcomplete')
     row=collect(c)['rows'][0]
     assert row['complete_fail']==1 and row['overall_unknown']==1
+    assert row['overall_by_state']['complete_fail']=={'true':0,'false':0,'unknown':1}
 
 
 def test_inventory_drift_and_duplicate_disabled_ids_fail():

@@ -67,6 +67,16 @@ def test_500_learner_serialized_checkpoints_match_single_pass():
     for counts in resumed['rows']:
         assert [counts[key] for key in ('incomplete','complete','complete_pass','complete_fail')]==[125]*4
         assert counts['overall_complete']==375
+        assert counts['overall_by_state']=={
+            key:{'true':0 if key=='incomplete' else 125,'false':125 if key=='incomplete' else 0,'unknown':0}
+            for key in ('incomplete','complete','complete_pass','complete_fail')}
+
+
+def test_older_checkpoint_does_not_gain_a_partial_cross_tab():
+    state=initial_cursor([1,2],[row(10),row(20)])
+    for counts in state['rows']:counts.pop('overall_by_state')
+    state=advance_cursor(state,1,response())
+    assert all('overall_by_state' not in counts for counts in state['rows'])
 
 
 def test_missing_untracked_and_unknown_remain_separate_through_roundtrip():

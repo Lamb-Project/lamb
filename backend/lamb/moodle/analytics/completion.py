@@ -82,6 +82,25 @@ def completion_snapshot(context, cursor, as_of, *, resumable=False):
     fields=('cmid','name','tracking','availability_configured','learner_eligibility',*STATES,
         'unknown','untracked','overridden','override_unknown','overall_complete','overall_unknown','population_students')
     rows=[{key:row[key] for key in fields} for row in cursor['rows']]
+    for public, private in zip(rows, cursor['rows']):
+        matrix = private.get('overall_by_state')
+        public['overall_by_state'] = None
+        if matrix is not None:
+            # Project only known counters and validate their marginal totals.
+            # Missing states/flags must not silently become observed zeros.
+            try:
+                projected = {state:{flag:matrix[state][flag] for flag in ('true','false','unknown')} for state in STATES}
+                if any(type(value) is not int or value < 0 for counts in projected.values() for value in counts.values()):
+                    raise ValueError()
+                if any(sum(projected[state].values()) != private[state] for state in STATES):
+                    raise ValueError()
+                if sum(counts['true'] for counts in projected.values()) != private['overall_complete']:
+                    raise ValueError()
+                if sum(counts['unknown'] for counts in projected.values()) != private['overall_unknown']:
+                    raise ValueError()
+            except (KeyError, TypeError, ValueError):
+                raise ValueError('Invalid overall completion breakdown') from None
+            public['overall_by_state'] = projected
     population={key:context['population'][key] for key in
         ('student_rows','users_scanned','role_unknown','population_exhausted') if key in context['population']}
     return {'schema_version':1,'recipe':{'id':'activity-completion','version':1},
@@ -92,6 +111,7 @@ def completion_snapshot(context, cursor, as_of, *, resumable=False):
         'limitations':['States are observed completion configuration, not proof of learning or attainment.',
             'Complete, complete-pass and complete-fail remain separate states.',
             'Overall completion uses Moodle isoverallcomplete, not an inferred merge of the state categories.',
+            'overall_by_state cross-tabulates valid tracked states with the observed overall flag; null means this breakdown was not collected. It does not establish why Moodle assigned that flag.',
             'Required activities, learner-specific availability and schedules were not collected.',
             'No claim of being behind schedule or following a mandatory sequence is supported.',
             'Untracked learners and missing source states are not incomplete learners.',

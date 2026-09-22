@@ -17,7 +17,10 @@ def initial_cursor(students, rows):
     modules = [row['cmid'] for row in rows]
     if len(modules) > MAX_COMPLETION_MODULES or len(set(modules)) != len(modules):
         raise ValueError('Invalid completion module inventory')
-    return {'students': ids, 'next_student': 0, 'rows': deepcopy(rows)}
+    copied = deepcopy(rows)
+    for row in copied:
+        row['overall_by_state'] = {key:{'true':0,'false':0,'unknown':0} for key in STATES}
+    return {'students': ids, 'next_student': 0, 'rows': copied}
 
 
 def advance_cursor(state, student, response):
@@ -72,6 +75,11 @@ def advance_cursor(state, student, response):
             continue
         row[STATES[value]] += 1
         overall = record.get('isoverallcomplete')
+        # Older checkpoints lack this cross-tab. Never initialize one midway
+        # and misrepresent a partial breakdown as covering the whole run.
+        if 'overall_by_state' in row:
+            bucket = ('true' if overall else 'false') if type(overall) is bool else 'unknown'
+            row['overall_by_state'][STATES[value]][bucket] += 1
         if type(overall) is bool:
             row['overall_complete'] += int(overall)
         else:
