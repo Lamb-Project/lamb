@@ -1,5 +1,7 @@
 """Bounded private completion execution. Public continuation is wired separately."""
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+import uuid
 
 from .completion import completion_context
 from .completion_state import advance_cursor
@@ -11,11 +13,62 @@ MAX_RUN_CALLS = 1600
 MAX_RUN_STEPS = 60
 
 
-def start(store, course_id):
+def start(store, course_id, *, language='en', tz='UTC'):
     if type(course_id) is not int or course_id < 1:
         raise ValueError('Invalid completion course')
+    if language not in {'en','es','ca','eu'}:
+        raise ValueError('Invalid completion language')
+    ZoneInfo(tz)
     return store.create({'course_id':course_id,'started_at':datetime.now(timezone.utc).isoformat(),
-        'context':None,'cursor':None,'calls':0,'steps':0,'done':False})
+        'context':None,'cursor':None,'calls':0,'steps':0,'done':False,'language':language,'tz':tz})
+
+
+def publish(store, runtime, client, identity):
+    """Freeze aggregate evidence before publication; recover the exact same chart.
+
+    Does not recollect source data. Current permission checks still apply to
+    every attempt, including one after the chart was already published.
+    """
+    from .completion import completion_snapshot
+    from .recipes import format_snapshot, result_page
+    from ..charts import ChartStore
+    with store.execution_lock():
+        client.checkpoint()
+        record=store.read(identity);state=record['state']
+        if not state['done']:
+            raise ValueError('Completion collection is not finished')
+        current=runtime.result_binding()
+        if (store.binding['organization_id'] != runtime.store.organization_id or
+                store.binding['owner_id'] != runtime.store.owner_id or
+                any(store.binding[key] != current.get(key) for key in ('generation','base_url','moodle_user_id'))):
+            raise PermissionError('Completion run belongs to another connection')
+        publication=state.get('publication')
+        if publication is None:
+            data=completion_snapshot(state['context'],state['cursor'],state['completed_at'],resumable=True)
+            # A multi-step collection has an interval, not an atomic timestamp.
+            data['collection_started_at']=state['started_at']
+            data['collection_completed_at']=state['completed_at']
+            rows=[{**row,'id':row['cmid'],'name':f"{row['name']} (#{row['cmid']})",
+                'value':row['incomplete'],'status':'ok','reason':None} for row in data['rows']]
+            scope={'course_id':state['course_id'],'module_ids':[row['cmid'] for row in rows]}
+            data['completion_scopes']=[scope]
+            binding=dict(current,course_id=state['course_id'],completion_scopes=[scope])
+            runtime.validate_result_binding(binding,'moodle.analytics.run')
+            snapshot=format_snapshot('activity-completion',data,rows,dict(state,recipe='activity-completion'))
+            publication={'id':str(uuid.uuid4()),'snapshot':snapshot,'binding':binding}
+            state['publication']=publication
+            record=store.replace(identity,state,expected_revision=record['revision'])
+        runtime.validate_result_binding(publication['binding'],'moodle.analytics.run')
+        client.checkpoint()
+        charts=ChartStore(runtime)
+        chart_id=charts.save(publication['snapshot'],publication['binding'],
+            command='moodle.analytics.run',publication_id=publication['id'])
+        saved=charts.read(chart_id)
+        client.checkpoint()
+        if not state.get('published'):
+            state['published']=True
+            store.replace(identity,state,expected_revision=record['revision'])
+        return result_page(chart_id,saved)
 
 
 def advance(store, client, owner_id, identity):

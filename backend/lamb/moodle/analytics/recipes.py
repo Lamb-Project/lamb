@@ -81,6 +81,16 @@ def run_recipe(runtime, client, owner_id, params, *, progress=None):
         data['resource_scopes'] = [resource_scope]
     else:
         raise ValueError('Unknown analytics recipe')
+    snapshot = format_snapshot(recipe,data,rows,params)
+    client.checkpoint()
+    identity = ChartStore(runtime).save(snapshot, binding, command='moodle.analytics.run')
+    client.checkpoint()
+    return result_page(identity, snapshot)
+
+
+def format_snapshot(recipe, data, rows, params):
+    """Shared deterministic presentation for fresh and recovered collections."""
+    course=params['course_id']
     snapshot = {**{k:v for k,v in data.items() if k != 'rows'}, 'rows':rows,
                 'view_kind':'metric-bars-v1', 'language':params['language'],
                 'course_name':data.get('course_name', f"{TEXT[params['language']]['course']} {course}"),
@@ -97,10 +107,7 @@ def run_recipe(runtime, client, owner_id, params, *, progress=None):
             'unknown_role_enrolments': coverage['role_unknown'],
             'all_enrolments_scanned': coverage['users_scanned'],
         }
-    client.checkpoint()
-    identity = ChartStore(runtime).save(snapshot, binding, command='moodle.analytics.run')
-    client.checkpoint()
-    return result_page(identity, snapshot)
+    return snapshot
 
 
 def result_page(identity, snapshot, offset=0):

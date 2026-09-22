@@ -66,17 +66,27 @@ def completion_context(client, owner_id, course_id, *, student_limit=MAX_COMPLET
 
 def activity_completion(client, owner_id, course_id):
     context = completion_context(client,owner_id,course_id)
-    course=context['course_id']; course_name=context['course_name']
-    population=context['population']; disabled=context['disabled']; cursor=context['cursor']
+    course=context['course_id']; cursor=context['cursor']
     for student in cursor['students']:
         client.checkpoint()
         response=client.call('core_completion_get_activities_completion_status',courseid=course,userid=student)
         cursor = advance_cursor(cursor, student, response)
     client.checkpoint()
-    rows=cursor['rows']
+    return completion_snapshot(context,cursor,datetime.now(timezone.utc).isoformat())
+
+
+def completion_snapshot(context, cursor, as_of, *, resumable=False):
+    """Project only finished aggregate evidence, never private learner cursors."""
+    if cursor['next_student'] != len(cursor['students']):
+        raise ValueError('Completion collection is not finished')
+    fields=('cmid','name','tracking','availability_configured','learner_eligibility',*STATES,
+        'unknown','untracked','overridden','override_unknown','overall_complete','overall_unknown','population_students')
+    rows=[{key:row[key] for key in fields} for row in cursor['rows']]
+    population={key:context['population'][key] for key in
+        ('student_rows','users_scanned','role_unknown','population_exhausted') if key in context['population']}
     return {'schema_version':1,'recipe':{'id':'activity-completion','version':1},
-        'course_id':course,'course_name':course_name,'as_of':datetime.now(timezone.utc).isoformat(),'timezone':'UTC',
-        'rows':rows,'coverage':{**population,'modules_read':len(rows),'tracking_disabled_modules':disabled,
+        'course_id':context['course_id'],'course_name':context['course_name'],'as_of':as_of,'timezone':'UTC',
+        'rows':rows,'coverage':{**population,'modules_read':len(rows),'tracking_disabled_modules':context['disabled'],
             'complete':all(row['unknown']==0 and row['override_unknown']==0 and row['overall_unknown']==0 for row in rows)},
         'source':'core_completion_get_activities_completion_status per current active student-role enrolment',
         'limitations':['States are observed completion configuration, not proof of learning or attainment.',
@@ -87,4 +97,5 @@ def activity_completion(client, owner_id, course_id):
             'Untracked learners and missing source states are not incomplete learners.',
             'Override actors and learner identifiers are not retained.',
             'Current configuration and enrolment are not historical state; collection is not atomic.',
-            'Per-run limits do not yet provide durable large-course continuation.']}
+            ('Collected across bounded resumable steps; values were observed at different times.' if resumable else
+             'Per-run limits do not yet provide durable large-course continuation.')]}
