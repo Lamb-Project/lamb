@@ -74,7 +74,7 @@
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <div class="table-scroll" tabindex="0" role="region" aria-label={text.table}>
             {#if data.completion_columns}
-            <table><caption>{data.title}</caption>
+            <table class="completion-table"><caption>{data.title}</caption>
                 <thead><tr>{#each data.completion_columns as column}<th scope="col">{column}</th>{/each}</tr></thead>
                 <tbody>{#each data.rows as row}<tr><th scope="row">{row.name}</th>
                     {#each data.completion_keys.slice(1) as key}<td>{row[key] ?? '–'}</td>{/each}
@@ -162,6 +162,9 @@
     table { width:100%; min-width:600px; border-collapse:collapse; font-size:.9rem; }
     .metric-table { min-width:0; table-layout:fixed; }
     .metric-table th:first-child { width:65%; }
+    .completion-table { min-width:1600px; }
+    .completion-table th, .completion-table td { min-width:100px; overflow-wrap:normal; }
+    .completion-table th:first-child { min-width:220px; max-width:300px; overflow-wrap:anywhere; }
     th, td { border-bottom:1px solid #d6e0ea; text-align:left; padding:10px 8px; }
     caption { text-align:left; font-weight:600; padding:8px; }
     a, button { display:inline-block; margin-top:16px; color:#2463a1; }
