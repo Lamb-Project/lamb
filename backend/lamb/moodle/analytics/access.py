@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import time
 
 from ..scope import MoodleScope
+from ..forum_activity import preview
 
 PAGE_SIZE = 200
 MAX_USERS = 1000
@@ -20,7 +21,9 @@ def course_access(client, owner_id, course_id, *, since, until=None):
         raise ValueError('Use a positive past Unix timestamp for since')
     if until is not None:
         raise ValueError('Last course access cannot reconstruct historical windows')
-    course_id = MoodleScope(client, owner_id).require_teacher(course_id)
+    scope = MoodleScope(client, owner_id)
+    course_id = scope.require_teacher(course_id)
+    course_name = preview(scope.own_courses()[course_id].fullname, 160)[0]
     rows, seen, offset, exhausted, role_unknown = [], set(), 0, False, 0
     while offset < MAX_USERS:
         client.checkpoint()
@@ -57,7 +60,8 @@ def course_access(client, owner_id, course_id, *, since, until=None):
             break
     client.checkpoint()
     return {'schema_version':1, 'recipe':{'id':'course-access','version':1},
-            'course_id':course_id, 'as_of':datetime.fromtimestamp(now, timezone.utc).isoformat(),
+            'course_id':course_id, 'course_name':course_name,
+            'as_of':datetime.fromtimestamp(now, timezone.utc).isoformat(),
             'timezone':'UTC', 'window':{'since':since, 'until':now},
             'population':'Visible active enrolled users with role shortname student',
             'rows':rows, 'metrics':{status:sum(row['status'] == status for row in rows)

@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 
 from .assignments import grading_queue
 from .access import course_access
+from .presentation import present, TEXT
 from ..charts import ChartStore
 from ..scope import MoodleScope
 
@@ -41,12 +42,11 @@ def run_recipe(runtime, client, owner_id, params, *, progress=None):
                 for key,value in data['metrics'].items()]
     else:
         raise ValueError('Unknown analytics recipe')
-    spec = RECIPES[recipe]
     snapshot = {**{k:v for k,v in data.items() if k != 'rows'}, 'rows':rows,
                 'view_kind':'metric-bars-v1', 'language':params['language'],
-                'title':spec['title'], 'metric_label':spec['metric'],
-                'course_name':data.get('course_name', f'Course {course}'),
-                'timezone':params['tz'], 'caption':' '.join(data['limitations'])}
+                'course_name':data.get('course_name', f"{TEXT[params['language']]['course']} {course}"),
+                'timezone':params['tz'],
+                **present(recipe, params['language'], params['tz'], data, rows)}
     client.checkpoint()
     identity = ChartStore(runtime).save(snapshot, binding, command='moodle.analytics.run')
     client.checkpoint()

@@ -63,11 +63,14 @@ it('releases the protected blob when the canvas closes', async () => {
 
 it('renders a generic analytics snapshot without submission-specific caveats', async () => {
     apiJson.mockResolvedValue({...snapshot(),view_kind:'metric-bars-v1',title:'Grading queue',metric_label:'Needs grading',
+        window_label:'Since 2026-09-01, Europe/Madrid',population_label:'Visible active student enrolments',
         caption:'Needs grading is not feedback release.',rows:[{name:'Essay',status:'ok',value:2,reason:null}]});
     render(AacChart,{chartId:'analytics'});
     await screen.findByText('Needs grading is not feedback release.');
     expect(screen.getByRole('cell')).toHaveTextContent('2');
     expect(screen.getByRole('region')).toHaveAttribute('tabindex','0');
+    expect(screen.getByText('Since 2026-09-01, Europe/Madrid')).toBeInTheDocument();
+    expect(screen.getByText('Visible active student enrolments')).toBeInTheDocument();
     expect(screen.queryByText(chartText('en').extensions)).toBeNull();
 });
 

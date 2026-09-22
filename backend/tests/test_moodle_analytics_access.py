@@ -1,4 +1,5 @@
 from unittest.mock import patch
+from types import SimpleNamespace
 import pytest
 from lamb.moodle.analytics.access import course_access
 
@@ -18,12 +19,14 @@ def user(identity, value=None, **extra):
 def collect(client, **params):
     with patch('lamb.moodle.analytics.access.MoodleScope') as scope, patch('lamb.moodle.analytics.access.time.time',return_value=1000):
         scope.return_value.require_teacher.return_value=7
+        scope.return_value.own_courses.return_value={7:SimpleNamespace(fullname='Synthetic course')}
         return course_access(client, 12, 7, since=500, **params)
 
 
 def test_recency_uses_course_access_not_site_access():
     result = collect(Client([[user(1,700),user(2,100),user(3,0),user(4)]]))
     assert result['metrics'] == {'recent':1,'older':1,'no_course_access_recorded':1,'unknown':1}
+    assert result['course_name'] == 'Synthetic course'
     assert not result['coverage']['complete']
     assert 'DO_NOT_RETAIN' not in str(result) and 'lastaccess' not in str(result['rows'])
 
