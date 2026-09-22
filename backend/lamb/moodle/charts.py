@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from .scope import MoodleScope
 from .storage import ensure_private, private_root
 from .forum_activity import TaskCancelled, TaskLimit, preview
+from lamb.private_storage import atomic_json, read_json, sync_directory
 
 MAX_ASSIGNMENTS = 20
 MAX_CHARTS = 100
@@ -95,19 +96,41 @@ class ChartStore:
         self.root = ensure_private(Path(runtime.cache_root or private_root()) / 'charts' /
                                    str(runtime.store.organization_id) / str(runtime.store.owner_id))
 
-    def save(self, snapshot, binding, *, command='moodle.chart.submissions'):
-        identity = str(uuid.uuid4())
-        payload = json.dumps({'snapshot': snapshot, 'binding': binding, 'command':command}, ensure_ascii=False).encode()
+    def save(self, snapshot, binding, *, command='moodle.chart.submissions', publication_id=None):
+        # A recovery executor may reserve this server-owned UUID before saving.
+        # A retry must match the whole immutable envelope, never overwrite it.
+        identity = str(uuid.UUID(publication_id)) if publication_id is not None else str(uuid.uuid4())
+        envelope = {'snapshot': snapshot, 'binding': binding, 'command':command}
+        payload = json.dumps(envelope, ensure_ascii=False, sort_keys=True, allow_nan=False).encode()
         if len(payload) > MAX_BYTES: raise ValueError('Chart exceeds the pilot size limit')
         fd = os.open(self.root / '.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, 'w') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
+            path = self.root / (identity + '.json')
+            if path.is_symlink():
+                raise PermissionError('Chart publication is unavailable')
+            if path.exists():
+                if publication_id is None:
+                    raise ValueError('Chart identity collision')
+                try:
+                    existing = read_json(path, MAX_BYTES)
+                    same = json.dumps(existing, ensure_ascii=False, sort_keys=True, allow_nan=False).encode() == payload
+                except (OSError, ValueError, TypeError):
+                    raise PermissionError('Chart publication is unavailable') from None
+                if not same:
+                    raise ValueError('Chart publication conflicts with saved evidence')
+                # Returning a reused handle is an evidence read, not permission
+                # to bypass the current course/module/connection checks.
+                self.read(identity)
+                # The previous writer may have failed after rename but before
+                # directory fsync. Recovery must finish that durability step.
+                sync_directory(self.root)
+                return identity
             if len(list(self.root.glob('*.json'))) >= MAX_CHARTS:
                 raise ValueError('Pilot chart storage is full (100 saved charts); ask an administrator to archive snapshots')
-            # Immutable write: inaccessible to anyone else until returned; fsync before publication.
-            path = self.root / (identity + '.json')
-            with os.fdopen(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600), 'wb') as out:
-                out.write(payload); out.flush(); os.fsync(out.fileno())
+            # Readers see either no file or the entire snapshot. A failure after
+            # replacement is recovered by the exact-envelope branch above.
+            atomic_json(path, envelope)
         return identity
 
     def read(self, identity):

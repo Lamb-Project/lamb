@@ -122,6 +122,12 @@ class OwnerStorage:
                     remove(path)
             temporaries(self.tasks / 'runs')
 
+        # Chart snapshots are durable, but interrupted atomic writes are not.
+        # Never apply an expiry policy to the published JSON files here.
+        chart_folder = self.moodle / 'charts' / str(self.org) / str(self.owner)
+        with file_lock(chart_folder, blocking=False):
+            temporaries(chart_folder)
+
         from lamb.moodle.analytics.checkpoints import MAX_CHECKPOINT_BYTES
         import math
         folder = self.tasks / 'completion-runs'
