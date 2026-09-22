@@ -42,10 +42,12 @@ class MoodleRuntime:
                           'write_groups':sorted(policy.write_groups), 'allow_grade_write':policy.allow_grade_write}}
 
     def validate_result_binding(self, binding, key):
-        expected = {k:v for k,v in binding.items() if k not in {'course_id', 'course_ids'}}
+        expected = {k:v for k,v in binding.items() if k not in {'course_id', 'course_ids', 'resource_scopes'}}
         if self.result_binding() != expected or key not in self.available():
             raise PermissionError('Moodle snapshot is no longer accessible; run a fresh read')
         courses = binding.get('course_ids', binding.get('course_id'))
+        if binding.get('resource_scopes') and not courses:
+            raise PermissionError('Resource evidence requires a bound course')
         if courses:
             snap = self.snapshot(); record = snap['record']
             token = (self._cipher or TokenCipher()).decrypt(record['token_encrypted'],
@@ -55,6 +57,14 @@ class MoodleRuntime:
                     scope = MoodleScope(client, record['moodle_user_id'])
                     for course in courses if isinstance(courses, (tuple, list)) else [courses]:
                         scope.require_teacher(course)
+                    from .analytics.authorization import validate_resource_scope
+                    resource_scopes = binding.get('resource_scopes', [])
+                    if not isinstance(resource_scopes,list) or len(resource_scopes)>20:
+                        raise PermissionError('Invalid resource evidence scopes')
+                    for resource_scope in resource_scopes:
+                        if not isinstance(resource_scope,dict) or resource_scope.get('course_id') not in (courses if isinstance(courses,(tuple,list)) else [courses]):
+                            raise PermissionError('Resource scope is outside the bound courses')
+                        validate_resource_scope(client, resource_scope)
             except Exception as error:
                 from .forum_activity import transient_failure
                 if transient_failure(error):
