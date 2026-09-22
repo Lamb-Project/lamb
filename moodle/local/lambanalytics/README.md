@@ -1,5 +1,7 @@
 # LAMB analytics read adapter (experimental)
 
+Version 0.1.2 adds `local_lambanalytics_grade_scope(courseid, assignmentid)`: permission-only revalidation for raw assignment-grade evidence. Requires current active enrolment, enrolment-review and assignment grading permissions, visible assignment in the exact course and all-groups access when separate groups apply. Returns only the authorized IDs; it reads no grade or roster records. Recheck on every saved read. This endpoint does not itself implement a grade-distribution recipe.
+
 Optional Moodle 4.5+ local plugin. Install into `local/lambanalytics` using Moodle's normal administrator-reviewed plugin installation procedure. No institution installation is automatic. Back up the site before installation or upgrade.
 
 The read-only `local_lambanalytics_resource_events` function is registered with the official mobile service. Existing tokens still require active course enrolment and `report/log:view`; separate groups require an authorized explicit group unless the caller has `moodle/site:accessallgroups`. Student tokens do not acquire teacher permissions by installing this plugin.

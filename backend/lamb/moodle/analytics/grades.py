@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 
 from .assignments import assignment_inventory
 from .events import _students
+from .authorization import validate_grade_scope
 
 MAX_GRADE_ROWS = 1000
 
@@ -35,6 +36,7 @@ def grade_distribution(client, owner_id, course_id, assignment_id):
     if len(matches) != 1:
         raise PermissionError('Assignment is not in the visible course inventory')
     assignment = matches[0]
+    validate_grade_scope(client, {'course_id':course,'assignment_id':assignment_id})
     maximum = _number(assignment.get('grade'))
     if maximum <= 0:
         raise ValueError('Numeric distribution requires a positive point maximum; scales and no-grade items are unsupported')

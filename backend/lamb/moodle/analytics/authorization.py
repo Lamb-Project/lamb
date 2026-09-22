@@ -1,6 +1,20 @@
 """Revalidate saved event-derived evidence without recollecting events."""
 from moodle_cli.client.exceptions import MoodleAPIError
-from .client import SCOPE_FUNCTION
+from .client import SCOPE_FUNCTION, GRADE_SCOPE_FUNCTION
+
+
+def validate_grade_scope(client, scope):
+    if (not isinstance(scope,dict) or set(scope) != {'course_id','assignment_id'} or
+            any(type(v) is not int or v < 1 for v in scope.values())):
+        raise PermissionError('Invalid grade evidence scope')
+    expected = {'authorized':True,'courseid':scope['course_id'],'assignmentid':scope['assignment_id']}
+    try:
+        data = client.call(GRADE_SCOPE_FUNCTION, courseid=scope['course_id'], assignmentid=scope['assignment_id'])
+    except MoodleAPIError:
+        raise PermissionError('Grade evidence permissions are no longer available') from None
+    if (not isinstance(data,dict) or data != expected or data.get('authorized') is not True or
+            type(data.get('courseid')) is not int or type(data.get('assignmentid')) is not int):
+        raise PermissionError('Grade evidence authorization mismatch')
 
 
 def validate_resource_scope(client, scope):

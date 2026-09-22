@@ -10,16 +10,19 @@ from moodle_cli.client.exceptions import ConnectionError, MoodleAPIError
 
 EVENT_FUNCTION = 'local_lambanalytics_resource_events'
 SCOPE_FUNCTION = 'local_lambanalytics_resource_scope'
+GRADE_SCOPE_FUNCTION = 'local_lambanalytics_grade_scope'
 MAX_EVENT_BYTES = 256 * 1024
 EVENT_PARAMETERS = frozenset({'courseid', 'since', 'until', 'groupid', 'afterid', 'throughid', 'limit'})
 
 
 class AnalyticsHTTPClient(MoodleHTTPClient):
     def call(self, wsfunction, **params):
-        if wsfunction not in {EVENT_FUNCTION, SCOPE_FUNCTION}:
+        if wsfunction not in {EVENT_FUNCTION, SCOPE_FUNCTION, GRADE_SCOPE_FUNCTION}:
             return super().call(wsfunction, **params)
         allowed = EVENT_PARAMETERS if wsfunction == EVENT_FUNCTION else {'courseid','groupid','cmids'}
         required = {'courseid','since','until'} if wsfunction == EVENT_FUNCTION else {'courseid'}
+        if wsfunction == GRADE_SCOPE_FUNCTION:
+            allowed = required = {'courseid','assignmentid'}
         if set(params) - allowed or not required <= params.keys():
             raise ValueError('Invalid resource-event parameters')
         if any(type(value) is not int for key,value in params.items() if key != 'cmids'):

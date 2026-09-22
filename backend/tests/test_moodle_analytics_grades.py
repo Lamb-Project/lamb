@@ -18,7 +18,8 @@ class Client:
 
 def collect(client, maximum=20, **overrides):
     assignment = {'id':42,'grade':maximum,'teamsubmission':0,'markingworkflow':1, **overrides}
-    with patch('lamb.moodle.analytics.grades.assignment_inventory', return_value=(7,'Course',[assignment])), \
+    with patch('lamb.moodle.analytics.grades.validate_grade_scope'), \
+         patch('lamb.moodle.analytics.grades.assignment_inventory', return_value=(7,'Course',[assignment])), \
          patch('lamb.moodle.analytics.grades._students', return_value=(set(range(1,7)),
              {'population_exhausted':True,'role_unknown':0,'student_rows':6})):
         return grade_distribution(client, 12, 7, 42)

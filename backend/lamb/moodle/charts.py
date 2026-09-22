@@ -137,6 +137,8 @@ class ChartStore:
                 ('chart_id', 'title', 'course_id', 'course_name', 'as_of', 'timezone', 'coverage')})
             if data.get('resource_scopes'):
                 items[-1]['resource_scopes'] = data['resource_scopes']
+            if data.get('grade_scopes'):
+                items[-1]['grade_scopes'] = data['grade_scopes']
         return {'items': items, 'next_offset': offset + 20 if offset + 20 < len(paths) else None,
                 'evidence_kind': 'saved_snapshot', 'refreshed': False}
 
