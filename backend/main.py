@@ -57,8 +57,11 @@ async def lifespan(app: FastAPI):
     """Handle startup and shutdown events and schedule DB maintenance jobs."""
     # Startup
     logger.info("Starting LAMB application")
+    from lamb.private_storage import data_root
+    # Fail visibly before serving if storage would fall back to cwd or static.
+    private_data_root = await asyncio.to_thread(data_root)
     from lamb.moodle.storage import migrate_legacy_cache
-    migrate_legacy_cache()
+    await asyncio.to_thread(migrate_legacy_cache)
 
     # Run database migrations once at startup (idempotent — the
     # schema_version table ensures each migration only runs once even
@@ -172,7 +175,13 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to start DB maintenance tasks: {e}")
     # --- end background-tasks setup ---
 
-    yield
+    from lamb.storage_lifecycle import cleanup_loop
+    storage_cleanup = asyncio.create_task(cleanup_loop(private_data_root), name='private_storage_cleanup')
+    try:
+        yield
+    finally:
+        storage_cleanup.cancel()
+        await asyncio.gather(storage_cleanup, return_exceptions=True)
 
     # Shutdown
     logger.info("Shutting down LAMB application")

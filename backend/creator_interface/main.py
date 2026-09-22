@@ -2714,3 +2714,5 @@ async def update_user_sharing_permission_endpoint(
 # Per-creator Moodle credentials are managed outside AAC messages.
 from lamb.moodle.router import router as moodle_router
 router.include_router(moodle_router)
+from lamb.storage_router import router as storage_router
+router.include_router(storage_router)

@@ -1,6 +1,5 @@
 """Private, immutable, bounded AAC tool snapshots. Never served as static files."""
 from contextlib import contextmanager
-import fcntl
 import hashlib
 import json
 import os
@@ -8,6 +7,7 @@ from pathlib import Path
 import shlex
 import time
 import uuid
+from lamb.private_storage import data_root, file_lock, atomic_json
 
 RESULT_BYTES = 8 * 1024
 WORKFLOW_BYTES = 32 * 1024
@@ -74,7 +74,7 @@ class ResultStore:
         if any(type(v) is not int or v <= 0 for v in (organization_id, owner_id)):
             raise ValueError('Authenticated result owner is required')
         self.binding = {'organization_id':organization_id, 'owner_id':owner_id}
-        root = Path(root) if root is not None else Path(os.getenv('LAMB_DB_PATH', '.'))/'aac_results'
+        root = Path(root) if root is not None else data_root()/'aac_results'
         if any(p.is_symlink() for p in (root, *root.parents)):
             raise ValueError('Unsafe result storage path')
         root = root.resolve()
@@ -85,12 +85,7 @@ class ResultStore:
 
     @contextmanager
     def lock(self):
-        if any(p.is_symlink() for p in (self.folder, *self.folder.parents)):
-            raise ValueError('Unsafe result storage path')
-        self.folder.mkdir(mode=0o700, parents=True, exist_ok=True)
-        self.folder.chmod(0o700)
-        with os.fdopen(os.open(self.folder/'.lock', os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW, 0o600),'w') as file:
-            fcntl.flock(file, fcntl.LOCK_EX)
+        with file_lock(self.folder):
             yield
 
     def save(self, payload, *, origin):
@@ -114,8 +109,8 @@ class ResultStore:
                 total -= stat.st_size; remaining -= 1
             # Readers share the lock: they cannot see an incomplete write.
             dest = self.folder/(identity+'.json')
-            with os.fdopen(os.open(dest, os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW, 0o600),'wb') as out:
-                out.write(data);out.flush();os.fsync(out.fileno())
+            # Use the exact compact encoding used for quota and checksum tests.
+            atomic_json(dest, json.loads(data))
         return {'result_id':identity, 'sha256':digest, 'expires_at':now+TTL_SECONDS,
                 'read_command':command(identity), 'stored':True}
 

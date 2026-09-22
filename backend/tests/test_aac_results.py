@@ -24,7 +24,8 @@ def store(tmp_path, monkeypatch):
 
 
 def saved(store, payload):
-    meta = store.save(payload, origin={'command':'assistant.get'})
+    meta = store.save(payload, origin={'command':'assistant.get', 'authority': {
+        'version': 1, 'resources': [{'kind': 'assistant', 'id': 42}]}})
     return store.read(meta['result_id'])
 
 
@@ -183,7 +184,8 @@ def test_workflow_instructions_complete_or_rejected_before_activation(store):
 def test_read_result_enforces_current_owner_and_role(store):
     from lamb.aac.result_reader import read_result
     identity=saved(store,{'data':'owned'})['id']
-    auth=N(user={'id':1},organization={'id':1,'config':{}},is_system_admin=False,is_org_admin=False)
+    auth=N(user={'id':1},organization={'id':1,'config':{}},is_system_admin=False,is_org_admin=False,
+           can_access_assistant=lambda _: 'owner')
     with patch('lamb.aac.brief.role_axes',return_value={'layers':['creator']}):
         assert read_result(auth,identity,'/data')['text']=='owned'
         auth.user['id']=2
@@ -249,7 +251,8 @@ async def test_result_endpoint_owner_denial_and_bad_pointer(store):
     from fastapi import HTTPException
     from lamb.aac.router import read_tool_result
     identity=saved(store,{'data':'private'})['id']
-    auth=N(user={'id':1},organization={'id':1,'config':{}},is_system_admin=False,is_org_admin=False)
+    auth=N(user={'id':1},organization={'id':1,'config':{}},is_system_admin=False,is_org_admin=False,
+           can_access_assistant=lambda _: 'owner')
     with patch('lamb.aac.brief.role_axes',return_value={'layers':['creator']}):
         assert (await read_tool_result(identity,path='/data',offset=0,auth=auth))['text']=='private'
         with pytest.raises(HTTPException) as bad:

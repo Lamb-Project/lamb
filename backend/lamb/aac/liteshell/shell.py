@@ -316,11 +316,12 @@ class LiteShell:
     def model_result(self, command_str, payload):
         """Bound the model view while raw ShellResult/audit/transcript stay intact."""
         from lamb.aac.result_store import ResultStore, compact
+        from lamb.aac.result_authority import authority
         try:
-            key = prepare_command(command_str)[0]
+            key, args, _, _ = prepare_command(command_str)
         except (ValueError, TypeError):
-            key = 'unknown'
-        origin = {'command': key}
+            key, args = 'unknown', []
+        origin = {'command': key, 'authority': authority(key, args, payload)}
         if payload.get('skill_loaded'):
             origin['skill_id'] = payload['skill_loaded']
         if self.history and self.history[-1].command == command_str and self.history[-1].result_binding:

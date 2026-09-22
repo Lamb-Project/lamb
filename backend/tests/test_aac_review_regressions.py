@@ -92,7 +92,8 @@ def test_results_endpoint_uses_real_jwt_dependency_and_enforces_owner(tmp_path,m
     from tests.test_auth_context import _make_user, _make_organization
     monkeypatch.setenv('LAMB_DB_PATH',str(tmp_path.resolve()))
     storage=ResultStore(10,1)
-    identity=storage.save({'data':'owned evidence'},origin={'command':'assistant.get'})['result_id']
+    identity=storage.save({'data':'owned evidence'},origin={'command':'assistant.get', 'authority': {
+        'version': 1, 'resources': [{'kind': 'assistant', 'id': 42}]}})['result_id']
     app=FastAPI();app.include_router(router);client=TestClient(app)
     url=f'/aac/results/{identity}?path=/data'
     assert client.get(url).status_code in {401,403}
@@ -101,6 +102,7 @@ def test_results_endpoint_uses_real_jwt_dependency_and_enforces_owner(tmp_path,m
         database.get_creator_user_by_email.return_value=_make_user(email='fixture@test')
         database.get_organization_by_id.return_value=_make_organization()
         database.get_user_organization_role.return_value='member'
+        database.get_assistant_by_id_with_publication.return_value = {'owner': 'fixture@test'}
         response=client.get(url,headers={'Authorization':'Bearer '+token})
         assert response.status_code==200,response.text
         assert response.json()['text']=='owned evidence'

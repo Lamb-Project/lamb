@@ -5,7 +5,8 @@ from pathlib import Path
 
 
 def private_root():
-    root = Path(os.environ.get('LAMB_DB_PATH', '.')).resolve() / 'moodle'
+    from lamb.private_storage import data_root
+    root = data_root() / 'moodle'
     public = (Path(__file__).resolve().parents[2] / 'static').resolve()
     if root == public or public in root.parents:
         from .policy import MoodleConfigurationError
@@ -14,12 +15,8 @@ def private_root():
 
 
 def ensure_private(root):
-    root = Path(root)
-    if any(p.is_symlink() for p in (root, *root.parents)):
-        raise ValueError('Unsafe Moodle storage path')
-    root.mkdir(parents=True, exist_ok=True, mode=0o700)
-    root.chmod(0o700)
-    return root
+    from lamb.private_storage import private_directory
+    return private_directory(root)
 
 
 def migrate_legacy_cache(legacy=None, target=None):

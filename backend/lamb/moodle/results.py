@@ -9,6 +9,7 @@ from pathlib import Path
 from .cache import positive_id
 from .storage import ensure_private, private_root
 from .forum_activity import preview
+from lamb.private_storage import atomic_json, read_json
 
 TTL_SECONDS = 24 * 60 * 60
 MAX_RESULTS = 16
@@ -39,14 +40,16 @@ class ResultStore:
             fcntl.flock(lock, fcntl.LOCK_EX)
             # Bounded derived data retention; authored user documents are separate.
             protected = set()
+            ensure_private(self.folder.parent / 'runs')
             for run_path in (self.folder.parent / 'runs').glob('*.json'):
-                if run_path.is_symlink(): continue
+                if run_path.is_symlink(): raise ValueError('Unsafe Moodle recovery storage')
                 try:
-                    run = json.loads(run_path.read_text())
-                    if run['binding'] == self.binding and run['expires_at'] > time.time():
-                        protected.add(run['last_result'])
+                    from .runs import MAX_RUN_BYTES
+                    run = read_json(run_path, MAX_RUN_BYTES)
+                    from lamb.storage_lifecycle import run_references
+                    protected.update(run_references([run], time.time()))
                 except (OSError, ValueError, KeyError, TypeError):
-                    continue
+                    raise ValueError('Cannot verify Moodle recovery references; no evidence was evicted') from None
             files = sorted(self.folder.glob('*.json'), key=lambda p: p.stat().st_mtime)
             for path in files:
                 if path.is_symlink():
@@ -57,11 +60,10 @@ class ResultStore:
                     continue
                 # Count remaining files without weakening the per-owner cap.
                 files = [p for p in files if p != path]
+            if len(files) >= MAX_RESULTS:
+                raise ValueError('Moodle evidence storage is full of active recovery handles; wait for expiry before starting more work')
             dest = self.folder / (identity + '.json')
-            with os.fdopen(os.open(dest, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600), 'wb') as out:
-                out.write(payload)
-                out.flush()
-                os.fsync(out.fileno())
+            atomic_json(dest, envelope)
         return identity
 
     def read(self, identity):

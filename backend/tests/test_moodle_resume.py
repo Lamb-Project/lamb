@@ -193,7 +193,9 @@ def test_run_lock_refuses_overlap_and_retention_is_bounded(tmp_path):
         with pytest.raises(ValueError, match='already running'):
             execute(tmp_path, Fixture())
     with patch('lamb.moodle.runs.MAX_RUNS', 2):
-        for _ in range(3): execute(tmp_path, Fixture())
+        for _ in range(2): execute(tmp_path, Fixture())
+        with pytest.raises(ValueError, match='live recovery handles'):
+            execute(tmp_path, Fixture())
     assert len(runs.listing()['runs']) == 2
     for path in runs.folder.glob('*.json'): assert path.stat().st_mode & 0o777 == 0o600
 

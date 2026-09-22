@@ -5,12 +5,14 @@ import fcntl
 import json
 import os
 from pathlib import Path
-import tempfile
 import time
 import uuid
 from .storage import ensure_private, private_root
+from lamb.private_storage import atomic_json, read_json
 
 MAX_OWNER_BYTES = 256 * 1024 * 1024
+MAX_RECORDS = 4096
+CATEGORIES = frozenset({'reviews', 'receipts', 'versions', 'sessions'})
 
 
 def identity(value):
@@ -34,6 +36,8 @@ class ImportStore:
             yield
 
     def path(self, category, key):
+        if category not in CATEGORIES:
+            raise ValueError('Unknown import storage category')
         path = ensure_private(self.root / category) / (identity(key) + '.json')
         if path.is_symlink(): raise PermissionError('Unsafe Moodle document storage')
         return path
@@ -41,23 +45,23 @@ class ImportStore:
     def get(self, category, key):
         path = self.path(category, key)
         if not path.is_file(): raise PermissionError('Unknown Moodle document handle')
-        return json.loads(path.read_text())
+        return read_json(path, MAX_OWNER_BYTES)
 
     def put(self, category, key, data):
         path = self.path(category, key)
-        payload = json.dumps(data, ensure_ascii=False).encode()
-        used = sum(p.stat().st_size for p in self.root.rglob('*.json') if p != path and not p.is_symlink())
+        payload = json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode('utf-8', errors='backslashreplace')
+        files = [p for category in CATEGORIES for p in ensure_private(self.root / category).glob('*.json')]
+        if any(p.is_symlink() for p in files): raise ValueError('Unsafe Moodle document storage')
+        if not path.exists() and len(files) >= MAX_RECORDS:
+            raise ValueError('Private import record limit reached; inspect private-storage usage and clean expired reviews')
+        used = sum(p.stat().st_size for p in files if p != path)
         if used + len(payload) > MAX_OWNER_BYTES:
-            raise ValueError('Private Moodle import storage is full; ask an administrator to archive old imports')
-        fd, temporary = tempfile.mkstemp(dir=path.parent, prefix='.pending-')
-        try:
-            with os.fdopen(fd, 'wb') as out:
-                out.write(payload); out.flush(); os.fsync(out.fileno())
-            os.replace(temporary, path)
-        finally:
-            if os.path.exists(temporary): os.unlink(temporary)
+            raise ValueError('Private Moodle import storage is full; inspect private-storage usage and clean expired reviews')
+        atomic_json(path, data)
 
     def list(self, category):
+        if category not in CATEGORIES:
+            raise ValueError('Unknown import storage category')
         folder = ensure_private(self.root / category)
         for path in sorted(folder.glob('*.json')):
             if not path.is_symlink(): yield self.get(category, path.stem)
@@ -66,7 +70,10 @@ class ImportStore:
         key = str(uuid.uuid4())
         data['review']['review_id'] = key
         data['review']['expires_at'] = int(time.time()) + 3600
-        with self.lock(): self.put('reviews', key, data)
+        # Approval binds hashes and metadata. Confirmation fetches and verifies
+        # fresh bytes, so persisting an extra binary copy here is unnecessary.
+        ticket = {k: v for k, v in data.items() if k not in {'content', 'originals'}}
+        with self.lock(): self.put('reviews', key, ticket)
         return data['review']
 
     def consume(self, review, scope, binding):

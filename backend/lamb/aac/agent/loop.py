@@ -805,6 +805,14 @@ class AgentLoop(SkillRouting):
             return None
         classification = self.approval_decision or classify_user_confirmation(user_message)
         self.approval_decision = None
+        if classification in {'reject', 'edit'} and action.get('moodle_review') and getattr(self.shell, 'moodle', None):
+            from lamb.moodle.imports import discard_preparation
+            try:
+                await anyio.to_thread.run_sync(discard_preparation, self.shell.moodle, action['moodle_review'])
+            except (OSError, ValueError, PermissionError, KeyError, TypeError):
+                # Refusing an action must succeed even when its store is busy.
+                # Unused preparations still expire; attempted work stays pinned.
+                logger.warning('Unused Moodle preparation retained for scheduled cleanup')
         if classification == 'edit':
             self.pending_action = None
             self.conversation.append({'role': 'user', 'content':

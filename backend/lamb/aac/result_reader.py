@@ -1,5 +1,6 @@
 """Current authenticated authority for saved result readback, shared by CLI/LiteShell."""
 from lamb.aac.result_store import ResultStore, page
+from lamb.aac.result_authority import require_current_authority
 
 
 def read_result(auth, identity, path='', offset=0):
@@ -10,7 +11,7 @@ def read_result(auth, identity, path='', offset=0):
     pack = load_pack(agent_settings(auth.organization.get('config', {})))
     layers = role_axes(auth)['layers']
     key = stored['origin']['command']
-    if key not in allowed_commands(pack,layers) and key != 'unknown' and not key.startswith('moodle.'):
+    if key not in allowed_commands(pack,layers) and not key.startswith('moodle.'):
         raise PermissionError('Result unavailable for your current role')
     if stored['origin'].get('skill_id') and stored['origin']['skill_id'] not in allowed_skills(pack,layers):
         raise PermissionError('Workflow result unavailable for your current role')
@@ -23,6 +24,9 @@ def read_result(auth, identity, path='', offset=0):
         from lamb.moodle.router import database
         runtime = MoodleRuntime(ConnectionStore(database(), auth.organization['id'], auth.user['id']))
         runtime.validate_result_binding(binding,key)
+    else:
+        require_current_authority(auth, stored['origin'])
     result = page(stored,path,offset)
     if binding: runtime.validate_result_binding(binding,key)
+    else: require_current_authority(auth, stored['origin'])
     return result

@@ -27,6 +27,17 @@ def store_for_runtime(runtime):
     return ImportStore(runtime.store.organization_id, runtime.store.owner_id, runtime.cache_root)
 
 
+def discard_preparation(runtime, review):
+    """Reject/edit frees only this session's unused preparation, never a receipt."""
+    from lamb.storage_lifecycle import OwnerStorage
+    store = store_for_runtime(runtime)
+    ticket = store.get('reviews', review.get('review_id'))
+    if (ticket['review'] != review or ticket['scope'] != session_scope(runtime.context)
+            or ticket['binding'] != runtime.result_binding()):
+        raise PermissionError('Preparation belongs to another session or connection')
+    return OwnerStorage.discard_import_review(store, review['review_id'])
+
+
 def import_identity(binding):
     # Owner/org are enforced by the private store. Durable receipts survive a
     # credential rotation or policy edit, but never a different site/account.

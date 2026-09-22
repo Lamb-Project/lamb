@@ -70,8 +70,12 @@ class RunStore:
         files = sorted(self.folder.glob('*.json'), key=lambda p: p.stat().st_mtime)
         for path in files:
             if path.is_symlink(): raise CheckpointError('Unsafe Moodle run storage')
-            if path.stat().st_mtime < time.time() - TTL_SECONDS or len(files) >= MAX_RUNS:
+            from lamb.private_storage import read_json
+            saved = read_json(path, MAX_RUN_BYTES)
+            if saved['expires_at'] <= time.time():
                 path.unlink(); files = [p for p in files if p != path]
+        if len(files) >= MAX_RUNS:
+            raise ValueError('Moodle run storage is full of live recovery handles; use an existing run or wait for expiry')
         run = {'id': str(uuid.uuid4()), 'binding': self.binding,
             'expires_at': time.time() + TTL_SECONDS, 'state': initial_state(params),
             'last_result': None, 'next_results': {}, 'working': None}

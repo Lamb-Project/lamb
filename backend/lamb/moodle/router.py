@@ -260,8 +260,13 @@ async def document_command(body: DocumentCommandBody, request: Request,
                 if not result.success: raise ValueError(result.error)
                 return result.data
             finally:
-                storage.put('sessions', body.session, runtime.context)
-                await shell.close()
+                def save_context():
+                    with storage.lock():
+                        storage.put('sessions', body.session, runtime.context)
+                try:
+                    await asyncio.to_thread(save_context)
+                finally:
+                    await shell.close()
     except PermissionError as exc:
         raise HTTPException(403, str(exc)) from None
     except ValueError as exc:
