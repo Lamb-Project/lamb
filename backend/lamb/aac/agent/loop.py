@@ -208,8 +208,13 @@ def _extract_artifacts(cmd: str, result: Any) -> list[dict]:
     if len(tokens) < 2:
         return []
 
-    if tokens[:3] in (['moodle', 'chart', 'submissions'], ['moodle','analytics','run']) and getattr(result, 'success', False):
-        return [{'type': 'chart', 'id': result.data['chart_id'], 'title': result.data['title']}]
+    if tokens[:3] in (['moodle', 'chart', 'submissions'], ['moodle','analytics','run'],
+                     ['moodle','analytics','continue']) and getattr(result, 'success', False):
+        data = getattr(result, 'data', None)
+        if isinstance(data, dict) and data.get('chart_id') and data.get('title'):
+            return [{'type': 'chart', 'id': data['chart_id'], 'title': data['title']}]
+        # A successful collection step need not have published a chart yet.
+        return []
     if tokens[0] == 'moodle':
         from lamb.moodle.audit import command_artifacts
         return command_artifacts(cmd, result)
