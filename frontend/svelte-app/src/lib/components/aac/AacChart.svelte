@@ -79,7 +79,7 @@
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <div class="table-scroll" tabindex="0" role="region" aria-label={text.table}>
             {#if data.heatmap_rows}
-            <table><caption>{data.title}</caption>
+            <table class="heatmap-table"><caption>{data.title}</caption>
                 <thead><tr><th scope="col">{data.heatmap_day_label}</th>{#each Array(24) as _,hour}<th scope="col">{hour}:00</th>{/each}</tr></thead>
                 <tbody>{#each data.heatmap_rows as row}<tr><th scope="row">{row.day}</th>
                     {#each row.values as value}<td>{value}</td>{/each}
@@ -170,6 +170,9 @@
     .desktop-chart { margin:18px 0; }
     .heatmap-chart { margin:18px 0; overflow:auto; max-width:100%; }
     .heatmap-chart img { min-width:720px; }
+    .heatmap-table { min-width:1250px; }
+    .heatmap-table th, .heatmap-table td { white-space:nowrap; word-break:normal; }
+    .heatmap-table th:first-child { min-width:120px; }
     img { display:block; width:100%; height:auto; }
     .mobile-chart { display:none; list-style:none; padding:0; margin:16px 0; }
     .mobile-chart li { margin-bottom:18px; }
