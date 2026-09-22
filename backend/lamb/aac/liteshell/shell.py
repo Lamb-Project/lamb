@@ -385,28 +385,28 @@ class LiteShell:
                     binding['course_ids'] = sorted(set(map(int, course)))
                 elif course:
                     binding['course_id'] = int(course)
-            if key in {'moodle.chart.read','moodle.analytics.result','moodle.analytics.capabilities'}:
+            if key in {'moodle.chart.read','moodle.analytics.result','moodle.analytics.capabilities','moodle.analytics.start','moodle.analytics.continue'}:
                 binding['course_id'] = data['course_id']
-            if key == 'moodle.chart.list':
+            if key in {'moodle.chart.list','moodle.analytics.runs'}:
                 binding['course_ids'] = sorted({item['course_id'] for item in data['items']})
                 scopes = [scope for item in data['items'] for scope in item.get('resource_scopes', [])]
                 if scopes: binding['resource_scopes'] = scopes
             elif isinstance(data,dict) and data.get('resource_scopes'):
                 binding['resource_scopes'] = data['resource_scopes']
-            if key == 'moodle.chart.list':
+            if key in {'moodle.chart.list','moodle.analytics.runs'}:
                 grade_scopes = [scope for item in data['items'] for scope in item.get('grade_scopes', [])]
                 if grade_scopes: binding['grade_scopes'] = grade_scopes
             elif isinstance(data,dict) and data.get('grade_scopes'):
                 binding['grade_scopes'] = data['grade_scopes']
-            if key == 'moodle.chart.list':
+            if key in {'moodle.chart.list','moodle.analytics.runs'}:
                 completion_scopes = [scope for item in data['items'] for scope in item.get('completion_scopes', [])]
                 if completion_scopes: binding['completion_scopes'] = completion_scopes
             elif isinstance(data,dict) and data.get('completion_scopes'):
                 binding['completion_scopes'] = data['completion_scopes']
-            if key in {'moodle.chart.submissions','moodle.analytics.run'}:
-                binding['course_id'] = kwargs['course_id']
+            if key in {'moodle.chart.submissions','moodle.analytics.run','moodle.analytics.start','moodle.analytics.continue'}:
+                binding['course_id'] = data['course_id']
                 emit = getattr(bridge, 'emit', None)
-                if emit:
+                if emit and data.get('chart_id'):
                     await emit({'status': 'chart', 'chart_id': data['chart_id'], 'title': data['title']})
             return ShellResult(success=True,data=data,result_binding=binding)
         handler = COMMAND_REGISTRY[key]

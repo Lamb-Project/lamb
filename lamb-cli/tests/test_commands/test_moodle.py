@@ -136,6 +136,10 @@ def test_saved_chart_list_and_read_contracts():
 
 def test_analytics_commands_share_authenticated_task_contract():
     examples = [
+        (['start','activity-completion','--course','7','--language','es'],
+         'moodle analytics start activity-completion --course 7 --tz UTC --language es'),
+        (['continue','run-id','--step','2'],'moodle analytics continue run-id --step 2'),
+        (['runs'],'moodle analytics runs'),
         (['run','activity-completion','--course','7'],
          'moodle analytics run activity-completion --course 7 --tz UTC --language en'),
         (['run','grade-distribution','--course','7','--assignment','42'],

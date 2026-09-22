@@ -48,8 +48,16 @@ def task_specs():
     analytics_result = click.Command('result', params=[click.Argument(['chart_id']),
         click.Option(['--offset'],default=0,type=click.IntRange(min=0))],
         help='Read a bounded page from a saved analytics snapshot, with fresh permission checks and no recollection.', add_help_option=False)
+    analytics_start = click.Command('start', params=[click.Argument(['recipe'],type=click.Choice(['activity-completion'])),
+        click.Option(['--course','course_id'],required=True,type=click.IntRange(min=1)),
+        click.Option(['--tz'],default='UTC'),click.Option(['--language'],default='en',type=click.Choice(['en','es','ca','eu']))],
+        help='Create a recoverable completion run. Follow continue_command until finished; no chart exists yet.',add_help_option=False)
+    analytics_continue = click.Command('continue',params=[click.Argument(['run_id']),
+        click.Option(['--step'],required=True,type=click.IntRange(min=0))],
+        help='Advance one bounded completion step. Retry the exact command after interruption or a lost response.',add_help_option=False)
+    analytics_runs = click.Command('runs',help='List authorized private completion recovery handles; no learner IDs are returned.',add_help_option=False)
     return {key: CommandSpec(key, parser.help, 'auto', parser)
-            for key, parser in [('news', news), ('evidence', evidence), ('continue', continuation), ('runs', runs), ('chart.submissions', chart), ('chart.list', chart_list), ('chart.read', chart_read), ('analytics.run', analytics_run), ('analytics.capabilities', analytics_capabilities), ('analytics.result', analytics_result)]}
+            for key, parser in [('news', news), ('evidence', evidence), ('continue', continuation), ('runs', runs), ('chart.submissions', chart), ('chart.list', chart_list), ('chart.read', chart_read), ('analytics.run', analytics_run), ('analytics.capabilities', analytics_capabilities), ('analytics.result', analytics_result), ('analytics.start',analytics_start), ('analytics.continue',analytics_continue), ('analytics.runs',analytics_runs)]}
 
 
 def parse_task(tokens):
@@ -70,7 +78,11 @@ def parse_task(tokens):
         from uuid import UUID
         try: params['chart_id'] = str(UUID(params['chart_id']))
         except (ValueError, TypeError): raise ValueError('Use a saved chart_id') from None
-    if key in {'chart.submissions','analytics.run'}:
+    if key == 'analytics.continue':
+        from uuid import UUID
+        try:params['run_id']=str(UUID(params['run_id']))
+        except (ValueError,TypeError):raise ValueError('Use a completion run_id') from None
+    if key in {'chart.submissions','analytics.run','analytics.start'}:
         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
         try: ZoneInfo(params['tz'])
         except (ValueError, ZoneInfoNotFoundError): raise ValueError('Use an IANA timezone') from None

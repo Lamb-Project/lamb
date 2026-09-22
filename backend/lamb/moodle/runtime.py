@@ -137,6 +137,9 @@ class MoodleRuntime:
             moodle_user_id=record['moodle_user_id'], generation=snap['generation'], root=self.cache_root)
         with MoodleHTTPClient(record['base_url'], token, readonly=True, timeout=15) as raw:
             client = GuardedClient(raw, revalidate=revalidate, cancel=cancel)
+            if key in {'analytics.start','analytics.continue','analytics.runs'}:
+                from .analytics.completion_tasks import execute
+                return execute(self,results,client,record['moodle_user_id'],key,params)
             if key == 'analytics.capabilities':
                 from .analytics.recipes import capabilities
                 return capabilities(client, record['moodle_user_id'], params['course_id'])

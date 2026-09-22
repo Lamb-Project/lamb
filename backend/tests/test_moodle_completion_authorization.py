@@ -62,6 +62,9 @@ def test_completion_scope_requires_matching_bound_course(stores,courses):
 @pytest.mark.parametrize('command,data', [
     ('moodle analytics result 00000000-0000-0000-0000-000000000001', {'course_id':7,'completion_scopes':[SCOPE]}),
     ('moodle chart list',{'items':[{'course_id':7,'completion_scopes':[SCOPE]}]}),
+    ('moodle analytics runs',{'items':[{'course_id':7,'completion_scopes':[SCOPE]}]}),
+    ('moodle analytics start activity-completion --course 7',{'course_id':7,'completion_scopes':[SCOPE]}),
+    ('moodle analytics continue 00000000-0000-0000-0000-000000000001 --step 0',{'course_id':7,'completion_scopes':[SCOPE]}),
 ])
 def test_liteshell_preserves_completion_scope(stores,command,data):
     import asyncio

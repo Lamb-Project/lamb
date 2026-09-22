@@ -114,7 +114,13 @@ def advance(store, client, owner_id, identity):
                 save()
             if not state['done']:
                 cursor=state['cursor']
-                selected=cursor['students'][cursor['next_student']:cursor['next_student']+MAX_STEP_STUDENTS]
+                target=cursor['next_student']+MAX_STEP_STUDENTS
+                if 'active_public_step' in state:
+                    if 'public_target' not in state:
+                        state['public_target']=min(target,len(cursor['students']))
+                        save()
+                    target=state['public_target']
+                selected=cursor['students'][cursor['next_student']:target]
                 for student in selected:
                     client.checkpoint()
                     response=client.call('core_completion_get_activities_completion_status',
@@ -127,6 +133,8 @@ def advance(store, client, owner_id, identity):
                 state['done']=state['cursor']['next_student']==len(state['cursor']['students'])
                 if state['done']:
                     state['completed_at']=datetime.now(timezone.utc).isoformat()
+                if 'active_public_step' in state:
+                    state['finished_public_step']=state['active_public_step']
                 save()
             client.checkpoint()
             return record

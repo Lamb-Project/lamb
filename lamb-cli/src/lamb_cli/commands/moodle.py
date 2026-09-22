@@ -36,6 +36,22 @@ def analytics_result(result_id: str, offset: int = typer.Option(0,'--offset',min
     run(['analytics','result',result_id,'--offset',str(offset)])
 
 
+@analytics_app.command('start')
+def analytics_start(recipe: str, course: int = typer.Option(...,'--course',min=1),
+                    tz: str = typer.Option('UTC','--tz'), language: str = typer.Option('en','--language')):
+    run(['analytics','start',recipe,'--course',str(course),'--tz',tz,'--language',language])
+
+
+@analytics_app.command('continue')
+def analytics_continue(run_id: str, step: int = typer.Option(...,'--step',min=0)):
+    run(['analytics','continue',run_id,'--step',str(step)])
+
+
+@analytics_app.command('runs')
+def analytics_runs():
+    run(['analytics','runs'])
+
+
 def run(tokens):
     # Read timeout covers the bounded server traversal. Connection/pool failures
     # still fail promptly. No workstation Moodle profile or token is inspected.
