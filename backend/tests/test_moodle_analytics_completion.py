@@ -20,7 +20,8 @@ class Client:
 
 
 def collect(client,students=None):
-    with patch('lamb.moodle.analytics.completion.MoodleScope') as scope, \
+    with patch('lamb.moodle.analytics.completion.validate_completion_scope'), \
+         patch('lamb.moodle.analytics.completion.MoodleScope') as scope, \
          patch('lamb.moodle.analytics.completion._students',return_value=(set(range(1,5)) if students is None else students,
              {'population_exhausted':True,'role_unknown':0,'student_rows':4})):
         scope.return_value.require_teacher.return_value=7
@@ -84,3 +85,15 @@ def test_inventory_drift_and_duplicate_disabled_ids_fail():
     with pytest.raises(ValueError,match='out-of-scope'):collect(c)
     c=Client(); c.modules.append(dict(c.modules[1]))
     with pytest.raises(ValueError,match='module ID'):collect(c)
+
+
+def test_progress_scope_denial_precedes_population_read():
+    with patch('lamb.moodle.analytics.completion.MoodleScope') as scope, \
+         patch('lamb.moodle.analytics.completion.validate_completion_scope',side_effect=PermissionError()) as authorize, \
+         patch('lamb.moodle.analytics.completion._students') as population:
+        scope.return_value.require_teacher.return_value=7
+        c=Client()
+        with pytest.raises(PermissionError):activity_completion(c,12,7)
+        authorize.assert_called_once_with(c,{'course_id':7,'module_ids':[]})
+        population.assert_not_called()
+        assert not c.calls

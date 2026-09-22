@@ -1,5 +1,7 @@
 # LAMB analytics read adapter (experimental)
 
+Version 0.1.3 adds `local_lambanalytics_completion_scope(courseid, cmids)`, a permission-only check for up to 100 exact activities in a course-wide completion snapshot. Requires active enrolment, progress-report and enrolment-review access, visible activities in the exact course, and all-groups access when separate groups apply. No completion or roster records are read. Clients must recheck on saved reads; removed report/module access prevents readback. No institution installation is automatic.
+
 Version 0.1.2 adds `local_lambanalytics_grade_scope(courseid, assignmentid)`: permission-only revalidation for raw assignment-grade evidence. Requires current active enrolment, enrolment-review and assignment grading permissions, visible assignment in the exact course and all-groups access when separate groups apply. Returns only the authorized IDs; it reads no grade or roster records. Recheck on every saved read. This endpoint does not itself implement a grade-distribution recipe.
 
 Optional Moodle 4.5+ local plugin. Install into `local/lambanalytics` using Moodle's normal administrator-reviewed plugin installation procedure. No institution installation is automatic. Back up the site before installation or upgrade.

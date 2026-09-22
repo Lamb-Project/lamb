@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 defined('MOODLE_INTERNAL') || die();
 $functions = [
+    'local_lambanalytics_completion_scope' => [
+        'classname' => 'local_lambanalytics\external\completion_scope',
+        'methodname' => 'execute',
+        'description' => 'Revalidate progress-report and exact activity scope without collecting completion evidence.',
+        'type' => 'read',
+        'capabilities' => 'report/progress:view,moodle/course:enrolreview',
+        'services' => [MOODLE_OFFICIAL_MOBILE_SERVICE],
+    ],
     'local_lambanalytics_grade_scope' => [
         'classname' => 'local_lambanalytics\external\grade_scope',
         'methodname' => 'execute',

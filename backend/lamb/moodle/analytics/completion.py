@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 
 from .events import _students
+from .authorization import validate_completion_scope
 from ..scope import MoodleScope
 from ..forum_activity import preview
 
@@ -13,6 +14,7 @@ STATES = ('incomplete','complete','complete_pass','complete_fail')
 def activity_completion(client, owner_id, course_id):
     scope = MoodleScope(client,owner_id)
     course = scope.require_teacher(course_id)
+    validate_completion_scope(client,{'course_id':course,'module_ids':[]})
     course_name = preview(scope.own_courses()[course].fullname,160)[0]
     students, population = _students(client,course,0)
     if not population['population_exhausted'] or population['role_unknown']:
@@ -47,6 +49,7 @@ def activity_completion(client, owner_id, course_id):
                 'override_unknown':0,'overall_complete':0,'overall_unknown':0,'population_students':len(students)}
     if len(inventory)>MAX_COMPLETION_MODULES:
         raise ValueError('Completion collection exceeds module limit')
+    validate_completion_scope(client,{'course_id':course,'module_ids':list(inventory)})
     for student in sorted(students):
         client.checkpoint()
         response=client.call('core_completion_get_activities_completion_status',courseid=course,userid=student)

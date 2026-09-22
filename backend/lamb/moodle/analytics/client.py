@@ -12,6 +12,7 @@ from moodle_cli.client.readonly import READ_ALLOWLIST
 EVENT_FUNCTION = 'local_lambanalytics_resource_events'
 SCOPE_FUNCTION = 'local_lambanalytics_resource_scope'
 GRADE_SCOPE_FUNCTION = 'local_lambanalytics_grade_scope'
+COMPLETION_SCOPE_FUNCTION = 'local_lambanalytics_completion_scope'
 MAX_EVENT_BYTES = 256 * 1024
 GRADE_FUNCTION = 'mod_assign_get_grades'
 MAX_GRADE_BYTES = 1024 * 1024
@@ -30,12 +31,14 @@ class AnalyticsHTTPClient(MoodleHTTPClient):
                     len(set(ids)) != len(ids) or type(params.get('since',0)) is not int or params.get('since',0)<0):
                 raise ValueError('Invalid assignment-grade parameters')
             return self._bounded_read(wsfunction, params, MAX_GRADE_BYTES, 'Assignment-grade')
-        if wsfunction not in {EVENT_FUNCTION, SCOPE_FUNCTION, GRADE_SCOPE_FUNCTION}:
+        if wsfunction not in {EVENT_FUNCTION, SCOPE_FUNCTION, GRADE_SCOPE_FUNCTION, COMPLETION_SCOPE_FUNCTION}:
             return super().call(wsfunction, **params)
         allowed = EVENT_PARAMETERS if wsfunction == EVENT_FUNCTION else {'courseid','groupid','cmids'}
         required = {'courseid','since','until'} if wsfunction == EVENT_FUNCTION else {'courseid'}
         if wsfunction == GRADE_SCOPE_FUNCTION:
             allowed = required = {'courseid','assignmentid'}
+        if wsfunction == COMPLETION_SCOPE_FUNCTION:
+            allowed = required = {'courseid','cmids'}
         if set(params) - allowed or not required <= params.keys():
             raise ValueError('Invalid resource-event parameters')
         if any(type(value) is not int for key,value in params.items() if key != 'cmids'):
