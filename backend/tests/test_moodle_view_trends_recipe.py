@@ -8,7 +8,7 @@ from lamb.moodle.contract import prepare_moodle
 
 
 @pytest.mark.parametrize('language',['en','es','ca','eu'])
-@pytest.mark.parametrize('recipe',['view-trends','view-heatmap'])
+@pytest.mark.parametrize('recipe',['view-trends','view-heatmap','view-distribution','active-day-distribution'])
 def test_view_trend_saves_dates_counts_and_current_resource_scope(tmp_path,language,recipe):
     runtime=SimpleNamespace(cache_root=tmp_path,store=SimpleNamespace(organization_id=1,owner_id=2),
         result_binding=lambda:{'generation':1},validate_result_binding=lambda *args:None)
@@ -27,14 +27,20 @@ def test_view_trend_saves_dates_counts_and_current_resource_scope(tmp_path,langu
     if recipe=='view-trends':
         assert saved['view_kind']=='view-trend-v1' and len(saved['view_columns'])==6
         assert saved['rows'][0]['date']==series.snapshot(collection_complete=True)['daily'][0]['date']
-    else:
+    elif recipe=='view-heatmap':
         assert saved['view_kind']=='view-heatmap-v1'
         assert len(saved['rows'])==168
         assert len(saved['heatmap_rows'])==7
         assert all(len(row['values'])==24 for row in saved['heatmap_rows'])
         assert sum(sum(row['values']) for row in saved['heatmap_rows'])==1
         assert all(row['name'] for row in saved['rows'])
-    assert sum(row['value'] for row in saved['rows'])==1
+    else:
+        assert saved['view_kind']=='metric-bars-v1'
+        assert saved['distribution']['histogram']==[{'value':0,'students':1},{'value':1,'students':1}]
+        assert saved['distribution']['median']==0.5
+        assert [row['value'] for row in saved['rows']]==[1,1]
+        assert len(saved['summary_statistics'])==4
+    assert sum(row['value'] for row in saved['rows'])==(2 if recipe.endswith('distribution') else 1)
     assert saved['resource_scopes']==[scope.call_args.args[1]]
     assert '<svg' in render_svg(saved)
     if recipe=='view-heatmap':
@@ -45,7 +51,7 @@ def test_view_trend_saves_dates_counts_and_current_resource_scope(tmp_path,langu
         with pytest.raises(ValueError,match='Invalid view heatmap grid'):render_svg(saved)
 
 
-@pytest.mark.parametrize('recipe',['view-trends','view-heatmap'])
+@pytest.mark.parametrize('recipe',['view-trends','view-heatmap','view-distribution','active-day-distribution'])
 def test_view_trend_command_requires_window_and_accepts_group(recipe):
     spec,params=prepare_moodle(f'moodle analytics run {recipe} --course 7 --since 2026-09-01 --until 2026-09-20 --group 2 --tz Europe/Madrid')
     assert spec.policy=='auto' and params['recipe']==recipe

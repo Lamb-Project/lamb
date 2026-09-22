@@ -15,6 +15,10 @@ from ..charts import ChartStore
 from ..scope import MoodleScope
 
 RECIPES = {
+    'view-distribution': {'functions':[EVENT_FUNCTION,SCOPE_FUNCTION,'core_enrol_get_enrolled_users','core_course_get_contents'],
+                    'title':'Recorded views per student','metric':'Students'},
+    'active-day-distribution': {'functions':[EVENT_FUNCTION,SCOPE_FUNCTION,'core_enrol_get_enrolled_users','core_course_get_contents'],
+                    'title':'Observed active days per student','metric':'Students'},
     'view-heatmap': {'functions':[EVENT_FUNCTION,SCOPE_FUNCTION,'core_enrol_get_enrolled_users','core_course_get_contents'],
                     'title':'Recorded views by weekday and hour','metric':'Recorded views'},
     'view-trends': {'functions':[EVENT_FUNCTION,SCOPE_FUNCTION,'core_enrol_get_enrolled_users','core_course_get_contents'],
@@ -72,11 +76,11 @@ def run_recipe(runtime, client, owner_id, params, *, progress=None):
         # Aggregate by default: no learner IDs are persisted or sent to AAC here.
         rows = [{'id':key,'name':key.replace('_',' '),'value':value,'status':'ok','reason':None}
                 for key,value in data['metrics'].items()]
-    elif recipe in {'resource-reach','view-trends','view-heatmap'}:
+    elif recipe in {'resource-reach','view-trends','view-heatmap','view-distribution','active-day-distribution'}:
         since = int(datetime.fromisoformat(params['since']).replace(tzinfo=ZoneInfo(params['tz'])).timestamp())
         until = (int(datetime.fromisoformat(params['until']).replace(tzinfo=ZoneInfo(params['tz'])).timestamp())
                  if params.get('until') else int(time.time()))
-        if recipe in {'view-trends','view-heatmap'}:
+        if recipe != 'resource-reach':
             data=view_activity(client,owner_id,course,since=since,until=until,
                 timezone=params['tz'],group_id=params.get('group_id') or 0)
             data.update(schema_version=1,recipe={'id':recipe,'version':1},window=data['view_time']['window'],
@@ -84,9 +88,17 @@ def run_recipe(runtime, client, owner_id, params, *, progress=None):
             if recipe=='view-trends':
                 rows=[{**r,'id':r['date'],'name':r['date'],'value':r['recorded_views'],'status':'ok','reason':None}
                     for r in data['view_time']['daily']]
-            else:
+            elif recipe=='view-heatmap':
                 rows=[{**r,'id':f"{r['weekday']}-{r['hour']}",'value':r['recorded_views'],'status':'ok','reason':None}
                     for r in data['view_time']['weekday_hour']]
+            else:
+                from .view_distribution import display_bins
+                key='student_view_counts' if recipe=='view-distribution' else 'student_active_days'
+                data['distribution']=data['view_time'][key]
+                data['distribution_metric']=key
+                rows=[{**r,'id':i,'name':str(r['lower']) if r['lower']==r['upper'] else f"{r['lower']}–{r['upper']}",
+                    'value':r['students'],'status':'ok','reason':None}
+                    for i,r in enumerate(display_bins(data['distribution']))]
             module_ids=data.pop('module_ids')
         else:
             data = resource_reach(client, owner_id, course, since=since, until=until, group_id=params.get('group_id') or 0)

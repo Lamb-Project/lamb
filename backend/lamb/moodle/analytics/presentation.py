@@ -67,6 +67,9 @@ REASONS = {
 
 
 def present(recipe, language, timezone, data, rows):
+    if recipe in {'view-distribution','active-day-distribution'}:
+        from .view_distribution import present_distribution
+        return present_distribution(language,timezone,data)
     if recipe == 'view-heatmap':
         from .view_text import present_heatmap
         return present_heatmap(language,timezone,data,rows)
