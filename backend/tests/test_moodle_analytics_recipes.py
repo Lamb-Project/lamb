@@ -60,6 +60,40 @@ def test_course_access_saves_aggregates_not_learner_records(tmp_path):
 SECRET_ID=123456789
 
 
+def test_grade_command_requires_assignment_and_rejects_other_recipe_options():
+    spec, params = prepare_moodle('moodle analytics run grade-distribution --course 7 --assignment 42')
+    assert params['assignment_id'] == 42
+    for command in ['moodle analytics run grade-distribution --course 7',
+                    'moodle analytics run grade-distribution --course 7 --assignment 0',
+                    'moodle analytics run grading-queue --course 7 --assignment 42',
+                    'moodle analytics run grade-distribution --course 7 --assignment 42 --since 2026-09-01']:
+        with pytest.raises(ValueError): prepare_moodle(command)
+
+
+@pytest.mark.parametrize('language',['en','es','ca','eu'])
+def test_grade_distribution_saved_exact_histogram_and_scope(language,tmp_path):
+    runtime=SimpleNamespace(cache_root=tmp_path,store=SimpleNamespace(organization_id=1,owner_id=2),
+        result_binding=lambda:{'generation':1},validate_result_binding=lambda *args:None)
+    source={'course_id':7,'assignment_id':42,'assignment_name':'Essay','course_name':'Synthetic',
+        'as_of':'2026-09-22T12:00:00Z','coverage':{'complete':True},'limitations':[],
+        'metrics':{'valid_n':4,'missing_n':2,'population_n':6,'mean':40,'q1':7.5,'median':30,'q3':62.5},
+        'rows':[{'lower':i*10,'upper':(i+1)*10,'upper_inclusive':i==9,'count':n}
+                for i,n in enumerate([1,1,0,0,0,1,0,0,0,1])]}
+    with patch('lamb.moodle.analytics.recipes.grade_distribution',return_value=source), \
+         patch('lamb.moodle.analytics.recipes.validate_grade_scope') as authorize:
+        result=run_recipe(runtime,SimpleNamespace(checkpoint=lambda:None),12,
+            {'recipe':'grade-distribution','course_id':7,'assignment_id':42,'tz':'Europe/Madrid','language':language})
+    scope={'course_id':7,'assignment_id':42}
+    assert authorize.call_args.args[1] == scope
+    assert result['grade_scopes'] == [scope]
+    assert result['rows'][-1]['name'] == '[90, 100] %'
+    assert result['summary_statistics'][0]['value'] == 40
+    snapshot=ChartStore(runtime).read(result['chart_id'])
+    assert snapshot['metrics'] == source['metrics']
+    assert '<svg' in render_svg(snapshot)
+    assert ChartStore(runtime).listing()['items'][0]['grade_scopes'] == [scope]
+
+
 def test_grading_rows_with_same_name_remain_distinct(tmp_path):
     runtime = SimpleNamespace(cache_root=tmp_path,store=SimpleNamespace(organization_id=1,owner_id=2),
                               result_binding=lambda:{'generation':1},validate_result_binding=lambda *args:None)

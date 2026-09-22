@@ -136,6 +136,8 @@ def test_saved_chart_list_and_read_contracts():
 
 def test_analytics_commands_share_authenticated_task_contract():
     examples = [
+        (['run','grade-distribution','--course','7','--assignment','42'],
+         'moodle analytics run grade-distribution --course 7 --tz UTC --language en --assignment 42'),
         (['capabilities', '--course', '7'],
          'moodle analytics capabilities --course 7'),
         (['run', 'grading-queue', '--course', '7'],

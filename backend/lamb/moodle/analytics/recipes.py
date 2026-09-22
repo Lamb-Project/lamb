@@ -6,13 +6,16 @@ from zoneinfo import ZoneInfo
 from .assignments import grading_queue
 from .access import course_access
 from .events import resource_reach
-from .client import EVENT_FUNCTION, SCOPE_FUNCTION
-from .authorization import validate_resource_scope
+from .grades import grade_distribution
+from .client import EVENT_FUNCTION, SCOPE_FUNCTION, GRADE_SCOPE_FUNCTION
+from .authorization import validate_resource_scope, validate_grade_scope
 from .presentation import present, TEXT
 from ..charts import ChartStore
 from ..scope import MoodleScope
 
 RECIPES = {
+    'grade-distribution': {'functions':[GRADE_SCOPE_FUNCTION,'mod_assign_get_assignments','mod_assign_get_grades','core_enrol_get_enrolled_users'],
+                          'title':'Raw assignment grade distribution','metric':'Students'},
     'grading-queue': {'functions': ['mod_assign_get_assignments', 'mod_assign_get_submission_status'],
                       'title': 'Assignments needing grading', 'metric': 'Needs grading'},
     'course-access': {'functions': ['core_enrol_get_enrolled_users'],
@@ -36,7 +39,15 @@ def capabilities(client, owner_id, course_id):
 def run_recipe(runtime, client, owner_id, params, *, progress=None):
     recipe, course = params['recipe'], params['course_id']
     binding = dict(runtime.result_binding(), course_id=course)
-    if recipe == 'grading-queue':
+    if recipe == 'grade-distribution':
+        data = grade_distribution(client,owner_id,course,params['assignment_id'])
+        rows = [{**r,'id':i,'name':f"[{r['lower']}, {r['upper']}{']' if r['upper_inclusive'] else ')'} %",
+                 'value':r['count'],'status':'ok','reason':None} for i,r in enumerate(data['rows'])]
+        grade_scope = {'course_id':course,'assignment_id':params['assignment_id']}
+        validate_grade_scope(client,grade_scope)
+        binding['grade_scopes'] = [grade_scope]
+        data['grade_scopes'] = [grade_scope]
+    elif recipe == 'grading-queue':
         data = grading_queue(client, owner_id, course, progress=progress)
         rows = [{'id':r['assignment_id'], 'name':f"{r['name']} (#{r['assignment_id']})", 'value':r['needs_grading'],
                  'status':r['status'], 'reason':r['reason']} for r in data['rows']]

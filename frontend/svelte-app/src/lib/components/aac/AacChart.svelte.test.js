@@ -102,3 +102,13 @@ it('separates resource viewers, event counts and student population', async () =
     expect(screen.getAllByRole('columnheader')).toHaveLength(5);
     expect(screen.getByRole('region')).toHaveAttribute('tabindex','0');
 });
+
+it('shows grade summaries with zero distinct from missing', async () => {
+    apiJson.mockResolvedValue({...snapshot(),view_kind:'metric-bars-v1',
+        summary_statistics:[{label:'Mean (%)',value:0},{label:'Median (%)',value:null}],
+        rows:[{name:'[0, 10) %',status:'ok',value:1}]});
+    render(AacChart,{chartId:'grades'});
+    await screen.findByText('Mean (%)');
+    const stats=document.querySelector('[data-analytics-statistics]');
+    expect([...stats.querySelectorAll('dd')].map(e=>e.textContent)).toEqual(['0',chartText('en').analyticsUnavailable]);
+});

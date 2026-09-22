@@ -34,6 +34,7 @@ def task_specs():
     from .analytics.recipes import RECIPES
     analytics_run = click.Command('run', params=[
         click.Argument(['recipe'], type=click.Choice(list(RECIPES))),
+        click.Option(['--assignment','assignment_id'], type=click.IntRange(min=1)),
         click.Option(['--course','course_id'], required=True, type=click.IntRange(min=1)),
         click.Option(['--since'], help='Inclusive local date, YYYY-MM-DD.'),
         click.Option(['--until'], help='Resource reach exclusive local date; omitted means now.'),
@@ -75,6 +76,11 @@ def parse_task(tokens):
         except (ValueError, ZoneInfoNotFoundError): raise ValueError('Use an IANA timezone') from None
     if key == 'analytics.run':
         from datetime import date
+        if params['recipe'] == 'grade-distribution':
+            if params['assignment_id'] is None:
+                raise ValueError('Grade distribution requires --assignment ID')
+        elif params['assignment_id'] is not None:
+            raise ValueError('--assignment applies only to grade-distribution')
         if params['recipe'] in {'course-access','resource-reach'}:
             try: date.fromisoformat(params['since'])
             except (ValueError, TypeError): raise ValueError('This recipe requires --since YYYY-MM-DD') from None

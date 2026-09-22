@@ -47,6 +47,14 @@
         <h3>{data.title}</h3>
         {#if data.window_label}<p class="snapshot" data-analytics-window>{data.window_label}</p>{/if}
         {#if data.population_label}<p class="snapshot" data-analytics-population>{data.population_label}</p>{/if}
+        {#if data.summary_statistics}
+            <dl data-analytics-statistics>
+                {#each data.summary_statistics as statistic}
+                    <dt>{statistic.label}</dt>
+                    <dd>{statistic.value === null ? text.analyticsUnavailable : new Intl.NumberFormat(data.language, {maximumFractionDigits: 4}).format(statistic.value)}</dd>
+                {/each}
+            </dl>
+        {/if}
         {#if !data.coverage.complete}<p class="partial" data-chart-coverage>{text.partial}</p>{/if}
         {#if !data.rows.length}<p role="status">{text.analyticsEmpty}</p>
         {:else if !supported.length}<p role="status">{text.analyticsUnavailable}</p>{/if}

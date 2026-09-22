@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 from .assignments import assignment_inventory
 from .events import _students
 from .authorization import validate_grade_scope
+from ..forum_activity import preview
 
 MAX_GRADE_ROWS = 1000
 
@@ -93,11 +94,12 @@ def grade_distribution(client, owner_id, course_id, assignment_id):
     client.checkpoint()
     return {'schema_version':1, 'recipe':{'id':'grade-distribution','version':1},
             'course_id':course, 'course_name':course_name, 'assignment_id':assignment_id,
+            'assignment_name':preview(assignment.get('name',''),160)[0],
             'as_of':datetime.now(timezone.utc).isoformat(), 'timezone':'UTC',
             'grade_min':0, 'grade_max':float(maximum), 'grade_kind':'raw_latest_attempt_assignment_grade',
             'marking_workflow':bool(assignment.get('markingworkflow')), 'grade_released':None,
             'rows':[{'lower':i*10,'upper':(i+1)*10,'upper_inclusive':i==9,'count':n} for i,n in enumerate(counts)],
-            'metrics':summary, 'coverage':{**population, 'records_read':len(records),
+            'metrics':summary, 'coverage':{**population, 'complete':True, 'records_read':len(records),
                 'excluded_nonpopulation_records':excluded, 'ungraded_sentinel_records':sentinel},
             'source':'mod_assign_get_grades, latest submission attempt join',
             'limitations':['Raw assignment grades are not final, overridden or excluded gradebook values.',

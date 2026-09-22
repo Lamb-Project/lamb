@@ -67,6 +67,9 @@ REASONS = {
 
 
 def present(recipe, language, timezone, data, rows):
+    if recipe == 'grade-distribution':
+        from .grade_text import present_grades
+        return present_grades(language,data)
     if recipe == 'resource-reach':
         from .resource_text import present_resource
         return present_resource(language, timezone, data)
