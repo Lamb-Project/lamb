@@ -61,3 +61,21 @@ def test_resource_binding_without_matching_course_is_rejected(stores):
     rt=runtime(stores)
     with pytest.raises(PermissionError):
         rt.validate_result_binding(dict(rt.result_binding(),resource_scopes=[SCOPE]),'moodle.analytics.run')
+
+
+@pytest.mark.parametrize('command,data', [
+    ('moodle analytics run resource-reach --course 7 --since 2026-09-01 --group 2',
+     {'chart_id':'saved','title':'Resource reach','resource_scopes':[SCOPE]}),
+    ('moodle analytics result 00000000-0000-0000-0000-000000000001',
+     {'course_id':7,'resource_scopes':[SCOPE]}),
+    ('moodle chart list',{'items':[{'course_id':7,'resource_scopes':[SCOPE]}]}),
+])
+def test_liteshell_preserves_resource_scope_in_generic_result_binding(stores,command,data):
+    import asyncio
+    from lamb.aac.liteshell.shell import LiteShell
+    rt=runtime(stores)
+    shell=LiteShell('','','fixture@test',1,user_id=7,moodle=rt,allowed_commands=rt.available())
+    with patch.object(rt,'execute',return_value=data):
+        result=asyncio.run(shell.execute(command))
+    assert result.success,result.error
+    assert result.result_binding['resource_scopes'] == [SCOPE]

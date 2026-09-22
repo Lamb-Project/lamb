@@ -35,7 +35,9 @@ def task_specs():
     analytics_run = click.Command('run', params=[
         click.Argument(['recipe'], type=click.Choice(list(RECIPES))),
         click.Option(['--course','course_id'], required=True, type=click.IntRange(min=1)),
-        click.Option(['--since'], help='Course-access recency boundary, YYYY-MM-DD.'),
+        click.Option(['--since'], help='Inclusive local date, YYYY-MM-DD.'),
+        click.Option(['--until'], help='Resource reach exclusive local date; omitted means now.'),
+        click.Option(['--group','group_id'], type=click.IntRange(min=1)),
         click.Option(['--tz'], default='UTC'),
         click.Option(['--language'], default='en', type=click.Choice(['en','es','ca','eu'])),
     ], help='Run a deterministic analytics recipe and save its aggregate evidence. Does not modify Moodle.', add_help_option=False)
@@ -73,11 +75,18 @@ def parse_task(tokens):
         except (ValueError, ZoneInfoNotFoundError): raise ValueError('Use an IANA timezone') from None
     if key == 'analytics.run':
         from datetime import date
-        if params['recipe'] == 'course-access':
+        if params['recipe'] in {'course-access','resource-reach'}:
             try: date.fromisoformat(params['since'])
-            except (ValueError, TypeError): raise ValueError('Course access requires --since YYYY-MM-DD') from None
+            except (ValueError, TypeError): raise ValueError('This recipe requires --since YYYY-MM-DD') from None
         elif params['since'] is not None:
-            raise ValueError('--since applies only to course-access')
+            raise ValueError('--since does not apply to this recipe')
+        if params['recipe'] == 'resource-reach':
+            if params['until'] is not None:
+                try: end = date.fromisoformat(params['until'])
+                except (ValueError, TypeError): raise ValueError('Use --until YYYY-MM-DD') from None
+                if end <= date.fromisoformat(params['since']): raise ValueError('--until must follow --since')
+        elif params['until'] is not None or params['group_id'] is not None:
+            raise ValueError('--until and --group apply only to resource-reach')
     if key == 'news':
         from .forum_activity import validate_request
         validate_request(params)

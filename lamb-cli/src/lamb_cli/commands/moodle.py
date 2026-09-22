@@ -19,9 +19,13 @@ def analytics_capabilities(course: int = typer.Option(...,'--course',min=1)):
 @analytics_app.command('run')
 def analytics_run(recipe: str, course: int = typer.Option(...,'--course',min=1),
                   since: Optional[str] = typer.Option(None,'--since'),
+                  until: Optional[str] = typer.Option(None,'--until'),
+                  group: Optional[int] = typer.Option(None,'--group',min=1),
                   tz: str = typer.Option('UTC','--tz'), language: str = typer.Option('en','--language')):
     tokens = ['analytics','run',recipe,'--course',str(course),'--tz',tz,'--language',language]
     if since is not None: tokens += ['--since',since]
+    if until is not None: tokens += ['--until',until]
+    if group is not None: tokens += ['--group',str(group)]
     run(tokens)
 
 

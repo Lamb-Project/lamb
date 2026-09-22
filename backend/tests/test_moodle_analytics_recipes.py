@@ -1,19 +1,33 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 import pytest
-from lamb.moodle.analytics.recipes import run_recipe, result_page
+from lamb.moodle.analytics.recipes import run_recipe, result_page, capabilities
 from lamb.moodle.charts import ChartStore, render_svg
 from lamb.moodle.contract import prepare_moodle
 from lamb.moodle.analytics.presentation import present, TEXT
 
 
+def test_resource_recipe_reports_missing_optional_adapter_without_fabricating_support():
+    client=SimpleNamespace(call=lambda function:{'functions':[{'name':'core_enrol_get_enrolled_users'}]})
+    with patch('lamb.moodle.analytics.recipes.MoodleScope'):
+        result=capabilities(client,12,7)
+    recipe=next(row for row in result['recipes'] if row['id']=='resource-reach')
+    assert recipe['source_status']=='unavailable'
+    assert 'local_lambanalytics_resource_events' in recipe['missing_functions']
+    assert 'local_lambanalytics_resource_scope' in recipe['missing_functions']
+
+
 def test_analytics_contracts_are_strict_and_readonly():
     for command in ['moodle analytics capabilities --course 7',
+                    'moodle analytics run resource-reach --course 7 --since 2026-09-01 --until 2026-09-10 --group 2',
                     'moodle analytics run grading-queue --course 7',
                     'moodle analytics run course-access --course 7 --since 2026-09-01',
                     'moodle analytics result 00000000-0000-0000-0000-000000000001 --offset 20']:
         assert prepare_moodle(command)[0].policy == 'auto'
     for command in ['moodle analytics run arbitrary --course 7',
+                    'moodle analytics run resource-reach --course 7',
+                    'moodle analytics run resource-reach --course 7 --since 2026-09-10 --until 2026-09-01',
+                    'moodle analytics run course-access --course 7 --since 2026-09-01 --group 2',
                     'moodle analytics run course-access --course 7',
                     'moodle analytics run grading-queue --course 7 --since 2026-09-01',
                     'moodle analytics result ../../secret',
@@ -68,6 +82,31 @@ def test_readback_is_bounded_and_preserves_snapshot_date():
     last=result_page('id',snapshot,20)
     assert len(last['rows'])==5 and last['next_offset'] is None and last['as_of']=='saved-time'
     with pytest.raises(ValueError): result_page('id',snapshot,26)
+
+
+@pytest.mark.parametrize('language',['en','es','ca','eu'])
+def test_resource_recipe_saves_group_and_module_bindings(language,tmp_path):
+    runtime=SimpleNamespace(cache_root=tmp_path,store=SimpleNamespace(organization_id=1,owner_id=2),
+        result_binding=lambda:{'generation':1},validate_result_binding=lambda *args:None)
+    source={'course_id':7,'course_name':'Synthetic','group_id':2,'as_of':'2026-09-22T12:00:00Z',
+        'window':{'since':1788213600,'until':1788991200},'coverage':{'complete':False,'student_rows':3},
+        'limitations':['Incomplete history'],'rows':[{'cmid':10,'name':'Reading','unique_student_viewers':2,
+            'recorded_module_views':4,'recorded_chapter_views':0,'population_students':3}]}
+    with patch('lamb.moodle.analytics.recipes.resource_reach',return_value=source), \
+            patch('lamb.moodle.analytics.recipes.validate_resource_scope') as authorize:
+        result=run_recipe(runtime,SimpleNamespace(checkpoint=lambda:None),12,
+            {'recipe':'resource-reach','course_id':7,'group_id':2,'since':'2026-09-01','until':'2026-09-10',
+             'tz':'Europe/Madrid','language':language})
+    expected={'course_id':7,'group_id':2,'module_ids':[10]}
+    assert authorize.call_args.args[1] == expected
+    assert result['resource_scopes'] == [expected]
+    assert result['rows'][0]['value'] == 2 and len(result['resource_columns']) == 5
+    snapshot=ChartStore(runtime).read(result['chart_id'])
+    assert '<svg' in render_svg(snapshot)
+    assert ChartStore(runtime).listing()['items'][0]['resource_scopes'] == [expected]
+    import json
+    envelope=json.loads((ChartStore(runtime).root / (result['chart_id']+'.json')).read_text())
+    assert envelope['binding']['resource_scopes'] == [expected]
 
 
 @pytest.mark.parametrize('language', ['en','es','ca','eu'])

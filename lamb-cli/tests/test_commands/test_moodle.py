@@ -164,3 +164,13 @@ def test_analytics_rejects_invalid_local_bounds_without_request():
         with patch('lamb_cli.commands.moodle.get_client') as client:
             assert runner.invoke(app, ['moodle', 'analytics', *args]).exit_code != 0
             client.assert_not_called()
+
+
+def test_resource_reach_forwards_group_and_exclusive_date_boundary():
+    with patch('lamb_cli.commands.moodle.get_client') as client:
+        client.return_value.__enter__.return_value.post.return_value={}
+        result=runner.invoke(app,['moodle','analytics','run','resource-reach','--course','9',
+            '--since','2026-09-01','--until','2026-09-22','--group','2'])
+        assert result.exit_code == 0, result.output
+        command=client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command']
+        assert shlex.split(command)[-6:] == ['--since','2026-09-01','--until','2026-09-22','--group','2']

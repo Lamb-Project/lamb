@@ -63,10 +63,20 @@
         <p class="table-hint">{text.table}</p>
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <div class="table-scroll" tabindex="0" role="region" aria-label={text.table}>
+            {#if data.resource_columns}
+            <table><caption>{data.title}</caption>
+                <thead><tr>{#each data.resource_columns as column}<th scope="col">{column}</th>{/each}</tr></thead>
+                <tbody>{#each data.rows as row}<tr><th scope="row">{row.name}</th>
+                    <td>{row.unique_student_viewers}</td><td>{row.recorded_module_views}</td>
+                    <td>{row.recorded_chapter_views}</td><td>{row.population_students}</td>
+                </tr>{/each}</tbody>
+            </table>
+            {:else}
             <table class="metric-table"><caption>{data.title}</caption>
                 <thead><tr><th scope="col">{data.title}</th><th scope="col">{data.metric_label}</th></tr></thead>
                 <tbody>{#each data.rows as row}<tr><th scope="row">{row.name}</th><td>{row.value ?? '–'}{#if row.reason}<br />{row.reason}{/if}</td></tr>{/each}</tbody>
             </table>
+            {/if}
         </div>
         {/if}
     {:else}

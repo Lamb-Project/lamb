@@ -90,3 +90,15 @@ it('does not turn unavailable analytics into zero bars', async () => {
     expect(screen.getByRole('cell')).toHaveTextContent('–');
     expect(apiFetch).not.toHaveBeenCalled();
 });
+
+it('separates resource viewers, event counts and student population', async () => {
+    apiJson.mockResolvedValue({...snapshot(),view_kind:'metric-bars-v1',resource_columns:
+        ['Resource','Unique students','Module views','Chapter views','Population'],
+        rows:[{name:'Reading',status:'ok',value:2,unique_student_viewers:2,
+            recorded_module_views:4,recorded_chapter_views:0,population_students:3}]});
+    render(AacChart,{chartId:'resource'});
+    await screen.findByRole('table');
+    expect(screen.getAllByRole('cell').map(cell=>cell.textContent)).toEqual(['2','4','0','3']);
+    expect(screen.getAllByRole('columnheader')).toHaveLength(5);
+    expect(screen.getByRole('region')).toHaveAttribute('tabindex','0');
+});

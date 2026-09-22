@@ -67,6 +67,9 @@ REASONS = {
 
 
 def present(recipe, language, timezone, data, rows):
+    if recipe == 'resource-reach':
+        from .resource_text import present_resource
+        return present_resource(language, timezone, data)
     text = TEXT[language]
     access = recipe == 'course-access'
     fields = {

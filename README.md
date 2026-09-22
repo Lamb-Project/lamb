@@ -265,7 +265,7 @@ As signatories to the manifesto, LAMB's core team members are committed to advan
 
 ## Optional Moodle analytics adapter
 
-The experimental [Moodle log-read adapter](moodle/local/lambanalytics/README.md) supplies bounded, permission-scoped course/resource view events. It requires separate Moodle administrator installation and is not yet a complete CLI/AAC analytics workflow.
+The experimental [Moodle log-read adapter](moodle/local/lambanalytics/README.md) supplies bounded, permission-scoped course/resource view events for the `moodle analytics run resource-reach` recipe. It requires separate Moodle administrator installation. Recorded views are not evidence of reading or learning.
 
 ## 📧 Contact
 

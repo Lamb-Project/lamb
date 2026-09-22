@@ -1,9 +1,13 @@
 """Executable recipe registry, saved aggregate projections and bounded readback."""
 from datetime import datetime
+import time
 from zoneinfo import ZoneInfo
 
 from .assignments import grading_queue
 from .access import course_access
+from .events import resource_reach
+from .client import EVENT_FUNCTION, SCOPE_FUNCTION
+from .authorization import validate_resource_scope
 from .presentation import present, TEXT
 from ..charts import ChartStore
 from ..scope import MoodleScope
@@ -13,6 +17,8 @@ RECIPES = {
                       'title': 'Assignments needing grading', 'metric': 'Needs grading'},
     'course-access': {'functions': ['core_enrol_get_enrolled_users'],
                       'title': 'Last recorded course access', 'metric': 'Students'},
+    'resource-reach': {'functions': [EVENT_FUNCTION,SCOPE_FUNCTION,'core_enrol_get_enrolled_users','core_course_get_contents'],
+                       'title':'Recorded resource reach','metric':'Students with recorded views'},
 }
 
 
@@ -40,6 +46,17 @@ def run_recipe(runtime, client, owner_id, params, *, progress=None):
         # Aggregate by default: no learner IDs are persisted or sent to AAC here.
         rows = [{'id':key,'name':key.replace('_',' '),'value':value,'status':'ok','reason':None}
                 for key,value in data['metrics'].items()]
+    elif recipe == 'resource-reach':
+        since = int(datetime.fromisoformat(params['since']).replace(tzinfo=ZoneInfo(params['tz'])).timestamp())
+        until = (int(datetime.fromisoformat(params['until']).replace(tzinfo=ZoneInfo(params['tz'])).timestamp())
+                 if params.get('until') else int(time.time()))
+        data = resource_reach(client, owner_id, course, since=since, until=until, group_id=params.get('group_id') or 0)
+        rows = [{**r,'id':r['cmid'],'name':f"{r['name']} (#{r['cmid']})",
+                 'value':r['unique_student_viewers'],'status':'ok','reason':None} for r in data['rows']]
+        resource_scope = {'course_id':course,'group_id':data['group_id'],'module_ids':[r['cmid'] for r in rows]}
+        validate_resource_scope(client, resource_scope)
+        binding['resource_scopes'] = [resource_scope]
+        data['resource_scopes'] = [resource_scope]
     else:
         raise ValueError('Unknown analytics recipe')
     snapshot = {**{k:v for k,v in data.items() if k != 'rows'}, 'rows':rows,
