@@ -49,7 +49,7 @@ def _students(client, course, group):
                       'role_unknown':unknown, 'population_exhausted':exhausted}
 
 
-def resource_reach(client, owner_id, course_id, *, since, until, group_id=0):
+def resource_reach(client, owner_id, course_id, *, since, until, group_id=0, view_timezone=None):
     now = int(time.time())
     if any(type(v) is not int for v in (since, until, group_id)) or not 0 <= since < until <= now or until-since > 90*86400 or group_id < 0:
         raise ValueError('Use a past event window of at most 90 days and a nonnegative group ID')
@@ -60,6 +60,10 @@ def resource_reach(client, owner_id, course_id, *, since, until, group_id=0):
     page = client.call(EVENT_FUNCTION, **request, afterid=0, throughid=0)
     _check_scope(page, request)
     students, population = _students(client, course, group_id)
+    time_buckets = None
+    if view_timezone is not None:
+        from .view_time import ViewTimeBuckets
+        time_buckets = ViewTimeBuckets(students,since=since,until=until,timezone=view_timezone)
     sections = client.call('core_course_get_contents', courseid=course,
                            options=[{'name':'excludecontents','value':1}])
     if not isinstance(sections, list):
@@ -116,6 +120,9 @@ def resource_reach(client, owner_id, course_id, *, since, until, group_id=0):
                         chapters[cmid] += 1
                     else:
                         counts[cmid] += 1
+            if time_buckets is not None and (cmid == 0 or cmid in selected):
+                time_buckets.add(event_id=identity,student_id=actor,timestamp=stamp,
+                    kind='course_view' if name==COURSE_EVENT else 'chapter_view' if name==CHAPTER_EVENT else 'resource_view')
         inaccessible = page.get('omitted_inaccessible_modules')
         if type(inaccessible) is not int or inaccessible < 0:
             raise ValueError('Invalid event coverage')
@@ -128,7 +135,7 @@ def resource_reach(client, owner_id, course_id, *, since, until, group_id=0):
     rows = [{**item,'unique_student_viewers':len(viewers[key]),'recorded_module_views':counts[key],
              'recorded_chapter_views':chapters[key], 'population_students':len(students)} for key,item in selected.items()]
     complete = exhausted and population['population_exhausted'] and not population['role_unknown'] and len(inventory) <= MAX_RESOURCES and not omitted and not unmapped
-    return {'schema_version':1,'recipe':{'id':'resource-reach','version':1},'course_id':course,
+    result = {'schema_version':1,'recipe':{'id':'resource-reach','version':1},'course_id':course,
             'course_name':preview(scope.own_courses()[course].fullname,160)[0],
             'group_id':group_id,'as_of':datetime.now(timezone.utc).isoformat(),'timezone':'UTC',
             'window':{'since':since,'until':until},'rows':rows,
@@ -144,3 +151,19 @@ def resource_reach(client, owner_id, course_id, *, since, until, group_id=0):
                            'Log retention and availability do not establish a complete history; zero means no matching recorded event in the retrieved evidence.',
                            'Unique viewers include chapter views; module and chapter event counts are reported separately.',
                            'Collection is bounded; capped or omitted evidence does not support course-wide conclusions.']}
+    if time_buckets is not None:
+        result['view_time'] = time_buckets.snapshot(collection_complete=complete)
+    return result
+
+
+def view_activity(client, owner_id, course_id, *, since, until, timezone, group_id=0):
+    """Private source collector for view trends/heatmaps, not all activity.
+
+    Shares resource inventory, permissions, source validation and coverage.
+    No public recipe is registered until presentation and AAC acceptance exist.
+    """
+    evidence=resource_reach(client,owner_id,course_id,since=since,until=until,
+        group_id=group_id,view_timezone=timezone)
+    return {key:evidence[key] for key in ('course_id','course_name','group_id','as_of','source','watermark','coverage')} | {
+        'module_ids':[row['cmid'] for row in evidence['rows']],
+        'view_time':evidence['view_time']}

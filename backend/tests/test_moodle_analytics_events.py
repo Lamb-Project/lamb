@@ -52,6 +52,24 @@ def test_unique_students_are_not_event_counts_or_teachers_and_no_ids_retained():
     assert 'userid' not in str(result) and 'user_id' not in str(result)
 
 
+def test_view_time_uses_same_validated_scope_and_keeps_course_views_separate():
+    client=Client([page([event(1,cmid=0,name='\\core\\event\\course_viewed'),event(2),
+        event(3,2,11,'\\mod_book\\event\\chapter_viewed'),event(4,3)])])
+    result=collect(client,view_timezone='Europe/Madrid')
+    series=result['view_time']
+    assert series['totals']=={'unique_student_viewers':2,'recorded_views':3,
+        'course_view':1,'resource_view':1,'chapter_view':1}
+    assert series['coverage']['excluded_actor_events']==1
+    assert series['coverage']['collection_complete']
+    assert result['metrics']['recorded_module_views']==1
+
+
+def test_capped_source_cannot_produce_complete_time_series(monkeypatch):
+    monkeypatch.setattr('lamb.moodle.analytics.events.MAX_EVENT_PAGES',1)
+    result=collect(Client([page([event(1)],has_more=True,next_afterid=1)]),view_timezone='UTC')
+    assert not result['view_time']['coverage']['collection_complete']
+
+
 def test_pagination_keeps_upper_watermark_and_empty_resources_are_observed_zero():
     client = Client([page([event(1)],has_more=True,next_afterid=1),page([event(2,2)])])
     result = collect(client)
