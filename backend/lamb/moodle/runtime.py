@@ -1,5 +1,5 @@
 """Per-command connection revalidation and scoped Moodle execution."""
-from moodle_cli.client.http import MoodleHTTPClient
+from .analytics.client import AnalyticsHTTPClient as MoodleHTTPClient
 from .secrets import TokenCipher
 from .cache import CourseCache
 from .scope import MoodleScope
