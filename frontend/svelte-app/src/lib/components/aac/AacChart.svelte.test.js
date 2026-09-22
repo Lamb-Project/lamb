@@ -74,6 +74,20 @@ it('renders a generic analytics snapshot without submission-specific caveats', a
     expect(screen.queryByText(chartText('en').extensions)).toBeNull();
 });
 
+it('renders dated view trends with separate event and viewer columns', async () => {
+    apiJson.mockResolvedValue({...snapshot(),view_kind:'view-trend-v1',title:'Recorded daily views',
+        metric_label:'Recorded views',caption:'Recorded views only, not all activity.',
+        view_columns:['Date','Views','Viewers','Course','Resource','Chapter'],
+        view_keys:['date','recorded_views','unique_student_viewers','course_view','resource_view','chapter_view'],
+        rows:[{name:'2026-09-21',date:'2026-09-21',status:'ok',value:7,recorded_views:7,
+            unique_student_viewers:3,course_view:3,resource_view:4,chapter_view:0}]});
+    render(AacChart,{chartId:'view-trends'});
+    await screen.findByRole('table');
+    expect(screen.getAllByRole('columnheader')).toHaveLength(6);
+    expect(screen.getAllByRole('cell').map(cell=>cell.textContent)).toEqual(['7','3','3','4','0']);
+    expect(screen.queryByText(chartText('en').extensions)).toBeNull();
+});
+
 it.each(['en','es','ca','eu'])('handles empty analytics without assignment claims in %s', async language => {
     apiJson.mockResolvedValue({...snapshot(language),view_kind:'metric-bars-v1',rows:[]});
     render(AacChart,{chartId:'empty-analytics'});

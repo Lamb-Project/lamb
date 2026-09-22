@@ -67,6 +67,9 @@ REASONS = {
 
 
 def present(recipe, language, timezone, data, rows):
+    if recipe == 'view-trends':
+        from .view_text import present_views
+        return present_views(language,timezone,data)
     if recipe == 'activity-completion':
         from .completion_text import present_completion
         return present_completion(language,data,rows)

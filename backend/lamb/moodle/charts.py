@@ -190,6 +190,18 @@ def chart_task(runtime, client, owner_id, params, *, progress=None):
 
 def render_svg(snapshot):
     import vl_convert as vlc
+    if snapshot.get('view_kind') == 'view-trend-v1':
+        rows=snapshot['rows']
+        if len(rows)>100:raise ValueError('View trend mark limit exceeded')
+        values=[{'day':r['date'],'views':r['recorded_views']} for r in rows if r['status']=='ok']
+        spec={'width':600,'height':240,'data':{'values':values},
+            'mark':{'type':'line','point':True,'color':'#2463a1'},
+            'encoding':{'x':{'field':'day','type':'ordinal','sort':None,'title':snapshot['view_columns'][0],
+                'axis':{'labelOverlap':True,'labelAngle':-45}},
+                'y':{'field':'views','type':'quantitative','title':snapshot['metric_label'],
+                    'scale':{'zero':True},'axis':{'tickMinStep':1}}}}
+        with RENDER_LOCK:
+            return vlc.vegalite_to_svg(spec,allowed_base_urls=[])
     if snapshot.get('view_kind') == 'metric-bars-v1':
         rows = snapshot['rows']
         if len(rows) > 100: raise ValueError('Analytics mark limit exceeded')

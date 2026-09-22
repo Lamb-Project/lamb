@@ -7,6 +7,20 @@ from lamb_cli.main import app
 runner = CliRunner()
 
 
+def test_view_trends_uses_authenticated_analytics_task_with_window_and_group():
+    with patch('lamb_cli.commands.moodle.get_client') as client:
+        client.return_value.__enter__.return_value.post.return_value={'chart_id':'saved'}
+        result=runner.invoke(app,['moodle','analytics','run','view-trends','--course','7',
+            '--since','2026-09-01','--until','2026-09-20','--group','2','--tz','Europe/Madrid'])
+        assert result.exit_code==0,result.output
+        call=client.return_value.__enter__.return_value.post.call_args
+        assert call.args==('/creator/moodle/tasks',)
+        tokens=shlex.split(call.kwargs['json']['command'])
+        assert tokens[:4]==['moodle','analytics','run','view-trends']
+        for flag,value in [('--course','7'),('--since','2026-09-01'),('--until','2026-09-20'),('--group','2')]:
+            assert tokens[tokens.index(flag)+1]==value
+
+
 def test_news_uses_lamb_connection_and_preserves_course_and_timezone_arguments():
     with patch('lamb_cli.commands.moodle.get_client') as client:
         client.return_value.__enter__.return_value.post.return_value = {'coverage': {'complete': False}}

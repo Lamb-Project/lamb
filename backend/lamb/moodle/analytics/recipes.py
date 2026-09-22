@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 from .assignments import grading_queue
 from .access import course_access
-from .events import resource_reach
+from .events import resource_reach, view_activity
 from .grades import grade_distribution
 from .completion import activity_completion
 from .client import EVENT_FUNCTION, SCOPE_FUNCTION, GRADE_SCOPE_FUNCTION, COMPLETION_SCOPE_FUNCTION
@@ -15,6 +15,8 @@ from ..charts import ChartStore
 from ..scope import MoodleScope
 
 RECIPES = {
+    'view-trends': {'functions':[EVENT_FUNCTION,SCOPE_FUNCTION,'core_enrol_get_enrolled_users','core_course_get_contents'],
+                    'title':'Recorded view trends','metric':'Recorded views'},
     'activity-completion': {'functions':[COMPLETION_SCOPE_FUNCTION,'core_completion_get_activities_completion_status','core_course_get_contents','core_enrol_get_enrolled_users'],
                             'title':'Observed activity completion','metric':'Incomplete'},
     'grade-distribution': {'functions':[GRADE_SCOPE_FUNCTION,'mod_assign_get_assignments','mod_assign_get_grades','core_enrol_get_enrolled_users'],
@@ -68,14 +70,24 @@ def run_recipe(runtime, client, owner_id, params, *, progress=None):
         # Aggregate by default: no learner IDs are persisted or sent to AAC here.
         rows = [{'id':key,'name':key.replace('_',' '),'value':value,'status':'ok','reason':None}
                 for key,value in data['metrics'].items()]
-    elif recipe == 'resource-reach':
+    elif recipe in {'resource-reach','view-trends'}:
         since = int(datetime.fromisoformat(params['since']).replace(tzinfo=ZoneInfo(params['tz'])).timestamp())
         until = (int(datetime.fromisoformat(params['until']).replace(tzinfo=ZoneInfo(params['tz'])).timestamp())
                  if params.get('until') else int(time.time()))
-        data = resource_reach(client, owner_id, course, since=since, until=until, group_id=params.get('group_id') or 0)
-        rows = [{**r,'id':r['cmid'],'name':f"{r['name']} (#{r['cmid']})",
-                 'value':r['unique_student_viewers'],'status':'ok','reason':None} for r in data['rows']]
-        resource_scope = {'course_id':course,'group_id':data['group_id'],'module_ids':[r['cmid'] for r in rows]}
+        if recipe=='view-trends':
+            data=view_activity(client,owner_id,course,since=since,until=until,
+                timezone=params['tz'],group_id=params.get('group_id') or 0)
+            data.update(schema_version=1,recipe={'id':recipe,'version':1},window=data['view_time']['window'],
+                limitations=data['view_time']['limitations'])
+            rows=[{**r,'id':r['date'],'name':r['date'],'value':r['recorded_views'],'status':'ok','reason':None}
+                for r in data['view_time']['daily']]
+            module_ids=data.pop('module_ids')
+        else:
+            data = resource_reach(client, owner_id, course, since=since, until=until, group_id=params.get('group_id') or 0)
+            rows = [{**r,'id':r['cmid'],'name':f"{r['name']} (#{r['cmid']})",
+                     'value':r['unique_student_viewers'],'status':'ok','reason':None} for r in data['rows']]
+            module_ids=[r['cmid'] for r in rows]
+        resource_scope = {'course_id':course,'group_id':data['group_id'],'module_ids':module_ids}
         validate_resource_scope(client, resource_scope)
         binding['resource_scopes'] = [resource_scope]
         data['resource_scopes'] = [resource_scope]

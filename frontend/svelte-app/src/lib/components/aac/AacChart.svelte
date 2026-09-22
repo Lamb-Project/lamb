@@ -43,7 +43,7 @@
 {:else if data}
     <h3>{data.course_name}</h3>
     <p class="snapshot">{dateLabel(data.as_of)} · {data.timezone}</p>
-    {#if data.view_kind === 'metric-bars-v1'}
+    {#if data.view_kind === 'metric-bars-v1' || data.view_kind === 'view-trend-v1'}
         <h3>{data.title}</h3>
         {#if data.window_label}<p class="snapshot" data-analytics-window>{data.window_label}</p>{/if}
         {#if data.population_label}<p class="snapshot" data-analytics-population>{data.population_label}</p>{/if}
@@ -73,7 +73,14 @@
         <p class="table-hint">{text.table}</p>
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <div class="table-scroll" tabindex="0" role="region" aria-label={text.table}>
-            {#if data.completion_columns}
+            {#if data.view_columns}
+            <table><caption>{data.title}</caption>
+                <thead><tr>{#each data.view_columns as column}<th scope="col">{column}</th>{/each}</tr></thead>
+                <tbody>{#each data.rows as row}<tr><th scope="row">{row.date}</th>
+                    {#each data.view_keys.slice(1) as key}<td>{row[key] ?? '–'}</td>{/each}
+                </tr>{/each}</tbody>
+            </table>
+            {:else if data.completion_columns}
             <table class="completion-table"><caption>{data.title}</caption>
                 <thead><tr>{#each data.completion_columns as column}<th scope="col">{column}</th>{/each}</tr></thead>
                 <tbody>{#each data.rows as row}<tr><th scope="row">{row.name}</th>
