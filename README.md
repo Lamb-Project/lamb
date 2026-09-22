@@ -264,6 +264,11 @@ The Safe AI in Education Manifesto outlines 7 core principles for responsible AI
 As signatories to the manifesto, LAMB's core team members are committed to advancing ethical AI in education. LAMB represents a practical implementation of manifesto principles in action.
 
 ## 📧 Contact
+
+### Optional Moodle analytics adapter
+
+The experimental [Moodle log-read adapter](moodle/local/lambanalytics/README.md) supplies bounded, permission-scoped course/resource view events. It requires separate Moodle administrator installation and is not yet a complete CLI/AAC analytics workflow.
+
 - **Project Leads**: Marc Alier (UPC), Juanan Pereira (UPV/EHU) 
 - **Research**: Academic collaborations and research partnerships
 - **GitHub**: [https://github.com/Lamb-Project/lamb](https://github.com/Lamb-Project/lamb)
