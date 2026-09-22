@@ -67,6 +67,9 @@ REASONS = {
 
 
 def present(recipe, language, timezone, data, rows):
+    if recipe == 'activity-completion':
+        from .completion_text import present_completion
+        return present_completion(language,data,rows)
     if recipe == 'grade-distribution':
         from .grade_text import present_grades
         return present_grades(language,data)

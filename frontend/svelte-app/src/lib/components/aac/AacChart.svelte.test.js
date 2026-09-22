@@ -112,3 +112,14 @@ it('shows grade summaries with zero distinct from missing', async () => {
     const stats=document.querySelector('[data-analytics-statistics]');
     expect([...stats.querySelectorAll('dd')].map(e=>e.textContent)).toEqual(['0',chartText('en').analyticsUnavailable]);
 });
+
+it('keeps completion fail, unknown and untracked separate in the exact table', async () => {
+    apiJson.mockResolvedValue({...snapshot(),view_kind:'metric-bars-v1',
+        completion_columns:['Activity','Complete-fail','Unknown','Untracked'],
+        completion_keys:['name','complete_fail','unknown','untracked'],
+        rows:[{name:'Task',status:'ok',value:0,complete_fail:1,unknown:2,untracked:3}]});
+    render(AacChart,{chartId:'completion'});
+    await screen.findByRole('table');
+    expect(screen.getAllByRole('cell').map(cell=>cell.textContent)).toEqual(['1','2','3']);
+    expect(screen.getByRole('region')).toHaveAttribute('tabindex','0');
+});

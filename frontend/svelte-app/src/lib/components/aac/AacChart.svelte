@@ -73,7 +73,14 @@
         <p class="table-hint">{text.table}</p>
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <div class="table-scroll" tabindex="0" role="region" aria-label={text.table}>
-            {#if data.resource_columns}
+            {#if data.completion_columns}
+            <table><caption>{data.title}</caption>
+                <thead><tr>{#each data.completion_columns as column}<th scope="col">{column}</th>{/each}</tr></thead>
+                <tbody>{#each data.rows as row}<tr><th scope="row">{row.name}</th>
+                    {#each data.completion_keys.slice(1) as key}<td>{row[key] ?? '–'}</td>{/each}
+                </tr>{/each}</tbody>
+            </table>
+            {:else if data.resource_columns}
             <table><caption>{data.title}</caption>
                 <thead><tr>{#each data.resource_columns as column}<th scope="col">{column}</th>{/each}</tr></thead>
                 <tbody>{#each data.rows as row}<tr><th scope="row">{row.name}</th>

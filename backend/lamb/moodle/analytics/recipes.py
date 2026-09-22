@@ -7,13 +7,16 @@ from .assignments import grading_queue
 from .access import course_access
 from .events import resource_reach
 from .grades import grade_distribution
-from .client import EVENT_FUNCTION, SCOPE_FUNCTION, GRADE_SCOPE_FUNCTION
-from .authorization import validate_resource_scope, validate_grade_scope
+from .completion import activity_completion
+from .client import EVENT_FUNCTION, SCOPE_FUNCTION, GRADE_SCOPE_FUNCTION, COMPLETION_SCOPE_FUNCTION
+from .authorization import validate_resource_scope, validate_grade_scope, validate_completion_scope
 from .presentation import present, TEXT
 from ..charts import ChartStore
 from ..scope import MoodleScope
 
 RECIPES = {
+    'activity-completion': {'functions':[COMPLETION_SCOPE_FUNCTION,'core_completion_get_activities_completion_status','core_course_get_contents','core_enrol_get_enrolled_users'],
+                            'title':'Observed activity completion','metric':'Incomplete'},
     'grade-distribution': {'functions':[GRADE_SCOPE_FUNCTION,'mod_assign_get_assignments','mod_assign_get_grades','core_enrol_get_enrolled_users'],
                           'title':'Raw assignment grade distribution','metric':'Students'},
     'grading-queue': {'functions': ['mod_assign_get_assignments', 'mod_assign_get_submission_status'],
@@ -39,7 +42,15 @@ def capabilities(client, owner_id, course_id):
 def run_recipe(runtime, client, owner_id, params, *, progress=None):
     recipe, course = params['recipe'], params['course_id']
     binding = dict(runtime.result_binding(), course_id=course)
-    if recipe == 'grade-distribution':
+    if recipe == 'activity-completion':
+        data = activity_completion(client,owner_id,course)
+        rows = [{**r,'id':r['cmid'],'name':f"{r['name']} (#{r['cmid']})",'value':r['incomplete'],
+                 'status':'ok','reason':None} for r in data['rows']]
+        completion_scope = {'course_id':course,'module_ids':[r['cmid'] for r in rows]}
+        validate_completion_scope(client,completion_scope)
+        binding['completion_scopes'] = [completion_scope]
+        data['completion_scopes'] = [completion_scope]
+    elif recipe == 'grade-distribution':
         data = grade_distribution(client,owner_id,course,params['assignment_id'])
         rows = [{**r,'id':i,'name':f"[{r['lower']}, {r['upper']}{']' if r['upper_inclusive'] else ')'} %",
                  'value':r['count'],'status':'ok','reason':None} for i,r in enumerate(data['rows'])]

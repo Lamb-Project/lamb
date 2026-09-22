@@ -60,6 +60,36 @@ def test_course_access_saves_aggregates_not_learner_records(tmp_path):
 SECRET_ID=123456789
 
 
+@pytest.mark.parametrize('language',['en','es','ca','eu'])
+def test_completion_snapshot_preserves_states_and_exact_permission_scope(language,tmp_path):
+    runtime=SimpleNamespace(cache_root=tmp_path,store=SimpleNamespace(organization_id=1,owner_id=2),
+        result_binding=lambda:{'generation':1},validate_result_binding=lambda *args:None)
+    source={'course_id':7,'course_name':'Synthetic','as_of':'2026-09-22T12:00:00Z',
+        'coverage':{'complete':False,'student_rows':6,'tracking_disabled_modules':1},'limitations':[],
+        'rows':[{'cmid':10,'name':'Task','tracking':2,'incomplete':1,'complete':1,'complete_pass':1,
+                 'complete_fail':1,'unknown':1,'untracked':1,'overridden':1,'override_unknown':0,
+                 'overall_complete':2,'overall_unknown':0,'population_students':6}]}
+    with patch('lamb.moodle.analytics.recipes.activity_completion',return_value=source), \
+         patch('lamb.moodle.analytics.recipes.validate_completion_scope') as authorize:
+        result=run_recipe(runtime,SimpleNamespace(checkpoint=lambda:None),12,
+            {'recipe':'activity-completion','course_id':7,'tz':'Europe/Madrid','language':language})
+    scope={'course_id':7,'module_ids':[10]}
+    assert authorize.call_args.args[1]==scope
+    assert result['completion_scopes']==[scope]
+    assert result['rows'][0]['value']==1 and result['rows'][0]['unknown']==1
+    assert result['rows'][0]['complete_fail']==1 and result['rows'][0]['overall_complete']==2
+    assert len(result['completion_columns'])==len(result['completion_keys'])==13
+    saved=ChartStore(runtime).read(result['chart_id'])
+    assert saved['rows']==result['rows'] and '<svg' in render_svg(saved)
+    assert ChartStore(runtime).listing()['items'][0]['completion_scopes']==[scope]
+
+
+def test_completion_task_contract_rejects_unimplemented_filters():
+    assert prepare_moodle('moodle analytics run activity-completion --course 7')[1]['recipe']=='activity-completion'
+    for option in ['--group 2','--assignment 42','--since 2026-09-01']:
+        with pytest.raises(ValueError):prepare_moodle('moodle analytics run activity-completion --course 7 '+option)
+
+
 def test_grade_command_requires_assignment_and_rejects_other_recipe_options():
     spec, params = prepare_moodle('moodle analytics run grade-distribution --course 7 --assignment 42')
     assert params['assignment_id'] == 42

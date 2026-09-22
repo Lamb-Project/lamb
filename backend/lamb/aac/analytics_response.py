@@ -6,7 +6,7 @@ rewrites a factual claim silently. The agent may repair once without tools.
 import re
 import unicodedata
 
-RECIPES = {'grade-distribution', 'grading-queue', 'course-access', 'resource-reach'}
+RECIPES = {'grade-distribution', 'grading-queue', 'course-access', 'resource-reach', 'activity-completion'}
 
 
 def contract(result):
