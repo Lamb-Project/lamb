@@ -1,6 +1,6 @@
 {
   "name": "lamb-default",
-  "version": "1.14.2",
+  "version": "1.14.1",
   "requires": "lamb >= 0.7.14",
   "compatibility": "knowledge-brief",
   "layers": {
@@ -34,7 +34,7 @@
     "methodology/design-publishing.md": "647e89e253c7a0384b58bccaf644e2517a207f19e1d48f178c8643dcde30f788",
     "methodology/design-rubrics.md": "4e856ceb14acf3ab8391b8fe0fef6eff3df57d486607b01cb304deae04af2205",
     "methodology/design-testing.md": "1f2c69f02a6a2515cf63f8f2b3f84128445432e711e4f7735f144a4e8b4db20f",
-    "persona.md": "3f4c3ec42ef40a36e0c41043d8d318eb7c831e35114c0d79a49c88cbd91c548b",
+    "persona.md": "b79089e77f3152c16c68e48efa735ca6110c297390d6d9f8759f8a4a3dced29b",
     "routing.yaml": "09bf1e69c2b093b9d2654ca90a30e9ab19d5666fb6f9619186a1035f8472f904",
     "skills/about_lamb.md": "eac1abcae105e03445dd5bb2e31aa69fcc82ce9646a307ef8622efa8030b2013",
     "skills/chat_with_assistant.md": "2cb8703c13b27b7a62f89cd7692aa33e53b6e1697aeb1318d76073d61c5a84f6",

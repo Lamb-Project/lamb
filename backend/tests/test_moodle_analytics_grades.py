@@ -28,9 +28,10 @@ def collect(client, maximum=20, **overrides):
 def test_independent_histogram_and_statistics_oracle():
     result = collect(Client(['0','2','10','20','-1']))
     assert [r['count'] for r in result['rows']] == [1,1,0,0,0,1,0,0,0,1]
-    assert result['metrics'] == {'valid_n':4,'missing_n':2,'population_n':6,
+    assert result['metrics'] == {'valid_n':4,'missing_n':2,'population_n':6,'zero_n':1,
         'mean':40.0,'q1':7.5,'median':30.0,'q3':62.5}
     assert result['grade_released'] is None
+    assert result['publication_status'] == 'not_collected'
     assert result['coverage']['ungraded_sentinel_records'] == 1
     assert 'userid' not in str(result)
 
@@ -41,6 +42,14 @@ def test_no_grades_warning_is_missing_not_denied():
     result = collect(c)
     assert result['metrics']['valid_n'] == 0 and result['metrics']['missing_n'] == 6
     assert result['metrics']['mean'] is None
+    assert result['metrics']['zero_n'] == 0
+
+
+def test_lowest_bin_does_not_imply_exact_zero():
+    result = collect(Client(['0','1','-1']))
+    assert result['rows'][0]['count'] == 2
+    assert result['metrics']['zero_n'] == 1
+    assert result['metrics']['missing_n'] == 4
 
 
 @pytest.mark.parametrize('value', [None,True,'NaN','Infinity','no grade','-2','21'])

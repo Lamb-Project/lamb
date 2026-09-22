@@ -88,6 +88,7 @@ def grade_distribution(client, owner_id, course_id, assignment_id):
     for value in values:
         counts[min(int(value // 10), 9)] += 1
     summary = {'valid_n':len(values), 'missing_n':len(students)-len(values), 'population_n':len(students),
+               'zero_n':sum(value == 0 for value in values),
                'mean':float(sum(values) / len(values)) if values else None,
                **{name:float(_percentile(values, p)) if values else None
                   for name, p in [('q1',Decimal('.25')),('median',Decimal('.5')),('q3',Decimal('.75'))]}}
@@ -98,6 +99,7 @@ def grade_distribution(client, owner_id, course_id, assignment_id):
             'as_of':datetime.now(timezone.utc).isoformat(), 'timezone':'UTC',
             'grade_min':0, 'grade_max':float(maximum), 'grade_kind':'raw_latest_attempt_assignment_grade',
             'marking_workflow':bool(assignment.get('markingworkflow')), 'grade_released':None,
+            'publication_status':'not_collected',
             'rows':[{'lower':i*10,'upper':(i+1)*10,'upper_inclusive':i==9,'count':n} for i,n in enumerate(counts)],
             'metrics':summary, 'coverage':{**population, 'complete':True, 'records_read':len(records),
                 'excluded_nonpopulation_records':excluded, 'ungraded_sentinel_records':sentinel},
