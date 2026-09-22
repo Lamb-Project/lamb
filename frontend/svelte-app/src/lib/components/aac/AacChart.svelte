@@ -48,10 +48,12 @@
         {#if data.window_label}<p class="snapshot" data-analytics-window>{data.window_label}</p>{/if}
         {#if data.population_label}<p class="snapshot" data-analytics-population>{data.population_label}</p>{/if}
         {#if data.summary_statistics}
-            <dl data-analytics-statistics>
+            <dl class="summary-statistics" data-analytics-statistics>
                 {#each data.summary_statistics as statistic}
+                    <div>
                     <dt>{statistic.label}</dt>
                     <dd>{statistic.value === null ? text.analyticsUnavailable : new Intl.NumberFormat(data.language, {maximumFractionDigits: 4}).format(statistic.value)}</dd>
+                    </div>
                 {/each}
             </dl>
         {/if}
@@ -135,6 +137,9 @@
     .chart-content { padding:20px; color:#172b40; min-width:0; overflow-wrap:anywhere; }
     h3 { font-weight:600; font-size:1.15rem; }
     .snapshot { color:#53677b; font-size:.85rem; margin:6px 0; }
+    .summary-statistics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:16px 0; }
+    .summary-statistics dt { color:#53677b; font-size:.85rem; }
+    .summary-statistics dd { margin:0; font-weight:600; }
     .partial { background:#fff4d5; padding:8px; border-radius:6px; }
     .desktop-chart { margin:18px 0; }
     img { display:block; width:100%; height:auto; }
@@ -156,6 +161,7 @@
     button { border:1px solid #2463a1; padding:8px 16px; border-radius:6px; }
     :focus-visible { outline:3px solid #2463a1; outline-offset:3px; }
     @media(max-width:600px) {
+        .summary-statistics { grid-template-columns:repeat(2,minmax(0,1fr)); }
         .chart-content { padding:12px; }
         .desktop-chart { display:none; }
         .mobile-chart { display:block; }
