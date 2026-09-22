@@ -21,6 +21,11 @@ class CompletionCheckpoints:
         self.folder = results.folder.parent / 'completion-runs'
         self.binding = deepcopy(results.binding)
 
+    def execution_lock(self):
+        # Serialize workers across a bounded step, independently of short
+        # revision locks, so two workers cannot both spend remote requests.
+        return file_lock(self.folder / 'executor', blocking=False)
+
     def _path(self, identity):
         return self.folder / (str(uuid.UUID(identity)) + '.json')
 

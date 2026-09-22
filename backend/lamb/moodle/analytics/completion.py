@@ -1,5 +1,7 @@
 """Observed completion states, not required-path progress or learning claims."""
 from datetime import datetime, timezone
+import hashlib
+import json
 
 from .events import _students
 from .authorization import validate_completion_scope
@@ -10,7 +12,7 @@ from .completion_state import STATES, MAX_COMPLETION_MODULES, initial_cursor, ad
 MAX_COMPLETION_STUDENTS = 100
 
 
-def activity_completion(client, owner_id, course_id):
+def completion_context(client, owner_id, course_id, *, student_limit=MAX_COMPLETION_STUDENTS):
     scope = MoodleScope(client,owner_id)
     course = scope.require_teacher(course_id)
     validate_completion_scope(client,{'course_id':course,'module_ids':[]})
@@ -18,7 +20,7 @@ def activity_completion(client, owner_id, course_id):
     students, population = _students(client,course,0)
     if not population['population_exhausted'] or population['role_unknown']:
         raise ValueError('Complete student population required for completion counts')
-    if len(students)>MAX_COMPLETION_STUDENTS:
+    if len(students)>student_limit:
         raise ValueError('Completion collection exceeds per-run student limit; continuation is not yet supported')
     sections=client.call('core_course_get_contents',courseid=course,options=[{'name':'excludecontents','value':1}])
     if not isinstance(sections,list):
@@ -26,14 +28,19 @@ def activity_completion(client, owner_id, course_id):
     inventory={}
     seen=set()
     disabled=0
+    module_facts=[]
     for section in sections:
         if not isinstance(section,dict) or not isinstance(section.get('modules',[]),list):
             raise ValueError('Invalid completion section')
         for module in section.get('modules',[]):
+            if not isinstance(module,dict):
+                raise ValueError('Invalid completion module')
             identity=module.get('id'); tracking=module.get('completion')
             if type(identity) is not int or identity<1 or identity in seen:
                 raise ValueError('Invalid completion module ID')
             seen.add(identity)
+            module_facts.append({key:module.get(key) for key in ('id','name','completion','availability',
+                'uservisible','visible','completiongradeitemnumber','completionpassgrade')})
             if module.get('uservisible') is False:
                 continue
             if type(tracking) is not int or tracking not in (0,1,2):
@@ -50,7 +57,18 @@ def activity_completion(client, owner_id, course_id):
         raise ValueError('Completion collection exceeds module limit')
     validate_completion_scope(client,{'course_id':course,'module_ids':list(inventory)})
     cursor = initial_cursor(students, list(inventory.values()))
-    for student in sorted(students):
+    fingerprint = hashlib.sha256(json.dumps({'students':sorted(students),'population':population,
+        'course_name':course_name,'modules':sorted(module_facts,key=lambda item:item['id'])},
+        sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+    return {'course_id':course,'course_name':course_name,'population':population,'disabled':disabled,
+            'cursor':cursor,'fingerprint':fingerprint}
+
+
+def activity_completion(client, owner_id, course_id):
+    context = completion_context(client,owner_id,course_id)
+    course=context['course_id']; course_name=context['course_name']
+    population=context['population']; disabled=context['disabled']; cursor=context['cursor']
+    for student in cursor['students']:
         client.checkpoint()
         response=client.call('core_completion_get_activities_completion_status',courseid=course,userid=student)
         cursor = advance_cursor(cursor, student, response)

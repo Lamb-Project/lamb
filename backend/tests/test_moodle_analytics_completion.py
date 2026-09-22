@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 import pytest
-from lamb.moodle.analytics.completion import activity_completion
+from lamb.moodle.analytics.completion import activity_completion, completion_context
 
 
 class Client:
@@ -97,3 +97,34 @@ def test_progress_scope_denial_precedes_population_read():
         authorize.assert_called_once_with(c,{'course_id':7,'module_ids':[]})
         population.assert_not_called()
         assert not c.calls
+
+
+def context_for(client, students=(1,2,3,4)):
+    with patch('lamb.moodle.analytics.completion.validate_completion_scope'), \
+         patch('lamb.moodle.analytics.completion.MoodleScope') as scope, \
+         patch('lamb.moodle.analytics.completion._students',return_value=(set(students),
+            {'population_exhausted':True,'role_unknown':0,'student_rows':len(students)})):
+        scope.return_value.require_teacher.return_value=7
+        scope.return_value.own_courses.return_value={7:SimpleNamespace(fullname='Course')}
+        return completion_context(client,12,7,student_limit=1000)
+
+
+@pytest.mark.parametrize('change',[{'availability':'{"op":"&","c":[]}'},{'name':'Changed'},
+    {'completion':1},{'visible':False},{'completionpassgrade':True}])
+def test_context_fingerprint_detects_observed_activity_changes(change):
+    c=Client();before=context_for(c)['fingerprint'];c.modules[0].update(change)
+    assert context_for(c)['fingerprint']!=before
+
+
+def test_context_fingerprint_detects_roster_and_disabled_inventory_changes():
+    c=Client();before=context_for(c)['fingerprint']
+    assert context_for(c,(1,2,3,5))['fingerprint']!=before
+    c.modules[1]['id']=12
+    assert context_for(c)['fingerprint']!=before
+
+
+def test_context_fingerprint_ignores_inventory_order_and_never_reads_completion():
+    c=Client();before=context_for(c);c.modules.reverse()
+    after=context_for(c)
+    assert before['fingerprint']==after['fingerprint']
+    assert all(function=='core_course_get_contents' for function,_ in c.calls)
