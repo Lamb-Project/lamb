@@ -57,7 +57,9 @@
                 {/each}
             </dl>
         {/if}
-        {#if !data.coverage.complete}<p class="partial" data-chart-coverage>{text.partial}</p>{/if}
+        {#if data.coverage.history_complete === false && typeof data.coverage.collection_complete === 'boolean'}
+            <p class="partial" data-chart-coverage>{data.coverage.collection_complete === true ? text.historyUnknown : text.collectionIncomplete}</p>
+        {:else if !data.coverage.complete}<p class="partial" data-chart-coverage>{text.partial}</p>{/if}
         {#if !data.rows.length}<p role="status">{text.analyticsEmpty}</p>
         {:else if !supported.length}<p role="status">{text.analyticsUnavailable}</p>{/if}
         {#if imageUrl && data.view_kind === 'view-heatmap-v1'}

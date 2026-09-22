@@ -74,6 +74,20 @@ it('renders a generic analytics snapshot without submission-specific caveats', a
     expect(screen.queryByText(chartText('en').extensions)).toBeNull();
 });
 
+it.each(['en','es','ca','eu'])('distinguishes retrieved coverage from unknown history in %s', async language => {
+    apiJson.mockResolvedValue({...snapshot(language),view_kind:'metric-bars-v1',
+        coverage:{complete:false,collection_complete:true,history_complete:false},
+        rows:[{name:'0',value:1,status:'ok'}]});
+    render(AacChart,{chartId:'observed'});
+    await screen.findByText(chartText(language).historyUnknown);
+    expect(screen.queryByText(chartText(language).partial)).toBeNull();
+    cleanup();
+    apiJson.mockResolvedValue({...snapshot(language),view_kind:'metric-bars-v1',
+        coverage:{complete:false,collection_complete:false,history_complete:false},rows:[]});
+    render(AacChart,{chartId:'partial-observed'});
+    await screen.findByText(chartText(language).collectionIncomplete);
+});
+
 it('renders dated view trends with separate event and viewer columns', async () => {
     apiJson.mockResolvedValue({...snapshot(),view_kind:'view-trend-v1',title:'Recorded daily views',
         metric_label:'Recorded views',caption:'Recorded views only, not all activity.',
