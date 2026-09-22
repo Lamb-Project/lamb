@@ -59,6 +59,7 @@ class OwnerStorage:
             'aac_results': (self.root / 'aac_results' / str(self.org) / str(self.owner), 32 * 1024 * 1024, '24h; oldest unpinned result may be evicted at quota'),
             'evidence': (self.tasks / 'results', 16 * 4 * 1024 * 1024, '24h; live run references protected from quota eviction'),
             'runs': (self.tasks / 'runs', 4 * 8 * 1024 * 1024, '24h; live runs not evicted'),
+            'completion_runs': (self.tasks / 'completion-runs', 4 * 1024 * 1024, '24h; private learner cursors; live runs not evicted'),
             'charts': (self.moodle / 'charts' / str(self.org) / str(self.owner), 100 * 128 * 1024, 'durable; no automatic expiry'),
             'course_cache': (self.tasks / 'course-cache', None, 'rebuildable; retained until explicit source refresh'),
         }
@@ -120,6 +121,20 @@ class OwnerStorage:
                 if run['expires_at'] <= now:
                     remove(path)
             temporaries(self.tasks / 'runs')
+
+        from lamb.moodle.analytics.checkpoints import MAX_CHECKPOINT_BYTES
+        import math
+        folder = self.tasks / 'completion-runs'
+        with file_lock(folder, blocking=False):
+            records = [(path, read_json(path, MAX_CHECKPOINT_BYTES)) for path in files(folder)]
+            for _, record in records:
+                expiry = record.get('expires_at')
+                if type(expiry) not in (int, float) or not math.isfinite(expiry):
+                    raise ValueError('Cannot verify completion checkpoint expiry')
+            for path, record in records:
+                if record['expires_at'] <= now:
+                    remove(path)
+            temporaries(folder)
 
         store = self.imports()
         with store.lock():
