@@ -100,3 +100,78 @@ def test_chart_survives_session_reload_without_full_tool_payload():
     from lamb.aac.session_guidance import browser_session
     result=browser_session({'conversation':[], 'tool_audit':[{'success':True,'artifacts':[{'type':'chart','id':'id','title':'Title'}]}]})
     assert result['charts'][0]['id']=='id' and 'tool_audit' not in result
+
+
+def test_empty_course_has_complete_zero_coverage_without_invented_rows():
+    client = Client()
+    client.assignments = []
+    data = snapshot(client)
+    assert data['rows'] == []
+    assert data['coverage'] == {'complete': True, 'assignments_found': 0,
+                                'assignments_read': 0, 'omitted_by_limit': 0}
+    assert len(client.calls) == 1
+
+
+def test_all_submitted_and_no_participants_are_valid_counts():
+    for n in (0, 6):
+        data = snapshot(Client(summary={'participantcount': n,
+            'submissionssubmittedcount': n, 'submissionsenabled': True}))
+        assert data['rows'][0]['outstanding'] == 0
+        assert data['coverage']['complete']
+
+
+def test_structured_exclusions_and_unknown_extensions():
+    client = Client()
+    client.assignments[0]['teamsubmission'] = 1
+    assert snapshot(client)['rows'][0]['reason_code'] == 'team'
+    client.assignments[0]['teamsubmission'] = 0
+    client.summary['submissionsenabled'] = False
+    assert snapshot(client)['rows'][0]['reason_code'] == 'offline'
+    client.summary['submissionsenabled'] = True
+    client.summary['submissionssubmittedcount'] = 8
+    assert snapshot(client)['rows'][0]['reason_code'] == 'counts'
+
+
+def test_refresh_retains_original_snapshot_and_explicit_interpretation(tmp_path):
+    from lamb.moodle.charts import chart_task
+    rt = runtime(tmp_path)
+    rt.result_binding = lambda: {'owner_id': 1}
+    client = Client()
+    with patch('lamb.moodle.charts.MoodleScope') as scope:
+        scope.return_value.require_teacher.return_value = 2
+        first = chart_task(rt, client, 7, {'course_id': 2})
+        client.summary['submissionssubmittedcount'] = 6
+        second = chart_task(rt, client, 7, {'course_id': 2})
+    assert first['chart_id'] != second['chart_id']
+    assert ChartStore(rt).read(first['chart_id'])['rows'][0]['submitted'] == 3
+    assert ChartStore(rt).read(second['chart_id'])['rows'][0]['submitted'] == 6
+    assert first['interpretation']['individual_extensions'] == 'not_checked'
+    assert first['interpretation']['individual_lateness'] == 'unknown'
+    assert first['interpretation']['student_identities'] == 'not_collected'
+
+
+def test_changed_permission_withholds_whole_snapshot():
+    client = Client()
+    original = client.call
+    def call(function, **kwargs):
+        if function == 'mod_assign_get_submission_status':
+            raise PermissionError('Course access revoked')
+        return original(function, **kwargs)
+    client.call = call
+    with pytest.raises(PermissionError):
+        snapshot(client)
+
+
+def test_warning_in_summary_is_missing_not_zero():
+    client = Client()
+    original = client.call
+    def call(function, **kwargs):
+        data = original(function, **kwargs)
+        if function == 'mod_assign_get_submission_status':
+            data['warnings'] = [{'message': 'incomplete'}]
+        return data
+    client.call = call
+    data = snapshot(client)
+    assert data['rows'][0]['reason_code'] == 'summary'
+    assert data['rows'][0]['submitted'] is None
+    assert not data['coverage']['complete']

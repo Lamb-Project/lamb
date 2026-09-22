@@ -18,10 +18,10 @@ MAX_CHARTS = 100
 MAX_BYTES = 128 * 1024
 RENDER_LOCK = threading.Lock()
 LABELS = {
- 'en': ['Assignment submissions', 'Submitted', 'Outstanding', 'Assignment', 'Course deadline', 'Deadline status', 'Open', 'Course deadline passed', 'Not yet open', 'No deadline', 'Unavailable', 'Counts of submissions, not learning. Outstanding includes drafts. Course deadlines do not include individual extensions or overrides.'],
- 'es': ['Entregas de tareas', 'Entregadas', 'Pendientes', 'Tarea', 'Fecha límite del curso', 'Estado del plazo', 'Abierto', 'Plazo del curso vencido', 'Todavía no abierto', 'Sin fecha límite', 'No disponible', 'Recuentos de entregas, no de aprendizaje. Las pendientes incluyen borradores. Los plazos del curso no incluyen prórrogas o excepciones individuales.'],
- 'ca': ['Lliuraments de tasques', 'Lliurades', 'Pendents', 'Tasca', 'Data límit del curs', 'Estat del termini', 'Obert', 'Termini del curs vençut', 'Encara no obert', 'Sense data límit', 'No disponible', 'Recomptes de lliuraments, no d’aprenentatge. Els pendents inclouen esborranys. Els terminis del curs no inclouen pròrrogues o excepcions individuals.'],
- 'eu': ['Zereginen entregak', 'Entregatuta', 'Zain', 'Zeregina', 'Ikastaroko epea', 'Epearen egoera', 'Irekita', 'Ikastaroko epea amaituta', 'Oraindik ireki gabe', 'Eperik gabe', 'Ez dago erabilgarri', 'Entrega kopuruak, ez ikaskuntza. Zain daudenek zirriborroak barne hartzen dituzte. Ikastaroko epeek ez dituzte banakako luzapenak jasotzen.'],
+ 'en': ['Assignment submissions', 'Submitted', 'Outstanding', 'Assignment', 'Course deadline', 'Deadline status', 'Open', 'Course deadline passed', 'Not yet open', 'No deadline', 'Unavailable', 'Counts of submissions, not learning. Outstanding includes drafts. Individual extensions and overrides were not checked; outstanding does not necessarily mean late.'],
+ 'es': ['Entregas de tareas', 'Entregadas', 'Pendientes', 'Tarea', 'Fecha límite del curso', 'Estado del plazo', 'Abierto', 'Plazo del curso vencido', 'Todavía no abierto', 'Sin fecha límite', 'No disponible', 'Recuentos de entregas, no de aprendizaje. Las pendientes incluyen borradores. No se han comprobado las prórrogas ni las excepciones individuales; pendiente no significa necesariamente atrasada.'],
+ 'ca': ['Lliuraments de tasques', 'Lliurades', 'Pendents', 'Tasca', 'Data límit del curs', 'Estat del termini', 'Obert', 'Termini del curs vençut', 'Encara no obert', 'Sense data límit', 'No disponible', 'Recomptes de lliuraments, no d’aprenentatge. Els pendents inclouen esborranys. No s’han comprovat les pròrrogues ni les excepcions individuals; pendent no significa necessàriament fora de termini.'],
+ 'eu': ['Zereginen entregak', 'Entregatuta', 'Zain', 'Zeregina', 'Ikastaroko epea', 'Epearen egoera', 'Irekita', 'Ikastaroko epea amaituta', 'Oraindik ireki gabe', 'Eperik gabe', 'Ez dago erabilgarri', 'Entrega kopuruak, ez ikaskuntza. Zain daudenek zirriborroak barne hartzen dituzte. Ez dira banakako luzapenak edo salbuespenak egiaztatu; zain egoteak ez du nahitaez berandu esan nahi.'],
 }
 
 
@@ -43,18 +43,22 @@ def submission_snapshot(client, owner_id, course_id, *, tz='UTC', language='en',
         aid = int(assignment['id'])
         row = {'id': aid, 'name': preview(assignment['name'], 160)[0], 'status': 'unavailable',
                'submitted': None, 'outstanding': None, 'participants': None,
-               'deadline': None, 'deadline_status': None, 'reason': None}
+               'deadline': None, 'deadline_status': None, 'reason': None, 'reason_code': None}
         try:
             if assignment.get('teamsubmission', 1):
+                row['reason_code'] = 'team'
                 raise ValueError('Team submissions are outside this pilot')
             result = client.call('mod_assign_get_submission_status', assignid=aid, userid=owner_id, groupid=0)
             summary = result.get('gradingsummary')
             if result.get('warnings') or not summary:
+                row['reason_code'] = 'summary'
                 raise ValueError('All-groups grading summary unavailable')
             if not summary['submissionsenabled']:
+                row['reason_code'] = 'offline'
                 raise ValueError('Online submissions are disabled')
             total, submitted = summary['participantcount'], summary['submissionssubmittedcount']
             if any(type(n) is not int or n < 0 for n in (total, submitted)) or submitted > total:
+                row['reason_code'] = 'counts'
                 raise ValueError('Inconsistent Moodle counts; retry the chart')
             due, opens = int(assignment['duedate']), int(assignment['allowsubmissionsfromdate'])
             status = 'not_open' if opens > started else 'no_deadline' if not due else 'deadline_passed' if due < started else 'open'
@@ -66,6 +70,7 @@ def submission_snapshot(client, owner_id, course_id, *, tz='UTC', language='en',
             # Includes changed connection/policy: withhold the entire result.
             raise
         except Exception as exc:
+            row['reason_code'] = row['reason_code'] or 'unavailable'
             row['reason'] = str(exc) if type(exc) is ValueError else 'Moodle grading summary could not be read'
         rows.append(row)
         if progress: progress(index + 1, min(len(assignments), MAX_ASSIGNMENTS))
@@ -127,6 +132,14 @@ def chart_task(runtime, client, owner_id, params, *, progress=None):
     return {'chart_id': identity, 'title': snapshot['title'], 'course_id': snapshot['course_id'],
             'as_of': snapshot['as_of'], 'coverage': snapshot['coverage'], 'caption': snapshot['caption'],
             'facts': snapshot['rows'], 'limitations': snapshot['limitations'],
+            'interpretation': {
+                'individual_extensions': 'not_checked',
+                'individual_lateness': 'unknown',
+                'student_identities': 'not_collected',
+                'reply': 'Use two or three sentences beside the chart card, not a repeated table. '
+                         'Say extensions were NOT CHECKED; never say there are none. '
+                         'Offer only to explain these counts or, if requested, refresh this chart. '
+                         'Do not offer contacting students, forum replies, grading or other chart recipes.'},
             'display': 'A chart card is available in the AAC canvas. Do not claim it was opened unless the browser confirms it.'}
 
 

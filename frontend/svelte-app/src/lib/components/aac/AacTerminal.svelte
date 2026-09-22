@@ -1,5 +1,7 @@
 <script>
     import AacChart from './AacChart.svelte';
+    import { locale } from 'svelte-i18n';
+    import { chartText } from '$lib/utils/aacChartText';
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { _ } from 'svelte-i18n';
 	import { sidebarBusy, startupSessions, openTabs } from '$lib/stores/aacStore.svelte';
@@ -508,8 +510,8 @@
         {/if}
 	</div>
 </div>
-<dialog bind:this={chartDialog} onclose={() => { selectedChart = null; }} class="canvas-dialog" aria-label={selectedChart?.title || 'Chart'}>
-    <div class="canvas-heading"><h2>{selectedChart?.title || 'Chart'}</h2><button aria-label="Back to conversation" onclick={() => chartDialog.close()}>←</button></div>
+<dialog bind:this={chartDialog} onclose={() => { if (!chartDialog?.open) selectedChart = null; }} class="canvas-dialog" aria-label={selectedChart?.title || chartText($locale).chart}>
+    <div class="canvas-heading"><h2>{selectedChart?.title || chartText($locale).chart}</h2><button aria-label={chartText($locale).back} onclick={() => chartDialog.close()}>←</button></div>
     {#if selectedChart}<AacChart chartId={selectedChart.id} />{/if}
 </dialog>
 {#if canvasData}
