@@ -88,6 +88,23 @@ it('renders dated view trends with separate event and viewer columns', async () 
     expect(screen.queryByText(chartText('en').extensions)).toBeNull();
 });
 
+it('renders the heatmap as a scrollable image and exact seven-by-24 table, not 168 bars', async () => {
+    const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    apiJson.mockResolvedValue({...snapshot(),view_kind:'view-heatmap-v1',title:'Recorded view heatmap',
+        metric_label:'Recorded views',heatmap_day_label:'Weekday',
+        rows:days.flatMap((day,weekday)=>Array.from({length:24},(_,hour)=>({
+            name:`${day} ${hour}`,weekday,hour,value:weekday===0&&hour===9?4:0,status:'ok'}))),
+        heatmap_rows:days.map((day,weekday)=>({day,values:Array.from({length:24},(_,hour)=>weekday===0&&hour===9?4:0)}))});
+    render(AacChart,{chartId:'heatmap'});
+    await screen.findByRole('img');
+    expect(screen.getAllByRole('columnheader')).toHaveLength(25);
+    expect(screen.getAllByRole('rowheader')).toHaveLength(7);
+    expect(screen.getAllByRole('cell')).toHaveLength(168);
+    expect(screen.getAllByRole('cell')[9]).toHaveTextContent('4');
+    expect(document.querySelector('.mobile-chart')).toBeNull();
+    expect(document.querySelector('.heatmap-chart')).toHaveAttribute('tabindex','0');
+});
+
 it.each(['en','es','ca','eu'])('handles empty analytics without assignment claims in %s', async language => {
     apiJson.mockResolvedValue({...snapshot(language),view_kind:'metric-bars-v1',rows:[]});
     render(AacChart,{chartId:'empty-analytics'});

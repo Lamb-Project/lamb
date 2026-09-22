@@ -15,6 +15,8 @@ from ..charts import ChartStore
 from ..scope import MoodleScope
 
 RECIPES = {
+    'view-heatmap': {'functions':[EVENT_FUNCTION,SCOPE_FUNCTION,'core_enrol_get_enrolled_users','core_course_get_contents'],
+                    'title':'Recorded views by weekday and hour','metric':'Recorded views'},
     'view-trends': {'functions':[EVENT_FUNCTION,SCOPE_FUNCTION,'core_enrol_get_enrolled_users','core_course_get_contents'],
                     'title':'Recorded view trends','metric':'Recorded views'},
     'activity-completion': {'functions':[COMPLETION_SCOPE_FUNCTION,'core_completion_get_activities_completion_status','core_course_get_contents','core_enrol_get_enrolled_users'],
@@ -70,17 +72,21 @@ def run_recipe(runtime, client, owner_id, params, *, progress=None):
         # Aggregate by default: no learner IDs are persisted or sent to AAC here.
         rows = [{'id':key,'name':key.replace('_',' '),'value':value,'status':'ok','reason':None}
                 for key,value in data['metrics'].items()]
-    elif recipe in {'resource-reach','view-trends'}:
+    elif recipe in {'resource-reach','view-trends','view-heatmap'}:
         since = int(datetime.fromisoformat(params['since']).replace(tzinfo=ZoneInfo(params['tz'])).timestamp())
         until = (int(datetime.fromisoformat(params['until']).replace(tzinfo=ZoneInfo(params['tz'])).timestamp())
                  if params.get('until') else int(time.time()))
-        if recipe=='view-trends':
+        if recipe in {'view-trends','view-heatmap'}:
             data=view_activity(client,owner_id,course,since=since,until=until,
                 timezone=params['tz'],group_id=params.get('group_id') or 0)
             data.update(schema_version=1,recipe={'id':recipe,'version':1},window=data['view_time']['window'],
                 limitations=data['view_time']['limitations'])
-            rows=[{**r,'id':r['date'],'name':r['date'],'value':r['recorded_views'],'status':'ok','reason':None}
-                for r in data['view_time']['daily']]
+            if recipe=='view-trends':
+                rows=[{**r,'id':r['date'],'name':r['date'],'value':r['recorded_views'],'status':'ok','reason':None}
+                    for r in data['view_time']['daily']]
+            else:
+                rows=[{**r,'id':f"{r['weekday']}-{r['hour']}",'value':r['recorded_views'],'status':'ok','reason':None}
+                    for r in data['view_time']['weekday_hour']]
             module_ids=data.pop('module_ids')
         else:
             data = resource_reach(client, owner_id, course, since=since, until=until, group_id=params.get('group_id') or 0)

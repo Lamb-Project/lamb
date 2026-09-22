@@ -43,7 +43,7 @@
 {:else if data}
     <h3>{data.course_name}</h3>
     <p class="snapshot">{dateLabel(data.as_of)} · {data.timezone}</p>
-    {#if data.view_kind === 'metric-bars-v1' || data.view_kind === 'view-trend-v1'}
+    {#if ['metric-bars-v1','view-trend-v1','view-heatmap-v1'].includes(data.view_kind)}
         <h3>{data.title}</h3>
         {#if data.window_label}<p class="snapshot" data-analytics-window>{data.window_label}</p>{/if}
         {#if data.population_label}<p class="snapshot" data-analytics-population>{data.population_label}</p>{/if}
@@ -60,20 +60,32 @@
         {#if !data.coverage.complete}<p class="partial" data-chart-coverage>{text.partial}</p>{/if}
         {#if !data.rows.length}<p role="status">{text.analyticsEmpty}</p>
         {:else if !supported.length}<p role="status">{text.analyticsUnavailable}</p>{/if}
-        {#if imageUrl}<div class="desktop-chart"><img src={imageUrl} alt={data.title} /></div>{/if}
+        {#if imageUrl && data.view_kind === 'view-heatmap-v1'}
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+            <div class="heatmap-chart" role="region" tabindex="0" aria-label={data.title}><img src={imageUrl} alt={data.title} /></div>
+        {:else if imageUrl}<div class="desktop-chart"><img src={imageUrl} alt={data.title} /></div>{/if}
+        {#if data.view_kind !== 'view-heatmap-v1'}
         <ul class="mobile-chart" aria-label={data.title}>
             {#each supported as row}<li><strong>{row.name}</strong>
                 <div class="bar" aria-hidden="true"><span class="submitted" style:width={`${100 * row.value / maxMetric}%`}></span></div>
                 <p>{data.metric_label}: {row.value}</p>
             </li>{/each}
         </ul>
+        {/if}
         {#if imageError}<p role="status">{text.imageError}</p><button onclick={() => attempt++}>{text.retry}</button>{/if}
         <p class="caption">{data.caption}</p>
         {#if data.rows.length}
         <p class="table-hint">{text.table}</p>
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <div class="table-scroll" tabindex="0" role="region" aria-label={text.table}>
-            {#if data.view_columns}
+            {#if data.heatmap_rows}
+            <table><caption>{data.title}</caption>
+                <thead><tr><th scope="col">{data.heatmap_day_label}</th>{#each Array(24) as _,hour}<th scope="col">{hour}:00</th>{/each}</tr></thead>
+                <tbody>{#each data.heatmap_rows as row}<tr><th scope="row">{row.day}</th>
+                    {#each row.values as value}<td>{value}</td>{/each}
+                </tr>{/each}</tbody>
+            </table>
+            {:else if data.view_columns}
             <table><caption>{data.title}</caption>
                 <thead><tr>{#each data.view_columns as column}<th scope="col">{column}</th>{/each}</tr></thead>
                 <tbody>{#each data.rows as row}<tr><th scope="row">{row.date}</th>
@@ -156,6 +168,8 @@
     .summary-statistics dd { margin:0; font-weight:600; }
     .partial { background:#fff4d5; padding:8px; border-radius:6px; }
     .desktop-chart { margin:18px 0; }
+    .heatmap-chart { margin:18px 0; overflow:auto; max-width:100%; }
+    .heatmap-chart img { min-width:720px; }
     img { display:block; width:100%; height:auto; }
     .mobile-chart { display:none; list-style:none; padding:0; margin:16px 0; }
     .mobile-chart li { margin-bottom:18px; }

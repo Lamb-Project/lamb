@@ -93,18 +93,18 @@ def parse_task(tokens):
                 raise ValueError('Grade distribution requires --assignment ID')
         elif params['assignment_id'] is not None:
             raise ValueError('--assignment applies only to grade-distribution')
-        if params['recipe'] in {'course-access','resource-reach','view-trends'}:
+        if params['recipe'] in {'course-access','resource-reach','view-trends','view-heatmap'}:
             try: date.fromisoformat(params['since'])
             except (ValueError, TypeError): raise ValueError('This recipe requires --since YYYY-MM-DD') from None
         elif params['since'] is not None:
             raise ValueError('--since does not apply to this recipe')
-        if params['recipe'] in {'resource-reach','view-trends'}:
+        if params['recipe'] in {'resource-reach','view-trends','view-heatmap'}:
             if params['until'] is not None:
                 try: end = date.fromisoformat(params['until'])
                 except (ValueError, TypeError): raise ValueError('Use --until YYYY-MM-DD') from None
                 if end <= date.fromisoformat(params['since']): raise ValueError('--until must follow --since')
         elif params['until'] is not None or params['group_id'] is not None:
-            raise ValueError('--until and --group apply only to resource-reach or view-trends')
+            raise ValueError('--until and --group apply only to resource-reach, view-trends or view-heatmap')
     if key == 'news':
         from .forum_activity import validate_request
         validate_request(params)

@@ -190,6 +190,21 @@ def chart_task(runtime, client, owner_id, params, *, progress=None):
 
 def render_svg(snapshot):
     import vl_convert as vlc
+    if snapshot.get('view_kind') == 'view-heatmap-v1':
+        rows=snapshot['rows']
+        if (len(rows)!=168 or any(type(r.get('weekday')) is not int or type(r.get('hour')) is not int
+                or type(r.get('value')) is not int or r['value']<0 for r in rows)
+                or {(r['weekday'],r['hour']) for r in rows}!={(day,hour) for day in range(7) for hour in range(24)}):
+            raise ValueError('Invalid view heatmap grid')
+        values=[{'day':snapshot['heatmap_days'][r['weekday']],'hour':r['hour'],'views':r['value']} for r in rows]
+        spec={'width':600,'height':240,'data':{'values':values},'mark':{'type':'rect'},
+            'encoding':{'x':{'field':'hour','type':'ordinal','sort':list(range(24)),'title':snapshot['heatmap_hour_label']},
+                'y':{'field':'day','type':'ordinal','sort':snapshot['heatmap_days'],'title':snapshot['heatmap_day_label']},
+                'color':{'field':'views','type':'quantitative','title':snapshot['metric_label'],
+                    'scale':{'scheme':'blues','domainMin':0},'legend':{'tickMinStep':1}},
+                'tooltip':[{'field':'day'},{'field':'hour'},{'field':'views','type':'quantitative'}]}}
+        with RENDER_LOCK:
+            return vlc.vegalite_to_svg(spec,allowed_base_urls=[])
     if snapshot.get('view_kind') == 'view-trend-v1':
         rows=snapshot['rows']
         if len(rows)>100:raise ValueError('View trend mark limit exceeded')

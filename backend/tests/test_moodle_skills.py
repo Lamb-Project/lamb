@@ -11,7 +11,7 @@ from lamb.moodle.runtime import attach_to_agent
 
 def test_moodle_recipes_and_generated_commands_validate():
     pack=load_pack()
-    assert pack.version=='1.19.0'
+    assert pack.version=='1.20.0'
     validate_routing(pack)
     assert validate_skill_contracts(pack)
     names={'moodle-triage','moodle-forums','moodle-course-documents','moodle-assessment-draft'}
@@ -91,7 +91,7 @@ def test_completion_guidance_preserves_states_and_evidence_limits():
     assert 'Individual eligibility, required activities and schedules were not collected' in text
     assert 'No date, assignment or group filter is supported' in text
     assert 'read the saved chart first' in text
-    assert 'Only the five analytics recipes' in text
+    assert 'Use the capability listing for implemented recipes' in text
     assert 'mutually exclusive, not nested categories' in text
     assert 'in that turn before answering' in text
     assert load_pack(version='1.15.0').version == '1.15.0'
