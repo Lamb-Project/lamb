@@ -5,6 +5,7 @@ Learner IDs are used only for distinct counts and never projected. This module
 does not authorize reads, fetch events, persist cursors or infer learning.
 """
 from datetime import datetime, timedelta
+from collections import Counter
 from zoneinfo import ZoneInfo
 
 KINDS = ('course_view', 'resource_view', 'chapter_view')
@@ -22,6 +23,19 @@ def _public(bucket):
             'recorded_views':sum(bucket['counts'].values()), **bucket['counts']}
 
 
+def _distribution(values):
+    ordered=sorted(values)
+    def percentile(fraction):
+        if not ordered:return None
+        position=(len(ordered)-1)*fraction
+        lower=int(position);upper=min(lower+1,len(ordered)-1)
+        return ordered[lower]+(ordered[upper]-ordered[lower])*(position-lower)
+    q1,median,q3=(percentile(value) for value in (.25,.5,.75))
+    return {'histogram':[{'value':value,'students':count} for value,count in sorted(Counter(ordered).items())],
+        'population_students':len(ordered),'median':median,'q1':q1,'q3':q3,
+        'iqr':q3-q1 if ordered else None,'quantile_method':'linear interpolation at (n-1)*p'}
+
+
 class ViewTimeBuckets:
     def __init__(self, students, *, since, until, timezone):
         if any(type(value) is not int for value in (since, until)) or not 0 <= since < until or until-since > MAX_WINDOW_SECONDS:
@@ -31,6 +45,8 @@ class ViewTimeBuckets:
         if len(identities)>MAX_STUDENTS or any(type(value) is not int or value<1 for value in identities) or len(set(identities))!=len(identities):
             raise ValueError('Invalid view population')
         self.students = set(identities)
+        self.student_counts = {identity:0 for identity in identities}
+        self.student_days = {identity:set() for identity in identities}
         self.since, self.until = since, until
         self.last_id = self.scanned = self.excluded = 0
         first = datetime.fromtimestamp(since, self.zone).date()
@@ -59,6 +75,8 @@ class ViewTimeBuckets:
         if student_id not in self.students:
             self.excluded += 1
             return
+        self.student_counts[student_id] += 1
+        self.student_days[student_id].add(local.date())
         monday=(local.date()-timedelta(days=local.weekday())).isoformat()
         for bucket in (self.total, self.days[local.date().isoformat()], self.weeks[monday], self.hours[(local.weekday(),local.hour)]):
             bucket['viewers'].add(student_id)
@@ -70,6 +88,8 @@ class ViewTimeBuckets:
         return {'timezone':self.zone.key,'window':{'since':self.since,'until':self.until},
             'population_students':len(self.students),'event_kinds':list(KINDS),
             'totals':_public(self.total),
+            'student_view_counts':_distribution(self.student_counts.values()),
+            'student_active_days':_distribution(len(days) for days in self.student_days.values()),
             'daily':[{'date':day,**_public(bucket)} for day,bucket in self.days.items()],
             'weekly':[{'week_start':day,**_public(bucket)} for day,bucket in self.weeks.items()],
             'weekday_hour':[{'weekday':day,'hour':hour,**_public(bucket)} for (day,hour),bucket in self.hours.items()],

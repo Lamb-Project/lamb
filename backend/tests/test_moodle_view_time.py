@@ -68,3 +68,24 @@ def test_weekly_distinct_viewers_are_not_sum_of_daily_counts():
     assert result['weekly'][0]['week_start']=='2026-09-21'
     assert result['weekly'][0]['unique_student_viewers']==1
     assert result['weekly'][0]['recorded_views']==2
+
+
+def test_population_distributions_include_observed_zero_without_exposing_students():
+    buckets=ViewTimeBuckets([101,102,103,104],since=100,until=200000,timezone='UTC')
+    for identity,(student,stamp) in enumerate([(102,150),(103,150),(103,151),
+        (104,150),(104,151),(104,90000)],1):
+        buckets.add(event_id=identity,student_id=student,timestamp=stamp,kind='resource_view')
+    result=buckets.snapshot(collection_complete=True)
+    assert result['student_view_counts']=={
+        'histogram':[{'value':n,'students':1} for n in range(4)],'population_students':4,
+        'median':1.5,'q1':.75,'q3':2.25,'iqr':1.5,'quantile_method':'linear interpolation at (n-1)*p'}
+    assert result['student_active_days']['histogram']==[
+        {'value':0,'students':1},{'value':1,'students':2},{'value':2,'students':1}]
+    assert '101' not in json.dumps(result) and '104' not in json.dumps(result)
+
+
+def test_empty_population_distribution_is_unknown_not_zero_median():
+    result=ViewTimeBuckets([],since=100,until=200,timezone='UTC').snapshot(collection_complete=False)
+    assert result['student_view_counts']['median'] is None
+    assert result['student_view_counts']['iqr'] is None
+    assert result['student_view_counts']['histogram']==[]
