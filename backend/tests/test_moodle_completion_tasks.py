@@ -31,9 +31,11 @@ def begin(rt,results,c):
 def test_start_listing_progress_and_exact_step_retry_are_minimized(tmp_path,authority):
     results,rt,c=fixture(tmp_path);initial=begin(rt,results,c)
     assert initial['processed_students']==0 and initial['population_students'] is None
+    assert initial['remaining_students'] is None and initial['remaining_collection_steps'] is None
     params={'run_id':initial['run_id'],'step':0}
     first=execute(rt,results,c,3,'analytics.continue',params)
     assert first['processed_students']==25 and first['population_students']==500
+    assert first['remaining_students']==475 and first['remaining_collection_steps']==19
     before=len(c.calls)
     assert execute(rt,results,c,3,'analytics.continue',params)==first
     assert len(c.calls)==before
@@ -112,6 +114,7 @@ def test_multiple_public_steps_publish_one_chart_and_preserve_old_step_retry(tmp
         assert execute(rt,results,c,3,'analytics.continue',{'run_id':identity,'step':0})==first
         assert execute(rt,results,c,3,'analytics.continue',{'run_id':identity,'step':1})==final
     assert first['processed_students']==25 and 'chart_id' not in first
+    assert first['remaining_students']==1 and first['remaining_collection_steps']==1
     assert final['rows'][0]['population_students']==26
     assert [final['rows'][0][key] for key in ('incomplete','complete','complete_pass','complete_fail')]==[7,7,6,6]
     assert len(list(ChartStore(rt).root.glob('*.json')))==1

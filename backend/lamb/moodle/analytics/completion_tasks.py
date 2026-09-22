@@ -1,7 +1,7 @@
 """Public, minimized completion recovery commands; private cursors never escape."""
 from lamb.private_storage import file_lock
 from .checkpoints import CompletionCheckpoints, MAX_CHECKPOINTS
-from .completion_run import start, advance, publish
+from .completion_run import start, advance, publish, MAX_STEP_STUDENTS
 from .authorization import validate_completion_scope
 from ..scope import MoodleScope
 from ..charts import ChartStore
@@ -23,10 +23,13 @@ def authorize(client,owner,record):
 
 def progress(record):
     state=record['state'];cursor=state['cursor'];step=state.get('public_step',0)
+    remaining=len(cursor['students'])-cursor['next_student'] if cursor else None
     return {'run_id':record['id'],'course_id':state['course_id'],'recipe_id':'activity-completion',
         'status':'collected' if state['done'] else 'running','started_at':state['started_at'],
         'processed_students':cursor['next_student'] if cursor else 0,
         'population_students':len(cursor['students']) if cursor else None,
+        'remaining_students':remaining,
+        'remaining_collection_steps':(remaining+MAX_STEP_STUDENTS-1)//MAX_STEP_STUDENTS if remaining is not None else None,
         'expires_at':record['expires_at'],'completion_scopes':scopes(record),
         'continue_command':f"moodle analytics continue {record['id']} --step {step}",
         'meaning':'Collection progress only, not completion rates. No chart is published until collection finishes.'}
