@@ -523,6 +523,8 @@ class AgentLoop(SkillRouting):
     async def _generate_agent_events(self, streaming: bool) -> AsyncIterator[dict | str]:
         """Shared legacy turn control; transport does not change tool semantics."""
         tool_rounds = 0
+        analytics_evidence = None
+        analytics_repair = None
         while True:
             if self.pending_action:
                 from lamb.aac.approvals import explain_pending_action
@@ -538,15 +540,19 @@ class AgentLoop(SkillRouting):
                 yield {"status": "approval", "approval": card(self.pending_action, self.skill_state)}
                 return
             yield {"status": "thinking"}
-            tools_enabled = tool_rounds < self.max_tool_rounds and not self.pending_action
+            tools_enabled = tool_rounds < self.max_tool_rounds and not self.pending_action and analytics_repair is None
             from lamb.aac.result_store import provider_messages
             conversation = provider_messages(self.conversation)
             if self.pack and self.skill_state.get('brief'):
                 from lamb.aac.glossary import model_messages
                 conversation = model_messages(conversation, self.skill_state['brief']['glossary'])
             messages = [{"role": "system", "content": self.system_prompt}] + conversation
+            if analytics_repair:
+                messages += analytics_repair
             message = None
-            async with aclosing(self._request_message(messages, tools_enabled, streaming)) as events:
+            # Guarded prose must not reach either SSE or saved history before
+            # validation, including when the ordinary tool budget is exhausted.
+            async with aclosing(self._request_message(messages, tools_enabled, streaming and analytics_evidence is None)) as events:
                 async for event in events:
                     if isinstance(event, dict) and "_message" in event:
                         message = event["_message"]
@@ -570,6 +576,12 @@ class AgentLoop(SkillRouting):
                         result = {"success": False, "error": "Not executed: confirmation or a newly loaded workflow requires a new decision."}
                     else:
                         result = await self._execute_tool(tc)
+                    from lamb.aac.analytics_response import contract
+                    new_contract = contract(result)
+                    if new_contract:
+                        new_contract['publication_unknown'] = (new_contract['publication_unknown'] or
+                            bool(analytics_evidence and analytics_evidence['publication_unknown']))
+                        analytics_evidence = new_contract
                     waiting = waiting or bool(result.get("awaiting_user_confirmation") or result.get("skill_loaded"))
                     try:
                         model_command = json.loads(tc.function.arguments).get('command', '')
@@ -586,6 +598,17 @@ class AgentLoop(SkillRouting):
 
             # A provider that ignores the no-tools request must not execute more work.
             text = message["content"]
+            if analytics_evidence and not calls:
+                from lamb.aac.analytics_response import violations, repair_instruction, failure_notice
+                errors = violations(text, analytics_evidence)
+                if errors:
+                    if self.session_logger:
+                        self.session_logger.log('analytics_response_rejected', {'reasons':errors, 'repair':analytics_repair is not None})
+                    if analytics_repair is None:
+                        analytics_repair = [{'role':'assistant','content':text},
+                                            {'role':'system','content':repair_instruction(errors)}]
+                        continue
+                    text = failure_notice((self.skill_state or {}).get('ui_language','en'))
             if calls:
                 if self.pending_action:
                     from lamb.aac.language import confirmation_fallback
@@ -593,7 +616,7 @@ class AgentLoop(SkillRouting):
                 else:
                     text = "This turn reached its tool limit. No additional action was executed. Ask me to continue from the saved results."
                 yield text
-            elif not streaming or tools_enabled:
+            elif not streaming or tools_enabled or analytics_evidence:
                 yield text
             from lamb.aac.language import translation_confirmation, documentation_fallback_notice
             interpretation_notice = documentation_fallback_notice(self) + translation_confirmation(self)
