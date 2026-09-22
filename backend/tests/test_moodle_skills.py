@@ -11,7 +11,7 @@ from lamb.moodle.runtime import attach_to_agent
 
 def test_moodle_recipes_and_generated_commands_validate():
     pack=load_pack()
-    assert pack.version=='1.13.0'
+    assert pack.version=='1.14.0'
     validate_routing(pack)
     assert validate_skill_contracts(pack)
     names={'moodle-triage','moodle-forums','moodle-course-documents','moodle-assessment-draft'}
@@ -37,6 +37,16 @@ def test_triage_distinguishes_grading_from_missing_submissions():
     assert 'all_enrolments_scanned includes teachers' in text
     assert 'copy snapshot_date_label' in text
     assert load_pack(version='1.12.0').version == '1.12.0'
+
+
+def test_grade_recipe_guidance_preserves_raw_missing_and_saved_scope_semantics():
+    text = (load_pack().skills_dir / 'moodle_triage.md').read_text()
+    assert 'moodle analytics run grade-distribution --course COURSE_ID --assignment ASSIGNMENT_ID' in text
+    assert 'NOT final gradebook marks' in text
+    assert 'NOT zero or failure' in text
+    assert 'both saved course and assignment IDs' in text
+    assert 'do not invent a pass threshold' in text
+    assert load_pack(version='1.13.0').version == '1.13.0'
 
 
 def test_runtime_guard_loads_recipe_before_execution_and_revokes_access(stores):
