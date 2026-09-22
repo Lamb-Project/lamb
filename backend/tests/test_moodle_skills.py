@@ -11,7 +11,7 @@ from lamb.moodle.runtime import attach_to_agent
 
 def test_moodle_recipes_and_generated_commands_validate():
     pack=load_pack()
-    assert pack.version=='1.12.0'
+    assert pack.version=='1.12.1'
     validate_routing(pack)
     assert validate_skill_contracts(pack)
     names={'moodle-triage','moodle-forums','moodle-course-documents','moodle-assessment-draft'}
@@ -27,6 +27,14 @@ def test_new_task_pack_requires_an_engine_with_task_support(monkeypatch):
     with pytest.raises(ValueError, match='newer LAMB engine'):
         load_pack()
     assert load_pack(version='1.3.1').version == '1.3.1'
+
+
+def test_triage_distinguishes_grading_from_missing_submissions():
+    text = (load_pack().skills_dir / 'moodle_triage.md').read_text()
+    assert 'It NEVER means ungraded submissions' in text
+    assert 'reconsider the requested metric before retrying' in text
+    assert 'Never refresh an analytics chart with the submission-chart recipe' in text
+    assert load_pack(version='1.12.0').version == '1.12.0'
 
 
 def test_runtime_guard_loads_recipe_before_execution_and_revokes_access(stores):
