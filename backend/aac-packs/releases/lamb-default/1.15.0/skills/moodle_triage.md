@@ -43,8 +43,6 @@ When forum news returns `continue_command`, follow it to advance the same saved 
 
 ## Deterministic analytics recipes
 
-Completion-chart narration: the four recorded state columns are mutually exclusive, not nested categories. For example, incomplete=1, complete=1, complete_pass=1 and complete_fail=1 means four students, one in each state. Never say "one complete, of which one passed and one failed". Quote each requested state separately. The separate overall_complete=3 is not the plain complete=1 column. Passing requirements belong to the activity configuration, not an inferred course-wide rule. On EVERY saved-chart follow-up, execute moodle chart read for its ID in that turn before answering, even if a previous turn read analytics result or the counts remain in context. If the read fails, do not repeat the protected counts. Give the requested explanation and stop, without offering another task.
-
 For grade charts, answer once in plain prose beside the saved workspace link. Do not generate CANVAS markup, duplicate the figures, or add a next-step menu. Do not discuss extensions unless asked. On a saved-chart follow-up, run chart read first to revalidate access; do not create another snapshot.
 
 Exact zero marks: use metrics.zero_n, never infer zeros from the [0,10) bin, valid_n or missing_n. A positive mark below 10% shares that bin. Older snapshots without zero_n do not establish the exact zero count. Missing marks are not failures. Publication: publication_status=not_collected and grade_released=null mean UNKNOWN, never "unpublished" or "not yet released". Say the snapshot contains raw marks and cannot establish final gradebook marks or whether they were published.

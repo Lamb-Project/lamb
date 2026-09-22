@@ -11,7 +11,7 @@ from lamb.moodle.runtime import attach_to_agent
 
 def test_moodle_recipes_and_generated_commands_validate():
     pack=load_pack()
-    assert pack.version=='1.14.3'
+    assert pack.version=='1.15.1'
     validate_routing(pack)
     assert validate_skill_contracts(pack)
     names={'moodle-triage','moodle-forums','moodle-course-documents','moodle-assessment-draft'}
@@ -71,6 +71,31 @@ def test_runtime_guard_loads_recipe_before_execution_and_revokes_access(stores):
     shell.execute.assert_awaited_once()
     rt.store.disconnect();attach_to_agent(a,rt.store)
     with pytest.raises(ValueError):a.activate_skill('moodle-forums')
+
+
+def test_completion_guidance_preserves_states_and_evidence_limits():
+    text = (load_pack().skills_dir / 'moodle_triage.md').read_text()
+    assert 'moodle analytics run activity-completion --course COURSE_ID --tz Europe/Madrid --language es' in text
+    assert 'NOT population minus overall_complete' in text
+    assert 'complete_fail can still count as overall complete' in text
+    assert 'Never recalculate overall_complete' in text
+    assert 'unknown and untracked are separate' in text
+    assert 'Individual eligibility, required activities and schedules were not collected' in text
+    assert 'No date, assignment or group filter is supported' in text
+    assert 'read the saved chart first' in text
+    assert 'Only the five analytics recipes' in text
+    assert 'mutually exclusive, not nested categories' in text
+    assert 'in that turn before answering' in text
+    assert load_pack(version='1.15.0').version == '1.15.0'
+    assert load_pack(version='1.14.3').version == '1.14.3'
+
+
+def test_triage_documents_every_executable_analytics_recipe():
+    import re
+    from lamb.moodle.analytics.recipes import RECIPES
+    text = (load_pack().skills_dir / 'moodle_triage.md').read_text()
+    documented = set(re.findall(r'^moodle analytics run ([a-z-]+) ', text, re.M))
+    assert documented == set(RECIPES)
 
 
 def test_permission_change_selects_new_snapshot_without_rewriting_old_one(stores):
