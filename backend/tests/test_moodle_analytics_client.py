@@ -58,6 +58,25 @@ def test_standard_reads_still_use_upstream_client():
         assert c.call('core_webservice_get_site_info') == {'userid':12}
 
 
+def test_default_dates_extension_has_fixed_scope_and_bounded_readback():
+    from lamb.moodle.analytics.client import DEFAULT_DATES_FUNCTION
+    before=set(READ_ALLOWLIST)
+    def respond(request):
+        form=parse_qs(request.content.decode())
+        assert form['wsfunction']==[DEFAULT_DATES_FUNCTION]
+        assert form['scopeonly']==['1'] and form['cmids[0]']==['49']
+        return httpx.Response(200,json={'authorized':True,'dates':[]})
+    with client(respond) as c:
+        assert c.call(DEFAULT_DATES_FUNCTION,courseid=14,cmids=[49],scopeonly=1)['dates']==[]
+    assert set(READ_ALLOWLIST)==before
+    for extra in ({'cmids':[]},{'cmids':[True]},{'cmids':[1,1]},{'cmids':list(range(101))},
+                  {'courseid':True},{'scopeonly':True},{'scopeonly':2},{'wstoken':'replacement'},{'table':'assign'}):
+        with client(lambda request:pytest.fail('No network expected')) as c:
+            with pytest.raises(ValueError):c.call(DEFAULT_DATES_FUNCTION,**({'courseid':14,'cmids':[49]}|extra))
+    with client(lambda request:httpx.Response(200,content=b'x'*(MAX_EVENT_BYTES+1))) as c:
+        with pytest.raises(ValueError,match='byte budget'):c.call(DEFAULT_DATES_FUNCTION,courseid=14,cmids=[49])
+
+
 def test_permission_only_extension_sends_bounded_module_ids_not_event_query():
     def respond(request):
         form=parse_qs(request.content.decode())

@@ -13,6 +13,7 @@ EVENT_FUNCTION = 'local_lambanalytics_resource_events'
 SCOPE_FUNCTION = 'local_lambanalytics_resource_scope'
 GRADE_SCOPE_FUNCTION = 'local_lambanalytics_grade_scope'
 COMPLETION_SCOPE_FUNCTION = 'local_lambanalytics_completion_scope'
+DEFAULT_DATES_FUNCTION = 'local_lambanalytics_default_dates'
 MAX_EVENT_BYTES = 256 * 1024
 GRADE_FUNCTION = 'mod_assign_get_grades'
 MAX_GRADE_BYTES = 1024 * 1024
@@ -23,6 +24,14 @@ EVENT_PARAMETERS = frozenset({'courseid', 'since', 'until', 'groupid', 'afterid'
 
 class AnalyticsHTTPClient(MoodleHTTPClient):
     def call(self, wsfunction, **params):
+        if wsfunction == DEFAULT_DATES_FUNCTION:
+            ids=params.get('cmids')
+            if (set(params)-{'courseid','cmids','scopeonly'} or type(params.get('courseid')) is not int
+                    or params['courseid']<1 or not isinstance(ids,list) or not 1<=len(ids)<=100
+                    or any(type(value) is not int or value<1 for value in ids) or len(set(ids))!=len(ids)
+                    or type(params.get('scopeonly',0)) is not int or params.get('scopeonly',0) not in (0,1)):
+                raise ValueError('Invalid default-date parameters')
+            return self._bounded_read(wsfunction,params,MAX_EVENT_BYTES,'Default-date')
         if wsfunction == COMPLETION_FUNCTION:
             if self.readonly and wsfunction not in READ_ALLOWLIST:
                 raise ReadOnlyViolation('Activity-completion source is outside the upstream read allowlist')

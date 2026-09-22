@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 defined('MOODLE_INTERNAL') || die();
 $functions = [
+    'local_lambanalytics_default_dates' => [
+        'classname' => 'local_lambanalytics\external\default_dates',
+        'methodname' => 'execute',
+        'description' => 'Read fixed course-default assignment/quiz dates or revalidate exact saved module scope.',
+        'type' => 'read',
+        'capabilities' => 'mod/assign:grade,mod/quiz:viewreports',
+        'services' => [MOODLE_OFFICIAL_MOBILE_SERVICE],
+    ],
     'local_lambanalytics_completion_scope' => [
         'classname' => 'local_lambanalytics\external\completion_scope',
         'methodname' => 'execute',
