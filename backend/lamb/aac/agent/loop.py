@@ -606,7 +606,11 @@ class AgentLoop(SkillRouting):
                         self.session_logger.log('analytics_response_rejected', {'reasons':errors, 'repair':analytics_repair is not None})
                     if analytics_repair is None:
                         analytics_repair = [{'role':'assistant','content':text},
-                                            {'role':'system','content':repair_instruction(errors)}]
+                                            # A normal correction turn works with providers whose
+                                            # chat templates only support an initial system message.
+                                            # This application-authored request is local, not saved
+                                            # as a user message, and cannot enable additional tools.
+                                            {'role':'user','content':repair_instruction(errors)}]
                         continue
                     text = failure_notice((self.skill_state or {}).get('ui_language','en'))
             if calls:

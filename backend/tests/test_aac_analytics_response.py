@@ -32,6 +32,9 @@ def test_repair_is_bounded_tool_free_and_never_streams_or_saves_rejected_draft(s
     assert answer==good
     assert a._execute_tool.await_count==1
     assert len(p.calls)==3 and 'tools' not in p.calls[-1]
+    assert p.calls[-1]['messages'][-1]['role']=='user'
+    assert p.calls[-1]['messages'][-2]=={'role':'assistant','content':bad}
+    assert '[Application analytics response check]' not in str(a.conversation)
     assert not p.calls[-1].get('stream') and not p.calls[-2].get('stream')
     assert bad not in str(a.conversation)
     assert a.conversation[-1]['content']==answer
