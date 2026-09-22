@@ -48,6 +48,7 @@ def publish(store, runtime, client, identity):
             # A multi-step collection has an interval, not an atomic timestamp.
             data['collection_started_at']=state['started_at']
             data['collection_completed_at']=state['completed_at']
+            data['collection_run_id']=identity
             rows=[{**row,'id':row['cmid'],'name':f"{row['name']} (#{row['cmid']})",
                 'value':row['incomplete'],'status':'ok','reason':None} for row in data['rows']]
             scope={'course_id':state['course_id'],'module_ids':[row['cmid'] for row in rows]}

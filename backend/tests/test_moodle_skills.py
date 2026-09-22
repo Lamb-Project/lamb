@@ -11,7 +11,7 @@ from lamb.moodle.runtime import attach_to_agent
 
 def test_moodle_recipes_and_generated_commands_validate():
     pack=load_pack()
-    assert pack.version=='1.16.1'
+    assert pack.version=='1.17.0'
     validate_routing(pack)
     assert validate_skill_contracts(pack)
     names={'moodle-triage','moodle-forums','moodle-course-documents','moodle-assessment-draft'}
@@ -103,13 +103,15 @@ def test_recoverable_completion_guidance_does_not_confuse_progress_with_evidence
     assert 'moodle analytics start activity-completion --course COURSE_ID' in text
     assert 'moodle analytics continue RUN_ID --step 0' in text
     assert 'moodle analytics runs' in text
-    assert 'Start creates a run, not a chart' in text
+    assert 'creates a run, not a chart' in text
+    assert 'Both use the same durable workflow' in text
+    assert 'not resumable' not in text
     assert 'do not increment it yourself' in text
     assert 'not students who completed an activity' in text
     assert 'including completed runs' in text
     assert "do not establish the actor's identity or role" in text
     assert load_pack(version='1.15.1').version=='1.15.1'
-    assert 'switch to analytics start rather than repeating it' in text
+    assert 'analytics run starts a recoverable collection and executes its first step' in text
     assert 'Tracking mode and manual overrides are different fields' in text
     assert load_pack(version='1.16.0').version=='1.16.0'
 

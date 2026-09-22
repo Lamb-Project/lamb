@@ -64,6 +64,8 @@ def test_completion_scope_requires_matching_bound_course(stores,courses):
     ('moodle chart list',{'items':[{'course_id':7,'completion_scopes':[SCOPE]}]}),
     ('moodle analytics runs',{'items':[{'course_id':7,'completion_scopes':[SCOPE]}]}),
     ('moodle analytics start activity-completion --course 7',{'course_id':7,'completion_scopes':[SCOPE]}),
+    ('moodle analytics run activity-completion --course 7',{'course_id':7,'completion_scopes':[SCOPE],
+        'processed_students':25,'continue_command':'moodle analytics continue 00000000-0000-0000-0000-000000000001 --step 1'}),
     ('moodle analytics continue 00000000-0000-0000-0000-000000000001 --step 0',{'course_id':7,'completion_scopes':[SCOPE]}),
 ])
 def test_liteshell_preserves_completion_scope(stores,command,data):

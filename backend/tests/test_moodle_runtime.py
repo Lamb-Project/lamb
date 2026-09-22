@@ -1,4 +1,5 @@
 import asyncio
+import pytest
 from unittest.mock import patch
 from urllib.parse import parse_qs
 import respx
@@ -77,3 +78,32 @@ def test_dynamic_capability_is_appended_only_when_changed(stores):
     rt.store.disconnect();attach_to_agent(agent,rt.store)
     assert agent.shell.allowed_commands=={'assistant.get'}
     assert len(agent.conversation)==2 and 'unavailable' in agent.conversation[-1]['content']
+
+
+@pytest.mark.parametrize('response',[
+    {'run_id':'recoverable-run','processed_students':25,'continue_command':'next step'},
+    {'chart_id':'finished-chart','collection_run_id':'recoverable-run'},
+])
+def test_completion_run_always_uses_durable_first_step(stores,response):
+    rt=runtime(stores)
+    params={'recipe':'activity-completion','course_id':7,'language':'es','tz':'Europe/Madrid'}
+    with patch('lamb.moodle.analytics.completion_tasks.execute',
+               side_effect=[{'run_id':'recoverable-run'},response]) as execute, \
+         patch('lamb.moodle.analytics.recipes.run_recipe') as legacy:
+        assert rt.task('analytics.run',params)==response
+    legacy.assert_not_called()
+    assert execute.call_count==2
+    first,second=[call.args for call in execute.call_args_list]
+    assert first[0] is rt and first[3:]==(70,'analytics.start',params)
+    assert second[:4]==first[:4]
+    assert second[4:]==('analytics.continue',{'run_id':'recoverable-run','step':0})
+
+
+def test_other_analytics_recipes_keep_their_collector(stores):
+    rt=runtime(stores)
+    params={'recipe':'course-access','course_id':7,'since':'2026-09-01','language':'en','tz':'UTC'}
+    with patch('lamb.moodle.analytics.completion_tasks.execute') as execute, \
+         patch('lamb.moodle.analytics.recipes.run_recipe',return_value={'chart_id':'access'}) as collect:
+        assert rt.task('analytics.run',params)=={'chart_id':'access'}
+    execute.assert_not_called()
+    assert collect.call_args.args[2:]==(70,params)

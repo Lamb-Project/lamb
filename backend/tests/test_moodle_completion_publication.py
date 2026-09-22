@@ -35,6 +35,7 @@ def test_finished_projection_preserves_scope_date_language_but_no_private_cursor
     result=publish(s,rt,c,identity)
     saved=ChartStore(rt).read(result['chart_id'])
     assert saved['language']==language and saved['timezone']=='Europe/Madrid'
+    assert saved['collection_run_id']==result['collection_run_id']==identity
     assert saved['collection_completed_at']==saved['as_of']=='2026-09-22T12:00:00+00:00'
     assert saved['completion_scopes']==[{'course_id':7,'module_ids':[10]}]
     assert saved['rows'][0]['overall_complete']==3 and len(saved['completion_columns'])==13

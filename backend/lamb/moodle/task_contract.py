@@ -41,7 +41,7 @@ def task_specs():
         click.Option(['--group','group_id'], type=click.IntRange(min=1)),
         click.Option(['--tz'], default='UTC'),
         click.Option(['--language'], default='en', type=click.Choice(['en','es','ca','eu'])),
-    ], help='Run a deterministic analytics recipe and save its aggregate evidence. Does not modify Moodle.', add_help_option=False)
+    ], help='Run deterministic analytics. Completion uses a recoverable first step: follow continue_command until a chart_id is returned. Does not modify Moodle.', add_help_option=False)
     analytics_capabilities = click.Command('capabilities', params=[
         click.Option(['--course','course_id'],required=True,type=click.IntRange(min=1))],
         help='Inspect implemented recipe source requirements and advertised functions; field support remains unknown until read.', add_help_option=False)
