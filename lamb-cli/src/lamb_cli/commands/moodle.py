@@ -7,6 +7,27 @@ import typer
 from lamb_cli.client import get_client
 
 app = typer.Typer(no_args_is_help=True)
+analytics_app = typer.Typer(help='Deterministic saved analytics recipes', no_args_is_help=True)
+app.add_typer(analytics_app, name='analytics')
+
+
+@analytics_app.command('capabilities')
+def analytics_capabilities(course: int = typer.Option(...,'--course',min=1)):
+    run(['analytics','capabilities','--course',str(course)])
+
+
+@analytics_app.command('run')
+def analytics_run(recipe: str, course: int = typer.Option(...,'--course',min=1),
+                  since: Optional[str] = typer.Option(None,'--since'),
+                  tz: str = typer.Option('UTC','--tz'), language: str = typer.Option('en','--language')):
+    tokens = ['analytics','run',recipe,'--course',str(course),'--tz',tz,'--language',language]
+    if since is not None: tokens += ['--since',since]
+    run(tokens)
+
+
+@analytics_app.command('result')
+def analytics_result(result_id: str, offset: int = typer.Option(0,'--offset',min=0)):
+    run(['analytics','result',result_id,'--offset',str(offset)])
 
 
 def run(tokens):

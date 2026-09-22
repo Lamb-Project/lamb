@@ -82,7 +82,7 @@ class MoodleRuntime:
         return {'moodle.'+key for key in keys | task_specs().keys() | document_specs().keys()} | {'moodle.sync','moodle.cache.show','moodle.import.file'}
 
     def task(self, key, params, *, cancel=None, progress=None, full=False):
-        if key in {'chart.list', 'chart.read'}:
+        if key in {'chart.list', 'chart.read', 'analytics.result'}:
             from .charts import ChartStore
             binding = self.result_binding()
             charts = ChartStore(self)
@@ -90,6 +90,9 @@ class MoodleRuntime:
                 data = charts.listing(params.get('offset', 0))
             else:
                 data = dict(charts.read(params['chart_id']), evidence_kind='saved_snapshot', refreshed=False)
+                if key == 'analytics.result':
+                    from .analytics.recipes import result_page
+                    data = result_page(params['chart_id'], data, params.get('offset',0))
             if self.result_binding() != binding:
                 raise PermissionError('Moodle connection changed; snapshot withheld')
             return data
@@ -108,6 +111,12 @@ class MoodleRuntime:
             moodle_user_id=record['moodle_user_id'], generation=snap['generation'], root=self.cache_root)
         with MoodleHTTPClient(record['base_url'], token, readonly=True, timeout=15) as raw:
             client = GuardedClient(raw, revalidate=revalidate, cancel=cancel)
+            if key == 'analytics.capabilities':
+                from .analytics.recipes import capabilities
+                return capabilities(client, record['moodle_user_id'], params['course_id'])
+            if key == 'analytics.run':
+                from .analytics.recipes import run_recipe
+                return run_recipe(self, client, record['moodle_user_id'], params, progress=progress)
             if key == 'chart.submissions':
                 from .charts import chart_task
                 return chart_task(self, client, record['moodle_user_id'], params, progress=progress)

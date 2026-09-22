@@ -132,3 +132,35 @@ def test_saved_chart_list_and_read_contracts():
             result = runner.invoke(app, ['moodle','chart',*args])
             assert result.exit_code == 0, result.output
             assert client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'] == command
+
+
+def test_analytics_commands_share_authenticated_task_contract():
+    examples = [
+        (['capabilities', '--course', '7'],
+         'moodle analytics capabilities --course 7'),
+        (['run', 'grading-queue', '--course', '7'],
+         'moodle analytics run grading-queue --course 7 --tz UTC --language en'),
+        (['run', 'course-access', '--course', '7', '--since', '2026-09-01',
+          '--tz', 'Europe/Madrid', '--language', 'es'],
+         'moodle analytics run course-access --course 7 --tz Europe/Madrid --language es --since 2026-09-01'),
+        (['result', 'saved-id', '--offset', '20'],
+         'moodle analytics result saved-id --offset 20'),
+    ]
+    for args, command in examples:
+        with patch('lamb_cli.commands.moodle.get_client') as client:
+            client.return_value.__enter__.return_value.post.return_value = {'refreshed': False}
+            result = runner.invoke(app, ['moodle', 'analytics', *args])
+            assert result.exit_code == 0, result.output
+            call = client.return_value.__enter__.return_value.post.call_args
+            assert call.args == ('/creator/moodle/tasks',)
+            assert call.kwargs['json']['command'] == command
+            assert json.loads(result.output)['refreshed'] is False
+
+
+def test_analytics_rejects_invalid_local_bounds_without_request():
+    for args in [['capabilities', '--course', '0'],
+                 ['run', 'course-access', '--course', '-1'],
+                 ['result', 'saved-id', '--offset', '-1']]:
+        with patch('lamb_cli.commands.moodle.get_client') as client:
+            assert runner.invoke(app, ['moodle', 'analytics', *args]).exit_code != 0
+            client.assert_not_called()

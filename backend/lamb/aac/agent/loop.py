@@ -208,7 +208,7 @@ def _extract_artifacts(cmd: str, result: Any) -> list[dict]:
     if len(tokens) < 2:
         return []
 
-    if tokens[:3] == ['moodle', 'chart', 'submissions'] and getattr(result, 'success', False):
+    if tokens[:3] in (['moodle', 'chart', 'submissions'], ['moodle','analytics','run']) and getattr(result, 'success', False):
         return [{'type': 'chart', 'id': result.data['chart_id'], 'title': result.data['title']}]
     if tokens[0] == 'moodle':
         from lamb.moodle.audit import command_artifacts

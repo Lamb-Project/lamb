@@ -95,9 +95,9 @@ class ChartStore:
         self.root = ensure_private(Path(runtime.cache_root or private_root()) / 'charts' /
                                    str(runtime.store.organization_id) / str(runtime.store.owner_id))
 
-    def save(self, snapshot, binding):
+    def save(self, snapshot, binding, *, command='moodle.chart.submissions'):
         identity = str(uuid.uuid4())
-        payload = json.dumps({'snapshot': snapshot, 'binding': binding}, ensure_ascii=False).encode()
+        payload = json.dumps({'snapshot': snapshot, 'binding': binding, 'command':command}, ensure_ascii=False).encode()
         if len(payload) > MAX_BYTES: raise ValueError('Chart exceeds the pilot size limit')
         fd = os.open(self.root / '.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, 'w') as lock:
@@ -119,7 +119,7 @@ class ChartStore:
             envelope = json.loads(raw)
         except (OSError, ValueError, TypeError):
             raise PermissionError('Chart is unavailable') from None
-        self.runtime.validate_result_binding(envelope['binding'], 'moodle.chart.submissions')
+        self.runtime.validate_result_binding(envelope['binding'], envelope.get('command', 'moodle.chart.submissions'))
         return {'chart_id': identity, **envelope['snapshot']}
 
     def listing(self, offset=0):
@@ -161,6 +161,16 @@ def chart_task(runtime, client, owner_id, params, *, progress=None):
 
 def render_svg(snapshot):
     import vl_convert as vlc
+    if snapshot.get('view_kind') == 'metric-bars-v1':
+        rows = snapshot['rows']
+        if len(rows) > 100: raise ValueError('Analytics mark limit exceeded')
+        values = [{'label':r['name'], 'value':r['value']} for r in rows if r['status'] == 'ok' and r['value'] is not None]
+        spec = {'width':480, 'height':max(70, 32 * len(values)), 'data':{'values':values},
+                'mark':{'type':'bar','color':'#2463a1'}, 'encoding':{
+                    'y':{'field':'label','type':'nominal','sort':None,'title':None,'axis':{'labelLimit':220}},
+                    'x':{'field':'value','type':'quantitative','title':snapshot['metric_label'],'axis':{'tickMinStep':1}}}}
+        with RENDER_LOCK:
+            return vlc.vegalite_to_svg(spec, allowed_base_urls=[])
     labels = snapshot['labels']
     rows = snapshot['rows']
     if len(rows) > MAX_ASSIGNMENTS: raise ValueError('Chart mark limit exceeded')

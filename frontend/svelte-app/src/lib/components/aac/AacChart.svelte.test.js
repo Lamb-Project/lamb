@@ -60,3 +60,30 @@ it('releases the protected blob when the canvas closes', async () => {
     await screen.findByRole('img'); unmount();
     await waitFor(()=>expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:chart'));
 });
+
+it('renders a generic analytics snapshot without submission-specific caveats', async () => {
+    apiJson.mockResolvedValue({...snapshot(),view_kind:'metric-bars-v1',title:'Grading queue',metric_label:'Needs grading',
+        caption:'Needs grading is not feedback release.',rows:[{name:'Essay',status:'ok',value:2,reason:null}]});
+    render(AacChart,{chartId:'analytics'});
+    await screen.findByText('Needs grading is not feedback release.');
+    expect(screen.getByRole('cell')).toHaveTextContent('2');
+    expect(screen.getByRole('region')).toHaveAttribute('tabindex','0');
+    expect(screen.queryByText(chartText('en').extensions)).toBeNull();
+});
+
+it.each(['en','es','ca','eu'])('handles empty analytics without assignment claims in %s', async language => {
+    apiJson.mockResolvedValue({...snapshot(language),view_kind:'metric-bars-v1',rows:[]});
+    render(AacChart,{chartId:'empty-analytics'});
+    await screen.findByText(chartText(language).analyticsEmpty);
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(apiFetch).not.toHaveBeenCalled();
+});
+
+it('does not turn unavailable analytics into zero bars', async () => {
+    apiJson.mockResolvedValue({...snapshot(),view_kind:'metric-bars-v1',
+        rows:[{name:'Team',status:'unavailable',value:null,reason:'Unsupported'}]});
+    render(AacChart,{chartId:'unavailable-analytics'});
+    await screen.findByText(chartText('en').analyticsUnavailable);
+    expect(screen.getByRole('cell')).toHaveTextContent('–');
+    expect(apiFetch).not.toHaveBeenCalled();
+});

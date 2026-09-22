@@ -31,16 +31,30 @@ def task_specs():
     ], help='List a bounded page of your authorized saved charts, newest first. Follow next_offset. Does not refresh Moodle data.', add_help_option=False)
     chart_read = click.Command('read', params=[click.Argument(['chart_id'])],
         help='Read exact figures, date and limitations from an authorized saved chart. Does not refresh it.', add_help_option=False)
+    from .analytics.recipes import RECIPES
+    analytics_run = click.Command('run', params=[
+        click.Argument(['recipe'], type=click.Choice(list(RECIPES))),
+        click.Option(['--course','course_id'], required=True, type=click.IntRange(min=1)),
+        click.Option(['--since'], help='Course-access recency boundary, YYYY-MM-DD.'),
+        click.Option(['--tz'], default='UTC'),
+        click.Option(['--language'], default='en', type=click.Choice(['en','es','ca','eu'])),
+    ], help='Run a deterministic analytics recipe and save its aggregate evidence. Does not modify Moodle.', add_help_option=False)
+    analytics_capabilities = click.Command('capabilities', params=[
+        click.Option(['--course','course_id'],required=True,type=click.IntRange(min=1))],
+        help='Inspect implemented recipe source requirements and advertised functions; field support remains unknown until read.', add_help_option=False)
+    analytics_result = click.Command('result', params=[click.Argument(['chart_id']),
+        click.Option(['--offset'],default=0,type=click.IntRange(min=0))],
+        help='Read a bounded page from a saved analytics snapshot, with fresh permission checks and no recollection.', add_help_option=False)
     return {key: CommandSpec(key, parser.help, 'auto', parser)
-            for key, parser in [('news', news), ('evidence', evidence), ('continue', continuation), ('runs', runs), ('chart.submissions', chart), ('chart.list', chart_list), ('chart.read', chart_read)]}
+            for key, parser in [('news', news), ('evidence', evidence), ('continue', continuation), ('runs', runs), ('chart.submissions', chart), ('chart.list', chart_list), ('chart.read', chart_read), ('analytics.run', analytics_run), ('analytics.capabilities', analytics_capabilities), ('analytics.result', analytics_result)]}
 
 
 def parse_task(tokens):
     if not tokens or tokens[0] != 'moodle':
         return None
     # Descriptive spelling is an alias, not a second implementation.
-    if len(tokens) >= 3 and tokens[:2] == ['moodle', 'chart'] and 'chart.' + tokens[2] in task_specs():
-        key, tail = 'chart.' + tokens[2], tokens[3:]
+    if len(tokens) >= 3 and tokens[1] in {'chart','analytics'} and tokens[1] + '.' + tokens[2] in task_specs():
+        key, tail = tokens[1] + '.' + tokens[2], tokens[3:]
     elif tokens[:3] == ['moodle', 'forum', 'activity']:
         key, tail = 'news', tokens[3:]
     elif len(tokens) >= 2 and tokens[1] in task_specs():
@@ -49,14 +63,21 @@ def parse_task(tokens):
         return None
     spec = task_specs()[key]
     params = spec.parse(tail)
-    if key == 'chart.read':
+    if key in {'chart.read','analytics.result'}:
         from uuid import UUID
         try: params['chart_id'] = str(UUID(params['chart_id']))
         except (ValueError, TypeError): raise ValueError('Use a saved chart_id') from None
-    if key == 'chart.submissions':
+    if key in {'chart.submissions','analytics.run'}:
         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
         try: ZoneInfo(params['tz'])
         except (ValueError, ZoneInfoNotFoundError): raise ValueError('Use an IANA timezone') from None
+    if key == 'analytics.run':
+        from datetime import date
+        if params['recipe'] == 'course-access':
+            try: date.fromisoformat(params['since'])
+            except (ValueError, TypeError): raise ValueError('Course access requires --since YYYY-MM-DD') from None
+        elif params['since'] is not None:
+            raise ValueError('--since applies only to course-access')
     if key == 'news':
         from .forum_activity import validate_request
         validate_request(params)

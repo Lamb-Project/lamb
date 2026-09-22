@@ -9,6 +9,7 @@
     const text = $derived(chartText(data?.language || $locale));
     const supported = $derived(data?.rows.filter(row => row.status === 'ok') || []);
     const maxParticipants = $derived(Math.max(1, ...supported.map(row => row.participants)));
+    const maxMetric = $derived(Math.max(1, ...supported.map(row => row.value || 0)));
     function dateLabel(value) { return new Intl.DateTimeFormat(data.language, {dateStyle:'medium', timeStyle:'short', timeZone:data.timezone}).format(new Date(value)); }
     const statusIndex = {open:6, deadline_passed:7, not_open:8, no_deadline:9};
     $effect(() => {
@@ -42,6 +43,31 @@
 {:else if data}
     <h3>{data.course_name}</h3>
     <p class="snapshot">{dateLabel(data.as_of)} · {data.timezone}</p>
+    {#if data.view_kind === 'metric-bars-v1'}
+        <h3>{data.title}</h3>
+        {#if !data.coverage.complete}<p class="partial" data-chart-coverage>{text.partial}</p>{/if}
+        {#if !data.rows.length}<p role="status">{text.analyticsEmpty}</p>
+        {:else if !supported.length}<p role="status">{text.analyticsUnavailable}</p>{/if}
+        {#if imageUrl}<div class="desktop-chart"><img src={imageUrl} alt={data.title} /></div>{/if}
+        <ul class="mobile-chart" aria-label={data.title}>
+            {#each supported as row}<li><strong>{row.name}</strong>
+                <div class="bar" aria-hidden="true"><span class="submitted" style:width={`${100 * row.value / maxMetric}%`}></span></div>
+                <p>{data.metric_label}: {row.value}</p>
+            </li>{/each}
+        </ul>
+        {#if imageError}<p role="status">{text.imageError}</p><button onclick={() => attempt++}>{text.retry}</button>{/if}
+        <p class="caption">{data.caption}</p>
+        {#if data.rows.length}
+        <p class="table-hint">{text.table}</p>
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+        <div class="table-scroll" tabindex="0" role="region" aria-label={text.table}>
+            <table class="metric-table"><caption>{data.title}</caption>
+                <thead><tr><th scope="col">{data.title}</th><th scope="col">{data.metric_label}</th></tr></thead>
+                <tbody>{#each data.rows as row}<tr><th scope="row">{row.name}</th><td>{row.value ?? '–'}{#if row.reason}<br />{row.reason}{/if}</td></tr>{/each}</tbody>
+            </table>
+        </div>
+        {/if}
+    {:else}
     <p class:partial={!data.coverage.complete} data-chart-coverage>
         {data.coverage.assignments_read} / {data.coverage.assignments_found} {text.read}.
         {#if !data.coverage.complete}<strong>{text.partial}.</strong>{/if}
@@ -81,7 +107,8 @@
     </table>
     </div>
     {/if}
-    {#if imageUrl}<a href={imageUrl} download={`lamb-submissions-${chartId}.svg`}>{text.download}</a>{/if}
+    {/if}
+    {#if imageUrl}<a href={imageUrl} download={`lamb-chart-${chartId}.svg`}>{text.download}</a>{/if}
 {:else}<p role="status">{text.loading}</p>{/if}
 </div>
 <style>
@@ -101,6 +128,8 @@
     .table-hint { font-size:.85rem; margin-bottom:6px; }
     .table-scroll { overflow:auto; max-width:100%; }
     table { width:100%; min-width:600px; border-collapse:collapse; font-size:.9rem; }
+    .metric-table { min-width:0; table-layout:fixed; }
+    .metric-table th:first-child { width:65%; }
     th, td { border-bottom:1px solid #d6e0ea; text-align:left; padding:10px 8px; }
     caption { text-align:left; font-weight:600; padding:8px; }
     a, button { display:inline-block; margin-top:16px; color:#2463a1; }
