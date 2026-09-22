@@ -5,10 +5,9 @@ from .events import _students
 from .authorization import validate_completion_scope
 from ..scope import MoodleScope
 from ..forum_activity import preview
+from .completion_state import STATES, MAX_COMPLETION_MODULES, initial_cursor, advance_cursor
 
 MAX_COMPLETION_STUDENTS = 100
-MAX_COMPLETION_MODULES = 100
-STATES = ('incomplete','complete','complete_pass','complete_fail')
 
 
 def activity_completion(client, owner_id, course_id):
@@ -50,49 +49,13 @@ def activity_completion(client, owner_id, course_id):
     if len(inventory)>MAX_COMPLETION_MODULES:
         raise ValueError('Completion collection exceeds module limit')
     validate_completion_scope(client,{'course_id':course,'module_ids':list(inventory)})
+    cursor = initial_cursor(students, list(inventory.values()))
     for student in sorted(students):
         client.checkpoint()
         response=client.call('core_completion_get_activities_completion_status',courseid=course,userid=student)
-        if not isinstance(response,dict) or response.get('warnings') or not isinstance(response.get('statuses'),list):
-            raise ValueError('Completion source is incomplete')
-        if len(response['statuses'])>MAX_COMPLETION_MODULES:
-            raise ValueError('Completion source exceeds module limit')
-        records={}
-        for record in response['statuses']:
-            identity=record.get('cmid')
-            if type(identity) is not int or identity<1 or identity in records:
-                raise ValueError('Invalid or duplicate completion status')
-            if identity not in inventory:
-                raise ValueError('Completion inventory changed or source returned an out-of-scope activity')
-            records[identity]=record
-        for identity,row in inventory.items():
-            record=records.get(identity)
-            if record is None:
-                row['unknown']+=1
-                continue
-            tracking=record.get('tracking')
-            if type(tracking) is not int or tracking!=row['tracking']:
-                raise ValueError('Completion tracking changed during collection')
-            if record.get('istrackeduser') is False:
-                row['untracked']+=1
-                continue
-            state=record.get('state')
-            if record.get('istrackeduser') is not True or type(state) is not int or state not in range(4):
-                row['unknown']+=1
-                continue
-            row[STATES[state]]+=1
-            overall=record.get('isoverallcomplete')
-            if type(overall) is bool:
-                row['overall_complete']+=int(overall)
-            else:
-                row['overall_unknown']+=1
-            override=record.get('overrideby')
-            if 'overrideby' not in record or (override is not None and (type(override) is not int or override<0)):
-                row['override_unknown']+=1
-            elif override:
-                row['overridden']+=1
+        cursor = advance_cursor(cursor, student, response)
     client.checkpoint()
-    rows=list(inventory.values())
+    rows=cursor['rows']
     return {'schema_version':1,'recipe':{'id':'activity-completion','version':1},
         'course_id':course,'course_name':course_name,'as_of':datetime.now(timezone.utc).isoformat(),'timezone':'UTC',
         'rows':rows,'coverage':{**population,'modules_read':len(rows),'tracking_disabled_modules':disabled,
