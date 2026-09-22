@@ -274,6 +274,21 @@ async def document_command(body: DocumentCommandBody, request: Request,
         raise HTTPException(400, str(exc)) from None
 
 
+@router.get('/charts')
+def chart_listing(offset: int = 0, store=Depends(store_for)):
+    from .runtime import MoodleRuntime
+    from fastapi.responses import JSONResponse
+    try:
+        return JSONResponse(MoodleRuntime(store).execute('chart.list', {'offset': offset}),
+                            headers={'Cache-Control': 'private, no-store'})
+    except PermissionError:
+        raise HTTPException(403, 'Chart access is unavailable for this connection') from None
+    except ValueError:
+        raise HTTPException(400, 'Invalid chart offset') from None
+    except Exception:
+        raise HTTPException(503, 'Chart access cannot be verified now') from None
+
+
 @router.get('/charts/{chart_id}')
 def chart_snapshot(chart_id: str, store=Depends(store_for)):
     from .runtime import MoodleRuntime

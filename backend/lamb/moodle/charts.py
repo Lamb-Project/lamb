@@ -122,6 +122,22 @@ class ChartStore:
         self.runtime.validate_result_binding(envelope['binding'], 'moodle.chart.submissions')
         return {'chart_id': identity, **envelope['snapshot']}
 
+    def listing(self, offset=0):
+        """Bound the scan, and never expose metadata before current ACL validation."""
+        if not isinstance(offset, int) or offset < 0:
+            raise ValueError('Invalid chart offset')
+        paths = sorted(self.root.glob('*.json'), key=lambda p: (p.lstat().st_mtime_ns, p.name), reverse=True)
+        items = []
+        for path in paths[offset:offset + 20]:
+            try:
+                data = self.read(path.stem)
+            except PermissionError:
+                continue
+            items.append({key: data[key] for key in
+                ('chart_id', 'title', 'course_id', 'course_name', 'as_of', 'timezone', 'coverage')})
+        return {'items': items, 'next_offset': offset + 20 if offset + 20 < len(paths) else None,
+                'evidence_kind': 'saved_snapshot', 'refreshed': False}
+
 
 def chart_task(runtime, client, owner_id, params, *, progress=None):
     binding = dict(runtime.result_binding(), course_id=params['course_id'])
@@ -136,11 +152,11 @@ def chart_task(runtime, client, owner_id, params, *, progress=None):
                 'individual_extensions': 'not_checked',
                 'individual_lateness': 'unknown',
                 'student_identities': 'not_collected',
-                'reply': 'Use two or three sentences beside the chart card, not a repeated table. '
+                'reply': 'Use two or three sentences beside the Moodle Charts link, not a repeated table. '
                          'Say extensions were NOT CHECKED; never say there are none. '
                          'Offer only to explain these counts or, if requested, refresh this chart. '
                          'Do not offer contacting students, forum replies, grading or other chart recipes.'},
-            'display': 'A chart card is available in the AAC canvas. Do not claim it was opened unless the browser confirms it.'}
+            'display': 'The saved chart is available in Moodle > Charts. The conversation links to it; do not claim it was opened.'}
 
 
 def render_svg(snapshot):

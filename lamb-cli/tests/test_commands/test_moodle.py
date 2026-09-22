@@ -122,3 +122,13 @@ def test_chart_recipe_uses_same_readonly_task_contract():
         assert result.exit_code == 0, result.output
         assert client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'] == 'moodle chart submissions --course 7 --tz Europe/Madrid --language es'
         assert json.loads(result.output)['chart_id'] == 'saved'
+
+
+def test_saved_chart_list_and_read_contracts():
+    for args, command in [(['list','--offset','20'], 'moodle chart list --offset 20'),
+                           (['read','saved-id'], 'moodle chart read saved-id')]:
+        with patch('lamb_cli.commands.moodle.get_client') as client:
+            client.return_value.__enter__.return_value.post.return_value = {'refreshed':False}
+            result = runner.invoke(app, ['moodle','chart',*args])
+            assert result.exit_code == 0, result.output
+            assert client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'] == command

@@ -82,6 +82,17 @@ class MoodleRuntime:
         return {'moodle.'+key for key in keys | task_specs().keys() | document_specs().keys()} | {'moodle.sync','moodle.cache.show','moodle.import.file'}
 
     def task(self, key, params, *, cancel=None, progress=None, full=False):
+        if key in {'chart.list', 'chart.read'}:
+            from .charts import ChartStore
+            binding = self.result_binding()
+            charts = ChartStore(self)
+            if key == 'chart.list':
+                data = charts.listing(params.get('offset', 0))
+            else:
+                data = dict(charts.read(params['chart_id']), evidence_kind='saved_snapshot', refreshed=False)
+            if self.result_binding() != binding:
+                raise PermissionError('Moodle connection changed; snapshot withheld')
+            return data
         from .forum_activity import GuardedClient
         from .runs import RunStore
         from .results import ResultStore, summary, evidence_page

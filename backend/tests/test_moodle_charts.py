@@ -90,6 +90,53 @@ def test_saved_chart_is_immutable_private_and_owner_bound(tmp_path):
     with pytest.raises(PermissionError):store.read(id)
 
 
+def test_saved_chart_listing_is_bounded_and_never_leaks_denied_titles(tmp_path):
+    store = ChartStore(runtime(tmp_path))
+    for i in range(23):
+        store.save(dict(snapshot(), course_id=i + 1), {'course_id': i + 1})
+    def validate(binding, key):
+        if binding['course_id'] == 23: raise PermissionError('revoked')
+    store.runtime.validate_result_binding = validate
+    first = store.listing()
+    assert len(first['items']) == 19 and first['next_offset'] == 20
+    assert 23 not in {item['course_id'] for item in first['items']}
+    assert not first['refreshed'] and all('rows' not in item for item in first['items'])
+    assert len(store.listing(20)['items']) == 3 and store.listing(20)['next_offset'] is None
+    assert ChartStore(runtime(tmp_path, 2)).listing()['items'] == []
+    other_org = runtime(tmp_path); other_org.store.organization_id = 2
+    assert ChartStore(other_org).listing()['items'] == []
+    with pytest.raises(ValueError): store.listing(-1)
+
+
+def test_chart_listing_does_not_turn_network_failure_into_empty_library(tmp_path):
+    store = ChartStore(runtime(tmp_path)); store.save(snapshot(), {'course_id': 2})
+    store.runtime.validate_result_binding = lambda *_: (_ for _ in ()).throw(ConnectionError('offline'))
+    with pytest.raises(ConnectionError): store.listing()
+
+
+def test_saved_chart_commands_validate_ids_and_are_readonly():
+    spec, params = prepare_moodle('moodle chart list --offset 20')
+    assert spec.key == 'chart.list' and spec.policy == 'auto' and params['offset'] == 20
+    spec, params = prepare_moodle('moodle chart read 00000000-0000-0000-0000-000000000001')
+    assert spec.key == 'chart.read' and spec.policy == 'auto'
+    for command in ('moodle chart read ../secret', 'moodle chart list --offset -1'):
+        with pytest.raises(ValueError): prepare_moodle(command)
+
+
+def test_saved_chart_task_does_not_recollect_and_revalidates_connection(tmp_path):
+    from lamb.moodle.runtime import MoodleRuntime
+    rt = runtime(tmp_path); rt.result_binding = lambda: {'generation': 1}
+    store = ChartStore(rt); identity = store.save(snapshot(), {'course_id': 2})
+    with patch('lamb.moodle.runtime.MoodleHTTPClient') as client:
+        data = MoodleRuntime.task(rt, 'chart.read', {'chart_id': identity})
+        assert data['evidence_kind'] == 'saved_snapshot' and data['refreshed'] is False
+        assert data['rows'][0]['submitted'] == 3
+        assert MoodleRuntime.task(rt, 'chart.list', {})['items'][0]['chart_id'] == identity
+        client.assert_not_called()
+    values = iter([{'generation': 1}, {'generation': 2}]); rt.result_binding = lambda: next(values)
+    with pytest.raises(PermissionError): MoodleRuntime.task(rt, 'chart.list', {})
+
+
 def test_real_svg_render_is_bounded_no_external_resources():
     svg=render_svg(snapshot())
     assert '<svg' in svg and '<script' not in svg and 'href=' not in svg

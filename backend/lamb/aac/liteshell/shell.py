@@ -385,6 +385,10 @@ class LiteShell:
                     binding['course_ids'] = sorted(set(map(int, course)))
                 elif course:
                     binding['course_id'] = int(course)
+            if key == 'moodle.chart.read':
+                binding['course_id'] = data['course_id']
+            if key == 'moodle.chart.list':
+                binding['course_ids'] = sorted({item['course_id'] for item in data['items']})
             if key == 'moodle.chart.submissions':
                 binding['course_id'] = kwargs['course_id']
                 emit = getattr(bridge, 'emit', None)

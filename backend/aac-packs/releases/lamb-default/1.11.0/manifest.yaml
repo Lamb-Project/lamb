@@ -1,0 +1,62 @@
+{
+  "name": "lamb-default",
+  "version": "1.11.0",
+  "requires": "lamb >= 0.7.11",
+  "compatibility": "knowledge-brief",
+  "layers": {
+    "creator": [
+      "layers/creator/guidance.md"
+    ],
+    "lti": [
+      "layers/lti/guidance.md"
+    ],
+    "org_admin": [
+      "layers/org_admin/guidance.md"
+    ],
+    "admin": [
+      "layers/admin/guidance.md"
+    ]
+  },
+  "hashes": {
+    "capability-catalog.json": "dc5906e7b0d734954150171986bb1f30e122c53ef4d84ed1317f5122a29ed212",
+    "compass.md": "c361d1645989b50ae46135b9d2e180f435b64e3dc356e1cc8a37bb6d015cea09",
+    "glossary/ca.yaml": "9355f6cf363be38bcdd8db536374bacee54fcfebc5f77dcbaf8e633bb09acef3",
+    "glossary/en.yaml": "7b0e4f6fb7d14e7bd02f9d11bdcf72053051cbe252e227f285d7789606939302",
+    "glossary/es.yaml": "c9f1feacc37fba78a4a8daf5c7d44e1b81cd998687fb82d77122d8c5a14fecf8",
+    "glossary/eu.yaml": "5d53111da3bc0cab96d66afc13e9ee88c0cf5192a67df08af3683ad8d589ef73",
+    "glossary/ui-keys.json": "a9296211a52ad932ab0b58c46843820c3c80b940daab8fa526931831701cd5be",
+    "layers/admin/guidance.md": "b5506b6e269120de70d0d0b9246522618484f135516cbbdd162b692f27e4a6d6",
+    "layers/creator/guidance.md": "d92ead5ca365e03701180597671f0014770c96c250d2f10511b256748b582c49",
+    "layers/lti/guidance.md": "7abb65ae6bb8280ebe8cb3cf5193ea53adf6533f50528614692ead3075f0cbbd",
+    "layers/org_admin/guidance.md": "8d6b57fa6a970250e086a76da5766aa751f5b0e48f835babf131535d8e613c01",
+    "methodology/design-grounding.md": "f6c23c8c9c7ce54156b0568111d5a18c249c7c4eef04825bd1d832947a5903c4",
+    "methodology/design-prompts.md": "657d8260f3eeff47c0606c764ca259fa309adb5f8a54caa70b728ceadfedd037",
+    "methodology/design-publishing.md": "647e89e253c7a0384b58bccaf644e2517a207f19e1d48f178c8643dcde30f788",
+    "methodology/design-rubrics.md": "4e856ceb14acf3ab8391b8fe0fef6eff3df57d486607b01cb304deae04af2205",
+    "methodology/design-testing.md": "1f2c69f02a6a2515cf63f8f2b3f84128445432e711e4f7735f144a4e8b4db20f",
+    "persona.md": "b79089e77f3152c16c68e48efa735ca6110c297390d6d9f8759f8a4a3dced29b",
+    "routing.yaml": "427aed58d9d65c9eb9cdf2fe5cf7ca31e9dc7aaa69b85307ed92868580961bf5",
+    "skills/about_lamb.md": "eac1abcae105e03445dd5bb2e31aa69fcc82ce9646a307ef8622efa8030b2013",
+    "skills/chat_with_assistant.md": "2cb8703c13b27b7a62f89cd7692aa33e53b6e1697aeb1318d76073d61c5a84f6",
+    "skills/configure_agent.md": "7da8ccda54e24e038cc352eed410b91ca6bc8aec307dc5dd224adece85e16ab8",
+    "skills/create_assistant.md": "41167c0306a74a107ca3b121f6064d74ef9c78b25812b69695142d01307ecff9",
+    "skills/explain_assistant.md": "180f9e6ab8bc8b9e88ae4c6f65cfdd96905cf4fe08f68dda141c7b30025740ab",
+    "skills/improve_assistant.md": "5f0f2b0c20e52d736e2f2f37cbfd7fa4ae5eba42f29941ef708bf07801111eb5",
+    "skills/inspect_activity.md": "e156715540452786c672ca9834357436fae88bb501e4f6e4f48c3dd6644d7020",
+    "skills/manage_knowledge_base.md": "1964df1526bcb83702932f0a6a0dae8d6fde461a1de36f1e187efbd40b1577fb",
+    "skills/manage_learning_scenarios.md": "9e5088b3578d66fc93dea8e3902e33cf4f25b3f677c624954b6f40bd813e752e",
+    "skills/manage_rubric.md": "32282f811aadb53b459a5dd3e4150d7b034420217d243c078746ee690470694d",
+    "skills/manage_templates.md": "9d3dcae2f0f69e10efab56c829f4107c7ad70b840e82a836f2cf1411d54d62c3",
+    "skills/moodle_assessment_draft.md": "f12e8c2418b2e39a1a473a031b5aa9f9b3d203dbf0beed64df1abce5e843c429",
+    "skills/moodle_course_documents.md": "7793094f5b9a6501090528dd90f4291fc4e782028f390a0dd8403e0b54015b78",
+    "skills/moodle_forums.md": "08a69c33feeb317ece4c7e2607d49a51e0dd781f3ee84c2b643c4b1053a64059",
+    "skills/moodle_triage.md": "46c9f0e4449ed5a6c4d37702c24aea3d3cee5790bd3f2e3b408c648af981763f",
+    "skills/publish_assistant.md": "2f49e67253d91765c867b393bdcd059d40768cd71584f3aac1032bf7358c011b",
+    "skills/test_and_evaluate.md": "b8e56309ee9615999d9c961ed2304e568f39117a15f9419923044833e6243794",
+    "skills/test_lti_tools.md": "14528d8e0b4988bb2044a17adb73fdf8d2a8878d8d13cb0a8ce8d791a7b9f7cf"
+  },
+  "skill_layers": {
+    "test-lti-tools": "admin"
+  },
+  "command_layers": {}
+}

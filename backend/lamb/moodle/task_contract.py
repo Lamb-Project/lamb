@@ -26,16 +26,21 @@ def task_specs():
         click.Option(['--tz'], default='UTC'),
         click.Option(['--language'], default='en', type=click.Choice(['en', 'es', 'ca', 'eu'])),
     ], help='Pilot: chart current assignment submissions against course deadlines. Read-only; at most 20 assignments. Team/offline assignments are excluded explicitly.', add_help_option=False)
+    chart_list = click.Command('list', params=[
+        click.Option(['--offset'], default=0, type=click.IntRange(min=0)),
+    ], help='List a bounded page of your authorized saved charts, newest first. Follow next_offset. Does not refresh Moodle data.', add_help_option=False)
+    chart_read = click.Command('read', params=[click.Argument(['chart_id'])],
+        help='Read exact figures, date and limitations from an authorized saved chart. Does not refresh it.', add_help_option=False)
     return {key: CommandSpec(key, parser.help, 'auto', parser)
-            for key, parser in [('news', news), ('evidence', evidence), ('continue', continuation), ('runs', runs), ('chart.submissions', chart)]}
+            for key, parser in [('news', news), ('evidence', evidence), ('continue', continuation), ('runs', runs), ('chart.submissions', chart), ('chart.list', chart_list), ('chart.read', chart_read)]}
 
 
 def parse_task(tokens):
     if not tokens or tokens[0] != 'moodle':
         return None
     # Descriptive spelling is an alias, not a second implementation.
-    if tokens[:3] == ['moodle', 'chart', 'submissions']:
-        key, tail = 'chart.submissions', tokens[3:]
+    if len(tokens) >= 3 and tokens[:2] == ['moodle', 'chart'] and 'chart.' + tokens[2] in task_specs():
+        key, tail = 'chart.' + tokens[2], tokens[3:]
     elif tokens[:3] == ['moodle', 'forum', 'activity']:
         key, tail = 'news', tokens[3:]
     elif len(tokens) >= 2 and tokens[1] in task_specs():
@@ -44,6 +49,10 @@ def parse_task(tokens):
         return None
     spec = task_specs()[key]
     params = spec.parse(tail)
+    if key == 'chart.read':
+        from uuid import UUID
+        try: params['chart_id'] = str(UUID(params['chart_id']))
+        except (ValueError, TypeError): raise ValueError('Use a saved chart_id') from None
     if key == 'chart.submissions':
         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
         try: ZoneInfo(params['tz'])

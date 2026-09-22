@@ -1,10 +1,10 @@
 <script>
-    import AacChart from './AacChart.svelte';
+    import { base } from '$app/paths';
+    import { workspaceText } from '$lib/utils/moodleChartWorkspaceText';
     import { locale } from 'svelte-i18n';
-    import { chartText } from '$lib/utils/aacChartText';
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { _ } from 'svelte-i18n';
-	import { sidebarBusy, startupSessions, openTabs } from '$lib/stores/aacStore.svelte';
+	import { sidebarBusy, sidebarOpen, startupSessions, openTabs } from '$lib/stores/aacStore.svelte';
 	import { splitCanvasContent, canvasFromMessages } from '$lib/utils/aacCanvas.js';
 	import { sendMessageStream, getSession, sendMessage } from '$lib/services/aacService';
 	import { renderMarkdownWithMath } from '$lib/utils/renderMarkdown.js';
@@ -51,9 +51,6 @@
     let approval = $state(null);
     let editingApproval = $state(null);
     let charts = $state([]);
-    let chartDialog = $state(null);
-    let selectedChart = $state(null);
-    async function showChart(chart) { selectedChart = chart; await tick(); chartDialog?.showModal(); }
     function loadApproval(session) {
         charts = session.charts || [];
         approval = session.approval || null;
@@ -89,6 +86,7 @@
     function updateProgress(event) {
         if (event.status === 'chart') {
             if (!charts.some(c => c.id === event.chart_id)) charts = [...charts, {id:event.chart_id, title:event.title}];
+            window.dispatchEvent(new CustomEvent('moodle-charts-changed'));
             return;
         }
         if (event.status === 'approval') { approval = event.approval; editingApproval = null; return; }
@@ -455,7 +453,7 @@
         </section>
         {/if}
         {#each charts as chart}
-        <button class="canvas-preview" data-chart-card={chart.id} onclick={() => showChart(chart)}><strong>{chart.title}</strong><span>↗</span></button>
+        <a class="chart-link" data-chart-link={chart.id} onclick={() => sidebarOpen.set(false)} href={`${base}/moodle?tab=charts&chart=${encodeURIComponent(chart.id)}`}>{workspaceText($locale).open}: {chart.title} ↗</a>
         {/each}
         {#if canvasData}
         <button class="canvas-preview" onclick={expandCanvas}><strong>{canvasData.title || 'Canvas'}</strong><span>Expand canvas</span></button>
@@ -510,10 +508,6 @@
         {/if}
 	</div>
 </div>
-<dialog bind:this={chartDialog} onclose={() => { if (!chartDialog?.open) selectedChart = null; }} class="canvas-dialog" aria-label={selectedChart?.title || chartText($locale).chart}>
-    <div class="canvas-heading"><h2>{selectedChart?.title || chartText($locale).chart}</h2><button aria-label={chartText($locale).back} onclick={() => chartDialog.close()}>←</button></div>
-    {#if selectedChart}<AacChart chartId={selectedChart.id} />{/if}
-</dialog>
 {#if canvasData}
 <dialog bind:this={canvasDialog} class="canvas-dialog" aria-label={canvasData.title || 'Canvas'}>
     <div class="canvas-heading">
@@ -528,6 +522,7 @@
 </div>
 
 <style>
+    .chart-link { display:block; margin:8px 0; color:#2463a1; text-decoration:underline; font-size:.9rem; }
     .approval-controls { border: 1px solid #94a3b8; border-radius: .6rem; padding: .8rem; }
     .approval-controls button { border: 1px solid #64748b; border-radius: .4rem; padding: .5rem .8rem; background: #fff; color: #1e293b; cursor: pointer; }
     .approval-controls .approval-primary { background: #1e40af; color: #fff; border-color: #1e40af; }

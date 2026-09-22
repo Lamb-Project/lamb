@@ -62,6 +62,23 @@ def test_foreign_owner_cannot_use_stale_org_context(client):
 def test_anonymous_denied(client):
     c,_,_=client;c.app.dependency_overrides.clear()
     assert c.get('/moodle/connection').status_code in (401,403)
+    assert c.get('/moodle/charts').status_code in (401,403)
+    assert c.get('/moodle/charts/00000000-0000-0000-0000-000000000001').status_code in (401,403)
+
+
+def test_chart_listing_is_private_and_failures_are_explicit(client):
+    c, auth, _ = client
+    with patch('lamb.moodle.runtime.MoodleRuntime') as runtime:
+        runtime.return_value.execute.return_value = {'items':[], 'next_offset':None}
+        result=c.get('/moodle/charts?offset=20')
+        assert result.status_code == 200 and result.headers['cache-control'] == 'private, no-store'
+        runtime.return_value.execute.assert_called_once_with('chart.list', {'offset':20})
+        for error, status in [(PermissionError('private'),403),(ValueError('private'),400),(ConnectionError('private'),503)]:
+            runtime.return_value.execute.side_effect=error
+            response=c.get('/moodle/charts')
+            assert response.status_code == status and 'private' not in response.text
+    auth.organization['id']=2
+    assert c.get('/moodle/charts').status_code == 403
 
 
 def test_stale_general_config_update_cannot_restore_disconnected_token(stores):

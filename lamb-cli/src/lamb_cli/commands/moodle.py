@@ -222,6 +222,16 @@ def import_finish(import_id: str, session: str = typer.Option(..., '--session'),
 chart_app = typer.Typer(help='Read-only chart pilot', no_args_is_help=True)
 app.add_typer(chart_app, name='chart')
 
+@chart_app.command('list')
+def chart_list(offset: int = typer.Option(0, '--offset', min=0)):
+    """List your authorized saved charts without collecting new data."""
+    run(['chart', 'list', '--offset', str(offset)])
+
+@chart_app.command('read')
+def chart_read(chart_id: str):
+    """Read the exact saved figures and timestamp of a chart."""
+    run(['chart', 'read', chart_id])
+
 @chart_app.command('submissions')
 def chart_submissions(course: int = typer.Option(..., '--course', min=1),
                       tz: str = typer.Option('UTC', '--tz'),

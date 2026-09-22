@@ -114,6 +114,7 @@ class Recipes(unittest.TestCase):
         for path in SKILLS_DIR.glob('*.md'):
             for block in re.findall(r'```aac-command\n(.*?)```',path.read_text(),re.S):
                 for line in block.strip().splitlines():
+                    line=line.replace('CHART_ID','00000000-0000-0000-0000-000000000001')
                     for key in ['ASSISTANT_ID','KB_ID','RUBRIC_ID','SCENARIO_ID','RUN_ID','CHAT_ID','COURSE_ID','FORUM_ID','DISCUSSION_ID','POST_ID','CONTEXT_ID','ASSIGNMENT_ID','USER_ID','FILE_ID']:
                         line=line.replace(key,'1')
                     key,args,kwargs,_=prepare_command(line);count+=1

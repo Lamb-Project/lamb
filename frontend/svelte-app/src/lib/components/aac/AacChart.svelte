@@ -2,6 +2,7 @@
     import { locale } from 'svelte-i18n';
     import { apiFetch, apiJson } from '$lib/services/apiClient';
     import { chartText, chartReason } from '$lib/utils/aacChartText';
+    import { workspaceText } from '$lib/utils/moodleChartWorkspaceText';
     let { chartId } = $props();
     let data = $state(null), imageUrl = $state(''), error = $state(false), imageError = $state(false);
     let attempt = $state(0);
@@ -63,7 +64,7 @@
             </li>
         {/each}
     </ul>
-    <p class="caption">{data.caption}<br /><span>{text.extensions}</span></p>
+    <p class="caption">{workspaceText(data.language).caption}<br /><span>{text.extensions}</span></p>
     {#if data.rows.length}
     <p class="table-hint">{text.table}</p>
     <!-- Keyboard focus lets users scroll the exact-values table with arrow keys. -->

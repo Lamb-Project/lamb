@@ -42,6 +42,8 @@ def browser_session(session):
     result['tool_audit_count'] = len(session.get('tool_audit') or [])
     result['charts'] = [dict(a) for event in session.get('tool_audit', []) if event.get('success')
                         for a in event.get('artifacts', []) if a.get('type') == 'chart']
+    if state.get('selected_chart_id') and not any(a['id'] == state['selected_chart_id'] for a in result['charts']):
+        result['charts'].append({'type': 'chart', 'id': state['selected_chart_id'], 'title': 'Moodle'})
     result.pop('tool_audit', None)
     from lamb.aac.approval_controls import card
     result['approval'] = card(result.pop('pending_action', None), state)

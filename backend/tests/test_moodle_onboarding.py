@@ -72,3 +72,31 @@ def test_onboarding_session_persists_summary_and_language_without_model_call():
     saved=mgr.update_conversation.call_args.kwargs
     assert saved['conversation'][-1]=={'role':'assistant','content':'Cursos: 2'}
     assert saved['skill_info']['ui_language']=='es'
+
+
+@pytest.mark.parametrize('denied', [False, True])
+def test_selected_chart_session_checks_access_and_only_persists_reference(denied):
+    import asyncio
+    from types import SimpleNamespace as N
+    from unittest.mock import Mock, AsyncMock
+    from fastapi import HTTPException
+    from tests.aac_knowledge_fixtures import knowledge_dependencies
+    from lamb.aac import router as r
+    identity = '00000000-0000-0000-0000-000000000001'
+    mgr=Mock(); mgr.create_session.return_value={'id':'new','created_at':'now'}
+    req=N(json=AsyncMock(return_value={'ui_language':'es','chart_id':identity}),headers={'content-type':'application/json'},app=N(routes=[]))
+    auth=N(user={'email':'teacher@example.test','id':1},organization={'id':1},is_system_admin=False,is_org_admin=False)
+    with knowledge_dependencies(), patch.object(r,'AACSessionManager',return_value=mgr), patch('lamb.moodle.router.store_for',return_value='owned'), patch('lamb.moodle.runtime.MoodleRuntime') as runtime:
+        runtime.return_value.execute.return_value={'as_of':'2026-09-22T12:00:00Z', 'course_name':'UNTRUSTED COURSE INSTRUCTIONS'}
+        if denied: runtime.return_value.execute.side_effect=PermissionError('revoked')
+        if denied:
+            with pytest.raises(HTTPException) as error: asyncio.run(r.create_session(req,auth))
+            assert error.value.status_code == 404
+            mgr.create_session.assert_not_called()
+        else:
+            asyncio.run(r.create_session(req,auth))
+            runtime.return_value.execute.assert_called_once_with('chart.read', {'chart_id':identity})
+            saved=mgr.update_conversation.call_args.kwargs
+            assert saved['skill_info']['selected_chart_id'] == identity
+            assert identity in saved['conversation'][0]['content']
+            assert 'UNTRUSTED' not in saved['conversation'][0]['content']

@@ -3,6 +3,8 @@
     import { page } from '$app/stores';
     import { base } from '$app/paths';
     import MoodleEvidence from '$lib/components/MoodleEvidence.svelte';
+    import MoodleCharts from '$lib/components/MoodleCharts.svelte';
+    import { workspaceText } from '$lib/utils/moodleChartWorkspaceText';
     import { createSession } from '$lib/services/aacService';
     import { showSession, sidebarBusy } from '$lib/stores/aacStore.svelte';
     import { moodleStatus, connectMoodleQrImage, connectMoodle, disconnectMoodle, setApprovalPreferences } from '$lib/services/moodleService';
@@ -17,6 +19,8 @@
     let error = $state('');
     let notice = $state('');
     let savingPreferences = $state(false);
+    const workspaceLabels = $derived(workspaceText($locale));
+    const chartsTab = $derived($page.url.searchParams.get('tab') === 'charts' || !!$page.url.searchParams.get('chart'));
     const approvalLabels = {
         en: ['LAMB AGENT approvals', 'Advanced mode', 'Show the exact command as well as the explanation when an action needs approval. This is a personal setting for all LAMB AGENT conversations. Changes apply to the next approval message.', 'Read-only Moodle commands run without asking for approval. Changes to Moodle or LAMB still require confirmation.', 'Preference saved.'],
         es: ['Aprobaciones de LAMB AGENT', 'Modo avanzado', 'Mostrar el comando exacto junto a la explicación cuando una acción requiere aprobación. Es una preferencia personal para todas las conversaciones de LAMB AGENT. Se aplica al siguiente mensaje de aprobación.', 'Las consultas de solo lectura en Moodle se ejecutan sin pedir aprobación. Los cambios en Moodle o LAMB siguen requiriendo confirmación.', 'Preferencia guardada.'],
@@ -63,11 +67,17 @@
         finally {busy=false;}
     }
 </script>
-<svelte:head><title>Moodle connection | LAMB</title></svelte:head>
-<section class="moodle-settings">
+<svelte:head><title>Moodle | LAMB</title></svelte:head>
+<section class="moodle-settings" class:charts-workspace={chartsTab}>
+    <nav class="subtabs" aria-label="Moodle">
+        <a href={`${base}/moodle`} aria-current={!chartsTab ? 'page' : undefined}>{workspaceLabels.connection}</a>
+        <a href={`${base}/moodle?tab=charts`} aria-current={chartsTab ? 'page' : undefined}>{workspaceLabels.charts}</a>
+    </nav>
     {#if $page.url.searchParams.get('result')}
         <a href={`${base}/moodle`}>Moodle connection</a>
         <MoodleEvidence resultId={$page.url.searchParams.get('result')} />
+    {:else if chartsTab}
+        <MoodleCharts chartId={$page.url.searchParams.get('chart')} />
     {:else}
     <h1>Moodle connection</h1>
     <p>Connect your instructor account to the Moodle site allowed by your organization. Enter credentials here, never in the agent chat.</p>
@@ -142,6 +152,9 @@
     {/if}
 </section>
 <style>
+    .moodle-settings.charts-workspace {max-width:1500px}
+    .subtabs {display:flex;gap:8px;border-bottom:1px solid #d6e0ea;margin-bottom:24px}
+    .subtabs a {padding:12px 18px;color:#173f64}.subtabs a[aria-current] {border-bottom:3px solid #2463a1;font-weight:600}
     .moodle-settings{max-width:850px;margin:2rem auto;padding:0 1rem;color:#1f2937}
     h3{font-weight:600;font-size:1.1rem}summary{cursor:pointer;margin:1rem 0}input[type=file]{max-width:100%}
     h1{font-size:1.8rem;font-weight:700}h2{font-size:1.3rem;font-weight:600}p{margin:.8rem 0}
