@@ -1,5 +1,6 @@
 import json
 import shlex
+import pytest
 from unittest.mock import patch
 from typer.testing import CliRunner
 from lamb_cli.main import app
@@ -7,11 +8,12 @@ from lamb_cli.main import app
 runner = CliRunner()
 
 
-def test_forum_run_start_forward_exact_scope_and_calendar_bounds():
+@pytest.mark.parametrize('recipe',['forum-participation','forum-discussions','forum-network'])
+def test_forum_run_start_forward_exact_scope_and_calendar_bounds(recipe):
     for verb in ('run','start'):
         with patch('lamb_cli.commands.moodle.get_client') as client:
             client.return_value.__enter__.return_value.post.return_value={'run_id':'saved'}
-            result=runner.invoke(app,['moodle','analytics',verb,'forum-participation','--course','7',
+            result=runner.invoke(app,['moodle','analytics',verb,recipe,'--course','7',
                 '--forum','8','--since','2025-10-25','--through','2025-10-26','--tz','Europe/Madrid','--group','3'])
             assert result.exit_code==0,result.output
             tokens=shlex.split(client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'])

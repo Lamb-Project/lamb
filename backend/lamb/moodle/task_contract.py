@@ -59,7 +59,7 @@ def task_specs():
     analytics_result = click.Command('result', params=[click.Argument(['chart_id']),
         click.Option(['--offset'],default=0,type=click.IntRange(min=0))],
         help='Read a bounded page from a saved analytics snapshot, with fresh permission checks and no recollection.', add_help_option=False)
-    analytics_start = click.Command('start', params=[click.Argument(['recipe'],type=click.Choice(['activity-completion','quiz-overview','forum-participation','forum-discussions'])),
+    analytics_start = click.Command('start', params=[click.Argument(['recipe'],type=click.Choice(['activity-completion','quiz-overview','forum-participation','forum-discussions','forum-network'])),
         click.Option(['--forum','forum_id'],type=click.IntRange(min=1)),
         click.Option(['--since']),click.Option(['--until']),click.Option(['--through']),
         click.Option(['--quiz','quiz_id'],type=click.IntRange(min=1)),
@@ -102,7 +102,7 @@ def parse_task(tokens):
         try:params['run_id']=str(UUID(params['run_id']))
         except (ValueError,TypeError):raise ValueError('Use an analytics run_id') from None
     if key in {'analytics.run','analytics.start'}:
-        if params['recipe'] in {'forum-participation','forum-discussions'}:
+        if params['recipe'] in {'forum-participation','forum-discussions','forum-network'}:
             from .analytics.forum_window import parse_window
             if params.get('forum_id') is None:
                 raise ValueError('Forum analytics requires --forum')

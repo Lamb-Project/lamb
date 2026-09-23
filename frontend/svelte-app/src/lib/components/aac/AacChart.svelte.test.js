@@ -20,6 +20,17 @@ it('renders forum table without requesting an unsupported chart image',async()=>
     expect(await screen.findByText('Student #1')).toBeInTheDocument();
     expect(apiFetch).not.toHaveBeenCalled();
 });
+it('renders saved network without SVG endpoint or recollection',async()=>{
+    apiJson.mockResolvedValue({...snapshot(),view_kind:'forum-network-v1',recipe:{id:'forum-network'},
+        metrics:{window:{since:100,until:200}},network:{edges_included:true,edges:[]},
+        rows:[{student_id:1,name:'Student #1',in_degree:0,out_degree:0,unique_peers:0,
+            incoming_replies:0,outgoing_replies:0,no_observed_peer_interaction:true}]});
+    const {container}=render(AacChart,{chartId:'saved-network'});
+    expect(await screen.findByText('Student #1')).toBeInTheDocument();
+    expect(container.querySelector('[data-forum-network]')).not.toBeNull();
+    expect(apiFetch).not.toHaveBeenCalled();
+    expect(apiJson).toHaveBeenCalledTimes(1);
+});
 it('shows quiz evidence for an existing saved quiz snapshot without recollection', async () => {
     apiJson.mockResolvedValue({...snapshot(), view_kind:'metric-bars-v1', recipe:{id:'quiz-overview'},
         rows:[], metrics:{retry_1_to_2:{score_change_percentage_points:{n:1,mean:100},

@@ -114,3 +114,16 @@ def test_other_analytics_recipes_keep_their_collector(stores):
         assert rt.task('analytics.run',params)=={'chart_id':'access'}
     execute.assert_not_called()
     assert collect.call_args.args[2:]==(70,params)
+
+
+@pytest.mark.parametrize('recipe',['forum-participation','forum-discussions','forum-network'])
+def test_forum_run_routes_to_recoverable_first_step(stores,recipe):
+    rt=runtime(stores)
+    params={'recipe':recipe,'course_id':7,'forum_id':8,'since':100,'until':150,'language':'es','tz':'UTC'}
+    response={'run_id':'forum-run','continue_command':'next forum step'}
+    with patch('lamb.moodle.analytics.forum_tasks.execute',side_effect=[{'run_id':'forum-run'},response]) as execute, \
+         patch('lamb.moodle.analytics.recipes.run_recipe') as legacy:
+        assert rt.task('analytics.run',params)==response
+    legacy.assert_not_called()
+    assert [call.args[4:] for call in execute.call_args_list]==[
+        ('analytics.start',params),('analytics.continue',{'run_id':'forum-run','step':0})]

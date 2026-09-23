@@ -6,7 +6,7 @@ rewrites a factual claim silently. The agent may repair once without tools.
 import re
 import unicodedata
 
-RECIPES = {'forum-participation', 'forum-discussions', 'quiz-overview', 'deadlines', 'grade-distribution', 'grading-queue', 'course-access', 'resource-reach', 'activity-completion', 'view-trends', 'view-heatmap', 'view-distribution', 'active-day-distribution'}
+RECIPES = {'forum-network', 'forum-participation', 'forum-discussions', 'quiz-overview', 'deadlines', 'grade-distribution', 'grading-queue', 'course-access', 'resource-reach', 'activity-completion', 'view-trends', 'view-heatmap', 'view-distribution', 'active-day-distribution'}
 
 
 def contract(result):
@@ -77,6 +77,18 @@ This is guidance rather than a claim that language or arithmetic is validated.
                      'Age is seconds at the snapshot, not now. '
                      'No observed public replies does not establish unanswered or unresolved questions. '
                      'Resolution, contribution quality and learning are not established; private/deleted posts are excluded.')
+    if evidence.get('recipe')=='forum-network':
+        parts.append('Forum network IDs are Moodle student identifiers, not verified names. '
+                     'Edges point from reply author to immediate parent author, both current students. '
+                     'Only reply creation must be inside the requested window; parents may predate it. '
+                     'Self-replies and nonstudent endpoints are excluded; unavailable parents are not reconstructed. '
+                     'Degrees count distinct incoming/outgoing peers; unique_peers unions both directions, '
+                     'not their sum. Edge weights count replies, not unique peers. '
+                     'Above 50 students the saved view is an exact degree table, not a truncated graph. '
+                     'Unknown no-peer flags reflect incomplete evidence. Even complete zero-edge evidence '
+                     'does not prove social isolation, disengagement, quality, learning or social value. '
+                     'Use window_start_local and window_end_local verbatim, with exclusive end. '
+                     'Evidence is saved at the snapshot, not current Moodle data.')
     return ' '.join(parts)
 
 

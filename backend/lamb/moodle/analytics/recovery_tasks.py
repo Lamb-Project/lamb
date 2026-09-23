@@ -8,7 +8,7 @@ from .quiz_run import QuizCheckpoints
 def execute(runtime, results, client, owner, key, params):
     handlers = ((CompletionCheckpoints, completion_tasks), (QuizCheckpoints, quiz_tasks), (ForumCheckpoints, forum_tasks))
     if key == 'analytics.start':
-        if params['recipe'] in {'forum-participation','forum-discussions'}:
+        if params['recipe'] in {'forum-participation','forum-discussions','forum-network'}:
             return forum_tasks.execute(runtime,results,client,owner,key,params)
         if params['recipe'] not in {'quiz-overview', 'activity-completion'}:
             raise ValueError('Unsupported recoverable recipe')

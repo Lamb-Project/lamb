@@ -12,7 +12,7 @@ from tests.test_moodle_completion_tasks import fixture
 
 
 @pytest.mark.parametrize('verb',['start','run'])
-@pytest.mark.parametrize('recipe',['forum-participation','forum-discussions'])
+@pytest.mark.parametrize('recipe',['forum-participation','forum-discussions','forum-network'])
 def test_explicit_forum_window(verb,recipe):
     command=f'moodle analytics {verb} {recipe} --course 7 --forum 8 --since 2025-10-25 --through 2025-10-26 --tz Europe/Madrid'
     spec,p=parse_task(shlex.split(command))
@@ -27,9 +27,10 @@ def test_explicit_forum_window(verb,recipe):
     '--forum 8 --since 2025-01-01 --until 2027-01-01',
     '--forum 8 --since 2025-01-01 --until 2025-02-01 --quiz 1',
     '--forum 8 --since 2025-01-01 --until 2025-02-01 --assignment 1'])
-def test_missing_ambiguous_and_foreign_options_rejected(tail):
+@pytest.mark.parametrize('recipe',['forum-participation','forum-discussions','forum-network'])
+def test_missing_ambiguous_and_foreign_options_rejected(tail,recipe):
     with pytest.raises(ValueError):
-        parse_task(shlex.split('moodle analytics run forum-participation --course 7 '+tail))
+        parse_task(shlex.split(f'moodle analytics run {recipe} --course 7 '+tail))
 
 
 def test_future_window_rejected_without_clamping():
@@ -40,11 +41,11 @@ def test_future_window_rejected_without_clamping():
 def test_capabilities_require_all_sources():
     functions=set(RECIPES['forum-participation']['functions'])
     names=IDENTITY|functions
-    assert {'forum-participation','forum-discussions'}<=set(available_recipes(names))
+    assert {'forum-participation','forum-discussions','forum-network'}<=set(available_recipes(names))
     keys={'analytics.run','analytics.start','analytics.continue'}
     assert filter_keys(keys,{'functions':sorted(names)})==keys
     for missing in functions:
-        assert 'forum-participation' not in available_recipes(names-{missing})
+        assert not {'forum-participation','forum-discussions','forum-network'} & set(available_recipes(names-{missing}))
 
 
 def test_recovery_routes_exact_forum_namespace(tmp_path):

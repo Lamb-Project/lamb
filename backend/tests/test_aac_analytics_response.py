@@ -8,6 +8,21 @@ from tests.test_aac_legacy import agent, message, tool, turn
 RESULT = {'success':True,'data':{'recipe':{'id':'grade-distribution'},'grade_released':None}}
 
 
+@pytest.mark.parametrize('streaming',[False,True])
+def test_network_evidence_guidance_preserves_peer_semantics(streaming):
+    evidence={'success':True,'data':{'recipe':{'id':'forum-network'},'language':'ca'}}
+    a,provider,shell=agent([message(tools=[tool()]),message('No prueba aislamiento social.')])
+    a.skill_state={'ui_language':'es'}
+    a._execute_tool=AsyncMock(return_value=evidence)
+    assert asyncio.run(turn(a,streaming))=='No prueba aislamiento social.'
+    guide=evidence_instruction(contract(evidence),a.skill_state)
+    assert 'Reply in Spanish.' in guide and 'immediate parent' in guide
+    assert 'not their sum' in guide and 'does not prove social isolation' in guide
+    assert 'all visible authors' not in guide
+    assert a._execute_tool.await_count==1
+    assert '[Application analytics evidence guidance]' not in str(a.conversation)
+
+
 @pytest.mark.parametrize('recipe',['forum-participation','forum-discussions'])
 @pytest.mark.parametrize('streaming',[False,True])
 def test_forum_evidence_gets_language_semantics_and_bounded_menu_repair(recipe,streaming):

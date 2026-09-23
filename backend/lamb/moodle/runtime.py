@@ -182,8 +182,8 @@ class MoodleRuntime:
                 from .analytics.recipes import capabilities
                 return capabilities(client, record['moodle_user_id'], params['course_id'])
             if key == 'analytics.run':
-                if params['recipe'] in {'activity-completion', 'quiz-overview','forum-participation','forum-discussions'}:
-                    if params['recipe'] in {'forum-participation','forum-discussions'}:
+                if params['recipe'] in {'activity-completion', 'quiz-overview','forum-participation','forum-discussions','forum-network'}:
+                    if params['recipe'] in {'forum-participation','forum-discussions','forum-network'}:
                         from .analytics.forum_tasks import execute
                     elif params['recipe'] == 'quiz-overview':
                         from .analytics.quiz_tasks import execute

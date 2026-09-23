@@ -24,7 +24,7 @@ def setup(tmp_path,recipe='forum-participation'):
     return s,rt,c,call,initial
 
 
-@pytest.mark.parametrize('recipe',['forum-participation','forum-discussions'])
+@pytest.mark.parametrize('recipe',['forum-participation','forum-discussions','forum-network'])
 def test_exact_step_replay_and_publication(tmp_path,recipe):
     s,rt,c,call,initial=setup(tmp_path,recipe)
     identity=initial['run_id']
