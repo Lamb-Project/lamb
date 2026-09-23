@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 defined('MOODLE_INTERNAL') || die();
 $functions = [
+    'local_lambanalytics_quiz_attempts' => [
+        'classname' => 'local_lambanalytics\external\quiz_attempts',
+        'methodname' => 'execute',
+        'description' => 'Read a bounded permission-scoped page of raw quiz attempt metadata, without question content.',
+        'type' => 'read',
+        'capabilities' => 'mod/quiz:viewreports,moodle/course:enrolreview',
+        'services' => [MOODLE_OFFICIAL_MOBILE_SERVICE],
+    ],
     'local_lambanalytics_quiz_scope' => [
         'classname' => 'local_lambanalytics\external\quiz_scope',
         'methodname' => 'execute',
