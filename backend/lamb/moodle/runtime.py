@@ -42,12 +42,17 @@ class MoodleRuntime:
                           'write_groups':sorted(policy.write_groups), 'allow_grade_write':policy.allow_grade_write}}
 
     def validate_result_binding(self, binding, key):
-        expected = {k:v for k,v in binding.items() if k not in {'course_id', 'course_ids', 'resource_scopes', 'grade_scopes', 'completion_scopes', 'date_scopes', 'quiz_scopes', 'forum_scopes'}}
+        expected = {k:v for k,v in binding.items() if k not in {'course_id', 'course_ids', 'resource_scopes', 'grade_scopes', 'completion_scopes', 'date_scopes', 'quiz_scopes', 'forum_scopes', 'gradebook_scopes'}}
         if self.result_binding() != expected or key not in self.available():
             raise PermissionError('Moodle snapshot is no longer accessible; run a fresh read')
         courses = binding.get('course_ids', binding.get('course_id'))
-        if any(binding.get(field) for field in ('resource_scopes','grade_scopes','completion_scopes','date_scopes','quiz_scopes','forum_scopes')) and not courses:
+        if any(binding.get(field) for field in ('resource_scopes','grade_scopes','completion_scopes','date_scopes','quiz_scopes','forum_scopes','gradebook_scopes')) and not courses:
             raise PermissionError('Resource evidence requires a bound course')
+        # A saved listing contains up to 20 charts, each with 20 selected items.
+        gradebook_scope_limit = 400 if key == 'moodle.chart.list' else 20
+        if 'gradebook_scopes' in binding and (not isinstance(binding['gradebook_scopes'],list)
+                or not 1 <= len(binding['gradebook_scopes']) <= gradebook_scope_limit):
+            raise PermissionError('Invalid gradebook evidence scopes')
         if courses:
             snap = self.snapshot(); record = snap['record']
             token = (self._cipher or TokenCipher()).decrypt(record['token_encrypted'],
@@ -90,6 +95,16 @@ class MoodleRuntime:
                             raise PermissionError('Date scope is outside the bound courses')
                         validate_date_scope(client,date_scope)
                     from .analytics.quiz_authorization import validate_quiz_scope
+                    from .analytics.gradebook_authorization import validate_gradebook_scope
+                    seen_gradebook_scopes = set()
+                    for gradebook_scope in binding.get('gradebook_scopes', []):
+                        if not isinstance(gradebook_scope,dict) or gradebook_scope.get('course_id') not in (courses if isinstance(courses,(tuple,list)) else [courses]):
+                            raise PermissionError('Gradebook scope is outside the bound courses')
+                        validate_gradebook_scope(client,gradebook_scope)
+                        identity = tuple(gradebook_scope[key] for key in ('course_id','grade_item_id','group_id'))
+                        if identity in seen_gradebook_scopes:
+                            raise PermissionError('Duplicate gradebook evidence scope')
+                        seen_gradebook_scopes.add(identity)
                     quiz_scopes = binding.get('quiz_scopes', [])
                     if not isinstance(quiz_scopes, list) or len(quiz_scopes) > 20:
                         raise PermissionError('Invalid quiz evidence scopes')

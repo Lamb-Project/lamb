@@ -420,6 +420,16 @@ class LiteShell:
                 if forum_scopes: binding['forum_scopes'] = forum_scopes
             elif isinstance(data, dict) and data.get('forum_scopes'):
                 binding['forum_scopes'] = data['forum_scopes']
+            if isinstance(data, dict) and isinstance(data.get('items'), list):
+                gradebook_scopes = [scope for item in data['items'] for scope in item.get('gradebook_scopes', [])]
+                # Multiple saved comparisons can refer to the same exact item.
+                unique_scopes = []
+                for scope in gradebook_scopes:
+                    if scope not in unique_scopes:
+                        unique_scopes.append(scope)
+                if unique_scopes: binding['gradebook_scopes'] = unique_scopes
+            elif isinstance(data, dict) and data.get('gradebook_scopes'):
+                binding['gradebook_scopes'] = data['gradebook_scopes']
             if key in {'moodle.chart.submissions','moodle.analytics.run','moodle.analytics.start','moodle.analytics.continue'}:
                 binding['course_id'] = data['course_id']
                 emit = getattr(bridge, 'emit', None)
