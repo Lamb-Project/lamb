@@ -17,6 +17,9 @@ def with_forum_semantics(snapshot):
         result['window_label']=(f"[{result['window_start_local']}, {result['window_end_local']}) "
                                 f"{result['timezone']}; end exclusive")
     if recipe['id']=='forum-network':
+        result['network_layout_basis']=(
+            'Graph positions follow student IDs around a circle, not importance or social value; '
+            'position is distinct from arrow direction. Self-reply means replying to ones own post, not self-criticism.')
         result['forum_exclusion_basis']=(
             'Network exclusions count reply relationships, not all posts. Nonstudent endpoints and '
             'self-replies are excluded. Unavailable parents are not reconstructed; counts may be lower bounds.')

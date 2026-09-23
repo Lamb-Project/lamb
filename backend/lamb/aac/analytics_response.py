@@ -84,6 +84,8 @@ This is guidance rather than a claim that language or arithmetic is validated.
                      'Self-replies and nonstudent endpoints are excluded; unavailable parents are not reconstructed. '
                      'Degrees count distinct incoming/outgoing peers; unique_peers unions both directions, '
                      'not their sum. Edge weights count replies, not unique peers. '
+                     'Graph positions follow student IDs around a circle, not importance. '
+                     'Do not confuse node position with arrow direction or self-replies with self-criticism. '
                      'Above 50 students the saved view is an exact degree table, not a truncated graph. '
                      'Unknown no-peer flags reflect incomplete evidence. Even complete zero-edge evidence '
                      'does not prove social isolation, disengagement, quality, learning or social value. '

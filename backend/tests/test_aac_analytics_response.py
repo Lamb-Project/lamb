@@ -18,6 +18,8 @@ def test_network_evidence_guidance_preserves_peer_semantics(streaming):
     guide=evidence_instruction(contract(evidence),a.skill_state)
     assert 'Reply in Spanish.' in guide and 'immediate parent' in guide
     assert 'not their sum' in guide and 'does not prove social isolation' in guide
+    assert 'positions follow student IDs around a circle' in guide
+    assert 'self-replies with self-criticism' in guide
     assert 'all visible authors' not in guide
     assert a._execute_tool.await_count==1
     assert '[Application analytics evidence guidance]' not in str(a.conversation)

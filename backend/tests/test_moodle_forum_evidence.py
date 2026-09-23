@@ -38,3 +38,18 @@ def test_local_window_dates_do_not_shift_to_previous_utc_day():
     result=with_forum_semantics(value)
     assert result['window_start_local']=='2026-09-01T00:00:00+02:00'
     assert result['window_end_local']=='2026-09-23T00:00:00+02:00'
+
+
+def test_network_layout_semantics_survive_preview_without_rewriting_evidence():
+    from lamb.aac.result_store import preview
+    original={f'noise_{i}':'irrelevant' for i in range(30)}
+    original.update(recipe={'id':'forum-network'},rows=[{'student_id':1,'unique_peers':0}],
+                    network={'edges':[]},as_of='2026-09-23T12:41:52Z')
+    before=deepcopy(original)
+    result=with_forum_semantics(original)
+    assert original==before
+    assert all(result[k]==v for k,v in before.items())
+    bounded=preview(result)
+    assert 'student IDs around a circle' in bounded['network_layout_basis']
+    assert 'position is distinct from arrow direction' in bounded['network_layout_basis']
+    assert 'not self-criticism' in bounded['network_layout_basis']
