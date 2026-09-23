@@ -5,10 +5,32 @@ import pytest
 from moodle_cli.client.readonly import READ_ALLOWLIST
 from lamb.moodle.analytics.client import GRADEBOOK_SCOPE_FUNCTION, GRADEBOOK_GRADES_FUNCTION, MAX_EVENT_BYTES
 from lamb.moodle.analytics.gradebook_authorization import validate_gradebook_scope
+from lamb.moodle.analytics.client import GRADEBOOK_ITEMS_FUNCTION
 from tests.test_moodle_analytics_client import client
 
 SCOPE = {'course_id': 7, 'grade_item_id': 2, 'group_id': 0}
 RESPONSE = {'authorized': True, 'courseid': 7, 'gradeitemid': 2, 'groupid': 0}
+
+
+def test_item_inventory_bounded_without_global_allowlist_change():
+    before=set(READ_ALLOWLIST)
+    response={'items':[],'has_more':False}
+    with client(lambda request:httpx.Response(200,json=response)) as source:
+        assert source.call(GRADEBOOK_ITEMS_FUNCTION,courseid=7,limit=100)==response
+    assert set(READ_ALLOWLIST)==before
+    with client(lambda request:httpx.Response(200,content=b'x'*(128*1024+1))) as source:
+        with pytest.raises(ValueError,match='byte budget'):
+            source.call(GRADEBOOK_ITEMS_FUNCTION,courseid=7)
+
+
+@pytest.mark.parametrize('change',[{'courseid':True},{'courseid':0},{'groupid':-1},
+    {'limit':0},{'limit':101},{'afterid':1},{'afterid':3,'throughid':2},
+    {'afterid':-1},{'throughid':-1},{'limit':False},{'wstoken':'secret'},
+    {'gradeitemid':2},{'userid':1},{'fields':'feedback'}])
+def test_invalid_inventory_parameters_never_request(change):
+    with client(lambda request:pytest.fail('Unexpected request')) as source:
+        with pytest.raises(ValueError):
+            source.call(GRADEBOOK_ITEMS_FUNCTION,**({'courseid':7}|change))
 
 
 def test_exact_authority_without_grade_read():

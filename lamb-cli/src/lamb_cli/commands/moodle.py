@@ -16,6 +16,16 @@ def analytics_capabilities(course: int = typer.Option(...,'--course',min=1)):
     run(['analytics','capabilities','--course',str(course)])
 
 
+@analytics_app.command('assessments')
+def analytics_assessments(course: int = typer.Option(...,'--course',min=1),
+        group: int = typer.Option(0,'--group',min=0),
+        after_id: int = typer.Option(0,'--after-id',min=0),
+        through_id: int = typer.Option(0,'--through-id',min=0),
+        limit: int = typer.Option(100,'--limit',min=1,max=100)):
+    run(['analytics','assessments','--course',str(course),'--group',str(group),
+         '--after-id',str(after_id),'--through-id',str(through_id),'--limit',str(limit)])
+
+
 @analytics_app.command('run')
 def analytics_run(recipe: str, course: int = typer.Option(...,'--course',min=1),
                   grade_item: Optional[list[int]] = typer.Option(None,'--grade-item',min=1),

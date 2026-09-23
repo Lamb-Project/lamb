@@ -39,6 +39,13 @@ def task_specs():
     chart_read = click.Command('read', params=[click.Argument(['chart_id'])],
         help='Read exact figures, date and limitations from an authorized saved chart. Does not refresh it.', add_help_option=False)
     from .analytics.recipes import RECIPES
+    assessments = click.Command('assessments', params=[
+        click.Option(['--course','course_id'],required=True,type=click.IntRange(min=1)),
+        click.Option(['--group','group_id'],default=0,type=click.IntRange(min=0)),
+        click.Option(['--after-id','after_id'],default=0,type=click.IntRange(min=0)),
+        click.Option(['--through-id','through_id'],default=0,type=click.IntRange(min=0)),
+        click.Option(['--limit'],default=100,type=click.IntRange(1,100))],
+        help='Discover permitted gradebook assessment IDs and stored names, not grades. Follow next_command even after an empty page.',add_help_option=False)
     analytics_run = click.Command('run', params=[
         click.Argument(['recipe'], type=click.Choice(list(RECIPES))),
         click.Option(['--grade-item','grade_item_ids'],multiple=True,type=click.IntRange(min=1),help='Repeat for 2–20 gradebook item IDs; not assignment IDs.'),
@@ -75,7 +82,7 @@ def task_specs():
         help='Advance one bounded analytics step. Retry the exact command after interruption or a lost response.',add_help_option=False)
     analytics_runs = click.Command('runs',help='List authorized private completion, quiz and forum recovery handles; no learner IDs are returned.',add_help_option=False)
     return {key: CommandSpec(key, parser.help, 'auto', parser)
-            for key, parser in [('analytics.window',window), ('news', news), ('evidence', evidence), ('continue', continuation), ('runs', runs), ('chart.submissions', chart), ('chart.list', chart_list), ('chart.read', chart_read), ('analytics.run', analytics_run), ('analytics.capabilities', analytics_capabilities), ('analytics.result', analytics_result), ('analytics.start',analytics_start), ('analytics.continue',analytics_continue), ('analytics.runs',analytics_runs)]}
+            for key, parser in [('analytics.assessments',assessments), ('analytics.window',window), ('news', news), ('evidence', evidence), ('continue', continuation), ('runs', runs), ('chart.submissions', chart), ('chart.list', chart_list), ('chart.read', chart_read), ('analytics.run', analytics_run), ('analytics.capabilities', analytics_capabilities), ('analytics.result', analytics_result), ('analytics.start',analytics_start), ('analytics.continue',analytics_continue), ('analytics.runs',analytics_runs)]}
 
 
 def parse_task(tokens):
@@ -92,6 +99,8 @@ def parse_task(tokens):
         return None
     spec = task_specs()[key]
     params = spec.parse(tail)
+    if key == 'analytics.assessments' and params['after_id'] and params['through_id']<params['after_id']:
+        raise ValueError('Use the original upper assessment ID with the cursor')
     if key == 'analytics.window':
         from .analytics.window import plan_window
         plan_window(**params)

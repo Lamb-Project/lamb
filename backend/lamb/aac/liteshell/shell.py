@@ -387,7 +387,7 @@ class LiteShell:
                     binding['course_ids'] = sorted(set(map(int, course)))
                 elif course:
                     binding['course_id'] = int(course)
-            if key in {'moodle.chart.read','moodle.analytics.result','moodle.analytics.capabilities','moodle.analytics.start','moodle.analytics.continue'}:
+            if key in {'moodle.chart.read','moodle.analytics.result','moodle.analytics.capabilities','moodle.analytics.start','moodle.analytics.continue','moodle.analytics.assessments'}:
                 binding['course_id'] = data['course_id']
             if key in {'moodle.chart.list','moodle.analytics.runs'}:
                 binding['course_ids'] = sorted({item['course_id'] for item in data['items']})
@@ -420,7 +420,9 @@ class LiteShell:
                 if forum_scopes: binding['forum_scopes'] = forum_scopes
             elif isinstance(data, dict) and data.get('forum_scopes'):
                 binding['forum_scopes'] = data['forum_scopes']
-            if isinstance(data, dict) and isinstance(data.get('items'), list):
+            if isinstance(data, dict) and data.get('gradebook_scopes'):
+                binding['gradebook_scopes'] = data['gradebook_scopes']
+            elif isinstance(data, dict) and isinstance(data.get('items'), list):
                 gradebook_scopes = [scope for item in data['items'] for scope in item.get('gradebook_scopes', [])]
                 # Multiple saved comparisons can refer to the same exact item.
                 unique_scopes = []
@@ -428,8 +430,6 @@ class LiteShell:
                     if scope not in unique_scopes:
                         unique_scopes.append(scope)
                 if unique_scopes: binding['gradebook_scopes'] = unique_scopes
-            elif isinstance(data, dict) and data.get('gradebook_scopes'):
-                binding['gradebook_scopes'] = data['gradebook_scopes']
             if key in {'moodle.chart.submissions','moodle.analytics.run','moodle.analytics.start','moodle.analytics.continue'}:
                 binding['course_id'] = data['course_id']
                 emit = getattr(bridge, 'emit', None)

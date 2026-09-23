@@ -50,6 +50,7 @@ class MoodleRuntime:
             raise PermissionError('Resource evidence requires a bound course')
         # A saved listing contains up to 20 charts, each with 20 selected items.
         gradebook_scope_limit = 400 if key == 'moodle.chart.list' else 80 if key == 'moodle.analytics.runs' else 20
+        if key == 'moodle.analytics.assessments': gradebook_scope_limit = 100
         if 'gradebook_scopes' in binding and (not isinstance(binding['gradebook_scopes'],list)
                 or not 1 <= len(binding['gradebook_scopes']) <= gradebook_scope_limit):
             raise PermissionError('Invalid gradebook evidence scopes')
@@ -190,6 +191,12 @@ class MoodleRuntime:
             moodle_user_id=record['moodle_user_id'], generation=snap['generation'], root=self.cache_root)
         with MoodleHTTPClient(record['base_url'], token, readonly=True, timeout=15) as raw:
             client = GuardedClient(raw, revalidate=revalidate, cancel=cancel)
+            if key == 'analytics.assessments':
+                from .analytics.gradebook_inventory import inventory_page
+                client.max_calls = 120  # At most 100 exact item rechecks plus course identity.
+                data = inventory_page(client,record['moodle_user_id'],**params)
+                client.checkpoint()
+                return data
             if key in {'analytics.start','analytics.continue','analytics.runs'}:
                 from .analytics.recovery_tasks import execute
                 return execute(self,results,client,record['moodle_user_id'],key,params)

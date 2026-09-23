@@ -125,6 +125,7 @@ def requirements():
     result.update({key: IDENTITY for key in ('evidence','runs','chart.list','chart.read',
         'analytics.result','analytics.runs','cache.show')})
     result['analytics.capabilities'] = IDENTITY | {'core_webservice_get_site_info'}
+    result['analytics.assessments'] = IDENTITY | {'local_lambanalytics_gradebook_items','local_lambanalytics_gradebook_scope'}
     result['chart.submissions'] = IDENTITY | {'mod_assign_get_assignments','mod_assign_get_submission_status'}
     return result
 

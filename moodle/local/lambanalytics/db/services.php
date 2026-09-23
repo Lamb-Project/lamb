@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 defined('MOODLE_INTERNAL') || die();
 $functions = [
+    'local_lambanalytics_gradebook_items' => [
+        'classname' => 'local_lambanalytics\external\gradebook_items',
+        'methodname' => 'execute',
+        'description' => 'Discover bounded permission-filtered stored assessment metadata without reading learner grades.',
+        'type' => 'read',
+        'capabilities' => 'moodle/course:enrolreview,moodle/grade:viewall,moodle/grade:viewhidden',
+        'services' => [MOODLE_OFFICIAL_MOBILE_SERVICE],
+    ],
     'local_lambanalytics_gradebook_population' => [
         'classname' => 'local_lambanalytics\external\gradebook_population',
         'methodname' => 'execute',

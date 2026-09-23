@@ -9,6 +9,21 @@ from tests.test_moodle_store import stores
 from tests.test_moodle_runtime import runtime
 
 
+def test_assessment_inventory_parser_and_runtime(stores):
+    spec,p=parse_task(shlex.split('moodle analytics assessments --course 7 --group 4 --after-id 3 --through-id 9 --limit 2'))
+    assert spec.key=='analytics.assessments'
+    assert p==dict(course_id=7,group_id=4,after_id=3,through_id=9,limit=2)
+    with patch('lamb.moodle.analytics.gradebook_inventory.inventory_page',return_value={'items':[]}) as read:
+        assert runtime(stores).task(spec.key,p)=={'items':[]}
+        assert read.call_args.kwargs==p
+        assert read.call_args.args[0].max_calls==120
+
+
+@pytest.mark.parametrize('extra',['--after-id 1','--limit 101','--group -1','--through-id 2 --after-id 3'])
+def test_assessment_inventory_invalid_bounds(extra):
+    with pytest.raises(ValueError):parse_task(shlex.split('moodle analytics assessments --course 7 '+extra))
+
+
 @pytest.mark.parametrize('verb',['run','start'])
 def test_explicit_grade_item_selection(verb):
     spec,p=parse_task(shlex.split(f'moodle analytics {verb} assessment-comparison --course 7 --grade-item 2 --grade-item 3 --group 4 --tz Europe/Madrid'))

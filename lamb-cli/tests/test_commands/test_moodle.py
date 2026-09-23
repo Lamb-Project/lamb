@@ -8,6 +8,16 @@ from lamb_cli.main import app
 runner = CliRunner()
 
 
+def test_assessment_inventory_forwards_exact_cursor():
+    with patch('lamb_cli.commands.moodle.get_client') as client:
+        client.return_value.__enter__.return_value.post.return_value={'items':[]}
+        result=runner.invoke(app,['moodle','analytics','assessments','--course','7','--group','0',
+            '--after-id','3','--through-id','9','--limit','2'])
+        assert result.exit_code==0,result.output
+        tokens=shlex.split(client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'])
+        assert tokens==['moodle','analytics','assessments','--course','7','--group','0','--after-id','3','--through-id','9','--limit','2']
+
+
 @pytest.mark.parametrize('verb',['run','start'])
 def test_assessment_comparison_preserves_repeated_grade_item_ids(verb):
     with patch('lamb_cli.commands.moodle.get_client') as client:

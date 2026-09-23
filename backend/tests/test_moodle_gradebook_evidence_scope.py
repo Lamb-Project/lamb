@@ -34,6 +34,7 @@ def test_saved_gradebook_read_and_list_recheck_only_authority(stores,tmp_path):
 
 
 @pytest.mark.parametrize('command,data',[
+    ('moodle analytics assessments --course 7 --group 3',{'course_id':7,'gradebook_scopes':[SCOPE],'items':[]}),
     ('moodle chart read 00000000-0000-0000-0000-000000000001',{'course_id':7,'gradebook_scopes':[SCOPE]}),
     ('moodle analytics result 00000000-0000-0000-0000-000000000001',{'course_id':7,'gradebook_scopes':[SCOPE]}),
     ('moodle chart list',{'items':[{'course_id':7,'gradebook_scopes':[SCOPE]},{'course_id':7,'gradebook_scopes':[SCOPE]}]}),
@@ -76,3 +77,14 @@ def test_listing_can_bind_multiple_comparisons_without_truncating_scope(stores):
         assert validate.call_count==40
         with pytest.raises(PermissionError):
             rt.validate_result_binding(dict(rt.result_binding(),course_ids=[7],gradebook_scopes=scopes),'moodle.analytics.run')
+
+
+def test_inventory_hundred_item_binding_rechecks_all_and_rejects_overflow(stores):
+    rt=runtime(stores)
+    scopes=[dict(SCOPE,grade_item_id=i) for i in range(1,101)]
+    with patch('lamb.moodle.runtime.MoodleScope'), \
+            patch('lamb.moodle.analytics.gradebook_authorization.validate_gradebook_scope') as validate:
+        rt.validate_result_binding(dict(rt.result_binding(),course_id=7,gradebook_scopes=scopes),'moodle.analytics.assessments')
+        assert validate.call_count==100
+        with pytest.raises(PermissionError):
+            rt.validate_result_binding(dict(rt.result_binding(),course_id=7,gradebook_scopes=scopes+[dict(SCOPE,grade_item_id=101)]),'moodle.analytics.assessments')
