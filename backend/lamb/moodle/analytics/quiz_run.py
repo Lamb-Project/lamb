@@ -50,7 +50,7 @@ def start(store, course_id, quiz_id, *, group_id=0, policy, language='en', tz='U
     cursor = initial_cursor(course_id, quiz_id, group_id)
     return store.create({'scope': {'course_id': course_id, 'quiz_id': quiz_id, 'group_id': group_id},
                          'policy': policy, 'language': language, 'tz': tz, 'started_at': _now(), 'cursor': cursor,
-                         'context': None, 'calls': 0, 'steps': 0, 'done': False})
+                         'context': None, 'calls': 0, 'steps': 0, 'pages': 0, 'done': False})
 
 
 def advance(store, client, owner_id, identity):
@@ -94,7 +94,13 @@ def advance(store, client, owner_id, identity):
                 state['context'] = current
                 save()
             if not state['done']:
-                for _ in range(PAGES_PER_STEP):
+                target = state.get('pages', 0) + PAGES_PER_STEP
+                if 'active_public_step' in state:
+                    if 'public_target_pages' not in state:
+                        state['public_target_pages'] = target
+                        save()
+                    target = state['public_target_pages']
+                while state.get('pages', 0) < target:
                     cursor = state['cursor']
                     if cursor['done']:
                         break
@@ -104,6 +110,7 @@ def advance(store, client, owner_id, identity):
                         quizid=scope['quiz_id'], groupid=scope['group_id'], afterid=cursor['afterid'],
                         throughid=cursor['throughid'] or 0, limit=200)
                     state['cursor'] = advance_cursor(cursor, cursor['afterid'], page)
+                    state['pages'] = state.get('pages', 0) + 1
                     save()
                 verify()
                 if state['cursor']['done']:
@@ -114,6 +121,8 @@ def advance(store, client, owner_id, identity):
                         policy=state['policy'])
                     state['done'] = True
                     state['completed_at'] = _now()
+                if 'active_public_step' in state:
+                    state['finished_public_step'] = state['active_public_step']
                 save()
             client.checkpoint()
             return record
