@@ -145,6 +145,7 @@
         {/each}
     </ul>
     <p class="caption">{workspaceText(data.language).caption}<br /><span>{text.extensions}</span></p>
+    {#if data.deadline_provenance_caption}<p class="caption" data-deadline-provenance>{data.deadline_provenance_caption}</p>{/if}
     {#if data.rows.length}
     <p class="table-hint">{text.table}</p>
     <!-- Keyboard focus lets users scroll the exact-values table with arrow keys. -->

@@ -39,9 +39,30 @@ def test_counts_use_moodle_eligible_participants_and_no_personal_data():
 
 
 @pytest.mark.parametrize('due,opens,expected', [(100,0,'deadline_passed'),(0,0,'no_deadline'),(9999999999,0,'open'),(9999999999,9999999998,'not_open')])
-def test_deadline_labels_are_course_defaults(due,opens,expected):
+def test_deadline_status_uses_connected_accounts_effective_dates(due,opens,expected):
     c=Client();c.assignments[0].update(duedate=due,allowsubmissionsfromdate=opens)
-    assert snapshot(c)['rows'][0]['deadline_status']==expected
+    data=snapshot(c)
+    assert data['rows'][0]['deadline_status']==expected
+    assert data['deadline_basis']=='connected_account_effective'
+    assert data['labels'][4]=='Connected account deadline'
+    assert 'not verified course defaults' in data['deadline_provenance_caption']
+
+
+@pytest.mark.parametrize('language',['en','es','ca','eu'])
+def test_old_saved_submission_dates_correct_provenance_without_rewriting_evidence(tmp_path,language):
+    from lamb.moodle.charts import LABELS
+    store=ChartStore(runtime(tmp_path))
+    old=snapshot(language=language)
+    for key in ('deadline_basis','deadline_provenance_caption','deadline_provenance_corrected_on_read'):
+        old.pop(key)
+    old['labels']=LABELS[language]
+    identity=store.save(old,{'course_id':2})
+    path=store.root/(identity+'.json');before=path.read_bytes()
+    read=store.read(identity)
+    assert read['deadline_provenance_corrected_on_read'] is True
+    assert read['labels'][4]!=old['labels'][4]
+    assert read['rows']==old['rows'] and read['as_of']==old['as_of']
+    assert path.read_bytes()==before
 
 
 @pytest.mark.parametrize('summary', [{'participantcount':1,'submissionssubmittedcount':2,'submissionsenabled':True},

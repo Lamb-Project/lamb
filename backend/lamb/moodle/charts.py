@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from .scope import MoodleScope
 from .storage import ensure_private, private_root
 from .forum_activity import TaskCancelled, TaskLimit, preview
+from .submission_dates import with_date_provenance
 from lamb.private_storage import atomic_json, read_json, sync_directory
 
 MAX_ASSIGNMENTS = 20
@@ -77,7 +78,8 @@ def submission_snapshot(client, owner_id, course_id, *, tz='UTC', language='en',
         if progress: progress(index + 1, min(len(assignments), MAX_ASSIGNMENTS))
     client.checkpoint()
     labels = LABELS[language]
-    return {'recipe': 'assignment-submissions-v1', 'title': labels[0], 'language': language, 'labels': labels,
+    return with_date_provenance({'recipe': 'assignment-submissions-v1', 'title': labels[0], 'language': language, 'labels': labels,
+            'deadline_basis':'connected_account_effective',
             'course_id': course_id, 'course_name': preview(courses[0]['fullname'], 160)[0],
             'as_of': datetime.fromtimestamp(started, zone).isoformat(), 'timezone': tz, 'rows': rows,
             'caption': labels[11], 'source': 'Moodle all-groups grading summaries; current participants who can submit',
@@ -86,7 +88,8 @@ def submission_snapshot(client, owner_id, course_id, *, tz='UTC', language='en',
                          'omitted_by_limit': max(0, len(assignments)-MAX_ASSIGNMENTS)},
             'limitations': ['Current snapshot, not submission history or an atomic Moodle snapshot.',
                            'Outstanding does not mean late: personal extensions and overrides are not inspected.',
-                           'Team/offline assignments are explicitly excluded; no student names, grades or submissions are retained.']}
+                           'Team/offline assignments are explicitly excluded; no student names, grades or submissions are retained.',
+                           'Inventory dates apply to the connected account, not verified course defaults or student-specific deadlines.']})
 
 
 class ChartStore:
@@ -143,7 +146,7 @@ class ChartStore:
         except (OSError, ValueError, TypeError):
             raise PermissionError('Chart is unavailable') from None
         self.runtime.validate_result_binding(envelope['binding'], envelope.get('command', 'moodle.chart.submissions'))
-        return {'chart_id': identity, **envelope['snapshot']}
+        return {'chart_id': identity, **with_date_provenance(envelope['snapshot'])}
 
     def listing(self, offset=0):
         """Bound the scan, and never expose metadata before current ACL validation."""
@@ -179,6 +182,8 @@ def chart_task(runtime, client, owner_id, params, *, progress=None):
     return {'chart_id': identity, 'title': snapshot['title'], 'course_id': snapshot['course_id'],
             'as_of': snapshot['as_of'], 'coverage': snapshot['coverage'], 'caption': snapshot['caption'],
             'facts': snapshot['rows'], 'limitations': snapshot['limitations'],
+            'deadline_basis':snapshot['deadline_basis'],
+            'deadline_provenance_caption':snapshot['deadline_provenance_caption'],
             'interpretation': {
                 'individual_extensions': 'not_checked',
                 'individual_lateness': 'unknown',

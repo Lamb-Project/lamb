@@ -11,7 +11,7 @@ from lamb.moodle.runtime import attach_to_agent
 
 def test_moodle_recipes_and_generated_commands_validate():
     pack=load_pack()
-    assert pack.version=='1.22.0'
+    assert pack.version=='1.22.1'
     validate_routing(pack)
     assert validate_skill_contracts(pack)
     names={'moodle-triage','moodle-forums','moodle-course-documents','moodle-assessment-draft'}
@@ -36,6 +36,8 @@ def test_calendar_guidance_preserves_defaults_window_and_snapshot_semantics():
     for phrase in ('not individual or group deadlines','exclusive end','Weekly density counts due events only',
                    'Do not infer lateness','relative-date course','chart read'):
         assert phrase in text
+    assert 'connected_account_effective' in text
+    assert 'Do not call them verified course defaults' in text
 
 
 def test_new_task_pack_requires_an_engine_with_task_support(monkeypatch):

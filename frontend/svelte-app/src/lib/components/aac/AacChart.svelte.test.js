@@ -42,6 +42,17 @@ it('retains the table if rendering fails', async () => {
     expect(screen.getByRole('table')).toBeInTheDocument();
     expect(screen.queryByRole('img')).toBeNull();
 });
+
+it('shows explicit connected-account date provenance beside submission evidence', async () => {
+    const data=snapshot();
+    data.labels[4]='Connected account deadline';
+    data.deadline_provenance_caption='Dates apply to the connected Moodle account, not verified course defaults.';
+    apiJson.mockResolvedValue(data);
+    render(AacChart,{chartId:'effective-dates'});
+    await screen.findByText(data.deadline_provenance_caption);
+    expect(screen.getByRole('columnheader',{name:'Connected account deadline'})).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader',{name:'Course deadline'})).toBeNull();
+});
 it('shows empty state without requesting a meaningless image', async () => {
     apiJson.mockResolvedValue({...snapshot(),rows:[],coverage:{complete:true,assignments_read:0,assignments_found:0}});
     render(AacChart,{chartId:'empty'});
