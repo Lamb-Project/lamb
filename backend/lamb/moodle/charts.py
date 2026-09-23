@@ -13,6 +13,7 @@ from .scope import MoodleScope
 from .storage import ensure_private, private_root
 from .forum_activity import TaskCancelled, TaskLimit, preview
 from .submission_dates import with_date_provenance
+from .analytics.quiz_evidence import with_quiz_semantics
 from lamb.private_storage import atomic_json, read_json, sync_directory
 
 MAX_ASSIGNMENTS = 20
@@ -159,7 +160,7 @@ class ChartStore:
         except (OSError, ValueError, TypeError):
             raise PermissionError('Chart is unavailable') from None
         self.runtime.validate_result_binding(envelope['binding'], envelope.get('command', 'moodle.chart.submissions'))
-        return {'chart_id': identity, **with_date_provenance(envelope['snapshot'])}
+        return {'chart_id': identity, **with_quiz_semantics(with_date_provenance(envelope['snapshot']))}
 
     def listing(self, offset=0):
         """Bound the scan, and never expose metadata before current ACL validation."""

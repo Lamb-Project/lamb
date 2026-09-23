@@ -62,6 +62,22 @@ def test_count_axis_never_uses_fractional_attempt_ticks(tmp_path):
     assert len(axis['values']) <= 6 and all(type(value) is int for value in axis['values'])
 
 
+@pytest.mark.parametrize('language', ['en', 'es', 'ca', 'eu'])
+def test_saved_policy_projection_does_not_rewrite_snapshot(tmp_path, language):
+    s, rt, client, identity = fixture(tmp_path, language)
+    result = publish(s, rt, client, identity)
+    charts = ChartStore(rt)
+    path = charts.root / (result['chart_id'] + '.json')
+    original = path.read_bytes()
+    raw = json.loads(original)['snapshot']
+    saved = charts.read(result['chart_id'])
+    assert saved['attempt_policy'] == 'all_finished'
+    assert 'NOT last-attempt marks' in saved['score_basis']
+    assert saved['rows'] == raw['rows'] and saved['as_of'] == raw['as_of']
+    assert path.read_bytes() == original
+    assert 'attempt_policy' not in raw  # Existing schema needs no migration.
+
+
 def test_lost_save_response_and_failed_ack_recover_same_snapshot(tmp_path):
     s, rt, client, identity = fixture(tmp_path)
     original = ChartStore.save
