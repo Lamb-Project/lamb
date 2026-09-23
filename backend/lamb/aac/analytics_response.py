@@ -46,6 +46,28 @@ def repair_instruction(errors):
             + ' '.join(errors))
 
 
+def evidence_instruction(evidence, state):
+    """Trusted tail guidance, never inferred from chart labels or persisted.
+
+Source locale describes saved evidence, not the requested response language.
+This is guidance rather than a claim that language or arithmetic is validated.
+"""
+    from lamb.aac.language import LANGUAGES
+    state = state or {}
+    language = state.get('response_language_policy', {}).get('effective_language', state.get('ui_language'))
+    parts = ['[Application analytics evidence guidance] Explain the saved evidence without an unrequested next-action or refresh menu.']
+    if language in LANGUAGES:
+        parts.append(f'Reply in {LANGUAGES[language]}. Saved chart labels and captions may use another language; '
+                     'they do not change the response language. Keep resource names and commands unchanged.')
+    if evidence.get('recipe') == 'quiz-overview':
+        parts.append('Preserve the saved attempt_policy exactly: all_finished includes all selected finished attempts, '
+                     'not just the latest one. Missing marks are not zero; excluded previews are not exemptions. '
+                     'Retry score_change_percentage_points is a difference in PERCENTAGE POINTS, not raw points '
+                     'or relative percent improvement. between_attempt_seconds is seconds, not study time. '
+                     'Do not infer individual starting or ending scores from an aggregate mean delta.')
+    return ' '.join(parts)
+
+
 def failure_notice(language):
     return {
         'en':'I could not validate the explanation against the saved chart. The chart remains available in Moodle > Charts; no additional data was collected during the explanation check.',

@@ -2,10 +2,34 @@ import asyncio
 from unittest.mock import AsyncMock
 import pytest
 
-from lamb.aac.analytics_response import contract, violations
+from lamb.aac.analytics_response import contract, violations, evidence_instruction
 from tests.test_aac_legacy import agent, message, tool, turn
 
 RESULT = {'success':True,'data':{'recipe':{'id':'grade-distribution'},'grade_released':None}}
+
+
+def test_evidence_language_uses_effective_session_not_source_locale():
+    evidence = {'recipe':'quiz-overview', 'language':'ca'}
+    guide = evidence_instruction(evidence, {'ui_language':'ca',
+        'response_language_policy':{'effective_language':'es'}})
+    assert 'Reply in Spanish.' in guide and 'Reply in Catalan.' not in guide
+    assert 'PERCENTAGE POINTS' in guide and 'not raw points' in guide
+    assert 'not exemptions' in guide
+    assert 'Reply in' not in evidence_instruction(evidence, {'ui_language':'untrusted text'})
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+def test_quiz_guidance_follows_tool_evidence_without_rewriting_history(streaming):
+    quiz = {'success':True, 'data':{'recipe':{'id':'quiz-overview'}, 'language':'ca'}}
+    a, provider, shell = agent([message(tools=[tool()]), message('Cambio: 100 puntos porcentuales.')])
+    a.skill_state = {'ui_language':'es'}
+    a._execute_tool = AsyncMock(return_value=quiz)
+    assert asyncio.run(turn(a, streaming)) == 'Cambio: 100 puntos porcentuales.'
+    guide = provider.calls[-1]['messages'][-1]
+    assert guide['role'] == 'user' and 'Reply in Spanish.' in guide['content']
+    assert 'PERCENTAGE POINTS' in guide['content']
+    assert '[Application analytics evidence guidance]' not in str(a.conversation)
+    assert a._execute_tool.await_count == 1
 
 
 @pytest.mark.parametrize('streaming', [False, True])

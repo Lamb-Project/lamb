@@ -21,6 +21,7 @@ def test_saved_semantics_preserve_evidence_and_scope_warning(policy, warning):
     assert result['metrics']['selected_attempts'] == 4
     assert result['attempt_policy'] == policy and result['score_basis'] == SCORE_BASES[policy]
     assert 'not student exemptions' in result['preview_basis']
+    assert 'percentage points' in result['retry_basis']
     assert (warning in result['caption']) == (policy == 'best_scored_finished')
     for container in (result, result['metrics']):
         assert (BEST_LIMITATION in container['limitations']) == (policy == 'best_scored_finished')
@@ -42,3 +43,4 @@ def test_bounded_preview_keeps_policy_and_meaning():
     assert 'ALL selected finished attempts' in result['score_basis']
     assert 'not student exemptions' in result['preview_basis']
     assert result['snapshot_date_label'] == saved['snapshot_date_label']
+    assert 'percentage points' in result['retry_basis']

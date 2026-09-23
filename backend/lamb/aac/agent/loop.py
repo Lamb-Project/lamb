@@ -553,6 +553,9 @@ class AgentLoop(SkillRouting):
                 from lamb.aac.glossary import model_messages
                 conversation = model_messages(conversation, self.skill_state['brief']['glossary'])
             messages = [{"role": "system", "content": self.system_prompt}] + conversation
+            if analytics_evidence:
+                from lamb.aac.analytics_response import evidence_instruction
+                messages.append({'role':'user', 'content':evidence_instruction(analytics_evidence, self.skill_state)})
             if analytics_repair:
                 messages += analytics_repair
             message = None

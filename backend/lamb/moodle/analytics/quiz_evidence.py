@@ -30,6 +30,9 @@ def with_quiz_semantics(snapshot):
     result['attempt_policy'] = policy
     result['score_basis'] = SCORE_BASES[policy]
     result['preview_basis'] = 'Excluded previews are practice/teacher previews, not student exemptions.'
+    result['retry_basis'] = ('Actual finished attempts 1 and 2 with both marks. Score change is in percentage points, '
+                             'not raw points or relative percent change; the between-attempt gap is in seconds, '
+                             'not study time. Aggregate deltas do not provide individual endpoint scores.')
     if policy != 'best_scored_finished':
         for warning in BEST_WARNINGS:
             if isinstance(result.get('caption'), str):
