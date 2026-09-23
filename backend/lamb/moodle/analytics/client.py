@@ -105,5 +105,19 @@ class AnalyticsHTTPClient(MoodleHTTPClient):
             raise ValueError(f'Invalid {label} response')
         if 'exception' in data:
             # Do not propagate arbitrary plugin debug details or server paths.
-            raise MoodleAPIError(f'{label} source rejected the request', error_code=data.get('errorcode'))
+            code = data.get('errorcode')
+            if not isinstance(code, str):
+                code = None
+            if code in {'nopermissions','requiredcapabilitymissing','requireloginerror'}:
+                message = f'{label} permission denied by Moodle; no data result was obtained'
+            elif code in {'invalidrecord','invalidparameter','invalidrequest'}:
+                message = f'{label} source rejected the request parameters or target; this is not an empty result'
+            elif code == 'accessexception':
+                message = f'{label} token/service access denied by Moodle; this does not establish an empty date range'
+            else:
+                message = f'{label} source rejected the request; source availability is unknown, not an empty result'
+            # Unknown upstream strings stay private, including the errorcode field.
+            safe_codes = {'nopermissions','requiredcapabilitymissing','requireloginerror',
+                          'invalidrecord','invalidparameter','invalidrequest','accessexception'}
+            raise MoodleAPIError(message, error_code=code if code in safe_codes else None)
         return data

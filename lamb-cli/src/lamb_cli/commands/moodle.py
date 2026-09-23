@@ -21,13 +21,27 @@ def analytics_run(recipe: str, course: int = typer.Option(...,'--course',min=1),
                   assignment: Optional[int] = typer.Option(None,'--assignment',min=1),
                   since: Optional[str] = typer.Option(None,'--since'),
                   until: Optional[str] = typer.Option(None,'--until'),
+                  through: Optional[str] = typer.Option(None,'--through',help='Inclusive last local date for event recipes.'),
                   group: Optional[int] = typer.Option(None,'--group',min=1),
                   tz: str = typer.Option('UTC','--tz'), language: str = typer.Option('en','--language')):
     tokens = ['analytics','run',recipe,'--course',str(course),'--tz',tz,'--language',language]
     if since is not None: tokens += ['--since',since]
     if assignment is not None: tokens += ['--assignment',str(assignment)]
     if until is not None: tokens += ['--until',until]
+    if through is not None: tokens += ['--through',through]
     if group is not None: tokens += ['--group',str(group)]
+    run(tokens)
+
+
+@analytics_app.command('window')
+def analytics_window(since: str = typer.Option(...,'--since'),
+                     through: Optional[str] = typer.Option(None,'--through'),
+                     until: Optional[str] = typer.Option(None,'--until'),
+                     tz: str = typer.Option('UTC','--tz')):
+    """Plan local calendar bounds, without collecting or inferring available data."""
+    tokens=['analytics','window','--since',since,'--tz',tz]
+    if through is not None: tokens += ['--through',through]
+    if until is not None: tokens += ['--until',until]
     run(tokens)
 
 

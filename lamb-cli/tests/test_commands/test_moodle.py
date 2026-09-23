@@ -7,6 +7,21 @@ from lamb_cli.main import app
 runner = CliRunner()
 
 
+def test_inclusive_window_is_forwarded_without_cli_date_reinterpretation():
+    with patch('lamb_cli.commands.moodle.get_client') as client:
+        client.return_value.__enter__.return_value.post.return_value={'calendar_days':92,'collection_supported':False}
+        result=runner.invoke(app,['moodle','analytics','window','--since','2026-06-01',
+            '--through','2026-08-31','--tz','Europe/Madrid'])
+        assert result.exit_code==0,result.output
+        tokens=shlex.split(client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'])
+        assert tokens==['moodle','analytics','window','--since','2026-06-01','--tz','Europe/Madrid','--through','2026-08-31']
+        result=runner.invoke(app,['moodle','analytics','run','view-trends','--course','7',
+            '--since','2026-08-01','--through','2026-08-31','--tz','Europe/Madrid'])
+        assert result.exit_code==0,result.output
+        tokens=shlex.split(client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'])
+        assert tokens[tokens.index('--through')+1]=='2026-08-31'
+
+
 def test_view_trends_uses_authenticated_analytics_task_with_window_and_group():
     with patch('lamb_cli.commands.moodle.get_client') as client:
         client.return_value.__enter__.return_value.post.return_value={'chart_id':'saved'}

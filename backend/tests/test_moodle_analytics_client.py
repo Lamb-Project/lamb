@@ -51,11 +51,24 @@ def test_plugin_errors_do_not_expose_debug_details():
                     'message':'secret-server-path','debuginfo':'private-test-token'})) as c:
         with pytest.raises(MoodleAPIError) as exc: c.call(EVENT_FUNCTION,courseid=7,since=1,until=2)
         assert 'secret-server-path' not in str(exc.value) and 'private-test-token' not in str(exc.value)
+        assert 'permission denied' in str(exc.value)
 
 
 def test_standard_reads_still_use_upstream_client():
     with client(lambda request:httpx.Response(200,json={'userid':12})) as c:
         assert c.call('core_webservice_get_site_info') == {'userid':12}
+
+
+@pytest.mark.parametrize('code,fragment', [
+    ('nopermissions','permission denied'), ('accessexception','token/service access denied'),
+    ('invalidparameter','parameters or target'), ('private-secret','availability is unknown'),
+    (['private-secret'],'availability is unknown')])
+def test_source_failure_categories_are_not_empty_results_or_raw_upstream_text(code,fragment):
+    with client(lambda request:httpx.Response(200,json={'exception':'error','errorcode':code,
+            'message':'private-secret','debuginfo':'private-secret'})) as c:
+        with pytest.raises(MoodleAPIError) as error:
+            c.call(EVENT_FUNCTION,courseid=7,since=1,until=2)
+        assert fragment in str(error.value) and 'private-secret' not in str(error.value)
 
 
 def test_default_dates_extension_has_fixed_scope_and_bounded_readback():

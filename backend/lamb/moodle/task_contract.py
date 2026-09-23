@@ -6,6 +6,13 @@ import click
 @lru_cache(maxsize=1)
 def task_specs():
     from .contract import CommandSpec
+    window = click.Command('window', params=[
+        click.Option(['--since'],required=True,help='Inclusive local date YYYY-MM-DD.'),
+        click.Option(['--through'],help='Inclusive last local date YYYY-MM-DD.'),
+        click.Option(['--until'],help='Exclusive end local date YYYY-MM-DD; alternative to --through.'),
+        click.Option(['--tz'],default='UTC',help='IANA timezone.')],
+        help='Plan exact event-calendar bounds locally, preserving unsupported intervals. Does not inspect data availability or call Moodle.',
+        add_help_option=False)
     news = click.Command('news', params=[
         click.Option(['--all-courses'], is_flag=True),
         click.Option(['--course', 'course_ids'], multiple=True, type=click.IntRange(min=1), help='Repeat in ONE call for several selected courses: --course 12 --course 34.'),
@@ -38,6 +45,7 @@ def task_specs():
         click.Option(['--course','course_id'], required=True, type=click.IntRange(min=1)),
         click.Option(['--since'], help='Inclusive local date, YYYY-MM-DD.'),
         click.Option(['--until'], help='Exclusive local date; required for deadlines, otherwise omitted means now for view recipes.'),
+        click.Option(['--through'], help='Inclusive last local date for event recipes; alternative to --until.'),
         click.Option(['--group','group_id'], type=click.IntRange(min=1)),
         click.Option(['--tz'], default='UTC'),
         click.Option(['--language'], default='en', type=click.Choice(['en','es','ca','eu'])),
@@ -57,7 +65,7 @@ def task_specs():
         help='Advance one bounded completion step. Retry the exact command after interruption or a lost response.',add_help_option=False)
     analytics_runs = click.Command('runs',help='List authorized private completion recovery handles; no learner IDs are returned.',add_help_option=False)
     return {key: CommandSpec(key, parser.help, 'auto', parser)
-            for key, parser in [('news', news), ('evidence', evidence), ('continue', continuation), ('runs', runs), ('chart.submissions', chart), ('chart.list', chart_list), ('chart.read', chart_read), ('analytics.run', analytics_run), ('analytics.capabilities', analytics_capabilities), ('analytics.result', analytics_result), ('analytics.start',analytics_start), ('analytics.continue',analytics_continue), ('analytics.runs',analytics_runs)]}
+            for key, parser in [('analytics.window',window), ('news', news), ('evidence', evidence), ('continue', continuation), ('runs', runs), ('chart.submissions', chart), ('chart.list', chart_list), ('chart.read', chart_read), ('analytics.run', analytics_run), ('analytics.capabilities', analytics_capabilities), ('analytics.result', analytics_result), ('analytics.start',analytics_start), ('analytics.continue',analytics_continue), ('analytics.runs',analytics_runs)]}
 
 
 def parse_task(tokens):
@@ -74,6 +82,9 @@ def parse_task(tokens):
         return None
     spec = task_specs()[key]
     params = spec.parse(tail)
+    if key == 'analytics.window':
+        from .analytics.window import plan_window
+        plan_window(**params)
     if key in {'chart.read','analytics.result'}:
         from uuid import UUID
         try: params['chart_id'] = str(UUID(params['chart_id']))
@@ -88,6 +99,13 @@ def parse_task(tokens):
         except (ValueError, ZoneInfoNotFoundError): raise ValueError('Use an IANA timezone') from None
     if key == 'analytics.run':
         from datetime import date
+        from .analytics.window import EVENT_RECIPES, plan_window, require_event_window
+        through = params.pop('through', None)
+        if through is not None:
+            if params['recipe'] not in EVENT_RECIPES:
+                raise ValueError('--through applies only to recorded-event recipes')
+            plan = plan_window(params['since'],until=params['until'],through=through,tz=params['tz'])
+            params['until'] = plan['until']
         if params['recipe'] == 'grade-distribution':
             if params['assignment_id'] is None:
                 raise ValueError('Grade distribution requires --assignment ID')
@@ -110,6 +128,7 @@ def parse_task(tokens):
                 try: end = date.fromisoformat(params['until'])
                 except (ValueError, TypeError): raise ValueError('Use --until YYYY-MM-DD') from None
                 if end <= date.fromisoformat(params['since']): raise ValueError('--until must follow --since')
+                require_event_window(params['since'], params['until'], params['tz'])
         elif params['until'] is not None or params['group_id'] is not None:
             raise ValueError('--until and --group apply only to resource reach and recorded-view recipes')
     if key == 'news':

@@ -113,7 +113,7 @@ def run_recipe(runtime, client, owner_id, params, *, progress=None):
                     for i,r in enumerate(display_bins(data['distribution']))]
             module_ids=data.pop('module_ids')
         else:
-            data = resource_reach(client, owner_id, course, since=since, until=until, group_id=params.get('group_id') or 0)
+            data = resource_reach(client, owner_id, course, since=since, until=until, group_id=params.get('group_id') or 0, window_timezone=params['tz'])
             rows = [{**r,'id':r['cmid'],'name':f"{r['name']} (#{r['cmid']})",
                      'value':r['unique_student_viewers'],'status':'ok','reason':None} for r in data['rows']]
             module_ids=[r['cmid'] for r in rows]

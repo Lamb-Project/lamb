@@ -49,10 +49,12 @@ def _students(client, course, group):
                       'role_unknown':unknown, 'population_exhausted':exhausted}
 
 
-def resource_reach(client, owner_id, course_id, *, since, until, group_id=0, view_timezone=None):
+def resource_reach(client, owner_id, course_id, *, since, until, group_id=0, view_timezone=None, window_timezone='UTC'):
     now = int(time.time())
-    if any(type(v) is not int for v in (since, until, group_id)) or not 0 <= since < until <= now or until-since > 90*86400 or group_id < 0:
-        raise ValueError('Use a past event window of at most 90 days and a nonnegative group ID')
+    if any(type(v) is not int for v in (since, until, group_id)) or not 0 <= since < until <= now or group_id < 0:
+        raise ValueError('Use a past event window and a nonnegative group ID')
+    from .window import require_event_timestamps
+    require_event_timestamps(since,until,window_timezone)
     scope = MoodleScope(client, owner_id)
     course = scope.require_teacher(course_id)
     request = {'courseid':course,'since':since,'until':until,'groupid':group_id,'limit':PAGE_SIZE}
@@ -162,7 +164,7 @@ def view_activity(client, owner_id, course_id, *, since, until, timezone, group_
     Shares resource inventory, permissions, source validation and coverage.
     No public recipe is registered until presentation and AAC acceptance exist.
     """
-    evidence=resource_reach(client,owner_id,course_id,since=since,until=until,
+    evidence=resource_reach(client,owner_id,course_id,since=since,until=until,window_timezone=timezone,
         group_id=group_id,view_timezone=timezone)
     return {key:evidence[key] for key in ('course_id','course_name','group_id','as_of','source','watermark','coverage')} | {
         'module_ids':[row['cmid'] for row in evidence['rows']],

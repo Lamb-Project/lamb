@@ -42,11 +42,11 @@ class MoodleRuntime:
                           'write_groups':sorted(policy.write_groups), 'allow_grade_write':policy.allow_grade_write}}
 
     def validate_result_binding(self, binding, key):
-        expected = {k:v for k,v in binding.items() if k not in {'course_id', 'course_ids', 'resource_scopes', 'grade_scopes', 'completion_scopes', 'date_scopes'}}
+        expected = {k:v for k,v in binding.items() if k not in {'course_id', 'course_ids', 'resource_scopes', 'grade_scopes', 'completion_scopes', 'date_scopes', 'quiz_scopes'}}
         if self.result_binding() != expected or key not in self.available():
             raise PermissionError('Moodle snapshot is no longer accessible; run a fresh read')
         courses = binding.get('course_ids', binding.get('course_id'))
-        if any(binding.get(field) for field in ('resource_scopes','grade_scopes','completion_scopes','date_scopes')) and not courses:
+        if any(binding.get(field) for field in ('resource_scopes','grade_scopes','completion_scopes','date_scopes','quiz_scopes')) and not courses:
             raise PermissionError('Resource evidence requires a bound course')
         if courses:
             snap = self.snapshot(); record = snap['record']
@@ -89,6 +89,14 @@ class MoodleRuntime:
                         if not isinstance(date_scope,dict) or date_scope.get('course_id') not in (courses if isinstance(courses,(tuple,list)) else [courses]):
                             raise PermissionError('Date scope is outside the bound courses')
                         validate_date_scope(client,date_scope)
+                    from .analytics.quiz_authorization import validate_quiz_scope
+                    quiz_scopes = binding.get('quiz_scopes', [])
+                    if not isinstance(quiz_scopes, list) or len(quiz_scopes) > 20:
+                        raise PermissionError('Invalid quiz evidence scopes')
+                    for quiz_scope in quiz_scopes:
+                        if not isinstance(quiz_scope, dict) or quiz_scope.get('course_id') not in (courses if isinstance(courses, (tuple, list)) else [courses]):
+                            raise PermissionError('Quiz scope is outside the bound courses')
+                        validate_quiz_scope(client, quiz_scope)
             except Exception as error:
                 from .forum_activity import transient_failure
                 if transient_failure(error):
@@ -122,11 +130,14 @@ class MoodleRuntime:
         record = self.snapshot()['record']
         if function_snapshot(record) is None:
             raise PermissionError('Reconnect on the Moodle page to validate token capabilities')
+        check_parameters(key, params, record)
         if 'moodle.' + key not in self.available():
             raise PermissionError('Command unavailable under LAMB policy and validated token capabilities')
-        check_parameters(key, params, record)
 
     def task(self, key, params, *, cancel=None, progress=None, full=False):
+        if key == 'analytics.window':
+            from .analytics.window import plan_window
+            return plan_window(**params)
         if key in {'chart.list', 'chart.read', 'analytics.result'}:
             from .charts import ChartStore
             binding = self.result_binding()
@@ -361,9 +372,11 @@ def attach_to_agent(agent, store):
     facts=None
     if snapshot:
         record=snapshot['record']
+        from .discovery import recipe_sources
         facts={'base_url':record['base_url'],'username':record['username'],
                'pack_version':getattr(getattr(agent,'pack',None),'version',None),
-               'generation':snapshot['generation'],'commands':sorted(keys),'model':agent.model,'provider':getattr(getattr(agent,'llm_client',None),'_lamb_aac_driver',{}).get('provider','unknown'),'forum_write': 'moodle.forum.post' in keys,'grade_write': 'moodle.assign.grade' in keys}
+               'generation':snapshot['generation'],'commands':sorted(keys),'analytics_sources':recipe_sources(record),
+               'model':agent.model,'provider':getattr(getattr(agent,'llm_client',None),'_lamb_aac_driver',{}).get('provider','unknown'),'forum_write': 'moodle.forum.post' in keys,'grade_write': 'moodle.assign.grade' in keys}
     state=agent.skill_state
     if state.get('moodle_capability')==facts: return
     state['moodle_capability']=facts

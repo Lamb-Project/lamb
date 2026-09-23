@@ -117,6 +117,7 @@ def requirements():
     for key in document_specs():
         result[key] = IDENTITY | CONTENTS
     result['import.list'] = set()
+    result['analytics.window'] = set()
     result['import.file'] |= {'core_files_get_files'}
     forum = IDENTITY | {'mod_forum_get_forums_by_courses','mod_forum_get_forum_discussions',
                         'mod_forum_get_discussion_posts'}
@@ -131,6 +132,16 @@ def requirements():
 def available_recipes(names):
     from .analytics.recipes import RECIPES
     return [key for key, spec in RECIPES.items() if IDENTITY | set(spec['functions']) <= names]
+
+
+def recipe_sources(record):
+    from .analytics.recipes import RECIPES
+    names = function_snapshot(record)
+    return {key: {'function_status':'unknown' if names is None else
+                     ('exposed' if IDENTITY | set(spec['functions']) <= names else 'missing'),
+                  'missing_functions':None if names is None else sorted((IDENTITY | set(spec['functions'])) - names),
+                  'course_permission':'not_checked','historical_coverage':'unknown'}
+            for key, spec in RECIPES.items()}
 
 
 def content_choices(names):
@@ -168,7 +179,10 @@ def filter_keys(keys, record):
 def check_parameters(key, params, record):
     names = function_snapshot(record) or set()
     if key in {'analytics.run','analytics.start'} and params['recipe'] not in available_recipes(names):
-        raise PermissionError('This analytics recipe is unavailable for the validated token')
+        missing = recipe_sources(record).get(params['recipe'], {}).get('missing_functions')
+        raise PermissionError('Analytics source unavailable for this validated connection; missing required functions: '
+            + ', '.join(missing or []) + '. This is not an empty date range or proof of a course permission denial. '
+            'Do not retry other dates; site/service configuration needs review. No automatic installation or permission expansion.')
     if key == 'content.list' and params['module_type'] not in content_choices(names):
         raise PermissionError('This content type is unavailable for the validated token')
     if key == 'sync':
