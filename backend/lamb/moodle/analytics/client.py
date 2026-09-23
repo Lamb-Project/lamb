@@ -14,6 +14,7 @@ SCOPE_FUNCTION = 'local_lambanalytics_resource_scope'
 GRADE_SCOPE_FUNCTION = 'local_lambanalytics_grade_scope'
 COMPLETION_SCOPE_FUNCTION = 'local_lambanalytics_completion_scope'
 DEFAULT_DATES_FUNCTION = 'local_lambanalytics_default_dates'
+QUIZ_SCOPE_FUNCTION = 'local_lambanalytics_quiz_scope'
 MAX_EVENT_BYTES = 256 * 1024
 GRADE_FUNCTION = 'mod_assign_get_grades'
 MAX_GRADE_BYTES = 1024 * 1024
@@ -24,6 +25,12 @@ EVENT_PARAMETERS = frozenset({'courseid', 'since', 'until', 'groupid', 'afterid'
 
 class AnalyticsHTTPClient(MoodleHTTPClient):
     def call(self, wsfunction, **params):
+        if wsfunction == QUIZ_SCOPE_FUNCTION:
+            if (set(params)-{'courseid','quizid','groupid'} or not {'courseid','quizid'}<=params.keys()
+                    or any(type(value) is not int for value in params.values())
+                    or params['courseid']<1 or params['quizid']<1 or params.get('groupid',0)<0):
+                raise ValueError('Invalid quiz-scope parameters')
+            return self._bounded_read(wsfunction,params,4096,'Quiz-scope')
         if wsfunction == DEFAULT_DATES_FUNCTION:
             ids=params.get('cmids')
             if (set(params)-{'courseid','cmids','scopeonly'} or type(params.get('courseid')) is not int
