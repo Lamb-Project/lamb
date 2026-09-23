@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 defined('MOODLE_INTERNAL') || die();
 $functions = [
+    'local_lambanalytics_forum_evidence_scope' => [
+        'classname' => 'local_lambanalytics\external\forum_evidence_scope',
+        'methodname' => 'execute',
+        'description' => 'Revalidate a bounded batch of exact saved forum discussion scopes without post data.',
+        'type' => 'read',
+        'capabilities' => 'mod/forum:viewdiscussion,moodle/course:enrolreview',
+        'services' => [MOODLE_OFFICIAL_MOBILE_SERVICE],
+    ],
     'local_lambanalytics_forum_posts' => [
         'classname' => 'local_lambanalytics\external\forum_posts',
         'methodname' => 'execute',

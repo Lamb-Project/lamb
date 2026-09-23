@@ -42,11 +42,11 @@ class MoodleRuntime:
                           'write_groups':sorted(policy.write_groups), 'allow_grade_write':policy.allow_grade_write}}
 
     def validate_result_binding(self, binding, key):
-        expected = {k:v for k,v in binding.items() if k not in {'course_id', 'course_ids', 'resource_scopes', 'grade_scopes', 'completion_scopes', 'date_scopes', 'quiz_scopes'}}
+        expected = {k:v for k,v in binding.items() if k not in {'course_id', 'course_ids', 'resource_scopes', 'grade_scopes', 'completion_scopes', 'date_scopes', 'quiz_scopes', 'forum_scopes'}}
         if self.result_binding() != expected or key not in self.available():
             raise PermissionError('Moodle snapshot is no longer accessible; run a fresh read')
         courses = binding.get('course_ids', binding.get('course_id'))
-        if any(binding.get(field) for field in ('resource_scopes','grade_scopes','completion_scopes','date_scopes','quiz_scopes')) and not courses:
+        if any(binding.get(field) for field in ('resource_scopes','grade_scopes','completion_scopes','date_scopes','quiz_scopes','forum_scopes')) and not courses:
             raise PermissionError('Resource evidence requires a bound course')
         if courses:
             snap = self.snapshot(); record = snap['record']
@@ -97,6 +97,14 @@ class MoodleRuntime:
                         if not isinstance(quiz_scope, dict) or quiz_scope.get('course_id') not in (courses if isinstance(courses, (tuple, list)) else [courses]):
                             raise PermissionError('Quiz scope is outside the bound courses')
                         validate_quiz_scope(client, quiz_scope)
+                    from .analytics.forum_evidence_authorization import validate_forum_evidence_scope
+                    forum_scopes = binding.get('forum_scopes', [])
+                    if not isinstance(forum_scopes,list) or len(forum_scopes)>20:
+                        raise PermissionError('Invalid forum evidence scopes')
+                    for forum_scope in forum_scopes:
+                        if not isinstance(forum_scope,dict) or forum_scope.get('course_id') not in (courses if isinstance(courses,(tuple,list)) else [courses]):
+                            raise PermissionError('Forum scope is outside the bound courses')
+                        validate_forum_evidence_scope(client,forum_scope)
             except Exception as error:
                 from .forum_activity import transient_failure
                 if transient_failure(error):

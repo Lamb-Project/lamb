@@ -415,6 +415,11 @@ class LiteShell:
                 if quiz_scopes: binding['quiz_scopes'] = quiz_scopes
             elif isinstance(data, dict) and data.get('quiz_scopes'):
                 binding['quiz_scopes'] = data['quiz_scopes']
+            if isinstance(data, dict) and isinstance(data.get('items'), list):
+                forum_scopes = [scope for item in data['items'] for scope in item.get('forum_scopes', [])]
+                if forum_scopes: binding['forum_scopes'] = forum_scopes
+            elif isinstance(data, dict) and data.get('forum_scopes'):
+                binding['forum_scopes'] = data['forum_scopes']
             if key in {'moodle.chart.submissions','moodle.analytics.run','moodle.analytics.start','moodle.analytics.continue'}:
                 binding['course_id'] = data['course_id']
                 emit = getattr(bridge, 'emit', None)

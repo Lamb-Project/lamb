@@ -16,6 +16,7 @@ COMPLETION_SCOPE_FUNCTION = 'local_lambanalytics_completion_scope'
 DEFAULT_DATES_FUNCTION = 'local_lambanalytics_default_dates'
 QUIZ_SCOPE_FUNCTION = 'local_lambanalytics_quiz_scope'
 FORUM_SCOPE_FUNCTION = 'local_lambanalytics_forum_scope'
+FORUM_EVIDENCE_SCOPE_FUNCTION = 'local_lambanalytics_forum_evidence_scope'
 FORUM_POSTS_FUNCTION = 'local_lambanalytics_forum_posts'
 QUIZ_ATTEMPTS_FUNCTION = 'local_lambanalytics_quiz_attempts'
 MAX_EVENT_BYTES = 256 * 1024
@@ -28,6 +29,15 @@ EVENT_PARAMETERS = frozenset({'courseid', 'since', 'until', 'groupid', 'afterid'
 
 class AnalyticsHTTPClient(MoodleHTTPClient):
     def call(self, wsfunction, **params):
+        if wsfunction == FORUM_EVIDENCE_SCOPE_FUNCTION:
+            ids = params.get('discussionids', [])
+            if (set(params)-{'courseid','forumid','groupid','discussionids'}
+                    or any(type(params.get(key)) is not int or params[key]<1 for key in ('courseid','forumid'))
+                    or type(params.get('groupid',0)) is not int or params.get('groupid',0)<0
+                    or not isinstance(ids,list) or len(ids)>100
+                    or any(type(value) is not int or value<1 for value in ids) or len(set(ids))!=len(ids)):
+                raise ValueError('Invalid forum evidence scope parameters')
+            return self._bounded_read(wsfunction,params,16384,'Forum-evidence-scope')
         if wsfunction == FORUM_POSTS_FUNCTION:
             required = {'courseid','forumid','discussionid'}
             if (set(params)-required-{'groupid','afterid','throughid','limit'} or not required<=params.keys()

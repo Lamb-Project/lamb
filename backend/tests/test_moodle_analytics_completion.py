@@ -35,7 +35,16 @@ def test_four_states_and_overrides_are_distinct_without_retained_identities():
     assert row['overridden']==1 and row['unknown']==row['untracked']==0
     assert row['overall_complete']==2
     assert result['coverage']['tracking_disabled_modules']==1 and result['coverage']['complete']
-    assert 'userid' not in str(result) and '99' not in str(result)
+    def assert_no_identity(value):
+        if isinstance(value,dict):
+            assert not {'userid','user_id','overrideby'} & value.keys()
+            for child in value.values(): assert_no_identity(child)
+        elif isinstance(value,list):
+            for child in value: assert_no_identity(child)
+        else:
+            # Exact identity values, not digits inside observation timestamps.
+            assert value != 99 and value != '99'
+    assert_no_identity(result)
     assert len(c.calls)==5
 
 

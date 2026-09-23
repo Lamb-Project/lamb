@@ -185,6 +185,8 @@ class ChartStore:
                 items[-1]['date_scopes'] = data['date_scopes']
             if data.get('quiz_scopes'):
                 items[-1]['quiz_scopes'] = data['quiz_scopes']
+            if data.get('forum_scopes'):
+                items[-1]['forum_scopes'] = data['forum_scopes']
         return {'items': items, 'next_offset': offset + 20 if offset + 20 < len(paths) else None,
                 'evidence_kind': 'saved_snapshot', 'refreshed': False}
 
