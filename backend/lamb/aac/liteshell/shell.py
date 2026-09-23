@@ -410,6 +410,11 @@ class LiteShell:
                 if date_scopes:binding['date_scopes']=date_scopes
             elif isinstance(data,dict) and data.get('date_scopes'):
                 binding['date_scopes']=data['date_scopes']
+            if key in {'moodle.chart.list','moodle.analytics.runs'}:
+                quiz_scopes = [scope for item in data['items'] for scope in item.get('quiz_scopes', [])]
+                if quiz_scopes: binding['quiz_scopes'] = quiz_scopes
+            elif isinstance(data, dict) and data.get('quiz_scopes'):
+                binding['quiz_scopes'] = data['quiz_scopes']
             if key in {'moodle.chart.submissions','moodle.analytics.run','moodle.analytics.start','moodle.analytics.continue'}:
                 binding['course_id'] = data['course_id']
                 emit = getattr(bridge, 'emit', None)

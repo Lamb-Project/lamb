@@ -41,6 +41,8 @@ def task_specs():
     from .analytics.recipes import RECIPES
     analytics_run = click.Command('run', params=[
         click.Argument(['recipe'], type=click.Choice(list(RECIPES))),
+        click.Option(['--quiz','quiz_id'],type=click.IntRange(min=1)),
+        click.Option(['--attempt-policy'],type=click.Choice(['first_finished','latest_finished','best_scored_finished','all_finished'])),
         click.Option(['--assignment','assignment_id'], type=click.IntRange(min=1)),
         click.Option(['--course','course_id'], required=True, type=click.IntRange(min=1)),
         click.Option(['--since'], help='Inclusive local date, YYYY-MM-DD.'),
@@ -56,14 +58,17 @@ def task_specs():
     analytics_result = click.Command('result', params=[click.Argument(['chart_id']),
         click.Option(['--offset'],default=0,type=click.IntRange(min=0))],
         help='Read a bounded page from a saved analytics snapshot, with fresh permission checks and no recollection.', add_help_option=False)
-    analytics_start = click.Command('start', params=[click.Argument(['recipe'],type=click.Choice(['activity-completion'])),
+    analytics_start = click.Command('start', params=[click.Argument(['recipe'],type=click.Choice(['activity-completion','quiz-overview'])),
+        click.Option(['--quiz','quiz_id'],type=click.IntRange(min=1)),
+        click.Option(['--attempt-policy'],type=click.Choice(['first_finished','latest_finished','best_scored_finished','all_finished'])),
+        click.Option(['--group','group_id'],type=click.IntRange(min=1)),
         click.Option(['--course','course_id'],required=True,type=click.IntRange(min=1)),
         click.Option(['--tz'],default='UTC'),click.Option(['--language'],default='en',type=click.Choice(['en','es','ca','eu']))],
-        help='Create a recoverable completion run. Follow continue_command until finished; no chart exists yet.',add_help_option=False)
+        help='Create a recoverable completion or quiz run. Quiz requires --quiz and an explicit --attempt-policy. Follow continue_command; no chart exists yet.',add_help_option=False)
     analytics_continue = click.Command('continue',params=[click.Argument(['run_id']),
         click.Option(['--step'],required=True,type=click.IntRange(min=0))],
-        help='Advance one bounded completion step. Retry the exact command after interruption or a lost response.',add_help_option=False)
-    analytics_runs = click.Command('runs',help='List authorized private completion recovery handles; no learner IDs are returned.',add_help_option=False)
+        help='Advance one bounded analytics step. Retry the exact command after interruption or a lost response.',add_help_option=False)
+    analytics_runs = click.Command('runs',help='List authorized private completion and quiz recovery handles; no learner IDs are returned.',add_help_option=False)
     return {key: CommandSpec(key, parser.help, 'auto', parser)
             for key, parser in [('analytics.window',window), ('news', news), ('evidence', evidence), ('continue', continuation), ('runs', runs), ('chart.submissions', chart), ('chart.list', chart_list), ('chart.read', chart_read), ('analytics.run', analytics_run), ('analytics.capabilities', analytics_capabilities), ('analytics.result', analytics_result), ('analytics.start',analytics_start), ('analytics.continue',analytics_continue), ('analytics.runs',analytics_runs)]}
 
@@ -92,7 +97,15 @@ def parse_task(tokens):
     if key == 'analytics.continue':
         from uuid import UUID
         try:params['run_id']=str(UUID(params['run_id']))
-        except (ValueError,TypeError):raise ValueError('Use a completion run_id') from None
+        except (ValueError,TypeError):raise ValueError('Use an analytics run_id') from None
+    if key in {'analytics.run','analytics.start'}:
+        if params['recipe'] == 'quiz-overview':
+            if params.get('quiz_id') is None or params.get('attempt_policy') is None:
+                raise ValueError('Quiz overview requires --quiz and --attempt-policy')
+        elif params.get('quiz_id') is not None or params.get('attempt_policy') is not None:
+            raise ValueError('--quiz and --attempt-policy apply only to quiz-overview')
+        if key == 'analytics.start' and params['recipe'] != 'quiz-overview' and params.get('group_id') is not None:
+            raise ValueError('--group is not supported for completion collection')
     if key in {'chart.submissions','analytics.run','analytics.start'}:
         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
         try: ZoneInfo(params['tz'])
@@ -129,8 +142,13 @@ def parse_task(tokens):
                 except (ValueError, TypeError): raise ValueError('Use --until YYYY-MM-DD') from None
                 if end <= date.fromisoformat(params['since']): raise ValueError('--until must follow --since')
                 require_event_window(params['since'], params['until'], params['tz'])
+        elif params['recipe'] == 'quiz-overview':
+            if params['until'] is not None:
+                raise ValueError('--until does not apply to quiz-overview')
         elif params['until'] is not None or params['group_id'] is not None:
             raise ValueError('--until and --group apply only to resource reach and recorded-view recipes')
+    if key in {'analytics.run','analytics.start'} and params['recipe'] == 'quiz-overview':
+        params['group_id'] = params.get('group_id') or 0
     if key == 'news':
         from .forum_activity import validate_request
         validate_request(params)

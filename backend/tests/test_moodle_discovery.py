@@ -95,7 +95,8 @@ def test_recipe_choices_are_filtered_without_mutating_global_parser():
     keys = filter_keys(set(all_specs()),record)
     result = help_result(keys,record,'analytics.run')
     assert 'course-access' in result['help'] and 'resource-reach' not in result['help']
-    assert 'resource-reach' in all_specs()['analytics.run'].reference()
+    recipe = next(param for param in all_specs()['analytics.run'].parser.params if param.name == 'recipe')
+    assert 'resource-reach' in recipe.type.choices
     with pytest.raises(PermissionError):
         help_result(keys,record,'forum')
 

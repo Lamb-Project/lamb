@@ -46,7 +46,7 @@ def validate_skill_contracts(pack):
                 example = re.sub(r'\b(?:RUBRIC_ID|LEARNING_SCENARIO_ID|CHART_ID|RUN_ID)\b', '00000000-0000-0000-0000-000000000001', command)
                 example = re.sub(r'\b(?:ASSISTANT|KB|SCENARIO|CASE|RUN|CHAT|TEMPLATE|JOB)_ID\b', '1', example)
                 example = re.sub(r'\{assistant_id\}|<assistant_id>|<id>', '1', example)
-                example = re.sub(r'\b(?:COURSE|FORUM|DISCUSSION|POST|CONTEXT|ASSIGNMENT|USER)_ID\b', '1', example)
+                example = re.sub(r'\b(?:COURSE|FORUM|DISCUSSION|POST|CONTEXT|ASSIGNMENT|QUIZ|USER)_ID\b', '1', example)
                 example = example.replace('FILE_ID', 'mf_fixture')
                 example = example.replace('RESULT_ID', '00000000-0000-0000-0000-000000000001').replace('NEXT_OFFSET', '1')
                 prepare_command(example)

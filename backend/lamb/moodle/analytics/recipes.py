@@ -16,6 +16,9 @@ from ..charts import ChartStore
 from ..scope import MoodleScope
 
 RECIPES = {
+    'quiz-overview': {'functions':['local_lambanalytics_quiz_scope','local_lambanalytics_quiz_attempts',
+                                  'core_enrol_get_enrolled_users'],
+                      'title':'Quiz attempts and raw score distribution','metric':'Scored attempts'},
     'deadlines': {'functions':[DEFAULT_DATES_FUNCTION,'core_course_get_contents'],
                   'title':'Stored course schedule','metric':'Deadlines'},
     'view-distribution': {'functions':[EVENT_FUNCTION,SCOPE_FUNCTION,'core_enrol_get_enrolled_users','core_course_get_contents'],

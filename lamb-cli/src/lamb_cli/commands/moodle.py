@@ -18,6 +18,8 @@ def analytics_capabilities(course: int = typer.Option(...,'--course',min=1)):
 
 @analytics_app.command('run')
 def analytics_run(recipe: str, course: int = typer.Option(...,'--course',min=1),
+                  quiz: Optional[int] = typer.Option(None,'--quiz',min=1),
+                  attempt_policy: Optional[str] = typer.Option(None,'--attempt-policy'),
                   assignment: Optional[int] = typer.Option(None,'--assignment',min=1),
                   since: Optional[str] = typer.Option(None,'--since'),
                   until: Optional[str] = typer.Option(None,'--until'),
@@ -27,6 +29,8 @@ def analytics_run(recipe: str, course: int = typer.Option(...,'--course',min=1),
     tokens = ['analytics','run',recipe,'--course',str(course),'--tz',tz,'--language',language]
     if since is not None: tokens += ['--since',since]
     if assignment is not None: tokens += ['--assignment',str(assignment)]
+    if quiz is not None: tokens += ['--quiz',str(quiz)]
+    if attempt_policy is not None: tokens += ['--attempt-policy',attempt_policy]
     if until is not None: tokens += ['--until',until]
     if through is not None: tokens += ['--through',through]
     if group is not None: tokens += ['--group',str(group)]
@@ -52,8 +56,15 @@ def analytics_result(result_id: str, offset: int = typer.Option(0,'--offset',min
 
 @analytics_app.command('start')
 def analytics_start(recipe: str, course: int = typer.Option(...,'--course',min=1),
+                    quiz: Optional[int] = typer.Option(None,'--quiz',min=1),
+                    attempt_policy: Optional[str] = typer.Option(None,'--attempt-policy'),
+                    group: Optional[int] = typer.Option(None,'--group',min=1),
                     tz: str = typer.Option('UTC','--tz'), language: str = typer.Option('en','--language')):
-    run(['analytics','start',recipe,'--course',str(course),'--tz',tz,'--language',language])
+    tokens = ['analytics','start',recipe,'--course',str(course),'--tz',tz,'--language',language]
+    if quiz is not None: tokens += ['--quiz',str(quiz)]
+    if attempt_policy is not None: tokens += ['--attempt-policy',attempt_policy]
+    if group is not None: tokens += ['--group',str(group)]
+    run(tokens)
 
 
 @analytics_app.command('continue')

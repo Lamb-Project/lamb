@@ -167,7 +167,7 @@ def filter_keys(keys, record):
     recipes = available_recipes(names)
     if recipes:
         result |= set(keys) & {'analytics.run'}
-    if 'activity-completion' in recipes:
+    if {'activity-completion', 'quiz-overview'} & set(recipes):
         result |= set(keys) & {'analytics.start', 'analytics.continue'}
     if content_choices(names):
         result |= set(keys) & {'content.list'}
@@ -208,7 +208,9 @@ def help_result(keys, record, path):
         for param in spec.parser.params:
             choices = None
             if path in {'analytics.run','analytics.start'} and param.name == 'recipe':
-                choices = available_recipes(names) if path == 'analytics.run' else ['activity-completion']
+                choices = available_recipes(names)
+                if path == 'analytics.start':
+                    choices = [recipe for recipe in choices if recipe in {'activity-completion','quiz-overview'}]
             elif path == 'content.list' and param.name == 'module_type':
                 choices = content_choices(names)
             elif path == 'sync' and param.name == 'section':

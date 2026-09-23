@@ -7,6 +7,18 @@ from lamb_cli.main import app
 runner = CliRunner()
 
 
+def test_quiz_run_and_start_forward_exact_policy_and_scope():
+    for verb in ('run', 'start'):
+        with patch('lamb_cli.commands.moodle.get_client') as client:
+            client.return_value.__enter__.return_value.post.return_value = {'run_id': 'saved'}
+            result = runner.invoke(app, ['moodle', 'analytics', verb, 'quiz-overview', '--course', '9',
+                '--quiz', '7', '--attempt-policy', 'all_finished', '--group', '3'])
+            assert result.exit_code == 0, result.output
+            tokens = shlex.split(client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'])
+            for flag, value in [('--quiz','7'), ('--attempt-policy','all_finished'), ('--group','3')]:
+                assert tokens[tokens.index(flag)+1] == value
+
+
 def test_inclusive_window_is_forwarded_without_cli_date_reinterpretation():
     with patch('lamb_cli.commands.moodle.get_client') as client:
         client.return_value.__enter__.return_value.post.return_value={'calendar_days':92,'collection_supported':False}

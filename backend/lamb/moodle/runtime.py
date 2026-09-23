@@ -168,14 +168,17 @@ class MoodleRuntime:
         with MoodleHTTPClient(record['base_url'], token, readonly=True, timeout=15) as raw:
             client = GuardedClient(raw, revalidate=revalidate, cancel=cancel)
             if key in {'analytics.start','analytics.continue','analytics.runs'}:
-                from .analytics.completion_tasks import execute
+                from .analytics.recovery_tasks import execute
                 return execute(self,results,client,record['moodle_user_id'],key,params)
             if key == 'analytics.capabilities':
                 from .analytics.recipes import capabilities
                 return capabilities(client, record['moodle_user_id'], params['course_id'])
             if key == 'analytics.run':
-                if params['recipe']=='activity-completion':
-                    from .analytics.completion_tasks import execute
+                if params['recipe'] in {'activity-completion', 'quiz-overview'}:
+                    if params['recipe'] == 'quiz-overview':
+                        from .analytics.quiz_tasks import execute
+                    else:
+                        from .analytics.completion_tasks import execute
                     initial=execute(self,results,client,record['moodle_user_id'],'analytics.start',params)
                     return execute(self,results,client,record['moodle_user_id'],'analytics.continue',
                         {'run_id':initial['run_id'],'step':0})
