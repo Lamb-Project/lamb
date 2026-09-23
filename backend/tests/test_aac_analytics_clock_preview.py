@@ -28,3 +28,23 @@ def test_oversized_chart_keeps_local_clock_and_raw_evidence(tmp_path,zone,local)
     assert store.read(projected['context_result']['result_id'])['payload']==before
     message={'role':'tool','content':encode(payload).decode(),'_aac_model_content':encode(projected).decode()}
     assert data['snapshot_date_label'] in provider_messages([message])[0]['content']
+
+
+@pytest.mark.parametrize('provenance',[
+    {'basis':'stored_course_defaults'},
+    {'deadline_basis':'connected_account_effective',
+     'deadline_provenance_caption':'Dates apply to the connected account, not verified course defaults.'},
+])
+def test_oversized_saved_chart_preserves_date_provenance(tmp_path,provenance):
+    data={'title':'Fixture','timezone':'Europe/Madrid','course_id':7,'course_name':'Fixture',
+        'chart_id':'saved','as_of':'2026-09-23T10:00:00Z','language':'en',
+        'rows':[{'name':'x'*160,'due':1792888200} for _ in range(100)],
+        'coverage':{'complete':True},'labels':['label']*12,'caption':'Fixture',
+        'source':'fixture','recipe':'assignment-submissions-v1','limitations':[],**provenance}
+    store=ResultStore(1,2,root=tmp_path/'private')
+    payload={'success':True,'data':data}
+    projected=compact(payload,store=store,origin={'command':'moodle.chart.read'})
+    assert projected['context_result']['truncated']
+    for key,value in provenance.items():
+        assert projected['data'][key]==value
+    assert store.read(projected['context_result']['result_id'])['payload']==payload
