@@ -42,9 +42,10 @@
     <p class="caption">{data.caption}</p>
     {#if !data.coverage.complete}<p role="status">{t[12]}</p>{/if}
     {#if showGraph}
-        <p>{t[13]}</p>
+        <p class="graph-area">{t[13]}</p>
+        <p class="mobile-reason">{t[14]}</p>
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-        <div class="scroll" role="region" tabindex="0" aria-label={t[13]}>
+        <div class="scroll graph-area" role="region" tabindex="0" aria-label={t[13]}>
             <svg viewBox="0 0 900 900" role="img" aria-label={t[13]}>
                 <defs><marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#526a82" /></marker></defs>
                 {#each paths as edge}
@@ -92,4 +93,9 @@
     button {border:1px solid #2463a1;border-radius:6px;padding:8px 14px;color:#2463a1;}
     button:disabled {opacity:.5;}
     :focus-visible {outline:3px solid #2463a1;outline-offset:3px;}
+    .mobile-reason {display:none;}
+    @media (max-width:640px) {
+        .graph-area {display:none;}
+        .mobile-reason {display:block;}
+    }
 </style>
