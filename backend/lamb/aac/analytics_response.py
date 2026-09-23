@@ -6,7 +6,7 @@ rewrites a factual claim silently. The agent may repair once without tools.
 import re
 import unicodedata
 
-RECIPES = {'quiz-overview', 'deadlines', 'grade-distribution', 'grading-queue', 'course-access', 'resource-reach', 'activity-completion', 'view-trends', 'view-heatmap', 'view-distribution', 'active-day-distribution'}
+RECIPES = {'forum-participation', 'forum-discussions', 'quiz-overview', 'deadlines', 'grade-distribution', 'grading-queue', 'course-access', 'resource-reach', 'activity-completion', 'view-trends', 'view-heatmap', 'view-distribution', 'active-day-distribution'}
 
 
 def contract(result):
@@ -65,6 +65,15 @@ This is guidance rather than a claim that language or arithmetic is validated.
                      'Retry score_change_percentage_points is a difference in PERCENTAGE POINTS, not raw points '
                      'or relative percent improvement. between_attempt_seconds is seconds, not study time. '
                      'Do not infer individual starting or ending scores from an aggregate mean delta.')
+    if evidence.get('recipe') in {'forum-participation','forum-discussions'}:
+        parts.append('Forum learner IDs are not names; do not invent identity mappings. '
+                     'outside_population_window_posts means posts INSIDE the window by authors OUTSIDE the current student population, '
+                     'not posts outside the date window. Reply counts are counts, not last-activity timestamps. '
+                     'Participation counts use public post creation in [since, until), with an exclusive end. '
+                     'Discussion replies include all visible authors and self-replies through the saved observation time, '
+                     'not just students or posts in the requested window. Age is seconds at the snapshot, not now. '
+                     'No observed public replies does not establish unanswered or unresolved questions. '
+                     'Resolution, contribution quality and learning are not established; private/deleted posts are excluded.')
     return ' '.join(parts)
 
 

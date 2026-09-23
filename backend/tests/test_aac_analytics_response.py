@@ -8,6 +8,25 @@ from tests.test_aac_legacy import agent, message, tool, turn
 RESULT = {'success':True,'data':{'recipe':{'id':'grade-distribution'},'grade_released':None}}
 
 
+@pytest.mark.parametrize('recipe',['forum-participation','forum-discussions'])
+@pytest.mark.parametrize('streaming',[False,True])
+def test_forum_evidence_gets_language_semantics_and_bounded_menu_repair(recipe,streaming):
+    evidence={'success':True,'data':{'recipe':{'id':recipe},'language':'ca'}}
+    assert contract(evidence)['recipe']==recipe
+    bad='Dos discusiones sin respuestas públicas.\n¿Qué hacemos ahora?\n1. Actualizar'
+    good='Dos discusiones sin respuestas públicas observadas; su resolución es desconocida.'
+    a,provider,shell=agent([message(tools=[tool()]),message(bad),message(good)])
+    a.skill_state={'ui_language':'es'}
+    a._execute_tool=AsyncMock(return_value=evidence)
+    assert asyncio.run(turn(a,streaming))==good
+    assert a._execute_tool.await_count==1 and 'tools' not in provider.calls[-1]
+    guidance=evidence_instruction(contract(evidence),a.skill_state)
+    assert 'Reply in Spanish.' in guidance and 'not now' in guidance
+    assert 'all visible authors and self-replies' in guidance
+    assert 'do not invent identity mappings' in guidance
+    assert '[Application analytics evidence guidance]' not in str(a.conversation)
+
+
 def test_evidence_language_uses_effective_session_not_source_locale():
     evidence = {'recipe':'quiz-overview', 'language':'ca'}
     guide = evidence_instruction(evidence, {'ui_language':'ca',

@@ -54,6 +54,7 @@ def resolve(value, path):
 
 
 PRIORITY = ('id','name','title','snapshot_date_label','as_of_local','timezone',
+            'forum_exclusion_basis','forum_reply_basis',
             'attempt_policy','score_basis','preview_basis','retry_basis',
             'basis','deadline_basis','deadline_provenance_caption',
             'status','success','error','code','count','total','total_count',
