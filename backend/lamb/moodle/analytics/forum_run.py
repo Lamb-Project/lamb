@@ -19,7 +19,10 @@ def _now():
 
 
 def start(store, course_id, forum_id, *, since, until, group_id=0,
-          language='en', tz='UTC'):
+          language='en', tz='UTC', recipe='forum-participation'):
+    from .forum_snapshot import RECIPES
+    if recipe not in RECIPES:
+        raise ValueError('Invalid forum recipe')
     initial_cursor(course_id, forum_id, 1, group_id)
     for value in (since, until):
         _integer(value)
@@ -29,7 +32,7 @@ def start(store, course_id, forum_id, *, since, until, group_id=0,
     if language not in {'en', 'es', 'ca', 'eu'}:
         raise ValueError('Invalid forum language')
     return store.create({'scope': {'course_id': course_id, 'forum_id': forum_id, 'group_id': group_id},
-        'since': since, 'until': until, 'language': language, 'tz': tz,
+        'since': since, 'until': until, 'language': language, 'tz': tz, 'recipe': recipe,
         'started_at': _now().isoformat(), 'context': None, 'cursor': None,
         'threads': [], 'posts': 0, 'pages': 0, 'calls': 0, 'steps': 0, 'done': False})
 
