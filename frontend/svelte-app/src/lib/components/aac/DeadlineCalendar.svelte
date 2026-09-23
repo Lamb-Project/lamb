@@ -35,7 +35,7 @@
     </div>
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div class="scroll" role="region" tabindex="0" aria-label={labels.activity}>
-        <table><caption>{labels.title}</caption>
+        <table class="schedule-table"><caption>{labels.title}</caption>
             <thead><tr><th scope="col">{labels.activity}</th><th scope="col">{labels.opens}</th><th scope="col">{labels.due}</th><th scope="col">{labels.closes}</th><th scope="col">{labels.inside}</th></tr></thead>
             <tbody>{#each data.rows as row}<tr><th scope="row">{row.name}</th><td>{row.opens_label}</td><td>{row.due_label}</td><td>{row.closes_label}</td><td>{row.window_status_label}</td></tr>{/each}</tbody>
         </table>
@@ -51,6 +51,9 @@
     table { border-collapse:collapse; width:100%; }
     th,td { text-align:left; padding:8px; border-bottom:1px solid #ccd5df; }
     td { white-space:nowrap; }
+    .schedule-table { min-width:1100px; }
+    .schedule-table th:first-child { min-width:240px; overflow-wrap:normal; }
+    .schedule-table td { min-width:180px; }
     caption { text-align:left; font-weight:600; }
     .events { padding-left:20px; }
     li { margin:10px 0; }
