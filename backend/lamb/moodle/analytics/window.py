@@ -30,18 +30,8 @@ def midnight(day, zone):
     return stamp
 
 
-def plan_window(since, *, until=None, through=None, tz='UTC'):
-    if (until is None) == (through is None):
-        raise ValueError('Provide exactly one end: --through inclusive or --until exclusive')
-    try:
-        zone = ZoneInfo(tz)
-    except (TypeError, ValueError, ZoneInfoNotFoundError):
-        raise ValueError('Use an IANA timezone') from None
-    start = calendar_date(since)
-    try:
-        end = calendar_date(through) + timedelta(days=1) if through is not None else calendar_date(until)
-    except OverflowError:
-        raise ValueError('Inclusive end is outside the supported calendar range') from None
+def _window(start, end, zone):
+    """One exact interval. Never selects a replacement or accesses a source."""
     days = (end-start).days
     if days < 1:
         raise ValueError('The exclusive end must follow the start')
@@ -54,12 +44,49 @@ def plan_window(since, *, until=None, through=None, tz='UTC'):
     elif seconds > MAX_SOURCE_SECONDS:
         reason = 'The exact local interval exceeds the installed adapter transport limit across an offset change. Multi-window event collection is not implemented.'
     return {'since':start.isoformat(),'until':end.isoformat(),
-        'through':(end-timedelta(days=1)).isoformat(),'timezone':tz,
+        'through':(end-timedelta(days=1)).isoformat(),'timezone':zone.key,
         'calendar_days':days,'since_timestamp':begin,'until_timestamp':finish,
         'elapsed_seconds':seconds,'collection_supported':supported,'reason':reason,
         'source_availability':'not_checked','historical_coverage':'unknown',
-        'notice':'This is the requested interval, not discovered data availability. No Moodle data was read. '
+        'notice':'This planner call read no Moodle data; it does not describe other commands. '
+                 'These dates are not discovered data availability. '
                  'Keep these bounds unchanged; do not silently shorten or split unsupported requests.'}
+
+
+def plan_window(since, *, until=None, through=None, tz='UTC'):
+    if (until is None) == (through is None):
+        raise ValueError('Provide exactly one end: --through inclusive or --until exclusive')
+    try:
+        zone = ZoneInfo(tz)
+    except (TypeError, ValueError, ZoneInfoNotFoundError):
+        raise ValueError('Use an IANA timezone') from None
+    start = calendar_date(since)
+    try:
+        end = calendar_date(through) + timedelta(days=1) if through is not None else calendar_date(until)
+    except OverflowError:
+        raise ValueError('Inclusive end is outside the supported calendar range') from None
+    result = _window(start, end, zone)
+    result['validated_alternatives'] = []
+    result['alternatives_notice'] = (
+        'Optional narrower proposals only, not a replacement for the requested interval. '
+        'Offer only these validated dates or ask the user to choose dates. '
+        'Collection requires the user to select an interval and normal source/permission checks. '
+        'Validation covers calendar and elapsed-time limits only, not data availability.')
+    if not result['collection_supported']:
+        # At most 180 local checks, no source calls. Keep either requested endpoint;
+        # shrinking past DST/skipped midnights must satisfy the same validator.
+        for anchor in ('start', 'end'):
+            for days in range(min(MAX_LOCAL_DAYS, result['calendar_days'] - 1), 0, -1):
+                left, right = (start, start + timedelta(days=days)) if anchor == 'start' else (end - timedelta(days=days), end)
+                try:
+                    candidate = _window(left, right, zone)
+                except ValueError:
+                    continue
+                if candidate['collection_supported']:
+                    candidate.update(preserves=anchor, requires_user_selection=True)
+                    result['validated_alternatives'].append(candidate)
+                    break
+    return result
 
 
 def require_event_window(since, until, tz):

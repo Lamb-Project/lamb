@@ -11,7 +11,7 @@ from lamb.moodle.runtime import attach_to_agent
 
 def test_moodle_recipes_and_generated_commands_validate():
     pack=load_pack()
-    assert pack.version=='1.27.1'
+    assert pack.version=='1.28.0'
     validate_routing(pack)
     assert validate_skill_contracts(pack)
     names={'moodle-triage','moodle-forums','moodle-course-documents','moodle-assessment-draft'}
@@ -20,6 +20,17 @@ def test_moodle_recipes_and_generated_commands_validate():
     assert load_pack(version='1.2.4').version=='1.2.4'
     assert load_pack(version='1.3.1').version=='1.3.1'
     validate_routing(load_pack(version='1.4.0'))
+
+
+def test_model_comparison_regressions_have_explicit_result_guidance():
+    pack=load_pack()
+    triage=pack.text('skills/moodle_triage.md')
+    forums=pack.text('skills/moodle_forums.md')
+    assert 'Offer only returned validated_alternatives' in triage
+    assert "Wait for the user's selection before collection" in triage
+    assert 'discussion_id for posts reads and first_post_id for replies' in forums
+    # Existing sessions retain their immutable older guidance.
+    assert 'validated_alternatives' not in load_pack(version='1.24.0').text('skills/moodle_triage.md')
 
 
 def test_all_completion_recovery_commands_have_a_workflow():

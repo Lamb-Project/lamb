@@ -22,7 +22,23 @@ def test_forum_read_calls_service_with_own_token_and_preserves_discussion_identi
     body=parse_qs(route.calls[0].request.content.decode())
     assert body['wstoken']==['fixture-token']
     assert body['wsfunction']==['mod_forum_get_forum_discussions']
-    assert result[0]['id']==90 and result[0]['discussion']==42
+    assert result[0]['first_post_id']==90 and result[0]['discussion_id']==42
+    assert 'id' not in result[0] and 'discussion' not in result[0]
+
+
+@pytest.mark.parametrize('bad', [None, 0, -1, True, '42'])
+@pytest.mark.parametrize('field', ['id', 'discussion'])
+def test_discussion_result_never_guesses_missing_or_invalid_id(field,bad):
+    from lamb.moodle.reads import discussion_result
+    row={'id':90,'discussion':42,'name':'Question'};row[field]=bad
+    with pytest.raises(ValueError,match='IDs'):discussion_result(row)
+
+
+def test_discussion_result_preserves_content_without_mutating_source():
+    from lamb.moodle.reads import discussion_result
+    row={'id':517,'discussion':264,'name':'Question','message':'Original text','numreplies':0}
+    assert discussion_result(row)=={'discussion_id':264,'first_post_id':517,'name':'Question','message':'Original text','numreplies':0}
+    assert row['id']==517 and row['discussion']==264
 
 
 @respx.mock

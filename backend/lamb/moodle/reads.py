@@ -89,6 +89,15 @@ def plain(value):
     return value
 
 
+def discussion_result(item):
+    """Moodle's bare id is the first post, NOT the discussion to read."""
+    discussion_id, first_post_id = item.get('discussion'), item.get('id')
+    if any(type(value) is not int or value <= 0 for value in (discussion_id, first_post_id)):
+        raise ValueError('Moodle discussion result lacks valid discussion and first-post IDs')
+    return {'discussion_id': discussion_id, 'first_post_id': first_post_id,
+            **{key: value for key, value in item.items() if key not in {'id', 'discussion', 'discussion_id', 'first_post_id'}}}
+
+
 def execute_read(client, key, params, *, owner_moodle_id):
     if client.readonly is not True:
         raise PermissionError('Moodle read commands require a read-only client')
@@ -118,6 +127,8 @@ def execute_read(client, key, params, *, owner_moodle_id):
     values = [list(params[arg]) if isinstance(params[arg],tuple) else params[arg] for arg in arguments.split()]
     if key in {'assign.list','calendar.events'} and not values[0]: values[0] = None
     result = plain(getattr(service_class(module,name)(client),method)(*values))
+    if key == 'forum.discussions':
+        result = [discussion_result(item) for item in result]
     if key == 'site.functions':
         if params['search']: result = [f for f in result if params['search'].lower() in f['name'].lower()]
         if params['component']: result = [f for f in result if f['name'].startswith(params['component'])]

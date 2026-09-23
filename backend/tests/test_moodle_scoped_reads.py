@@ -54,7 +54,7 @@ def test_foreign_resources_and_individual_never_reach_detail_endpoint(stores):
     shell=LiteShell('','','fixture',1,user_id=7,moodle=rt,allowed_commands=rt.available())
     async def run():
         assert (await shell.execute('moodle course get 10')).success
-        for command in ['moodle forum posts 999','moodle forum discussions 999',
+        for command in ['moodle forum posts 90','moodle forum posts 999','moodle forum discussions 999',
                         'moodle assign submissions 999','moodle user get 999','moodle course get 999']:
             result=await shell.execute(command)
             assert not result.success,command
