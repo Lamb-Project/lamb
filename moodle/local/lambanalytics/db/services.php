@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 defined('MOODLE_INTERNAL') || die();
 $functions = [
+    'local_lambanalytics_forum_scope' => [
+        'classname' => 'local_lambanalytics\external\forum_scope',
+        'methodname' => 'execute',
+        'description' => 'Revalidate exact discussion and group authority without returning posts or dates.',
+        'type' => 'read',
+        'capabilities' => 'mod/forum:viewdiscussion,moodle/course:enrolreview',
+        'services' => [MOODLE_OFFICIAL_MOBILE_SERVICE],
+    ],
     'local_lambanalytics_quiz_attempts' => [
         'classname' => 'local_lambanalytics\external\quiz_attempts',
         'methodname' => 'execute',

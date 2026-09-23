@@ -15,6 +15,7 @@ GRADE_SCOPE_FUNCTION = 'local_lambanalytics_grade_scope'
 COMPLETION_SCOPE_FUNCTION = 'local_lambanalytics_completion_scope'
 DEFAULT_DATES_FUNCTION = 'local_lambanalytics_default_dates'
 QUIZ_SCOPE_FUNCTION = 'local_lambanalytics_quiz_scope'
+FORUM_SCOPE_FUNCTION = 'local_lambanalytics_forum_scope'
 QUIZ_ATTEMPTS_FUNCTION = 'local_lambanalytics_quiz_attempts'
 MAX_EVENT_BYTES = 256 * 1024
 GRADE_FUNCTION = 'mod_assign_get_grades'
@@ -26,6 +27,13 @@ EVENT_PARAMETERS = frozenset({'courseid', 'since', 'until', 'groupid', 'afterid'
 
 class AnalyticsHTTPClient(MoodleHTTPClient):
     def call(self, wsfunction, **params):
+        if wsfunction == FORUM_SCOPE_FUNCTION:
+            required = {'courseid','forumid','discussionid'}
+            if (set(params)-required-{'groupid'} or not required<=params.keys()
+                    or any(type(value) is not int for value in params.values())
+                    or any(params[key]<1 for key in required) or params.get('groupid',0)<0):
+                raise ValueError('Invalid forum-scope parameters')
+            return self._bounded_read(wsfunction,params,4096,'Forum-scope')
         if wsfunction == QUIZ_ATTEMPTS_FUNCTION:
             if (set(params)-{'courseid','quizid','groupid','afterid','throughid','limit'}
                     or not {'courseid','quizid'}<=params.keys()
