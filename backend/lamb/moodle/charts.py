@@ -247,10 +247,17 @@ def render_svg(snapshot):
         rows = snapshot['rows']
         if len(rows) > 100: raise ValueError('Analytics mark limit exceeded')
         values = [{'label':r['name'], 'value':r['value']} for r in rows if r['status'] == 'ok' and r['value'] is not None]
+        axis = {'tickMinStep': 1}
+        if values and all(type(row['value']) is int and row['value'] >= 0 for row in values):
+            # Explicit bounded integer ticks: fractional attempts/students are
+            # misleading, and tickMinStep alone is not honored by all renderers.
+            maximum = max(1, max(row['value'] for row in values))
+            step = max(1, (maximum + 4) // 5)
+            axis = {'values': list(range(0, maximum + 1, step)), 'format': 'd'}
         spec = {'width':480, 'height':max(70, 32 * len(values)), 'data':{'values':values},
                 'mark':{'type':'bar','color':'#2463a1'}, 'encoding':{
                     'y':{'field':'label','type':'nominal','sort':None,'title':None,'axis':{'labelLimit':220}},
-                    'x':{'field':'value','type':'quantitative','title':snapshot['metric_label'],'axis':{'tickMinStep':1}}}}
+                    'x':{'field':'value','type':'quantitative','title':snapshot['metric_label'],'axis':axis}}}
         with RENDER_LOCK:
             return vlc.vegalite_to_svg(spec, allowed_base_urls=[])
     labels = snapshot['labels']

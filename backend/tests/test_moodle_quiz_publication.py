@@ -47,6 +47,21 @@ def test_localized_aggregate_projection_and_idempotent_save(tmp_path, language):
     assert '<svg' in render_svg(saved)
 
 
+def test_count_axis_never_uses_fractional_attempt_ticks(tmp_path):
+    s, rt, client, identity = fixture(tmp_path)
+    result = publish(s, rt, client, identity)
+    saved = ChartStore(rt).read(result['chart_id'])
+    with patch('vl_convert.vegalite_to_svg', return_value='<svg/>') as render:
+        render_svg(saved)
+    axis = render.call_args.args[0]['encoding']['x']['axis']
+    assert axis == {'values': [0, 1], 'format': 'd'}
+    saved['rows'][0]['value'] = 10000
+    with patch('vl_convert.vegalite_to_svg', return_value='<svg/>') as render:
+        render_svg(saved)
+    axis = render.call_args.args[0]['encoding']['x']['axis']
+    assert len(axis['values']) <= 6 and all(type(value) is int for value in axis['values'])
+
+
 def test_lost_save_response_and_failed_ack_recover_same_snapshot(tmp_path):
     s, rt, client, identity = fixture(tmp_path)
     original = ChartStore.save
