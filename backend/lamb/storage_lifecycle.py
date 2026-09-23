@@ -55,12 +55,14 @@ class OwnerStorage:
         return ImportStore(self.org, self.owner, self.moodle)
 
     def inspect(self):
+        from lamb.moodle.charts import MAX_CHARTS,MAX_CALENDAR_BYTES
         stores = {
             'aac_results': (self.root / 'aac_results' / str(self.org) / str(self.owner), 32 * 1024 * 1024, '24h; oldest unpinned result may be evicted at quota'),
             'evidence': (self.tasks / 'results', 16 * 4 * 1024 * 1024, '24h; live run references protected from quota eviction'),
             'runs': (self.tasks / 'runs', 4 * 8 * 1024 * 1024, '24h; live runs not evicted'),
             'completion_runs': (self.tasks / 'completion-runs', 4 * 1024 * 1024, '24h; private learner cursors; live runs not evicted'),
-            'charts': (self.moodle / 'charts' / str(self.org) / str(self.owner), 100 * 128 * 1024, 'durable; no automatic expiry'),
+            'charts': (self.moodle / 'charts' / str(self.org) / str(self.owner), MAX_CHARTS * MAX_CALENDAR_BYTES,
+                       'durable; no automatic expiry; 100 records; 128 KiB per chart, 512 KiB per deadline calendar'),
             'course_cache': (self.tasks / 'course-cache', None, 'rebuildable; retained until explicit source refresh'),
         }
         inventory = {}

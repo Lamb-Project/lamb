@@ -18,7 +18,18 @@ from lamb.private_storage import atomic_json, read_json, sync_directory
 MAX_ASSIGNMENTS = 20
 MAX_CHARTS = 100
 MAX_BYTES = 128 * 1024
+MAX_CALENDAR_BYTES = 512 * 1024
 RENDER_LOCK = threading.Lock()
+
+
+def snapshot_byte_limit(snapshot):
+    recipe=snapshot.get('recipe')
+    if (snapshot.get('view_kind')=='deadline-calendar-v1' and isinstance(recipe,dict)
+            and recipe.get('id')=='deadlines'):
+        return MAX_CALENDAR_BYTES
+    return MAX_BYTES
+
+
 LABELS = {
  'en': ['Assignment submissions', 'Submitted', 'Outstanding', 'Assignment', 'Course deadline', 'Deadline status', 'Open', 'Course deadline passed', 'Not yet open', 'No deadline', 'Unavailable', 'Counts of submissions, not learning. Outstanding includes drafts. Individual extensions and overrides were not checked; outstanding does not necessarily mean late.'],
  'es': ['Entregas de tareas', 'Entregadas', 'Pendientes', 'Tarea', 'Fecha límite del curso', 'Estado del plazo', 'Abierto', 'Plazo del curso vencido', 'Todavía no abierto', 'Sin fecha límite', 'No disponible', 'Recuentos de entregas, no de aprendizaje. Las pendientes incluyen borradores. No se han comprobado las prórrogas ni las excepciones individuales; pendiente no significa necesariamente atrasada.'],
@@ -105,7 +116,8 @@ class ChartStore:
         identity = str(uuid.UUID(publication_id)) if publication_id is not None else str(uuid.uuid4())
         envelope = {'snapshot': snapshot, 'binding': binding, 'command':command}
         payload = json.dumps(envelope, ensure_ascii=False, sort_keys=True, allow_nan=False).encode()
-        if len(payload) > MAX_BYTES: raise ValueError('Chart exceeds the pilot size limit')
+        byte_limit=snapshot_byte_limit(snapshot)
+        if len(payload) > byte_limit: raise ValueError('Chart exceeds the pilot size limit')
         fd = os.open(self.root / '.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, 'w') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
@@ -116,7 +128,7 @@ class ChartStore:
                 if publication_id is None:
                     raise ValueError('Chart identity collision')
                 try:
-                    existing = read_json(path, MAX_BYTES)
+                    existing = read_json(path, byte_limit)
                     same = json.dumps(existing, ensure_ascii=False, sort_keys=True, allow_nan=False).encode() == payload
                 except (OSError, ValueError, TypeError):
                     raise PermissionError('Chart publication is unavailable') from None
@@ -140,9 +152,10 @@ class ChartStore:
         try:
             identity = str(uuid.UUID(identity))
             with os.fdopen(os.open(self.root / (identity + '.json'), os.O_RDONLY | os.O_NOFOLLOW), 'rb') as source:
-                raw = source.read(MAX_BYTES + 1)
-            if len(raw) > MAX_BYTES: raise ValueError()
+                raw = source.read(MAX_CALENDAR_BYTES + 1)
+            if len(raw) > MAX_CALENDAR_BYTES: raise ValueError()
             envelope = json.loads(raw)
+            if len(raw)>snapshot_byte_limit(envelope['snapshot']):raise ValueError()
         except (OSError, ValueError, TypeError):
             raise PermissionError('Chart is unavailable') from None
         self.runtime.validate_result_binding(envelope['binding'], envelope.get('command', 'moodle.chart.submissions'))

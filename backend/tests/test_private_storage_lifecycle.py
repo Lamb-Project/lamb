@@ -18,6 +18,14 @@ def storage(tmp_path, monkeypatch):
     return OwnerStorage(1, 7)
 
 
+def test_chart_inventory_reports_calendar_capacity_without_auto_expiry(storage):
+    from lamb.moodle.charts import MAX_CHARTS,MAX_CALENDAR_BYTES
+    charts=storage.inspect()['stores']['charts']
+    assert charts['quota_bytes']==MAX_CHARTS*MAX_CALENDAR_BYTES
+    assert '128 KiB per chart, 512 KiB per deadline calendar' in charts['policy']
+    assert 'no automatic expiry' in charts['policy']
+
+
 def ticket(store, **extra):
     data = {'review': {}, 'scope': 'session', 'binding': {'generation': 1},
             'content': 'PRIVATE_ENCODED_BYTES', 'originals': {'source': 'PRIVATE_ORIGINAL'}, **extra}
