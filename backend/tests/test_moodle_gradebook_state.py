@@ -40,6 +40,17 @@ def test_pages_and_replay_are_atomic_and_preserve_raw_values():
     assert advance_cursor(done, 2, last) == done
 
 
+def test_optional_saved_name_is_bounded_and_cannot_change_between_pages():
+    first=page();first['item']['name']='Essay'
+    state=advance_cursor(initial_cursor(7,2),0,first)
+    assert state['item']['name']=='Essay'
+    last=page((3,),more=False);last['item']['name']='Renamed essay'
+    with pytest.raises(ValueError,match='changed'):advance_cursor(state,2,last)
+    for name in (None,123,'x'*161):
+        invalid=page();invalid['item']['name']=name
+        with pytest.raises(ValueError,match='name'):advance_cursor(initial_cursor(7,2),0,invalid)
+
+
 @pytest.mark.parametrize('change', [
     {'schema_version': True}, {'courseid': True}, {'courseid': 8}, {'gradeitemid': 3},
     {'groupid': 1}, {'throughid': 1}, {'next_afterid': 1}, {'has_more': 1},

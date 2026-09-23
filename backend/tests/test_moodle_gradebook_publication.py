@@ -54,6 +54,17 @@ def test_maximum_selection_fits_saved_snapshot_limit(tmp_path):
     assert len(result['rows'])==20 and result['next_offset'] is None
 
 
+def test_saved_names_keep_ids_and_old_sources_keep_fallback(tmp_path):
+    s,rt,c,identity=fixture(tmp_path)
+    record=s.read(identity);state=record['state']
+    state['items'][0]['cursor']['item']['name']='Synthetic essay'
+    s.replace(identity,state,expected_revision=record['revision'])
+    result=publish(s,rt,c,identity)
+    saved=ChartStore(rt).read(result['chart_id'])
+    assert saved['rows'][0]['name']=='Synthetic essay (#2)'
+    assert saved['rows'][1]['name']=='Assessment #3'
+
+
 def test_lost_save_response_and_ack_retry_reuse_exact_chart(tmp_path):
     s,rt,c,identity=fixture(tmp_path)
     original=ChartStore.save

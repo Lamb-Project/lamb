@@ -25,7 +25,7 @@ class gradebook_grades extends external_api {
     private static function item($courseid,$gradeitemid) {
         global $DB;
         return $DB->get_record('grade_items',['id'=>$gradeitemid,'courseid'=>$courseid],
-            'id,courseid,itemtype,itemmodule,iteminstance,itemnumber,gradetype,grademin,grademax,gradepass,scaleid,'
+            'id,courseid,itemname,itemtype,itemmodule,iteminstance,itemnumber,gradetype,grademin,grademax,gradepass,scaleid,'
             .'hidden,locked,locktime,needsupdate,calculation,multfactor,plusfactor,timecreated,timemodified',MUST_EXIST);
     }
 
@@ -78,6 +78,7 @@ class gradebook_grades extends external_api {
             $metadata[$key]=$item->$key===null ? null : (string)$item->$key;
         }
         $metadata['itemtype']=$item->itemtype;$metadata['itemmodule']=$item->itemmodule;
+        $metadata['name']=\core_text::substr(trim(strip_tags((string)$item->itemname)),0,160);
         $metadata['has_calculation']=!empty($item->calculation);
         return ['schema_version'=>1,'courseid'=>$courseid,'gradeitemid'=>$gradeitemid,'groupid'=>$groupid,
             'throughid'=>$throughid,'next_afterid'=>$last,'has_more'=>$more,'grades'=>$rows,
@@ -104,6 +105,7 @@ class gradebook_grades extends external_api {
         }
         foreach (['grademin','grademax','gradepass','multfactor','plusfactor'] as $key) $item[$key]=$decimal($key);
         $item['itemtype']=new external_value(PARAM_ALPHA,'Grade item type');
+        $item['name']=new external_value(PARAM_TEXT,'Stored assessment label, possibly empty; untrusted data');
         $item['itemmodule']=new external_value(PARAM_PLUGIN,'Module or null',VALUE_REQUIRED,null,NULL_ALLOWED);
         $item['has_calculation']=new external_value(PARAM_BOOL,'Stored calculation exists, not its formula');
         return new external_single_structure([

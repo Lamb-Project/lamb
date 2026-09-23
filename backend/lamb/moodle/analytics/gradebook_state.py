@@ -63,8 +63,11 @@ def advance_cursor(state, after_id, page):
     if upper < after_id or (state['throughid'] is not None and upper != state['throughid']):
         raise ValueError('Gradebook upper ID changed')
     item = page.get('item')
-    if not isinstance(item, dict) or set(item) != ITEM_INTS | ITEM_DECIMALS | {'itemtype', 'itemmodule', 'has_calculation'}:
+    if not isinstance(item, dict) or set(item)-{'name'} != ITEM_INTS | ITEM_DECIMALS | {'itemtype', 'itemmodule', 'has_calculation'}:
         raise ValueError('Unknown gradebook item fields')
+    # Older source/checkpoints have no label. Never refresh a saved snapshot for it.
+    if 'name' in item and (not isinstance(item['name'],str) or len(item['name'])>160):
+        raise ValueError('Invalid gradebook item name')
     for key in ITEM_INTS:
         if item[key] is not None:
             integer(item[key])

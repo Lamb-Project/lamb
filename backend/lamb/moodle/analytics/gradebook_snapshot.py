@@ -31,7 +31,9 @@ def snapshot(state, run_id):
             raise ValueError('Assessment snapshot scope mismatch')
         scopes.append(dict(scope))
         context = item['context']
-        rows.append(dict(summary,id=summary['grade_item_id'],name=f"{item_label} #{summary['grade_item_id']}",
+        stored_name=item['cursor']['item'].get('name','').strip()
+        label=f"{stored_name} (#{summary['grade_item_id']})" if stored_name else f"{item_label} #{summary['grade_item_id']}"
+        rows.append(dict(summary,id=summary['grade_item_id'],name=label,
             status='ok' if summary['comparison_status']=='available' else 'unavailable',
             population_basis=context['population_basis'],candidate_basis=context['candidate_basis'],
             candidate_students_n=len(context['candidates']),targeting_excluded_n=len(context['excluded_students'])))
