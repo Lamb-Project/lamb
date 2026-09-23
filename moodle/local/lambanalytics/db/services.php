@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 defined('MOODLE_INTERNAL') || die();
 $functions = [
+    'local_lambanalytics_gradebook_population' => [
+        'classname' => 'local_lambanalytics\external\gradebook_population',
+        'methodname' => 'execute',
+        'description' => 'Filter bounded active learner candidates by module and section user-list targeting restrictions.',
+        'type' => 'read',
+        'capabilities' => 'moodle/course:enrolreview,moodle/grade:viewall,moodle/grade:viewhidden',
+        'services' => [MOODLE_OFFICIAL_MOBILE_SERVICE],
+    ],
     'local_lambanalytics_gradebook_scope' => [
         'classname' => 'local_lambanalytics\external\gradebook_scope',
         'methodname' => 'execute',

@@ -21,6 +21,7 @@ FORUM_POSTS_FUNCTION = 'local_lambanalytics_forum_posts'
 QUIZ_ATTEMPTS_FUNCTION = 'local_lambanalytics_quiz_attempts'
 GRADEBOOK_SCOPE_FUNCTION = 'local_lambanalytics_gradebook_scope'
 GRADEBOOK_GRADES_FUNCTION = 'local_lambanalytics_gradebook_grades'
+GRADEBOOK_POPULATION_FUNCTION = 'local_lambanalytics_gradebook_population'
 MAX_EVENT_BYTES = 256 * 1024
 GRADE_FUNCTION = 'mod_assign_get_grades'
 MAX_GRADE_BYTES = 1024 * 1024
@@ -31,6 +32,15 @@ EVENT_PARAMETERS = frozenset({'courseid', 'since', 'until', 'groupid', 'afterid'
 
 class AnalyticsHTTPClient(MoodleHTTPClient):
     def call(self, wsfunction, **params):
+        if wsfunction == GRADEBOOK_POPULATION_FUNCTION:
+            ids = params.get('userids')
+            if (set(params)-{'courseid','gradeitemid','groupid','userids'}
+                    or any(type(params.get(key)) is not int or params[key]<1 for key in ('courseid','gradeitemid'))
+                    or type(params.get('groupid',0)) is not int or params.get('groupid',0)<0
+                    or not isinstance(ids,list) or len(ids)>200
+                    or any(type(value) is not int or value<1 for value in ids) or len(set(ids))!=len(ids)):
+                raise ValueError('Invalid gradebook population parameters')
+            return self._bounded_read(wsfunction, params, 16384, 'Gradebook-population')
         if wsfunction in {GRADEBOOK_SCOPE_FUNCTION, GRADEBOOK_GRADES_FUNCTION}:
             required = {'courseid', 'gradeitemid'}
             paging = wsfunction == GRADEBOOK_GRADES_FUNCTION
