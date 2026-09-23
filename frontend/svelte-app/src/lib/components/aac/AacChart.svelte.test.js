@@ -13,6 +13,16 @@ const snapshot = (language = 'en') => ({
     rows: [{name:'Essay',status:'ok',submitted:3,outstanding:3,participants:6,deadline:null,deadline_status:'no_deadline'},
         {name:'Team',status:'unavailable',submitted:null,outstanding:null,reason:'Team submissions are outside this pilot'}]
 });
+it('shows quiz evidence for an existing saved quiz snapshot without recollection', async () => {
+    apiJson.mockResolvedValue({...snapshot(), view_kind:'metric-bars-v1', recipe:{id:'quiz-overview'},
+        rows:[], metrics:{retry_1_to_2:{score_change_percentage_points:{n:1,mean:100},
+            between_attempt_seconds:{median:500},ungraded_pairs:0}}});
+    render(AacChart,{chartId:'saved-quiz'});
+    expect(await screen.findByText('Attempts and retries')).toBeInTheDocument();
+    expect(screen.getByText('500')).toBeInTheDocument();
+    expect(apiJson).toHaveBeenCalledTimes(1);
+    expect(apiJson.mock.calls[0][0]).toBe('/moodle/charts/saved-quiz');
+});
 beforeEach(() => {
     cleanup(); vi.resetAllMocks(); locale.set('en');
     URL.createObjectURL = vi.fn(() => 'blob:chart'); URL.revokeObjectURL = vi.fn();

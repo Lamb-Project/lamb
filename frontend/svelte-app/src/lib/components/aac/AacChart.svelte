@@ -4,6 +4,7 @@
     import { chartText, chartReason } from '$lib/utils/aacChartText';
     import { workspaceText } from '$lib/utils/moodleChartWorkspaceText';
     import DeadlineCalendar from './DeadlineCalendar.svelte';
+    import QuizEvidence from './QuizEvidence.svelte';
     let { chartId } = $props();
     let data = $state(null), imageUrl = $state(''), error = $state(false), imageError = $state(false);
     let attempt = $state(0);
@@ -64,6 +65,9 @@
         {#if data.coverage.history_complete === false && typeof data.coverage.collection_complete === 'boolean'}
             <p class="partial" data-chart-coverage>{data.coverage.collection_complete === true ? text.historyUnknown : text.collectionIncomplete}</p>
         {:else if !data.coverage.complete}<p class="partial" data-chart-coverage>{text.partial}</p>{/if}
+        {#if data.recipe?.id === 'quiz-overview'}
+            <QuizEvidence metrics={data.metrics} language={data.language} />
+        {/if}
         {#if !data.rows.length}<p role="status">{text.analyticsEmpty}</p>
         {:else if !supported.length}<p role="status">{text.analyticsUnavailable}</p>{/if}
         {#if imageUrl && data.view_kind === 'view-heatmap-v1'}
