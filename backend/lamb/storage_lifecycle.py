@@ -62,6 +62,7 @@ class OwnerStorage:
             'runs': (self.tasks / 'runs', 4 * 8 * 1024 * 1024, '24h; live runs not evicted'),
             'completion_runs': (self.tasks / 'completion-runs', 4 * 1024 * 1024, '24h; private learner cursors; live runs not evicted'),
             'quiz_runs': (self.tasks / 'quiz-runs', 16 * 1024 * 1024, '24h; private quiz attempts; live runs not evicted'),
+            'gradebook_runs': (self.tasks / 'gradebook-runs', 32 * 1024 * 1024, '24h; private gradebook evidence; live runs not evicted'),
             'forum_analytics_runs': (self.tasks / 'forum-analytics-runs', 16 * 1024 * 1024, '24h; private forum metadata; live runs not evicted'),
             'charts': (self.moodle / 'charts' / str(self.org) / str(self.owner), MAX_CHARTS * MAX_CALENDAR_BYTES,
                        'durable; no automatic expiry; 100 records; 128 KiB per chart, 512 KiB per deadline calendar or forum table'),
@@ -135,9 +136,11 @@ class OwnerStorage:
         from lamb.moodle.analytics.checkpoints import MAX_CHECKPOINT_BYTES
         from lamb.moodle.analytics.quiz_run import MAX_QUIZ_CHECKPOINT_BYTES
         from lamb.moodle.analytics.forum_checkpoints import MAX_FORUM_CHECKPOINT_BYTES
+        from lamb.moodle.analytics.gradebook_run import MAX_GRADEBOOK_CHECKPOINT_BYTES
         import math
         for namespace, bound in (('completion-runs', MAX_CHECKPOINT_BYTES), ('quiz-runs', MAX_QUIZ_CHECKPOINT_BYTES),
-                                 ('forum-analytics-runs', MAX_FORUM_CHECKPOINT_BYTES)):
+                                 ('forum-analytics-runs', MAX_FORUM_CHECKPOINT_BYTES),
+                                 ('gradebook-runs', MAX_GRADEBOOK_CHECKPOINT_BYTES)):
             folder = self.tasks / namespace
             with file_lock(folder, blocking=False):
                 records = [(path, read_json(path, bound)) for path in files(folder)]
