@@ -2,6 +2,8 @@
 from datetime import datetime, timezone
 import hashlib
 import json
+import uuid
+from zoneinfo import ZoneInfo
 
 from .checkpoints import CompletionCheckpoints
 from .client import QUIZ_ATTEMPTS_FUNCTION
@@ -39,12 +41,15 @@ def quiz_context(client, owner_id, scope):
         json.dumps(evidence, sort_keys=True).encode()).hexdigest())
 
 
-def start(store, course_id, quiz_id, *, group_id=0, policy):
+def start(store, course_id, quiz_id, *, group_id=0, policy, language='en', tz='UTC'):
     if policy not in POLICIES:
         raise ValueError('Explicit quiz attempt policy required')
+    if language not in {'en', 'es', 'ca', 'eu'}:
+        raise ValueError('Invalid quiz language')
+    ZoneInfo(tz)
     cursor = initial_cursor(course_id, quiz_id, group_id)
     return store.create({'scope': {'course_id': course_id, 'quiz_id': quiz_id, 'group_id': group_id},
-                         'policy': policy, 'started_at': _now(), 'cursor': cursor,
+                         'policy': policy, 'language': language, 'tz': tz, 'started_at': _now(), 'cursor': cursor,
                          'context': None, 'calls': 0, 'steps': 0, 'done': False})
 
 
@@ -114,3 +119,40 @@ def advance(store, client, owner_id, identity):
             return record
         finally:
             client.before_request = None
+
+
+def publish(store, runtime, client, identity):
+    """Reserve an immutable aggregate snapshot before idempotent publication."""
+    from .quiz_snapshot import snapshot
+    from .recipes import result_page
+    from ..charts import ChartStore
+    with store.execution_lock():
+        client.checkpoint()
+        record = store.read(identity)
+        state = record['state']
+        if not state['done']:
+            raise ValueError('Quiz collection is not finished')
+        current = runtime.result_binding()
+        if (store.binding['organization_id'] != runtime.store.organization_id or
+                store.binding['owner_id'] != runtime.store.owner_id or
+                any(store.binding[key] != current.get(key) for key in ('generation', 'base_url', 'moodle_user_id'))):
+            raise PermissionError('Quiz run belongs to another connection')
+        publication = state.get('publication')
+        if publication is None:
+            data = snapshot(state, identity)
+            binding = dict(current, course_id=state['scope']['course_id'], quiz_scopes=data['quiz_scopes'])
+            runtime.validate_result_binding(binding, 'moodle.analytics.run')
+            publication = {'id': str(uuid.uuid4()), 'snapshot': data, 'binding': binding}
+            state['publication'] = publication
+            record = store.replace(identity, state, expected_revision=record['revision'])
+        runtime.validate_result_binding(publication['binding'], 'moodle.analytics.run')
+        client.checkpoint()
+        charts = ChartStore(runtime)
+        chart_id = charts.save(publication['snapshot'], publication['binding'],
+                              command='moodle.analytics.run', publication_id=publication['id'])
+        saved = charts.read(chart_id)
+        client.checkpoint()
+        if not state.get('published'):
+            state['published'] = True
+            store.replace(identity, state, expected_revision=record['revision'])
+        return result_page(chart_id, saved)
