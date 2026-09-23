@@ -85,7 +85,13 @@ def advance(store, client, owner_id, identity):
                 item['context'] = current
                 save()
             if state['phase'] == 'collect':
-                for _ in range(PAGES_PER_STEP):
+                target = state['pages'] + PAGES_PER_STEP
+                if 'active_public_step' in state:
+                    if 'public_target_pages' not in state:
+                        state['public_target_pages'] = target
+                        save()
+                    target = state['public_target_pages']
+                while state['pages'] < target:
                     cursor = item['cursor']
                     if cursor['done']:
                         break
@@ -108,6 +114,8 @@ def advance(store, client, owner_id, identity):
                     # Validate numerical semantics before acknowledging completion.
                     compare_assessments([(i['cursor'],i['context']['students']) for i in state['items']])
                     state.update(done=True,phase='done',completed_at=_now())
+            if 'active_public_step' in state:
+                state['finished_public_step'] = state['active_public_step']
             save()
             client.checkpoint()
             return record
