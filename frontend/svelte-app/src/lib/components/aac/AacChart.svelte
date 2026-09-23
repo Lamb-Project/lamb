@@ -7,6 +7,7 @@
     import QuizEvidence from './QuizEvidence.svelte';
     import ForumEvidence from './ForumEvidence.svelte';
     import ForumNetwork from './ForumNetwork.svelte';
+    import AssessmentComparison from './AssessmentComparison.svelte';
     let { chartId } = $props();
     let data = $state(null), imageUrl = $state(''), error = $state(false), imageError = $state(false);
     let attempt = $state(0);
@@ -27,7 +28,7 @@
                 const snapshot = await apiJson(`/moodle/charts/${encodeURIComponent(id)}`, {signal:controller.signal});
                 if (!alive) return;
                 data = snapshot;
-                if (['forum-table-v1','forum-network-v1'].includes(snapshot.view_kind)) return;
+                if (['forum-table-v1','forum-network-v1','assessment-comparison-v1'].includes(snapshot.view_kind)) return;
                 if (!snapshot.rows.some(row => row.status === 'ok')) return;
                 try {
                     const response = await apiFetch(`/moodle/charts/${encodeURIComponent(id)}/image.svg`, {signal:controller.signal});
@@ -48,7 +49,9 @@
 {:else if data}
     <h3>{data.course_name}</h3>
     <p class="snapshot">{dateLabel(data.as_of)} · {data.timezone}</p>
-    {#if data.view_kind === 'forum-network-v1'}
+    {#if data.view_kind === 'assessment-comparison-v1'}
+        <AssessmentComparison {data} />
+    {:else if data.view_kind === 'forum-network-v1'}
         <ForumNetwork {data} />
     {:else if data.view_kind === 'forum-table-v1'}
         <ForumEvidence {data} />

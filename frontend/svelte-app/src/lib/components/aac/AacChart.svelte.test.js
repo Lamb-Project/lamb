@@ -13,6 +13,14 @@ const snapshot = (language = 'en') => ({
     rows: [{name:'Essay',status:'ok',submitted:3,outstanding:3,participants:6,deadline:null,deadline_status:'no_deadline'},
         {name:'Team',status:'unavailable',submitted:null,outstanding:null,reason:'Team submissions are outside this pilot'}]
 });
+it('renders assessment comparison without submission fallback or SVG endpoint',async()=>{
+    apiJson.mockResolvedValue({...snapshot(),view_kind:'assessment-comparison-v1',rows:[]});
+    const {container}=render(AacChart,{chartId:'saved-assessments'});
+    await screen.findByText('No assessments');
+    expect(container.querySelector('[data-assessment-comparison]')).not.toBeNull();
+    expect(apiFetch).not.toHaveBeenCalled();
+    expect(apiJson).toHaveBeenCalledTimes(1);
+});
 it('renders forum table without requesting an unsupported chart image',async()=>{
     apiJson.mockResolvedValue({...snapshot(),view_kind:'forum-table-v1',recipe:{id:'forum-participation'},
         metrics:{window:{since:100,until:200}},rows:[{name:'Student #1',status:'ok',value:0,posts:0,replies:0,discussions_started:0,active_local_days:0}]});
