@@ -11,8 +11,11 @@ from lamb.moodle.runtime import attach_to_agent
 
 def test_moodle_recipes_and_generated_commands_validate():
     pack=load_pack()
-    assert pack.version=='1.30.0'
+    assert pack.version=='1.30.1'
     validate_routing(pack)
+    routing=pack.data('routing.yaml')
+    assert 'moodle.analytics.assessments' in routing['CAPABILITIES']['moodle-triage']
+    assert routing['DEFAULT_SKILL']['moodle.analytics.assessments']=='moodle-triage'
     assert validate_skill_contracts(pack)
     names={'moodle-triage','moodle-forums','moodle-course-documents','moodle-assessment-draft'}
     assert names<=allowed_skills(pack,['creator'],['moodle'])
