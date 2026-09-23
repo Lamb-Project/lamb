@@ -8,13 +8,16 @@ from .access import course_access
 from .events import resource_reach, view_activity
 from .grades import grade_distribution
 from .completion import activity_completion
-from .client import EVENT_FUNCTION, SCOPE_FUNCTION, GRADE_SCOPE_FUNCTION, COMPLETION_SCOPE_FUNCTION
+from .deadlines import deadline_calendar
+from .client import EVENT_FUNCTION, SCOPE_FUNCTION, GRADE_SCOPE_FUNCTION, COMPLETION_SCOPE_FUNCTION, DEFAULT_DATES_FUNCTION
 from .authorization import validate_resource_scope, validate_grade_scope, validate_completion_scope
 from .presentation import present, TEXT
 from ..charts import ChartStore
 from ..scope import MoodleScope
 
 RECIPES = {
+    'deadlines': {'functions':[DEFAULT_DATES_FUNCTION,'core_course_get_contents'],
+                  'title':'Stored course schedule','metric':'Deadlines'},
     'view-distribution': {'functions':[EVENT_FUNCTION,SCOPE_FUNCTION,'core_enrol_get_enrolled_users','core_course_get_contents'],
                     'title':'Recorded views per student','metric':'Students'},
     'active-day-distribution': {'functions':[EVENT_FUNCTION,SCOPE_FUNCTION,'core_enrol_get_enrolled_users','core_course_get_contents'],
@@ -50,7 +53,16 @@ def capabilities(client, owner_id, course_id):
 def run_recipe(runtime, client, owner_id, params, *, progress=None):
     recipe, course = params['recipe'], params['course_id']
     binding = dict(runtime.result_binding(), course_id=course)
-    if recipe == 'activity-completion':
+    if recipe == 'deadlines':
+        zone = ZoneInfo(params['tz'])
+        since = int(datetime.fromisoformat(params['since']).replace(tzinfo=zone).timestamp())
+        until = int(datetime.fromisoformat(params['until']).replace(tzinfo=zone).timestamp())
+        data = deadline_calendar(client,owner_id,course,since=since,until=until,timezone=params['tz'])
+        rows = [{**row,'id':row['cmid'],'name':f"{row['name']} (#{row['cmid']})",
+                 'status':'ok','reason':None} for row in data['rows']]
+        if data['date_scopes']:
+            binding['date_scopes'] = data['date_scopes']
+    elif recipe == 'activity-completion':
         data = activity_completion(client,owner_id,course)
         rows = [{**r,'id':r['cmid'],'name':f"{r['name']} (#{r['cmid']})",'value':r['incomplete'],
                  'status':'ok','reason':None} for r in data['rows']]

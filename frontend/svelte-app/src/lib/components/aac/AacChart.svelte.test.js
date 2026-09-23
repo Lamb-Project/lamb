@@ -74,6 +74,26 @@ it('renders a generic analytics snapshot without submission-specific caveats', a
     expect(screen.queryByText(chartText('en').extensions)).toBeNull();
 });
 
+it('renders saved calendar events and exact unset dates without timestamp bars', async () => {
+    apiJson.mockResolvedValue({...snapshot(),view_kind:'deadline-calendar-v1',title:'Stored course schedule',
+        caption:'Stored defaults only.',window_label:'Inclusive start; exclusive end.',coverage:{complete:true},
+        calendar_labels:{title:'Stored course schedule',timeline:'Calendar events',weekly:'Weekly deadlines',
+            week:'Week starting',metric:'Deadlines',partial:'Partial week',activity:'Activity',
+            opens:'Opens',due:'Due',closes:'Closes',inside:'In requested window'},
+        events:[{cmid:42,name:'Quiz',kind:'due',also_closes:true,local:'2026-10-25T02:30:00+02:00'}],
+        weekly:[{week_start:'2026-10-19',deadlines:1,partial_week:true}],
+        rows:[{name:'Quiz (#42)',status:'ok',opens_label:'Not set',due_label:'2026-10-25T02:30:00+02:00',
+            closes_label:'2026-10-25T02:30:00+02:00',window_status_label:'In requested window'}]});
+    render(AacChart,{chartId:'calendar'});
+    await screen.findByText('Due / Closes');
+    expect(screen.getByText('Not set')).toBeInTheDocument();
+    expect(screen.getAllByRole('table')).toHaveLength(2);
+    expect(document.querySelector('.bar')).toBeNull();
+    await screen.findByRole('img');
+    expect(screen.getAllByRole('region').filter(e=>e.getAttribute('tabindex')==='0')).toHaveLength(3);
+    expect(apiJson).toHaveBeenCalledTimes(1);
+});
+
 it.each(['en','es','ca','eu'])('distinguishes retrieved coverage from unknown history in %s', async language => {
     apiJson.mockResolvedValue({...snapshot(language),view_kind:'metric-bars-v1',
         coverage:{complete:false,collection_complete:true,history_complete:false},

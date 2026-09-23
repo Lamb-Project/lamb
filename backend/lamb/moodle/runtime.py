@@ -42,11 +42,11 @@ class MoodleRuntime:
                           'write_groups':sorted(policy.write_groups), 'allow_grade_write':policy.allow_grade_write}}
 
     def validate_result_binding(self, binding, key):
-        expected = {k:v for k,v in binding.items() if k not in {'course_id', 'course_ids', 'resource_scopes', 'grade_scopes', 'completion_scopes'}}
+        expected = {k:v for k,v in binding.items() if k not in {'course_id', 'course_ids', 'resource_scopes', 'grade_scopes', 'completion_scopes', 'date_scopes'}}
         if self.result_binding() != expected or key not in self.available():
             raise PermissionError('Moodle snapshot is no longer accessible; run a fresh read')
         courses = binding.get('course_ids', binding.get('course_id'))
-        if any(binding.get(field) for field in ('resource_scopes','grade_scopes','completion_scopes')) and not courses:
+        if any(binding.get(field) for field in ('resource_scopes','grade_scopes','completion_scopes','date_scopes')) and not courses:
             raise PermissionError('Resource evidence requires a bound course')
         if courses:
             snap = self.snapshot(); record = snap['record']
@@ -81,6 +81,14 @@ class MoodleRuntime:
                         if not isinstance(completion_scope,dict) or completion_scope.get('course_id') not in (courses if isinstance(courses,(tuple,list)) else [courses]):
                             raise PermissionError('Completion scope is outside the bound courses')
                         validate_completion_scope(client, completion_scope)
+                    from .analytics.authorization import validate_date_scope
+                    date_scopes=binding.get('date_scopes',[])
+                    if not isinstance(date_scopes,list) or len(date_scopes)>20:
+                        raise PermissionError('Invalid date evidence scopes')
+                    for date_scope in date_scopes:
+                        if not isinstance(date_scope,dict) or date_scope.get('course_id') not in (courses if isinstance(courses,(tuple,list)) else [courses]):
+                            raise PermissionError('Date scope is outside the bound courses')
+                        validate_date_scope(client,date_scope)
             except Exception as error:
                 from .forum_activity import transient_failure
                 if transient_failure(error):

@@ -3,6 +3,7 @@
     import { apiFetch, apiJson } from '$lib/services/apiClient';
     import { chartText, chartReason } from '$lib/utils/aacChartText';
     import { workspaceText } from '$lib/utils/moodleChartWorkspaceText';
+    import DeadlineCalendar from './DeadlineCalendar.svelte';
     let { chartId } = $props();
     let data = $state(null), imageUrl = $state(''), error = $state(false), imageError = $state(false);
     let attempt = $state(0);
@@ -43,7 +44,10 @@
 {:else if data}
     <h3>{data.course_name}</h3>
     <p class="snapshot">{dateLabel(data.as_of)} · {data.timezone}</p>
-    {#if ['metric-bars-v1','view-trend-v1','view-heatmap-v1'].includes(data.view_kind)}
+    {#if data.view_kind === 'deadline-calendar-v1'}
+        <DeadlineCalendar {data} {imageUrl} />
+        {#if imageError}<p role="status">{text.imageError}</p><button onclick={() => attempt++}>{text.retry}</button>{/if}
+    {:else if ['metric-bars-v1','view-trend-v1','view-heatmap-v1'].includes(data.view_kind)}
         <h3>{data.title}</h3>
         {#if data.window_label}<p class="snapshot" data-analytics-window>{data.window_label}</p>{/if}
         {#if data.population_label}<p class="snapshot" data-analytics-population>{data.population_label}</p>{/if}

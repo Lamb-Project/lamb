@@ -164,6 +164,8 @@ class ChartStore:
                 items[-1]['grade_scopes'] = data['grade_scopes']
             if data.get('completion_scopes'):
                 items[-1]['completion_scopes'] = data['completion_scopes']
+            if data.get('date_scopes'):
+                items[-1]['date_scopes'] = data['date_scopes']
         return {'items': items, 'next_offset': offset + 20 if offset + 20 < len(paths) else None,
                 'evidence_kind': 'saved_snapshot', 'refreshed': False}
 
@@ -190,6 +192,10 @@ def chart_task(runtime, client, owner_id, params, *, progress=None):
 
 def render_svg(snapshot):
     import vl_convert as vlc
+    if snapshot.get('view_kind') == 'deadline-calendar-v1':
+        from .analytics.deadline_chart import calendar_spec
+        with RENDER_LOCK:
+            return vlc.vegalite_to_svg(calendar_spec(snapshot),allowed_base_urls=[])
     if snapshot.get('view_kind') == 'view-heatmap-v1':
         rows=snapshot['rows']
         if (len(rows)!=168 or any(type(r.get('weekday')) is not int or type(r.get('hour')) is not int

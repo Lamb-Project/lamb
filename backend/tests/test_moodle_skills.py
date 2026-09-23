@@ -11,7 +11,7 @@ from lamb.moodle.runtime import attach_to_agent
 
 def test_moodle_recipes_and_generated_commands_validate():
     pack=load_pack()
-    assert pack.version=='1.21.0'
+    assert pack.version=='1.22.0'
     validate_routing(pack)
     assert validate_skill_contracts(pack)
     names={'moodle-triage','moodle-forums','moodle-course-documents','moodle-assessment-draft'}
@@ -28,6 +28,14 @@ def test_all_completion_recovery_commands_have_a_workflow():
         command='moodle.analytics.'+suffix
         assert routing['DEFAULT_SKILL'][command]=='moodle-triage'
         assert command in routing['CAPABILITIES']['moodle-triage']
+
+
+def test_calendar_guidance_preserves_defaults_window_and_snapshot_semantics():
+    text=(load_pack().skills_dir/'moodle_triage.md').read_text()
+    assert 'moodle analytics run deadlines --course COURSE_ID' in text
+    for phrase in ('not individual or group deadlines','exclusive end','Weekly density counts due events only',
+                   'Do not infer lateness','relative-date course','chart read'):
+        assert phrase in text
 
 
 def test_new_task_pack_requires_an_engine_with_task_support(monkeypatch):

@@ -67,6 +67,9 @@ REASONS = {
 
 
 def present(recipe, language, timezone, data, rows):
+    if recipe == 'deadlines':
+        from .deadline_text import present_deadlines
+        return present_deadlines(language,timezone,data,rows)
     if recipe in {'view-distribution','active-day-distribution'}:
         from .view_distribution import present_distribution
         return present_distribution(language,timezone,data)

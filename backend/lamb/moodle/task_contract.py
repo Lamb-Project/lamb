@@ -37,7 +37,7 @@ def task_specs():
         click.Option(['--assignment','assignment_id'], type=click.IntRange(min=1)),
         click.Option(['--course','course_id'], required=True, type=click.IntRange(min=1)),
         click.Option(['--since'], help='Inclusive local date, YYYY-MM-DD.'),
-        click.Option(['--until'], help='Resource reach exclusive local date; omitted means now.'),
+        click.Option(['--until'], help='Exclusive local date; required for deadlines, otherwise omitted means now for view recipes.'),
         click.Option(['--group','group_id'], type=click.IntRange(min=1)),
         click.Option(['--tz'], default='UTC'),
         click.Option(['--language'], default='en', type=click.Choice(['en','es','ca','eu'])),
@@ -93,12 +93,19 @@ def parse_task(tokens):
                 raise ValueError('Grade distribution requires --assignment ID')
         elif params['assignment_id'] is not None:
             raise ValueError('--assignment applies only to grade-distribution')
-        if params['recipe'] in {'course-access','resource-reach','view-trends','view-heatmap','view-distribution','active-day-distribution'}:
+        if params['recipe'] in {'deadlines','course-access','resource-reach','view-trends','view-heatmap','view-distribution','active-day-distribution'}:
             try: date.fromisoformat(params['since'])
             except (ValueError, TypeError): raise ValueError('This recipe requires --since YYYY-MM-DD') from None
         elif params['since'] is not None:
             raise ValueError('--since does not apply to this recipe')
-        if params['recipe'] in {'resource-reach','view-trends','view-heatmap','view-distribution','active-day-distribution'}:
+        if params['recipe'] == 'deadlines':
+            try: end = date.fromisoformat(params['until'])
+            except (ValueError, TypeError): raise ValueError('Deadlines requires --until YYYY-MM-DD') from None
+            if not 0 < (end-date.fromisoformat(params['since'])).days <= 370:
+                raise ValueError('Use a deadline window of 1 to 370 local days')
+            if params['group_id'] is not None:
+                raise ValueError('Deadlines shows stored course defaults; --group does not apply')
+        elif params['recipe'] in {'resource-reach','view-trends','view-heatmap','view-distribution','active-day-distribution'}:
             if params['until'] is not None:
                 try: end = date.fromisoformat(params['until'])
                 except (ValueError, TypeError): raise ValueError('Use --until YYYY-MM-DD') from None
