@@ -69,9 +69,12 @@ This is guidance rather than a claim that language or arithmetic is validated.
         parts.append('Forum learner IDs are not names; do not invent identity mappings. '
                      'outside_population_window_posts means posts INSIDE the window by authors OUTSIDE the current student population, '
                      'not posts outside the date window. Reply counts are counts, not last-activity timestamps. '
+                     'Use window_start_local and window_end_local verbatim for dates; do not reinterpret UTC as local dates. '
                      'Participation counts use public post creation in [since, until), with an exclusive end. '
-                     'Discussion replies include all visible authors and self-replies through the saved observation time, '
-                     'not just students or posts in the requested window. Age is seconds at the snapshot, not now. '
+                     'For forum-participation rows, replies includes ONLY current students replies INSIDE that window. '
+                     'For forum-discussions rows, observed_public_replies_as_of includes all visible authors and self-replies '
+                     'through the snapshot, not only students or the window. Never apply that broader rule to learner rows. '
+                     'Age is seconds at the snapshot, not now. '
                      'No observed public replies does not establish unanswered or unresolved questions. '
                      'Resolution, contribution quality and learning are not established; private/deleted posts are excluded.')
     return ' '.join(parts)
