@@ -8,6 +8,20 @@ from tests.test_aac_legacy import agent, message, tool, turn
 RESULT = {'success':True,'data':{'recipe':{'id':'grade-distribution'},'grade_released':None}}
 
 
+@pytest.mark.parametrize('streaming', [False, True])
+def test_quiz_saved_evidence_uses_bounded_menu_repair(streaming):
+    quiz = {'success':True, 'data':{'recipe':{'id':'quiz-overview'}, 'attempt_policy':'all_finished'}}
+    bad = 'Four finished attempts.\n**¿Qué hacemos ahora?**\n1. Refrescar'
+    good = 'Four finished attempts; three scored attempts. No new collection.'
+    assert violations(bad, contract(quiz))
+    a, provider, shell = agent([message(tools=[tool()]), message(bad), message(good)])
+    a._execute_tool = AsyncMock(return_value=quiz)
+    assert asyncio.run(turn(a, streaming)) == good
+    assert a._execute_tool.await_count == 1
+    assert 'tools' not in provider.calls[-1]
+    assert bad not in str(a.conversation)
+
+
 @pytest.mark.parametrize('text', ['No son notas finales ni publicadas.', 'These marks are not yet published.',
                                 'No són notes finals ni publicades.', 'Argitaratu gabe.'])
 def test_observed_publication_claims_rejected(text):
