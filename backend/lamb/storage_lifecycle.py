@@ -61,6 +61,7 @@ class OwnerStorage:
             'evidence': (self.tasks / 'results', 16 * 4 * 1024 * 1024, '24h; live run references protected from quota eviction'),
             'runs': (self.tasks / 'runs', 4 * 8 * 1024 * 1024, '24h; live runs not evicted'),
             'completion_runs': (self.tasks / 'completion-runs', 4 * 1024 * 1024, '24h; private learner cursors; live runs not evicted'),
+            'quiz_runs': (self.tasks / 'quiz-runs', 16 * 1024 * 1024, '24h; private quiz attempts; live runs not evicted'),
             'charts': (self.moodle / 'charts' / str(self.org) / str(self.owner), MAX_CHARTS * MAX_CALENDAR_BYTES,
                        'durable; no automatic expiry; 100 records; 128 KiB per chart, 512 KiB per deadline calendar'),
             'course_cache': (self.tasks / 'course-cache', None, 'rebuildable; retained until explicit source refresh'),
@@ -131,18 +132,20 @@ class OwnerStorage:
             temporaries(chart_folder)
 
         from lamb.moodle.analytics.checkpoints import MAX_CHECKPOINT_BYTES
+        from lamb.moodle.analytics.quiz_run import MAX_QUIZ_CHECKPOINT_BYTES
         import math
-        folder = self.tasks / 'completion-runs'
-        with file_lock(folder, blocking=False):
-            records = [(path, read_json(path, MAX_CHECKPOINT_BYTES)) for path in files(folder)]
-            for _, record in records:
-                expiry = record.get('expires_at')
-                if type(expiry) not in (int, float) or not math.isfinite(expiry):
-                    raise ValueError('Cannot verify completion checkpoint expiry')
-            for path, record in records:
-                if record['expires_at'] <= now:
-                    remove(path)
-            temporaries(folder)
+        for namespace, bound in (('completion-runs', MAX_CHECKPOINT_BYTES), ('quiz-runs', MAX_QUIZ_CHECKPOINT_BYTES)):
+            folder = self.tasks / namespace
+            with file_lock(folder, blocking=False):
+                records = [(path, read_json(path, bound)) for path in files(folder)]
+                for _, record in records:
+                    expiry = record.get('expires_at')
+                    if type(expiry) not in (int, float) or not math.isfinite(expiry):
+                        raise ValueError('Cannot verify analytics checkpoint expiry')
+                for path, record in records:
+                    if record['expires_at'] <= now:
+                        remove(path)
+                temporaries(folder)
 
         store = self.imports()
         with store.lock():
