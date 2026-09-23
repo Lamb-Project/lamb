@@ -14,7 +14,7 @@ class forum_scope extends external_api {
         return new external_function_parameters([
             'courseid'=>new external_value(PARAM_INT, 'Course ID'),
             'forumid'=>new external_value(PARAM_INT, 'Forum ID'),
-            'discussionid'=>new external_value(PARAM_INT, 'Discussion ID'),
+            'discussionid'=>new external_value(PARAM_INT, 'Discussion ID; zero validates forum inventory authority'),
             'groupid'=>new external_value(PARAM_INT, 'Population group, zero for course-wide', VALUE_DEFAULT, 0),
         ]);
     }
@@ -24,7 +24,7 @@ class forum_scope extends external_api {
         require_once($CFG->dirroot.'/mod/forum/lib.php');
         $p=self::validate_parameters(self::execute_parameters(), compact('courseid','forumid','discussionid','groupid'));
         extract($p, EXTR_OVERWRITE);
-        if ($courseid<1 || $forumid<1 || $discussionid<1 || $groupid<0) {
+        if ($courseid<1 || $forumid<1 || $discussionid<0 || $groupid<0) {
             throw new \invalid_parameter_exception('Invalid forum evidence scope');
         }
         $context=\context_course::instance($courseid);
@@ -40,6 +40,8 @@ class forum_scope extends external_api {
         $modulecontext=\context_module::instance($cm->id);
         self::validate_context($modulecontext);
         require_capability('mod/forum:viewdiscussion', $modulecontext);
+        $forum=$DB->get_record('forum',['id'=>$forumid,'course'=>$courseid],'id,course,type',MUST_EXIST);
+        if ($forum->type==='qanda') require_capability('mod/forum:viewqandawithoutposting',$modulecontext);
         $allgroups=has_capability('moodle/site:accessallgroups', $modulecontext);
         if ($groupid) {
             $DB->get_record('groups', ['id'=>$groupid, 'courseid'=>$courseid], 'id', MUST_EXIST);
@@ -52,13 +54,15 @@ class forum_scope extends external_api {
                 groups_get_activity_groupmode($cm, $course)==SEPARATEGROUPS)) {
             throw new \required_capability_exception($modulecontext, 'moodle/site:accessallgroups', 'nopermissions', '');
         }
+        if (!$discussionid) {
+            return ['authorized'=>true,'courseid'=>$courseid,'forumid'=>$forumid,'discussionid'=>0,'groupid'=>$groupid];
+        }
         $discussion=$DB->get_record('forum_discussions',
             ['id'=>$discussionid, 'course'=>$courseid, 'forum'=>$forumid],
             'id,course,forum,groupid,timestart,timeend,userid', MUST_EXIST);
         if ($groupid && $discussion->groupid>0 && $discussion->groupid!=$groupid) {
             throw new \invalid_parameter_exception('Discussion is outside selected group');
         }
-        $forum=(object)['id'=>$forumid, 'course'=>$courseid];
         if (!forum_user_can_see_discussion($forum, $discussion, $modulecontext, $USER)) {
             throw new \required_capability_exception($modulecontext, 'mod/forum:viewdiscussion', 'nopermissions', '');
         }

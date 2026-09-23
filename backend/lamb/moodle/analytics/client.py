@@ -42,7 +42,8 @@ class AnalyticsHTTPClient(MoodleHTTPClient):
             required = {'courseid','forumid','discussionid'}
             if (set(params)-required-{'groupid'} or not required<=params.keys()
                     or any(type(value) is not int for value in params.values())
-                    or any(params[key]<1 for key in required) or params.get('groupid',0)<0):
+                    or params['courseid']<1 or params['forumid']<1
+                    or params['discussionid']<0 or params.get('groupid',0)<0):
                 raise ValueError('Invalid forum-scope parameters')
             return self._bounded_read(wsfunction,params,4096,'Forum-scope')
         if wsfunction == QUIZ_ATTEMPTS_FUNCTION:

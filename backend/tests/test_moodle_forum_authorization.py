@@ -16,6 +16,11 @@ def test_exact_authority_without_post_collection():
     source.call.assert_called_once_with(FORUM_SCOPE_FUNCTION, courseid=7, forumid=2, discussionid=3, groupid=0)
 
 
+def test_explicit_forum_inventory_scope():
+    with client(lambda request:httpx.Response(200,json=RESPONSE|{'discussionid':0})) as source:
+        validate_forum_scope(source,SCOPE|{'discussion_id':0})
+
+
 @pytest.mark.parametrize('change', [{'authorized':1}, {'courseid':8}, {'forumid':9},
     {'discussionid':4}, {'groupid':1}, {'discussionid':3.0}, {'posts':[]}])
 def test_scope_mismatch_denied(change):
@@ -23,7 +28,7 @@ def test_scope_mismatch_denied(change):
         validate_forum_scope(SimpleNamespace(call=lambda *a,**k:RESPONSE|change), SCOPE)
 
 
-@pytest.mark.parametrize('change', [{'course_id':True}, {'discussion_id':0}, {'group_id':-1}, {'extra':1}])
+@pytest.mark.parametrize('change', [{'course_id':True}, {'discussion_id':-1}, {'group_id':-1}, {'extra':1}])
 def test_invalid_saved_scope_never_calls(change):
     with pytest.raises(PermissionError):
         validate_forum_scope(SimpleNamespace(call=lambda *a,**k:pytest.fail('No source call expected')), SCOPE|change)
@@ -35,7 +40,7 @@ def test_transport_is_fixed_bounded_and_readonly():
     with client(lambda request:httpx.Response(200, json=RESPONSE)) as source:
         validate_forum_scope(source, SCOPE)
     assert set(READ_ALLOWLIST) == before
-    for change in ({'forumid':True}, {'discussionid':0}, {'groupid':-1}, {'wstoken':'override'}, {'fields':'message'}):
+    for change in ({'forumid':True}, {'discussionid':-1}, {'groupid':-1}, {'wstoken':'override'}, {'fields':'message'}):
         with client(lambda request:pytest.fail('No network expected')) as source:
             with pytest.raises(ValueError):
                 source.call(FORUM_SCOPE_FUNCTION, **({'courseid':7,'forumid':2,'discussionid':3}|change))
@@ -58,7 +63,7 @@ def test_forum_post_transport_is_fixed_bounded_and_readonly():
     with client(lambda request:httpx.Response(200,json=data)) as source:
         assert source.call(FORUM_POSTS_FUNCTION,courseid=7,forumid=2,discussionid=3,limit=1)==data
     assert set(READ_ALLOWLIST)==before
-    for change in ({'limit':201},{'limit':True},{'afterid':2},{'afterid':4,'throughid':3},
+    for change in ({'limit':201},{'limit':True},{'afterid':2},{'afterid':4,'throughid':3},{'discussionid':0},
                    {'userid':1},{'wstoken':'override'},{'fields':'message'},{'discussionid':'3'}):
         with client(lambda request:pytest.fail('No network expected')) as source:
             with pytest.raises(ValueError):

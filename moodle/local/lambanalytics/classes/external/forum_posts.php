@@ -28,7 +28,7 @@ class forum_posts extends external_api {
         require_once($CFG->dirroot.'/mod/forum/lib.php');
         $p=self::validate_parameters(self::execute_parameters(),compact('courseid','forumid','discussionid','groupid','afterid','throughid','limit'));
         extract($p, EXTR_OVERWRITE);
-        if ($afterid<0 || $throughid<0 || $limit<1 || $limit>200 || ($afterid && !$throughid)) {
+        if ($discussionid<1 || $afterid<0 || $throughid<0 || $limit<1 || $limit>200 || ($afterid && !$throughid)) {
             throw new \invalid_parameter_exception('Use a bounded post page and original upper ID');
         }
         forum_scope::execute($courseid,$forumid,$discussionid,$groupid);

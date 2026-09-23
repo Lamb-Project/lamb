@@ -8,7 +8,7 @@ def validate_forum_scope(client, scope):
               'discussion_id':'discussionid', 'group_id':'groupid'}
     if (not isinstance(scope, dict) or set(scope) != set(fields)
             or any(type(value) is not int for value in scope.values())
-            or any(scope[key] < (0 if key == 'group_id' else 1) for key in fields)):
+            or any(scope[key] < (0 if key in {'group_id','discussion_id'} else 1) for key in fields)):
         raise PermissionError('Invalid forum evidence scope')
     params = {value:scope[key] for key,value in fields.items()}
     try:
