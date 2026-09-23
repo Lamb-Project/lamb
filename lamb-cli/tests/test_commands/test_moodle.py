@@ -8,6 +8,17 @@ from lamb_cli.main import app
 runner = CliRunner()
 
 
+@pytest.mark.parametrize('verb',['run','start'])
+def test_assessment_comparison_preserves_repeated_grade_item_ids(verb):
+    with patch('lamb_cli.commands.moodle.get_client') as client:
+        client.return_value.__enter__.return_value.post.return_value={'run_id':'saved'}
+        result=runner.invoke(app,['moodle','analytics',verb,'assessment-comparison','--course','7',
+            '--grade-item','2','--grade-item','3','--group','4'])
+        assert result.exit_code==0,result.output
+        tokens=shlex.split(client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'])
+        assert [tokens[i+1] for i,value in enumerate(tokens) if value=='--grade-item']==['2','3']
+        assert tokens[tokens.index('--group')+1]=='4'
+
 @pytest.mark.parametrize('recipe',['forum-participation','forum-discussions','forum-network'])
 def test_forum_run_start_forward_exact_scope_and_calendar_bounds(recipe):
     for verb in ('run','start'):

@@ -41,6 +41,7 @@ def task_specs():
     from .analytics.recipes import RECIPES
     analytics_run = click.Command('run', params=[
         click.Argument(['recipe'], type=click.Choice(list(RECIPES))),
+        click.Option(['--grade-item','grade_item_ids'],multiple=True,type=click.IntRange(min=1),help='Repeat for 2–20 gradebook item IDs; not assignment IDs.'),
         click.Option(['--forum','forum_id'],type=click.IntRange(min=1)),
         click.Option(['--quiz','quiz_id'],type=click.IntRange(min=1)),
         click.Option(['--attempt-policy'],type=click.Choice(['first_finished','latest_finished','best_scored_finished','all_finished'])),
@@ -59,7 +60,8 @@ def task_specs():
     analytics_result = click.Command('result', params=[click.Argument(['chart_id']),
         click.Option(['--offset'],default=0,type=click.IntRange(min=0))],
         help='Read a bounded page from a saved analytics snapshot, with fresh permission checks and no recollection.', add_help_option=False)
-    analytics_start = click.Command('start', params=[click.Argument(['recipe'],type=click.Choice(['activity-completion','quiz-overview','forum-participation','forum-discussions','forum-network'])),
+    analytics_start = click.Command('start', params=[click.Argument(['recipe'],type=click.Choice(['activity-completion','quiz-overview','forum-participation','forum-discussions','forum-network','assessment-comparison'])),
+        click.Option(['--grade-item','grade_item_ids'],multiple=True,type=click.IntRange(min=1),help='Repeat for 2–20 gradebook item IDs; not assignment IDs.'),
         click.Option(['--forum','forum_id'],type=click.IntRange(min=1)),
         click.Option(['--since']),click.Option(['--until']),click.Option(['--through']),
         click.Option(['--quiz','quiz_id'],type=click.IntRange(min=1)),
@@ -102,6 +104,20 @@ def parse_task(tokens):
         try:params['run_id']=str(UUID(params['run_id']))
         except (ValueError,TypeError):raise ValueError('Use an analytics run_id') from None
     if key in {'analytics.run','analytics.start'}:
+        if params['recipe']=='assessment-comparison':
+            ids=params['grade_item_ids']
+            if not 2<=len(ids)<=20 or len(set(ids))!=len(ids):
+                raise ValueError('Assessment comparison requires 2–20 distinct --grade-item IDs')
+            if any(params.get(field) is not None for field in ('forum_id','quiz_id','attempt_policy','assignment_id','since','until','through')):
+                raise ValueError('Assessment comparison accepts grade-item scope, not activity IDs, attempt policies or date windows')
+            from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+            try:ZoneInfo(params['tz'])
+            except (ValueError,ZoneInfoNotFoundError):raise ValueError('Use an IANA timezone') from None
+            params['grade_item_ids']=list(ids)
+            params['group_id']=params.get('group_id') or 0
+            return spec,params
+        if params.pop('grade_item_ids',()):
+            raise ValueError('--grade-item applies only to assessment-comparison')
         if params['recipe'] in {'forum-participation','forum-discussions','forum-network'}:
             from .analytics.forum_window import parse_window
             if params.get('forum_id') is None:

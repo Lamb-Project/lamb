@@ -49,7 +49,7 @@ class MoodleRuntime:
         if any(binding.get(field) for field in ('resource_scopes','grade_scopes','completion_scopes','date_scopes','quiz_scopes','forum_scopes','gradebook_scopes')) and not courses:
             raise PermissionError('Resource evidence requires a bound course')
         # A saved listing contains up to 20 charts, each with 20 selected items.
-        gradebook_scope_limit = 400 if key == 'moodle.chart.list' else 20
+        gradebook_scope_limit = 400 if key == 'moodle.chart.list' else 80 if key == 'moodle.analytics.runs' else 20
         if 'gradebook_scopes' in binding and (not isinstance(binding['gradebook_scopes'],list)
                 or not 1 <= len(binding['gradebook_scopes']) <= gradebook_scope_limit):
             raise PermissionError('Invalid gradebook evidence scopes')
@@ -197,8 +197,10 @@ class MoodleRuntime:
                 from .analytics.recipes import capabilities
                 return capabilities(client, record['moodle_user_id'], params['course_id'])
             if key == 'analytics.run':
-                if params['recipe'] in {'activity-completion', 'quiz-overview','forum-participation','forum-discussions','forum-network'}:
-                    if params['recipe'] in {'forum-participation','forum-discussions','forum-network'}:
+                if params['recipe'] in {'activity-completion', 'quiz-overview','forum-participation','forum-discussions','forum-network','assessment-comparison'}:
+                    if params['recipe']=='assessment-comparison':
+                        from .analytics.gradebook_tasks import execute
+                    elif params['recipe'] in {'forum-participation','forum-discussions','forum-network'}:
                         from .analytics.forum_tasks import execute
                     elif params['recipe'] == 'quiz-overview':
                         from .analytics.quiz_tasks import execute

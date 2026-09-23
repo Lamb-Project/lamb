@@ -11,7 +11,7 @@ from lamb.moodle.runtime import attach_to_agent
 
 def test_moodle_recipes_and_generated_commands_validate():
     pack=load_pack()
-    assert pack.version=='1.28.0'
+    assert pack.version=='1.29.1'
     validate_routing(pack)
     assert validate_skill_contracts(pack)
     names={'moodle-triage','moodle-forums','moodle-course-documents','moodle-assessment-draft'}
@@ -93,7 +93,7 @@ def test_runtime_guard_loads_recipe_before_execution_and_revokes_access(stores):
     attach_to_agent(a,rt.store)
     assert 'moodle-triage' in a.conversation[-1]['content']
     first=asyncio.run(a._execute_tool(tool('moodle sync 10')))
-    assert first['skill_loaded']=='moodle-triage' and not first['success']
+    assert first.get('skill_loaded')=='moodle-triage' and not first['success'], first
     shell.execute.assert_not_awaited()
     second=asyncio.run(a._execute_tool(tool('moodle sync 10')))
     assert second['success']

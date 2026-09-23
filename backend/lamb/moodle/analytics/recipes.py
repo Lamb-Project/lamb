@@ -16,6 +16,9 @@ from ..charts import ChartStore
 from ..scope import MoodleScope
 
 RECIPES = {
+    'assessment-comparison': {'functions':['local_lambanalytics_gradebook_scope','local_lambanalytics_gradebook_grades',
+        'local_lambanalytics_gradebook_population','core_enrol_get_enrolled_users'],
+        'title':'Stored final-grade assessment comparison','metric':'Normalized final grade (%)'},
     'forum-network': {'functions':['local_lambanalytics_forum_scope','local_lambanalytics_forum_posts',
         'local_lambanalytics_forum_evidence_scope','mod_forum_get_forum_discussions','core_enrol_get_enrolled_users'],
         'title':'Observed current-student reply network','metric':'Unique peers'},

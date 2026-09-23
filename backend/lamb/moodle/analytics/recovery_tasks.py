@@ -1,13 +1,17 @@
 """Route bounded analytics recovery without weakening namespace permissions."""
-from . import completion_tasks, quiz_tasks, forum_tasks
+from . import completion_tasks, quiz_tasks, forum_tasks, gradebook_tasks
+from .gradebook_run import GradebookCheckpoints
 from .forum_checkpoints import ForumCheckpoints
 from .checkpoints import CompletionCheckpoints
 from .quiz_run import QuizCheckpoints
 
 
 def execute(runtime, results, client, owner, key, params):
-    handlers = ((CompletionCheckpoints, completion_tasks), (QuizCheckpoints, quiz_tasks), (ForumCheckpoints, forum_tasks))
+    handlers = ((CompletionCheckpoints, completion_tasks), (QuizCheckpoints, quiz_tasks), (ForumCheckpoints, forum_tasks),
+                (GradebookCheckpoints,gradebook_tasks))
     if key == 'analytics.start':
+        if params['recipe']=='assessment-comparison':
+            return gradebook_tasks.execute(runtime,results,client,owner,key,params)
         if params['recipe'] in {'forum-participation','forum-discussions','forum-network'}:
             return forum_tasks.execute(runtime,results,client,owner,key,params)
         if params['recipe'] not in {'quiz-overview', 'activity-completion'}:
@@ -20,7 +24,7 @@ def execute(runtime, results, client, owner, key, params):
             items.extend(handler.execute(runtime, results, client, owner, key, params)['items'])
         client.checkpoint()
         return {'items': sorted(items, key=lambda item: item['started_at'], reverse=True),
-                'meaning': 'Authorized completion, quiz and forum recovery handles for this connection.'}
+                'meaning': 'Authorized completion, quiz, forum and assessment recovery handles for this connection.'}
     if key != 'analytics.continue':
         raise ValueError('Unknown analytics recovery operation')
     selected = []
