@@ -1,6 +1,7 @@
 """Private resumable multi-assessment collection, not a public recipe yet."""
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+import uuid
 from .checkpoints import CompletionCheckpoints
 from .client import GRADEBOOK_GRADES_FUNCTION
 from .gradebook_context import gradebook_context
@@ -112,3 +113,40 @@ def advance(store, client, owner_id, identity):
             return record
         finally:
             client.before_request = None
+
+
+def publish(store, runtime, client, identity):
+    """Reserve immutable aggregate evidence before saving; retries reuse its ID."""
+    from .gradebook_snapshot import snapshot
+    from .recipes import result_page
+    from ..charts import ChartStore
+    with store.execution_lock():
+        client.checkpoint()
+        record = store.read(identity)
+        state = record['state']
+        if not state['done']:
+            raise ValueError('Assessment collection is not finished')
+        current = runtime.result_binding()
+        if (store.binding['organization_id'] != runtime.store.organization_id
+                or store.binding['owner_id'] != runtime.store.owner_id
+                or any(store.binding[key] != current.get(key) for key in ('generation','base_url','moodle_user_id'))):
+            raise PermissionError('Assessment run belongs to another connection')
+        publication = state.get('publication')
+        if publication is None:
+            data = snapshot(state,identity)
+            binding = dict(current,course_id=data['course_id'],gradebook_scopes=data['gradebook_scopes'])
+            runtime.validate_result_binding(binding,'moodle.analytics.run')
+            publication = {'id':str(uuid.uuid4()),'snapshot':data,'binding':binding}
+            state['publication'] = publication
+            record = store.replace(identity,state,expected_revision=record['revision'])
+        runtime.validate_result_binding(publication['binding'],'moodle.analytics.run')
+        client.checkpoint()
+        charts = ChartStore(runtime)
+        chart_id = charts.save(publication['snapshot'],publication['binding'],
+            command='moodle.analytics.run',publication_id=publication['id'])
+        saved = charts.read(chart_id)
+        client.checkpoint()
+        if not state.get('published'):
+            state['published'] = True
+            store.replace(identity,state,expected_revision=record['revision'])
+        return result_page(chart_id,saved)
