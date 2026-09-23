@@ -2,6 +2,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 defined('MOODLE_INTERNAL') || die();
 $functions = [
+    'local_lambanalytics_gradebook_scope' => [
+        'classname' => 'local_lambanalytics\external\gradebook_scope',
+        'methodname' => 'execute',
+        'description' => 'Revalidate exact assessment grade-item and group authority without reading grades.',
+        'type' => 'read',
+        'capabilities' => 'moodle/course:enrolreview,moodle/grade:viewall,moodle/grade:viewhidden',
+        'services' => [MOODLE_OFFICIAL_MOBILE_SERVICE],
+    ],
+    'local_lambanalytics_gradebook_grades' => [
+        'classname' => 'local_lambanalytics\external\gradebook_grades',
+        'methodname' => 'execute',
+        'description' => 'Read bounded stored raw and final grade records without recalculation or feedback text.',
+        'type' => 'read',
+        'capabilities' => 'moodle/course:enrolreview,moodle/grade:viewall,moodle/grade:viewhidden',
+        'services' => [MOODLE_OFFICIAL_MOBILE_SERVICE],
+    ],
     'local_lambanalytics_forum_evidence_scope' => [
         'classname' => 'local_lambanalytics\external\forum_evidence_scope',
         'methodname' => 'execute',

@@ -19,6 +19,8 @@ FORUM_SCOPE_FUNCTION = 'local_lambanalytics_forum_scope'
 FORUM_EVIDENCE_SCOPE_FUNCTION = 'local_lambanalytics_forum_evidence_scope'
 FORUM_POSTS_FUNCTION = 'local_lambanalytics_forum_posts'
 QUIZ_ATTEMPTS_FUNCTION = 'local_lambanalytics_quiz_attempts'
+GRADEBOOK_SCOPE_FUNCTION = 'local_lambanalytics_gradebook_scope'
+GRADEBOOK_GRADES_FUNCTION = 'local_lambanalytics_gradebook_grades'
 MAX_EVENT_BYTES = 256 * 1024
 GRADE_FUNCTION = 'mod_assign_get_grades'
 MAX_GRADE_BYTES = 1024 * 1024
@@ -29,6 +31,18 @@ EVENT_PARAMETERS = frozenset({'courseid', 'since', 'until', 'groupid', 'afterid'
 
 class AnalyticsHTTPClient(MoodleHTTPClient):
     def call(self, wsfunction, **params):
+        if wsfunction in {GRADEBOOK_SCOPE_FUNCTION, GRADEBOOK_GRADES_FUNCTION}:
+            required = {'courseid', 'gradeitemid'}
+            paging = wsfunction == GRADEBOOK_GRADES_FUNCTION
+            allowed = required | {'groupid'} | ({'afterid', 'throughid', 'limit'} if paging else set())
+            if (set(params)-allowed or not required<=params.keys()
+                    or any(type(value) is not int for value in params.values())
+                    or any(params[key]<1 for key in required)
+                    or any(params.get(key,0)<0 for key in ('groupid','afterid','throughid'))
+                    or not 1<=params.get('limit',200)<=200
+                    or (params.get('afterid',0)>0 and params.get('throughid',0)<params['afterid'])):
+                raise ValueError('Invalid gradebook source parameters')
+            return self._bounded_read(wsfunction, params, MAX_EVENT_BYTES if paging else 4096, 'Gradebook')
         if wsfunction == FORUM_EVIDENCE_SCOPE_FUNCTION:
             ids = params.get('discussionids', [])
             if (set(params)-{'courseid','forumid','groupid','discussionids'}
