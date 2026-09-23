@@ -130,7 +130,7 @@ class SkillRouting:
         return rendered
 
     def required_skill(self, key, args, kwargs):
-        if key == "result.read":
+        if key in {"result.read", "moodle.help"}:
             return None  # Engine readback also works in sessions pinned to older packs.
         pack = getattr(self, 'pack', None)
         routing = pack.data('routing.yaml') if pack else _legacy_routing

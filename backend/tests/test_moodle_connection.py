@@ -24,6 +24,17 @@ def test_direct_token_verified_and_encrypted(respx_mock):
     assert body['wsfunction']==['core_webservice_get_site_info']
 
 
+def test_connection_retains_only_validated_function_identifiers(respx_mock):
+    info={**INFO,'functions':[{'name':'core_enrol_get_enrolled_users','description':'untrusted prose'},
+                             {'name':'core_enrol_get_enrolled_users'}]}
+    respx_mock.post(BASE+'/webservice/rest/server.php').mock(return_value=httpx.Response(200,json=info))
+    record=connect(token='fixture-secret')
+    assert record['schema_version']==2
+    assert record['functions']==['core_enrol_get_enrolled_users']
+    assert 'untrusted prose' not in json.dumps(record)
+    assert 'functions' not in public_connection(record)
+
+
 def test_qr_exchange_then_verify(respx_mock):
     qr=respx_mock.post(BASE+'/lib/ajax/service-nologin.php').mock(return_value=httpx.Response(200,json=[{'error':False,'data':{'token':'fixture-secret','privatetoken':'not-stored'}}]))
     respx_mock.post(BASE+'/webservice/rest/server.php').mock(return_value=httpx.Response(200,json=INFO))

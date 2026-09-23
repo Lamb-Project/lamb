@@ -40,10 +40,12 @@ def establish_connection(policy, cipher, *, organization_id, owner_id, token=Non
             raise ValueError()
         if qr_user is not None and info.userid != int(qr_user):
             raise ValueError()
+        from .discovery import validated_functions
+        functions = validated_functions(info.functions)
         ciphertext = cipher.encrypt(token, organization_id=organization_id, owner_id=owner_id, base_url=policy.base_url)
     except Exception:
         raise MoodleConnectionError('Moodle identity verification failed. Reconnect with a valid token from the allowed site') from None
-    return {'schema_version': 1, 'base_url': policy.base_url, 'moodle_user_id': info.userid,
+    return {'schema_version': 2, 'functions': functions, 'base_url': policy.base_url, 'moodle_user_id': info.userid,
             'username': info.username, 'token_encrypted': ciphertext,
             'connected_at': datetime.now(timezone.utc).isoformat()}
 

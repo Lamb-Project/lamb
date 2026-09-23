@@ -13,9 +13,16 @@ from lamb.aac.authorization import ActionAuthorizer
 
 
 def runtime(stores):
+    from lamb.moodle.discovery import requirements
+    from lamb.moodle.analytics.recipes import RECIPES
+    from moodle_cli.services.content import CONTENT_FUNCTIONS
+    functions = sorted(set().union(*requirements().values(),
+        *(set(recipe['functions']) for recipe in RECIPES.values()),
+        {item[0] for item in CONTENT_FUNCTIONS.values()}))
     _,store=stores;cipher=TokenCipher(Fernet.generate_key());snap=store.snapshot()
     encrypted=cipher.encrypt('fixture',organization_id=1,owner_id=7,base_url='https://moodle.test')
-    store.save({'base_url':'https://moodle.test','moodle_user_id':70,'username':'demo','token_encrypted':encrypted},expected_generation=snap['generation'],expected_policy=snap['policy'])
+    store.save({'base_url':'https://moodle.test','moodle_user_id':70,'username':'demo','token_encrypted':encrypted,
+                'functions':functions},expected_generation=snap['generation'],expected_policy=snap['policy'])
     return MoodleRuntime(store,cipher=cipher)
 
 

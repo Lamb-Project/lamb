@@ -4,15 +4,12 @@ import re
 
 def render_permissions(prompt, commands):
     commands = set(commands)
-    unavailable = {
-        'moodle forum reply': 'moodle.forum.reply',
-        'moodle forum post': 'moodle.forum.post',
-        'moodle assign grade': 'moodle.assign.grade',
-    }
+    from .contract import all_specs
+    unavailable = {'moodle ' + key.replace('.', ' '): 'moodle.' + key for key in all_specs()}
 
     def filter_examples(match):
         lines = [line for line in match.group(1).splitlines()
-                 if not any(line.strip().startswith(command + ' ') and key not in commands
+                 if not any((line.strip() == command or line.strip().startswith(command + ' ')) and key not in commands
                             for command, key in unavailable.items())]
         return '```aac-command\n' + '\n'.join(lines) + '\n```' if any(line.strip() for line in lines) else ''
 

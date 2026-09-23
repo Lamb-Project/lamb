@@ -483,6 +483,7 @@ class AgentLoop(SkillRouting):
         from lamb.aac.language import append_turn_language
         self._turn_id = str(uuid.uuid4())
         self._tool_rounds = 0
+        self._moodle_help_used = False
         self.announce_linked_context()
         append_turn_language(self)
         partial = ''
@@ -685,7 +686,17 @@ class AgentLoop(SkillRouting):
             return result.to_dict()
         allowed = getattr(self.shell, 'allowed_commands', None)
         if allowed is not None and action_key not in allowed:
+            if action_key.startswith('moodle.'):
+                return {'success':False, 'error':'Command unavailable under LAMB policy or validated token capabilities. '
+                        'This does not establish a course permission denial. Use one local help lookup if needed.'}
             return {'success':False, 'error':'This command is outside your role; ask the appropriate administrator'}
+        if action_key == 'moodle.help':
+            if getattr(self, '_moodle_help_used', False):
+                result = ShellResult(False, error='Moodle help lookup budget exhausted for this turn. '
+                    'Use the returned documentation; if unresolved, explain the gap and stop.', command=command)
+                self._record_audit(command, action_key, False, 0, result)
+                return result.to_dict()
+            self._moodle_help_used = True
         policy = "auto" if help_requested else self.authorizer.check(action_key)
         interpretations = (self.skill_state or {}).get('translation_interpretations', [])
         # Even otherwise automatic resource writes require a reviewed interpretation.

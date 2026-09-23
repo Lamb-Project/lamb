@@ -8,7 +8,7 @@ import re
 import yaml
 
 BACKEND = Path(__file__).resolve().parents[2]
-ENGINE_VERSION = '0.7.24'
+ENGINE_VERSION = '0.7.25'
 
 
 def packs_root():

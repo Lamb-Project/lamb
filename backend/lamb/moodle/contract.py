@@ -70,6 +70,13 @@ def command_specs():
 def prepare_moodle(command):
     """Strict CLI tokenization and typed parameters without executing anything."""
     tokens = shlex.split(command)
+    if tokens and tokens[0] == 'moodle' and any(t in {'--help', '-h'} for t in tokens):
+        path = tokens[1:-1]
+        if tokens[-1] not in {'--help','-h'} or len(path) > 2 or any(
+                not token or token.startswith('-') or not all(c.isalpha() or c == '-' for c in token)
+                for token in path):
+            raise ValueError('Use moodle [GROUP [COMMAND]] --help without object IDs or options')
+        return CommandSpec('help', 'Permission-filtered local command help', 'auto', click.Command('help')), {'path': '.'.join(path)}
     from .task_contract import parse_task
     task = parse_task(tokens)
     if task is not None:
@@ -93,6 +100,17 @@ def prepare_moodle(command):
     if spec is None:
         raise ValueError(f'Unknown or unavailable Moodle command: {key}')
     return spec, spec.parse(tokens[3:])
+
+
+def all_specs():
+    """One vocabulary for parser-backed help, including task and cache commands."""
+    from .task_contract import task_specs
+    from .document_contract import document_specs
+    result = {**command_specs(), **task_specs(), **document_specs()}
+    for command in ('moodle sync 1', 'moodle cache show 1 --section course'):
+        spec, _ = prepare_moodle(command)
+        result[spec.key] = spec
+    return result
 
 
 def command_reference(*, enabled=False, connected=False, write_groups=(), allow_grade_write=False):

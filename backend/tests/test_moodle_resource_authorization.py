@@ -65,7 +65,7 @@ def test_resource_binding_without_matching_course_is_rejected(stores):
 
 @pytest.mark.parametrize('command,data', [
     ('moodle analytics run resource-reach --course 7 --since 2026-09-01 --group 2',
-     {'chart_id':'saved','title':'Resource reach','resource_scopes':[SCOPE]}),
+     {'chart_id':'saved','course_id':7,'title':'Resource reach','resource_scopes':[SCOPE]}),
     ('moodle analytics result 00000000-0000-0000-0000-000000000001',
      {'course_id':7,'resource_scopes':[SCOPE]}),
     ('moodle chart list',{'items':[{'course_id':7,'resource_scopes':[SCOPE]}]}),

@@ -161,6 +161,8 @@ class ActionAuthorizer:
         Unknown actions default to 'ask' (safe default).
         """
         if action_key.startswith('moodle.'):
+            if action_key == 'moodle.help':
+                return 'auto'
             from lamb.moodle.contract import command_specs
             key=action_key.removeprefix('moodle.')
             from lamb.moodle.document_contract import document_specs

@@ -341,6 +341,8 @@ class LiteShell:
         if key.startswith('moodle.'):
             if self.moodle is None:
                 raise ValueError('Moodle connector is unavailable in this conversation')
+            if key == 'moodle.help':
+                return ShellResult(success=True, data=self.moodle.execute('help', kwargs))
             import asyncio
             import threading
             cancel = threading.Event()

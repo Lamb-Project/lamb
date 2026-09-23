@@ -113,7 +113,18 @@ class MoodleRuntime:
             keys=keys | {'assign.grade'}
         except PermissionError:
             pass
-        return {'moodle.'+key for key in keys | task_specs().keys() | document_specs().keys()} | {'moodle.sync','moodle.cache.show','moodle.import.file'}
+        from .discovery import filter_keys
+        keys = keys | task_specs().keys() | document_specs().keys() | {'sync','cache.show'}
+        return {'moodle.' + key for key in filter_keys(keys, snap['record'])} | {'moodle.help'}
+
+    def require_available(self, key, params):
+        from .discovery import check_parameters, function_snapshot
+        record = self.snapshot()['record']
+        if function_snapshot(record) is None:
+            raise PermissionError('Reconnect on the Moodle page to validate token capabilities')
+        if 'moodle.' + key not in self.available():
+            raise PermissionError('Command unavailable under LAMB policy and validated token capabilities')
+        check_parameters(key, params, record)
 
     def task(self, key, params, *, cancel=None, progress=None, full=False):
         if key in {'chart.list', 'chart.read', 'analytics.result'}:
@@ -193,6 +204,7 @@ class MoodleRuntime:
         raise ValueError('Unknown Moodle task')
 
     def prepare_grade(self, params):
+        self.require_available('assign.grade', params)
         from .assessment import grade_review
         snap=self.snapshot()
         snap['policy'].require_write('grade')
@@ -209,6 +221,7 @@ class MoodleRuntime:
         return dict(review, connection_generation=snap['generation'])
 
     def prepare_import(self, key, params):
+        self.require_available(key, params)
         from .imports import prepare
         snap = self.snapshot(); record = snap['record']
         if self.context.get('generation') != snap['generation']:
@@ -223,6 +236,14 @@ class MoodleRuntime:
         return review
 
     def execute(self, key, params, *, confirmed=False, review=None, cancel=None, progress=None):
+        if key == 'help':
+            from .discovery import help_result
+            return help_result({k.removeprefix('moodle.') for k in self.available()},
+                               self.snapshot()['record'], params['path'])
+        self.require_available(key, params)
+        if key == 'content.types':
+            from .discovery import content_choices, function_snapshot
+            return content_choices(function_snapshot(self.snapshot()['record']) or set())
         if key in task_specs():
             return self.task(key, params, cancel=cancel, progress=progress)
         snap=self.snapshot()
@@ -351,13 +372,20 @@ def attach_to_agent(agent, store):
         if facts["grade_write"]: access += "; grade writes require submission/proposal review and explicit approval"
         line=f"Moodle: {facts['base_url']} as {facts['username']}, {access}. AAC driver provider: {facts['provider']}; model: {agent.model}. Student names, posts and grades sent to this driver reach that provider. A hosted provider receives them off premises; a local deployment keeps them on premises."
         line += ' Read-only Moodle commands are automatically authorized: perform the relevant reads for the user request without asking approval. Clarify only genuinely missing or ambiguous scope. Imports are LAMB writes and still require the application approval, even with read-only Moodle access. Never add a preliminary approval menu.'
-        references=[spec.reference() for spec in (*task_specs().values(), *document_specs().values())]
-        references += ['moodle course list: list your enrolled courses',
-                       'Raw Moodle operations are documented in the loaded workflow. Do not invent commands or discover a workflow by trial and error.']
-        references += ['Raw activity/individual commands need moodle course get COURSE_ID first. The news task resolves each course itself. A course ID in a learning scenario is a suggestion, not permission.',
-                       'moodle import file FILE_ID --to kb ID | --single-file (confirmation required; use file_id from moodle file list, not a local path)',
-                       'moodle sync COURSE_ID [--section course|forums|assignments|enrolment|calendar]',
-                       'moodle cache show COURSE_ID --section course|forums|assignments|enrolment|calendar']
+        from .discovery import help_result
+        enabled = {key.removeprefix('moodle.') for key in keys}
+        references=[help_result(enabled, snapshot['record'], key)['help']
+                    for key in (*task_specs(), *document_specs()) if key in enabled]
+        references += ['Use the loaded recipe first. If syntax is missing, use ONE targeted local help call: '
+                       'moodle --help, moodle GROUP --help, or moodle GROUP COMMAND --help. '
+                       'Help lists only commands allowed by LAMB policy and validated token functions, without Moodle requests. '
+                       'Do not explore by repeated help calls or speculative execution. If unresolved, explain the gap and stop. '
+                       'Never infer a permission denial from missing instructions. Course/resource checks still apply at execution.']
+        if 'course.get' in enabled:
+            references += ['Select the course with moodle course get COURSE_ID before activity or learner queries. '
+                           'A course ID in a learning scenario is context, not permission.']
+        if enabled == {'help'}:
+            references += [help_result(enabled, snapshot['record'], '')['notice']]
         pack=getattr(agent,'pack',None)
         if pack:
             from lamb.aac.skill_loader import list_skills
