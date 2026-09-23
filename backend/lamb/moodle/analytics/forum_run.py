@@ -124,3 +124,41 @@ def advance(store, client, owner_id, identity):
             return record
         finally:
             client.before_request = None
+
+
+def publish(store, runtime, client, identity, *, recipe):
+    """Reserve immutable per-recipe snapshots before idempotent chart writes."""
+    import uuid
+    from .forum_snapshot import snapshot, RECIPES
+    from .recipes import result_page
+    from ..charts import ChartStore
+    if recipe not in RECIPES:
+        raise ValueError('Invalid forum recipe')
+    with store.execution_lock():
+        client.checkpoint()
+        record = store.read(identity)
+        state = record['state']
+        if not state['done']:
+            raise ValueError('Forum collection is not finished')
+        current = runtime.result_binding()
+        if (store.binding['organization_id'] != runtime.store.organization_id or
+                store.binding['owner_id'] != runtime.store.owner_id or
+                any(store.binding[key] != current.get(key) for key in ('generation','base_url','moodle_user_id'))):
+            raise PermissionError('Forum run belongs to another connection')
+        publications = state.setdefault('publications', {})
+        publication = publications.get(recipe)
+        if publication is None:
+            data = snapshot(state,identity,recipe=recipe)
+            binding = dict(current,course_id=state['scope']['course_id'],forum_scopes=data['forum_scopes'])
+            runtime.validate_result_binding(binding,'moodle.analytics.run')
+            publication = dict(id=str(uuid.uuid4()),snapshot=data,binding=binding)
+            publications[recipe] = publication
+            record = store.replace(identity,state,expected_revision=record['revision'])
+        runtime.validate_result_binding(publication['binding'],'moodle.analytics.run')
+        client.checkpoint()
+        charts = ChartStore(runtime)
+        chart_id = charts.save(publication['snapshot'],publication['binding'],
+            command='moodle.analytics.run',publication_id=publication['id'])
+        saved = charts.read(chart_id)
+        client.checkpoint()
+        return result_page(chart_id,saved)

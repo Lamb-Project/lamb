@@ -20,11 +20,15 @@ MAX_ASSIGNMENTS = 20
 MAX_CHARTS = 100
 MAX_BYTES = 128 * 1024
 MAX_CALENDAR_BYTES = 512 * 1024
+MAX_FORUM_BYTES = 512 * 1024
 RENDER_LOCK = threading.Lock()
 
 
 def snapshot_byte_limit(snapshot):
     recipe=snapshot.get('recipe')
+    if (snapshot.get('view_kind')=='forum-table-v1' and isinstance(recipe,dict)
+            and recipe.get('id') in {'forum-participation','forum-discussions'}):
+        return MAX_FORUM_BYTES
     if (snapshot.get('view_kind')=='deadline-calendar-v1' and isinstance(recipe,dict)
             and recipe.get('id')=='deadlines'):
         return MAX_CALENDAR_BYTES

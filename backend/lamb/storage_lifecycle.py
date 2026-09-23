@@ -64,7 +64,7 @@ class OwnerStorage:
             'quiz_runs': (self.tasks / 'quiz-runs', 16 * 1024 * 1024, '24h; private quiz attempts; live runs not evicted'),
             'forum_analytics_runs': (self.tasks / 'forum-analytics-runs', 16 * 1024 * 1024, '24h; private forum metadata; live runs not evicted'),
             'charts': (self.moodle / 'charts' / str(self.org) / str(self.owner), MAX_CHARTS * MAX_CALENDAR_BYTES,
-                       'durable; no automatic expiry; 100 records; 128 KiB per chart, 512 KiB per deadline calendar'),
+                       'durable; no automatic expiry; 100 records; 128 KiB per chart, 512 KiB per deadline calendar or forum table'),
             'course_cache': (self.tasks / 'course-cache', None, 'rebuildable; retained until explicit source refresh'),
         }
         inventory = {}
