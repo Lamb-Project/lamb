@@ -50,3 +50,32 @@ def test_partial_thread_does_not_claim_no_replies():
     {'completed_at':'1970-01-01T00:03:20'}, {'threads':[]}])
 def test_invalid_or_unfinished_state_rejected(change):
     with pytest.raises(ValueError):snapshot(state()|change,'run',recipe='forum-participation')
+
+
+@pytest.mark.parametrize('language',['en','es','ca','eu'])
+@pytest.mark.parametrize('count',[50,51,1000])
+def test_network_graph_boundary_and_exact_degree_table(language,count):
+    s=state();s['language']=language;s['context']['students']=list(range(10,10+count))
+    s['threads'][0]['posts'][1].update(author_id=11,created=120)
+    before=deepcopy(s)
+    data=snapshot(s,'run',recipe='forum-network')
+    assert s==before
+    assert len(data['rows'])==count and data['view_kind']=='forum-network-v1'
+    assert data['rows'][0]['in_degree']==1 and data['rows'][1]['out_degree']==1
+    assert data['metrics']['peer_replies']==1 and data['metrics']['directed_edges']==1
+    assert data['network']['edges_included']==(count<=50)
+    if count<=50:
+        assert data['network']['edges']==[dict(source_student_id=11,target_student_id=10,replies=1)]
+    else:
+        assert data['network']['edges']==[] and data['network']['omission_reason']
+    assert 'student_rows' not in data['metrics'] and 'edges' not in data['metrics']
+    assert data['forum_scopes']==[dict(s['scope'],discussion_ids=[9])]
+
+
+def test_partial_network_has_unknown_zero_and_no_source_text():
+    s=state();s['threads'][0]['posts'][0].update(message='SECRET',private=True)
+    s['threads'][0]['posts'][1].update(author_id=11,created=120)
+    data=snapshot(s,'run',recipe='forum-network')
+    assert not data['coverage']['complete']
+    assert all(r['status']=='partial' and r['no_observed_peer_interaction'] is None for r in data['rows'])
+    assert data['network']['edges']==[] and 'SECRET' not in json.dumps(data)

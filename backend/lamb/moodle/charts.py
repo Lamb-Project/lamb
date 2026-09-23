@@ -27,6 +27,9 @@ RENDER_LOCK = threading.Lock()
 
 def snapshot_byte_limit(snapshot):
     recipe=snapshot.get('recipe')
+    if (snapshot.get('view_kind')=='forum-network-v1' and isinstance(recipe,dict)
+            and recipe.get('id')=='forum-network'):
+        return MAX_FORUM_BYTES
     if (snapshot.get('view_kind')=='forum-table-v1' and isinstance(recipe,dict)
             and recipe.get('id') in {'forum-participation','forum-discussions'}):
         return MAX_FORUM_BYTES

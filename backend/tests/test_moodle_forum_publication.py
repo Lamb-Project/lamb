@@ -45,7 +45,7 @@ def test_revoke_and_cross_owner_prevent_publication(tmp_path):
         publish(s,rt,c,identity,recipe='forum-participation')
 
 
-@pytest.mark.parametrize('recipe',['forum-participation','forum-discussions'])
+@pytest.mark.parametrize('recipe',['forum-participation','forum-discussions','forum-network'])
 def test_maximum_tables_fit_and_page_without_loss(tmp_path,recipe):
     data=state(); data['context']['students']=list(range(1000,2000))
     data['context']['discussions']=[{'discussion_id':i} for i in range(1,1001)]
@@ -61,3 +61,42 @@ def test_maximum_tables_fit_and_page_without_loss(tmp_path,recipe):
         page=result_page(result['chart_id'],saved,offset)
         received.extend(page['rows']);offset=page['next_offset']
     assert received==saved['rows']
+
+
+def test_network_save_retry_scope_revocation_and_read_semantics(tmp_path):
+    s,identity,rt,c=setup(tmp_path)
+    with patch.object(ChartStore,'save',side_effect=OSError('interrupted')):
+        with pytest.raises(OSError):publish(s,rt,c,identity,recipe='forum-network')
+    reservation=s.read(identity)['state']['publications']['forum-network']['id']
+    result=publish(s,rt,c,identity,recipe='forum-network')
+    assert result['chart_id']==reservation
+    assert publish(s,rt,c,identity,recipe='forum-network')==result
+    saved=ChartStore(rt).read(reservation)
+    assert saved['forum_scopes']==[dict(state()['scope'],discussion_ids=[9])]
+    assert saved['window_start_local']=='1970-01-01T01:01:40+01:00'
+    assert 'reply relationships' in saved['forum_exclusion_basis']
+    assert 'immediate parent' in saved['forum_reply_basis']
+    rt.validate_result_binding.side_effect=PermissionError('revoked')
+    with pytest.raises(PermissionError):ChartStore(rt).read(reservation)
+    with pytest.raises(PermissionError):publish(s,rt,c,identity,recipe='forum-network')
+
+
+def test_dense_small_network_fits_without_losing_edges(tmp_path):
+    data=state();data['context']['students']=list(range(1,51))
+    data['context']['discussions']=[];data['threads']=[]
+    pid=0
+    for target in range(1,51):
+        pid+=1;root=pid
+        posts=[dict(id=root,parent_id=None,author_id=target,created=110,deleted=False,private=False)]
+        for source in range(1,51):
+            if source==target:continue
+            pid+=1
+            posts.append(dict(id=pid,parent_id=root,author_id=source,created=120,deleted=False,private=False))
+        data['context']['discussions'].append({'discussion_id':target})
+        data['threads'].append(dict(id=target,forum_id=8,complete=True,posts=posts))
+    s,identity,rt,c=setup(tmp_path,data)
+    result=publish(s,rt,c,identity,recipe='forum-network')
+    saved=ChartStore(rt).read(result['chart_id'])
+    assert len(saved['network']['edges'])==2450
+    assert saved['metrics']['peer_replies']==2450
+    assert all((r['in_degree'],r['out_degree'],r['unique_peers'])==(49,49,49) for r in saved['rows'])

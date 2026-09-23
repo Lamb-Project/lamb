@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 def with_forum_semantics(snapshot):
     recipe=snapshot.get('recipe')
-    if not isinstance(recipe,dict) or recipe.get('id') not in {'forum-participation','forum-discussions'}:
+    if not isinstance(recipe,dict) or recipe.get('id') not in {'forum-participation','forum-discussions','forum-network'}:
         return snapshot
     result=deepcopy(snapshot)
     window=result.get('metrics',{}).get('window')
@@ -16,6 +16,17 @@ def with_forum_semantics(snapshot):
         result['window_end_local']=datetime.fromtimestamp(window['until'],zone).isoformat()
         result['window_label']=(f"[{result['window_start_local']}, {result['window_end_local']}) "
                                 f"{result['timezone']}; end exclusive")
+    if recipe['id']=='forum-network':
+        result['forum_exclusion_basis']=(
+            'Network exclusions count reply relationships, not all posts. Nonstudent endpoints and '
+            'self-replies are excluded. Unavailable parents are not reconstructed; counts may be lower bounds.')
+        result['forum_reply_basis']=(
+            'Directed edges run from current-student reply author to current-student immediate parent author. '
+            'The reply is inside the requested window; its parent may predate it. Edge weight counts replies; '
+            'in/out degree counts distinct peers, unique_peers unions both directions. '
+            'No observed peer interaction does not mean social isolation or absence of learning. '
+            'Above 50 students, the saved view is an exact degree table, not a partial network graph.')
+        return result
     result['forum_exclusion_basis']=(
         'outside_population_window_posts counts public posts INSIDE the requested date window '
         'whose authors are OUTSIDE the current student population. It does NOT count posts outside the date window. '

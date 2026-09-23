@@ -6,7 +6,14 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from .forum_participation import summarize_forums
 
-RECIPES = {'forum-participation', 'forum-discussions'}
+RECIPES = {'forum-participation', 'forum-discussions', 'forum-network'}
+MAX_GRAPH_STUDENTS = 50
+NETWORK_TEXT = {
+    'en': ('Student reply network', 'Unique peers', 'Observed student-to-student replies, not learning or social value. No observed peer interaction does not establish social isolation. Self-replies and nonstudent relationships excluded. Current population; collection is not atomic.'),
+    'es': ('Red de respuestas entre estudiantes', 'Pares distintos', 'Respuestas observadas entre estudiantes, no aprendizaje ni valor social. No observar interacción no demuestra aislamiento social. Se excluyen autorrespuestas y relaciones con no estudiantes. Población actual; consulta no atómica.'),
+    'ca': ('Xarxa de respostes entre estudiants', 'Companys diferents', 'Respostes observades entre estudiants, no aprenentatge ni valor social. No observar interacció no demostra aïllament social. S’exclouen autorespostes i relacions amb no estudiants. Població actual; consulta no atòmica.'),
+    'eu': ('Ikasleen arteko erantzun-sarea', 'Ikaskide desberdinak', 'Ikasleen arteko behatutako erantzunak, ez ikaskuntza edo balio soziala. Interakziorik ez ikusteak ez du isolamendu soziala frogatzen. Norberaren erantzunak eta ikasle ez direnekiko harremanak kanpo. Uneko populazioa; bilketa ez da atomikoa.'),
+}
 TEXT = {
     'en': ('Forum participation', 'Forum discussions', 'Student', 'Discussion',
            'Observed public posts', 'Observed public replies',
@@ -38,13 +45,33 @@ def snapshot(state, run_id, *, recipe):
     if (started.utcoffset() is None or completed.utcoffset() is None or completed<started
             or type(state['as_of']) is not int or int(completed.timestamp())!=state['as_of']):
         raise ValueError('Invalid forum observation interval')
-    metrics = summarize_forums(state['threads'],context['students'],since=state['since'],
+    network = recipe=='forum-network'
+    if network:
+        from .forum_network import summarize_network
+    reducer = summarize_network if network else summarize_forums
+    metrics = reducer(state['threads'],context['students'],since=state['since'],
         until=state['until'],as_of=state['as_of'],timezone=state['tz'],inventory_complete=True)
     language = state['language']
     participation, discussions, student, discussion, posts, replies, caption = TEXT[language]
     learner_rows = metrics.pop('student_rows')
-    discussion_rows = metrics.pop('discussion_rows')
-    if recipe=='forum-participation':
+    discussion_rows = metrics.pop('discussion_rows', [])
+    graph = None
+    if network:
+        title, metric, caption = NETWORK_TEXT[language]
+        complete = metrics['coverage']['complete']
+        rows = [dict(row,id=row['student_id'],name=f"{student} #{row['student_id']}",
+                     value=row['unique_peers'],status='ok' if complete else 'partial',reason=None)
+                for row in learner_rows]
+        edges = metrics.pop('edges')
+        small = len(rows)<=MAX_GRAPH_STUDENTS
+        graph = {'kind':'directed-peer-replies' if small else 'degree-table',
+                 'max_graph_students':MAX_GRAPH_STUDENTS,
+                 'edges':edges if small else [],
+                 'edges_included':small,
+                 'omission_reason':None if small else 'Use exact degree table above 50 students; no truncated graph.',
+                 'direction':'reply_author_to_immediate_parent_author'}
+        basis = 'Current-student peer replies created in [since, until); parent may predate window. Self-replies excluded.'
+    elif recipe=='forum-participation':
         title, metric = participation, posts
         rows = [dict(row,id=row['student_id'],name=f"{student} #{row['student_id']}",
                      value=row['posts'],status='ok',reason=None) for row in learner_rows]
@@ -59,15 +86,19 @@ def snapshot(state, run_id, *, recipe):
     local = completed.astimezone(ZoneInfo(state['tz'])).isoformat()
     coverage = dict(metrics.pop('coverage'),population_exhausted=True,
                     student_rows=len(context['students']),atomic_snapshot=False)
-    coverage['complete'] = coverage['collection_complete']
+    if not network:
+        coverage['complete'] = coverage['collection_complete']
     limitations = metrics.pop('limitations')
-    return {'schema_version':1,'recipe':{'id':recipe,'version':1},
+    data = {'schema_version':1,'recipe':{'id':recipe,'version':1},
         'course_id':scope['course_id'],'forum_id':scope['forum_id'],'group_id':scope['group_id'],
         'course_name':f"#{scope['course_id']}",'title':f"{title} (#{scope['forum_id']})",
-        'language':language,'timezone':state['tz'],'view_kind':'forum-table-v1',
+        'language':language,'timezone':state['tz'],'view_kind':'forum-network-v1' if network else 'forum-table-v1',
         'metric_label':metric,'population_label':basis,'caption':caption,'rows':rows,
         'metrics':metrics,'coverage':coverage,'limitations':limitations,
         'as_of':state['completed_at'],'as_of_local':local,'snapshot_date_label':f'{local} ({state["tz"]})',
         'collection_started_at':state['started_at'],'collection_completed_at':state['completed_at'],
         'collection_run_id':run_id,'source':'local_lambanalytics_forum_posts',
         'forum_scopes':[dict(scope,discussion_ids=sorted(ids))]}
+    if network:
+        data['network'] = graph
+    return data
