@@ -16,6 +16,12 @@ from ..charts import ChartStore
 from ..scope import MoodleScope
 
 RECIPES = {
+    'forum-participation': {'functions':['local_lambanalytics_forum_scope','local_lambanalytics_forum_posts',
+        'local_lambanalytics_forum_evidence_scope','mod_forum_get_forum_discussions','core_enrol_get_enrolled_users'],
+        'title':'Observed public forum participation','metric':'Public posts'},
+    'forum-discussions': {'functions':['local_lambanalytics_forum_scope','local_lambanalytics_forum_posts',
+        'local_lambanalytics_forum_evidence_scope','mod_forum_get_forum_discussions','core_enrol_get_enrolled_users'],
+        'title':'Observed public discussion replies and age','metric':'Public replies'},
     'quiz-overview': {'functions':['local_lambanalytics_quiz_scope','local_lambanalytics_quiz_attempts',
                                   'core_enrol_get_enrolled_users'],
                       'title':'Quiz attempts and raw score distribution','metric':'Scored attempts'},

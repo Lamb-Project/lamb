@@ -13,6 +13,13 @@ const snapshot = (language = 'en') => ({
     rows: [{name:'Essay',status:'ok',submitted:3,outstanding:3,participants:6,deadline:null,deadline_status:'no_deadline'},
         {name:'Team',status:'unavailable',submitted:null,outstanding:null,reason:'Team submissions are outside this pilot'}]
 });
+it('renders forum table without requesting an unsupported chart image',async()=>{
+    apiJson.mockResolvedValue({...snapshot(),view_kind:'forum-table-v1',recipe:{id:'forum-participation'},
+        metrics:{window:{since:100,until:200}},rows:[{name:'Student #1',status:'ok',value:0,posts:0,replies:0,discussions_started:0,active_local_days:0}]});
+    render(AacChart,{chartId:'saved-forum'});
+    expect(await screen.findByText('Student #1')).toBeInTheDocument();
+    expect(apiFetch).not.toHaveBeenCalled();
+});
 it('shows quiz evidence for an existing saved quiz snapshot without recollection', async () => {
     apiJson.mockResolvedValue({...snapshot(), view_kind:'metric-bars-v1', recipe:{id:'quiz-overview'},
         rows:[], metrics:{retry_1_to_2:{score_change_percentage_points:{n:1,mean:100},

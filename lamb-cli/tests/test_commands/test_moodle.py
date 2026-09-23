@@ -7,6 +7,18 @@ from lamb_cli.main import app
 runner = CliRunner()
 
 
+def test_forum_run_start_forward_exact_scope_and_calendar_bounds():
+    for verb in ('run','start'):
+        with patch('lamb_cli.commands.moodle.get_client') as client:
+            client.return_value.__enter__.return_value.post.return_value={'run_id':'saved'}
+            result=runner.invoke(app,['moodle','analytics',verb,'forum-participation','--course','7',
+                '--forum','8','--since','2025-10-25','--through','2025-10-26','--tz','Europe/Madrid','--group','3'])
+            assert result.exit_code==0,result.output
+            tokens=shlex.split(client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'])
+            for flag,value in [('--forum','8'),('--since','2025-10-25'),('--through','2025-10-26'),('--group','3')]:
+                assert tokens[tokens.index(flag)+1]==value
+
+
 def test_quiz_run_and_start_forward_exact_policy_and_scope():
     for verb in ('run', 'start'):
         with patch('lamb_cli.commands.moodle.get_client') as client:
