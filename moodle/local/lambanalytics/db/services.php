@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 defined('MOODLE_INTERNAL') || die();
 $functions = [
+    'local_lambanalytics_forum_posts' => [
+        'classname' => 'local_lambanalytics\external\forum_posts',
+        'methodname' => 'execute',
+        'description' => 'Read bounded visible public post metadata with stored timestamps, without text or private replies.',
+        'type' => 'read',
+        'capabilities' => 'mod/forum:viewdiscussion,moodle/course:enrolreview',
+        'services' => [MOODLE_OFFICIAL_MOBILE_SERVICE],
+    ],
     'local_lambanalytics_forum_scope' => [
         'classname' => 'local_lambanalytics\external\forum_scope',
         'methodname' => 'execute',

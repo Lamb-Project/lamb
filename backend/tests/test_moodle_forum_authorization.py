@@ -48,3 +48,21 @@ def test_revocation_error_does_not_leak_source_text():
         with pytest.raises(PermissionError, match='no longer available') as error:
             validate_forum_scope(source, SCOPE)
         assert 'SECRET' not in str(error.value)
+
+
+def test_forum_post_transport_is_fixed_bounded_and_readonly():
+    from lamb.moodle.analytics.client import FORUM_POSTS_FUNCTION, MAX_EVENT_BYTES
+    from moodle_cli.client.readonly import READ_ALLOWLIST
+    before = set(READ_ALLOWLIST)
+    data = {'posts':[{'id':4,'created':100}], 'timestamp_basis':'stored_creation'}
+    with client(lambda request:httpx.Response(200,json=data)) as source:
+        assert source.call(FORUM_POSTS_FUNCTION,courseid=7,forumid=2,discussionid=3,limit=1)==data
+    assert set(READ_ALLOWLIST)==before
+    for change in ({'limit':201},{'limit':True},{'afterid':2},{'afterid':4,'throughid':3},
+                   {'userid':1},{'wstoken':'override'},{'fields':'message'},{'discussionid':'3'}):
+        with client(lambda request:pytest.fail('No network expected')) as source:
+            with pytest.raises(ValueError):
+                source.call(FORUM_POSTS_FUNCTION,**({'courseid':7,'forumid':2,'discussionid':3}|change))
+    with client(lambda request:httpx.Response(200,content=b'x'*(MAX_EVENT_BYTES+1))) as source:
+        with pytest.raises(ValueError,match='byte budget'):
+            source.call(FORUM_POSTS_FUNCTION,courseid=7,forumid=2,discussionid=3)
