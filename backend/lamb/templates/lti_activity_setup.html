@@ -14,7 +14,7 @@
         <div class="flex items-center gap-3 mb-6">
             <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-xl">&#x1F40F;</div>
             <div>
-                <h1 class="text-xl font-bold text-gray-900">LAMB Activity Setup</h1>
+                <h1 class="text-xl font-bold text-gray-900">{% if reconfigure %}Manage Activity{% else %}LAMB Activity Setup{% endif %}</h1>
                 {% if context_title %}
                 <p class="text-sm text-gray-500">Course: {{ context_title }}</p>
                 {% endif %}
@@ -60,7 +60,7 @@
                     {% for org_id, assistants in orgs_with_assistants.items() %}
                     {% for a in assistants %}
                     <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors">
-                        <input type="checkbox" name="assistant_ids" value="{{ a.id }}" class="mt-1 text-blue-600 rounded">
+                        <input type="checkbox" name="assistant_ids" value="{{ a.id }}" class="mt-1 text-blue-600 rounded" {% if a.id in selected_assistant_ids %}checked{% endif %}>
                         <div>
                             <span class="font-medium text-gray-900">{{ a.name }}</span>
                             {% if a.access_type == 'shared' %}
@@ -86,9 +86,10 @@
                 <div class="mb-3">
                     <label for="activityType" class="block font-medium text-gray-900 mb-1">Activity type</label>
                     <select id="activityType" name="activity_type"
-                            class="w-full border border-gray-300 rounded-lg p-2 text-sm text-gray-800">
-                        <option value="chat" selected>Chat — students talk to the selected assistant(s)</option>
-                        <option value="workshop">AI Workshop — students build their own assistant</option>
+                            class="w-full border border-gray-300 rounded-lg p-2 text-sm text-gray-800{% if reconfigure %} bg-gray-100 text-gray-500{% endif %}"
+                            {% if reconfigure %}disabled{% endif %}>
+                        <option value="chat" {% if not activity or activity.activity_type != 'workshop' %}selected{% endif %}>Chat — students talk to the selected assistant(s)</option>
+                        <option value="workshop" {% if activity and activity.activity_type == 'workshop' %}selected{% endif %}>AI Workshop — students build their own assistant</option>
                     </select>
                     <p class="text-sm text-gray-500 mt-1">
                         Choose <span class="font-medium">AI Workshop</span> to send students into the assistant-building
@@ -108,11 +109,12 @@
                     </p>
                 </div>
 
-                <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors">
-                    <input type="checkbox" name="chat_visibility_enabled" value="1" class="mt-1 text-blue-600 rounded">
+                <label id="chatVisibilityBlock" class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors">
+                    <input type="checkbox" name="chat_visibility_enabled" value="1" class="mt-1 text-blue-600 rounded"
+                           {% if activity and activity.chat_visibility_enabled %}checked{% endif %}>
                     <div>
                         <span class="font-medium text-gray-900">Allow instructors to review chat transcripts</span>
-                        <p class="text-sm text-gray-500 mt-0.5">Instructors with access to this activity will be able to view student conversations with the assistants. Student identity in the dashboard reflects what your LMS passes via LTI — configure your LMS privacy settings to control this. This choice cannot be changed after setup.</p>
+                        <p class="text-sm text-gray-500 mt-0.5">Instructors with access to this activity will be able to view student conversations with the assistants. Student identity in the dashboard reflects what your LMS passes via LTI — configure your LMS privacy settings to control this.</p>
                     </div>
                 </label>
             </div>
@@ -122,7 +124,7 @@
                 <button type="submit" id="submitBtn"
                         class="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         disabled>
-                    Save &amp; Launch
+                    {% if reconfigure %}Save changes{% else %}Save &amp; Launch{% endif %}
                 </button>
             </div>
         </form>
@@ -132,6 +134,9 @@
         const orgsData = {{ orgs_json | safe }};
         const rubricsData = {{ rubrics_json | safe }};
         const needsOrgSelection = {{ 'true' if needs_org_selection else 'false' }};
+        const reconfigure = {{ 'true' if reconfigure else 'false' }};
+        const selectedAssistantIds = {{ selected_assistant_ids | tojson }};
+        const selectedRubricId = {{ (activity.rubric_id if activity and activity.rubric_id else '') | tojson }};
         const assistantList = document.getElementById('assistantList');
         const assistantStep = document.getElementById('assistantStep');
         const noOrgSelected = document.getElementById('noOrgSelected');
@@ -140,6 +145,8 @@
         const activityTypeSelect = document.getElementById('activityType');
         const rubricBlock = document.getElementById('rubricBlock');
         const rubricSelect = document.getElementById('rubricId');
+        const chatVisibilityBlock = document.getElementById('chatVisibilityBlock');
+        const chatVisibilityInput = document.querySelector('input[name="chat_visibility_enabled"]');
 
         function isWorkshop() {
             return !!activityTypeSelect && activityTypeSelect.value === 'workshop';
@@ -165,12 +172,22 @@
                 opt.textContent = r.title;
                 rubricSelect.appendChild(opt);
             });
+            if (selectedRubricId) rubricSelect.value = selectedRubricId;
         }
 
         function updateRubricVisibility() {
             if (!rubricBlock) return;
             rubricBlock.classList.toggle('hidden', !isWorkshop());
             if (isWorkshop()) populateRubrics();
+        }
+
+        // Chat transcript review is a chat-only feature; workshops don't send
+        // students into OWI chat, so the flag is meaningless there.
+        function updateChatVisibility() {
+            if (!chatVisibilityBlock || !chatVisibilityInput) return;
+            const hide = isWorkshop();
+            chatVisibilityBlock.classList.toggle('hidden', hide);
+            chatVisibilityInput.disabled = hide;
         }
 
         function renderAssistants(orgId) {
@@ -180,9 +197,10 @@
                 const sharedBadge = a.access_type === 'shared'
                     ? '<span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full ml-2">shared</span>'
                     : '';
+                const checked = selectedAssistantIds.includes(a.id) ? 'checked' : '';
                 assistantList.innerHTML += `
                     <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors">
-                        <input type="checkbox" name="assistant_ids" value="${a.id}" class="mt-1 text-blue-600 rounded assistant-cb">
+                        <input type="checkbox" name="assistant_ids" value="${a.id}" ${checked} class="mt-1 text-blue-600 rounded assistant-cb">
                         <div>
                             <span class="font-medium text-gray-900">${a.name}</span>
                             ${sharedBadge}
@@ -230,12 +248,14 @@
             activityTypeSelect.addEventListener('change', () => {
                 updateSubmitState();
                 updateRubricVisibility();
+                updateChatVisibility();
             });
         }
 
         // Initial state
         updateSubmitState();
         updateRubricVisibility();
+        updateChatVisibility();
     </script>
 </body>
 </html>

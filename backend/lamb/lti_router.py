@@ -157,6 +157,25 @@ async def lti_launch(request: Request):
                     "display_name": display_name,
                     "is_owner": is_owner,
                 }, ttl=DASHBOARD_TOKEN_TTL)
+
+                # Workshop activities get the workshop teacher view, not the
+                # chat dashboard (dispatch on activity_type, mirroring students).
+                if activity.get("activity_type", "chat") == "workshop":
+                    from lamb.modules.workshop import module as workshop_module
+                    result = workshop_module.on_instructor_launch({
+                        "activity": activity,
+                        "public_base": public_base,
+                        "dashboard_token": dashboard_token,
+                    })
+                    redirect_url = (result or {}).get("redirect")
+                    if not redirect_url:
+                        raise HTTPException(
+                            status_code=500,
+                            detail="Failed to start workshop dashboard")
+                    logger.info(
+                        f"Workshop instructor {resource_link_id} → workshop dashboard")
+                    return RedirectResponse(url=redirect_url, status_code=303)
+
                 return RedirectResponse(
                     url=f"{public_base}/lamb/v1/lti/dashboard?resource_link_id={resource_link_id}&token={dashboard_token}",
                     status_code=303
@@ -254,12 +273,40 @@ async def lti_launch(request: Request):
 # =============================================================================
 
 @router.get("/setup")
-async def lti_setup_page(request: Request, token: str = ""):
+async def lti_setup_page(request: Request, token: str = "", reconfigure: bool = False):
     """
     Serve the activity setup page for instructors.
-    Requires a valid setup token from the launch flow.
+
+    Normally reached with a short-lived setup token from the launch flow.
+    The dashboard's "Manage activity" link instead passes the (longer-lived)
+    dashboard token; for the activity owner we mint a fresh setup token so the
+    page can reopen.
     """
     data = _validate_setup_token(token)
+    if not data:
+        dash = _validate_token(token)
+        if dash and dash.get("type") == "dashboard" and dash.get("is_owner"):
+            activity = db_manager.get_lti_activity_by_resource_link(
+                dash.get("resource_link_id", ""))
+            owner_email = (
+                (activity or {}).get("owner_email") or dash.get("lms_email") or "")
+            creator = (
+                db_manager.get_creator_user_by_email(owner_email)
+                if owner_email else None)
+            if activity and creator:
+                data = {
+                    "creator_users": [{
+                        "id": creator["id"],
+                        "organization_id": creator["organization_id"],
+                        "user_email": creator["email"],
+                        "user_name": creator.get("name"),
+                    }],
+                    "resource_link_id": activity["resource_link_id"],
+                    "context_id": activity.get("context_id") or "",
+                    "context_title": activity.get("context_title") or "",
+                    "lms_user_id": dash.get("lms_user_id", ""),
+                }
+                token = _create_setup_token(data)
     if not data:
         return HTMLResponse("<h2>Session expired.</h2><p>Please click the LTI link in your LMS again.</p>", status_code=403)
 
@@ -281,6 +328,15 @@ async def lti_setup_page(request: Request, token: str = ""):
 
     needs_org_selection = len(orgs_with_assistants) > 1
 
+    # Reconfigure mode: an activity already exists for this resource_link.
+    # The setup UI locks activity type / org / chat visibility ("cannot be
+    # changed later") and lets the owner adjust assistants and rubric.
+    activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
+    selected_assistant_ids = (
+        [a["id"] for a in db_manager.get_activity_assistants(activity["id"])]
+        if activity else []
+    )
+
     return templates.TemplateResponse("lti_activity_setup.html", {
         "request": request,
         "token": token,
@@ -289,6 +345,9 @@ async def lti_setup_page(request: Request, token: str = ""):
         "needs_org_selection": needs_org_selection,
         "orgs_with_assistants": orgs_with_assistants,
         "org_names": org_names,
+        "activity": activity,
+        "reconfigure": bool(activity),
+        "selected_assistant_ids": selected_assistant_ids,
         "orgs_json": json.dumps({
             str(org_id): [
                 {"id": a["id"], "name": a["name"], "owner": a["owner"],
@@ -367,13 +426,38 @@ async def lti_configure_activity(request: Request):
         organization_id = int(form_data.get("organization_id", 0))
         assistant_ids_str = form_data.getlist("assistant_ids")
         assistant_ids = [int(x) for x in assistant_ids_str if x]
-        chat_visibility_enabled = form_data.get("chat_visibility_enabled") == "1"
+        submitted_visibility = form_data.get("chat_visibility_enabled") == "1"
         # Only known activity types are allowed; anything else falls back to chat.
-        activity_type = form_data.get("activity_type", "chat")
-        if activity_type not in ("chat", "workshop"):
-            activity_type = "chat"
+        submitted_type = form_data.get("activity_type", "chat")
+        if submitted_type not in ("chat", "workshop"):
+            submitted_type = "chat"
         # Optional formative-evaluation rubric (workshop activities only).
         rubric_id = form_data.get("rubric_id") or None
+
+        resource_link_id = data["resource_link_id"]
+        context_id = data.get("context_id", "")
+        context_title = data.get("context_title", "")
+
+        # Idempotency: the setup form can be resubmitted / the setup URL
+        # reopened. If the activity already exists this is a "Manage activity"
+        # reconfigure — keep the original tenant, type and visibility (the UI
+        # locks those as "cannot be changed later") and only apply assistants
+        # and the workshop rubric.
+        existing = db_manager.get_lti_activity_by_resource_link(resource_link_id)
+        if existing:
+            organization_id = existing["organization_id"]
+            activity_type = existing.get("activity_type", "chat")
+            # Visibility is reviewable/changeable later; assistants and the
+            # workshop rubric likewise. Type and tenant stay locked.
+            chat_visibility_enabled = submitted_visibility
+        else:
+            activity_type = submitted_type
+            chat_visibility_enabled = submitted_visibility
+
+        # Chat transcript review only applies to chat activities; workshops
+        # never send students into OWI chat.
+        if activity_type == "workshop":
+            chat_visibility_enabled = False
 
         if not organization_id:
             return HTMLResponse("<h2>Error</h2><p>No organization selected.</p>", status_code=400)
@@ -388,19 +472,20 @@ async def lti_configure_activity(request: Request):
         if not creator_user:
             return HTMLResponse("<h2>Error</h2><p>You don't have access to this organization.</p>", status_code=403)
 
-        resource_link_id = data["resource_link_id"]
-        context_id = data.get("context_id", "")
-        context_title = data.get("context_title", "")
-
-        # Idempotency: the setup form can be resubmitted / the setup URL
-        # reopened. If the activity already exists, reuse it instead of
-        # INSERTing a duplicate resource_link_id (which violates the UNIQUE
-        # constraint). Reconfiguring assistants is a separate flow.
-        activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
-        if activity:
+        if existing:
+            db_manager.update_lti_activity(
+                existing["id"],
+                rubric_id=(
+                    rubric_id if activity_type == "workshop"
+                    else existing.get("rubric_id")),
+                chat_visibility_enabled=chat_visibility_enabled,
+            )
+            if activity_type == "chat":
+                manager.reconfigure_activity(existing, assistant_ids)
+            activity = existing
             logger.info(
-                f"Activity {resource_link_id} already configured "
-                f"(type={activity.get('activity_type')}); redirecting to dashboard")
+                f"Activity {resource_link_id} reconfigured "
+                f"(type={activity_type}, {len(assistant_ids)} assistants)")
         else:
             activity = manager.configure_activity(
                 resource_link_id=resource_link_id,
@@ -425,7 +510,7 @@ async def lti_configure_activity(request: Request):
         # Consume the setup token
         _consume_token(token)
 
-        # Redirect instructor to the dashboard
+        # Redirect instructor to the dashboard for the activity's type.
         dashboard_token = _create_token({
             "type": "dashboard",
             "resource_link_id": resource_link_id,
@@ -437,10 +522,14 @@ async def lti_configure_activity(request: Request):
         }, ttl=DASHBOARD_TOKEN_TTL)
 
         public_base = manager.get_public_base_url(request)
-        return RedirectResponse(
-            url=f"{public_base}/lamb/v1/lti/dashboard?resource_link_id={resource_link_id}&token={dashboard_token}",
-            status_code=303
-        )
+        if activity_type == "workshop":
+            from lamb.modules.workshop.dashboard import get_dashboard_url
+            redirect_url = get_dashboard_url(activity, public_base, dashboard_token)
+        else:
+            redirect_url = (
+                f"{public_base}/lamb/v1/lti/dashboard"
+                f"?resource_link_id={resource_link_id}&token={dashboard_token}")
+        return RedirectResponse(url=redirect_url, status_code=303)
 
     except HTTPException:
         raise
@@ -627,6 +716,30 @@ async def lti_info():
 # Instructor Dashboard
 # =============================================================================
 
+def _require_dashboard_token(token: str, resource_link_id: str) -> dict:
+    """Validate an instructor dashboard token bound to this activity.
+
+    Raises 403 for a missing/wrong token or a token minted for a different
+    ``resource_link_id`` — the authorization boundary for workshop routes.
+    """
+    data = _validate_token(token)
+    if not data or data.get("type") != "dashboard":
+        raise HTTPException(status_code=403, detail="Invalid token")
+    if resource_link_id and data.get("resource_link_id") != resource_link_id:
+        raise HTTPException(status_code=403, detail="Token/activity mismatch")
+    return data
+
+
+def _get_workshop_activity(resource_link_id: str) -> dict:
+    """Load an activity and ensure it is a workshop activity."""
+    activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    if activity.get("activity_type", "chat") != "workshop":
+        raise HTTPException(status_code=404, detail="Not a workshop activity")
+    return activity
+
+
 @router.get("/dashboard")
 async def lti_dashboard(request: Request, resource_link_id: str = "", token: str = ""):
     """Serve the instructor dashboard page."""
@@ -748,6 +861,97 @@ async def lti_dashboard_chat_detail(chat_id: str, resource_link_id: str = "",
         raise HTTPException(status_code=404, detail="Chat not found")
 
     return JSONResponse(detail)
+
+
+# =============================================================================
+# Workshop Teacher Dashboard
+# =============================================================================
+
+@router.get("/workshop/dashboard")
+async def workshop_dashboard(request: Request, resource_link_id: str = "",
+                             token: str = ""):
+    """Serve the workshop instructor view (student progress + tool stats)."""
+    from lamb.modules.workshop.dashboard import (
+        workshop_dashboard_stats,
+        workshop_dashboard_students,
+    )
+
+    data = _require_dashboard_token(token, resource_link_id)
+    activity = _get_workshop_activity(resource_link_id)
+
+    org = db_manager.get_organization_by_id(activity['organization_id'])
+    org_name = org.get('name', 'Unknown') if org else 'Unknown'
+
+    stats = workshop_dashboard_stats(activity)
+    students = workshop_dashboard_students(activity)
+
+    return templates.TemplateResponse("workshop_dashboard.html", {
+        "request": request,
+        "activity": activity,
+        "token": token,
+        "is_owner": data.get("is_owner", False),
+        "org_name": org_name,
+        "stats": stats,
+        "students": students,
+        "created_date": _format_timestamp(activity.get('created_at')),
+        "format_ts": _format_timestamp,
+    })
+
+
+@router.get("/workshop/dashboard/stats")
+async def workshop_dashboard_stats_api(resource_link_id: str = "", token: str = ""):
+    """Return workshop stats as JSON."""
+    from lamb.modules.workshop.dashboard import workshop_dashboard_stats
+
+    _require_dashboard_token(token, resource_link_id)
+    activity = _get_workshop_activity(resource_link_id)
+    return JSONResponse(workshop_dashboard_stats(activity))
+
+
+@router.get("/workshop/dashboard/students")
+async def workshop_dashboard_students_api(resource_link_id: str = "",
+                                          token: str = ""):
+    """Return per-student workshop progress as JSON."""
+    from lamb.modules.workshop.dashboard import workshop_dashboard_students
+
+    _require_dashboard_token(token, resource_link_id)
+    activity = _get_workshop_activity(resource_link_id)
+    return JSONResponse({"students": workshop_dashboard_students(activity)})
+
+
+@router.get("/workshop/dashboard/sessions/{session_id}")
+async def workshop_dashboard_session_api(session_id: str,
+                                         resource_link_id: str = "",
+                                         token: str = ""):
+    """Return one workshop session's detail (build state, chat, evaluation)."""
+    from lamb.modules.workshop.dashboard import workshop_dashboard_session
+
+    _require_dashboard_token(token, resource_link_id)
+    activity = _get_workshop_activity(resource_link_id)
+
+    session = db_manager.get_workshop_session_by_id(session_id)
+    if not session or session.get("activity_id") != activity["id"]:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return JSONResponse(workshop_dashboard_session(session))
+
+
+@router.post("/workshop/dashboard/sessions/{session_id}/evaluate")
+async def workshop_dashboard_evaluate(session_id: str,
+                                      resource_link_id: str = "",
+                                      token: str = ""):
+    """Teacher-triggered (re)evaluation of a student's submission."""
+    from lamb.modules.workshop.evaluation import evaluate_session
+
+    _require_dashboard_token(token, resource_link_id)
+    activity = _get_workshop_activity(resource_link_id)
+
+    session = db_manager.get_workshop_session_by_id(session_id)
+    if not session or session.get("activity_id") != activity["id"]:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    result = await evaluate_session(session, activity)
+    return JSONResponse(result)
 
 
 # =============================================================================

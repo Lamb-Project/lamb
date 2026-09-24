@@ -39,9 +39,16 @@ class WorkshopModule:
         return initialize_workshop_workspace(ctx)
 
     def on_instructor_launch(self, ctx):
-        """Instructor launches into teacher dashboard."""
-        from .dashboard import workshop_dashboard_stats
-        return workshop_dashboard_stats(ctx)
+        """Instructor launches into the workshop teacher dashboard.
+
+        Returns a redirect target when ``ctx`` carries a ``public_base`` /
+        ``dashboard_token`` (the LTI launch path); otherwise returns the raw
+        stats for contract consumers that only want data.
+        """
+        from .dashboard import instructor_launch_redirect, workshop_dashboard_stats
+        if ctx and (ctx.get("dashboard_token") or ctx.get("public_base")):
+            return instructor_launch_redirect(ctx)
+        return workshop_dashboard_stats(ctx or {})
 
     def launch_user(self, ctx):
         """Launch a user into the workshop."""

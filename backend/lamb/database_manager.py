@@ -8164,6 +8164,67 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
+    def get_workshop_sessions_by_activity(
+        self, activity_id: int
+    ) -> List[Dict[str, Any]]:
+        """List every workshop session belonging to an activity."""
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_workshop_sessions
+                    WHERE activity_id = ?
+                    ORDER BY created_at ASC
+                """, (activity_id,))
+                columns = [col[0] for col in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error(f"Error listing workshop sessions: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def get_activity_students_with_sessions(
+        self, activity_id: int
+    ) -> List[Dict[str, Any]]:
+        """Join activity students (LEFT) with their workshop session.
+
+        Students who launched but never started a session are still returned,
+        with ``session_id``/``session_status`` as None — the dashboard needs the
+        full roster, not only those who built something.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT u.*,
+                           s.id AS session_id,
+                           s.status AS session_status,
+                           s.assistant_id AS session_assistant_id,
+                           s.saved_chat AS session_saved_chat,
+                           s.reflection AS session_reflection,
+                           s.updated_at AS session_updated_at
+                    FROM {self.table_prefix}lti_activity_users u
+                    LEFT JOIN {self.table_prefix}lti_workshop_sessions s
+                        ON s.activity_user_id = u.id
+                       AND s.activity_id = u.activity_id
+                    WHERE u.activity_id = ?
+                    ORDER BY u.created_at ASC
+                """, (activity_id,))
+                columns = [col[0] for col in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error(f"Error joining activity students with sessions: {e}")
+            return []
+        finally:
+            connection.close()
+
     def get_all_activity_user_owi_ids(self, activity_id: int) -> List[str]:
         """Get all OWI user IDs for an activity (for chat queries)."""
         connection = self.get_connection()
@@ -8852,7 +8913,7 @@ class LambDatabaseManager:
     def get_workshop_evaluations_by_activity(
         self, activity_id: int
     ) -> List[Dict[str, Any]]:
-        """List all evaluations for an activity (teacher dashboard, Phase 6)."""
+        """List all evaluations for an activity (teacher dashboard)."""
         connection = self.get_connection()
         if not connection:
             return []
