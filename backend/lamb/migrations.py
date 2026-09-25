@@ -20,7 +20,7 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="MIGRATIONS")
 
 # Increment this when adding a new migration method below.
-LATEST_VERSION = 25
+LATEST_VERSION = 30
 
 
 class MigrationRunner:
@@ -1056,3 +1056,126 @@ class MigrationRunner:
             f"CREATE INDEX IF NOT EXISTS "
             f"idx_{tp}audit_log_org_date "
             f"ON {tp}audit_log(organization_id, created_at)")
+
+    def _migration_26(self, cursor):
+        """Add activity_type column to lti_activities (default 'chat')."""
+        tp = self.db.table_prefix
+        if not self._table_exists(cursor, 'lti_activities'):
+            return
+        if self._column_exists(cursor, 'lti_activities', 'activity_type'):
+            return
+        logger.info("Adding activity_type column to lti_activities")
+        cursor.execute(
+            f"ALTER TABLE {tp}lti_activities "
+            f"ADD COLUMN activity_type TEXT NOT NULL DEFAULT 'chat'")
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}lti_activities_activity_type "
+            f"ON {tp}lti_activities(activity_type)")
+
+    def _migration_27(self, cursor):
+        """Create lti_workshop_sessions table for workshop build state."""
+        tp = self.db.table_prefix
+        if self._table_exists(cursor, 'lti_workshop_sessions'):
+            return
+        logger.info("Creating lti_workshop_sessions table")
+        cursor.execute(f"""
+            CREATE TABLE {tp}lti_workshop_sessions (
+                id TEXT PRIMARY KEY,
+                activity_id INTEGER NOT NULL,
+                activity_user_id INTEGER NOT NULL,
+                owi_user_id TEXT,
+                assistant_id INTEGER,
+                build_state JSON NOT NULL DEFAULT '{{}}',
+                saved_chat TEXT,
+                reflection TEXT,
+                status TEXT NOT NULL DEFAULT 'in_progress',
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (activity_id)
+                    REFERENCES {tp}lti_activities(id) ON DELETE CASCADE,
+                FOREIGN KEY (activity_user_id)
+                    REFERENCES {tp}lti_activity_users(id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}ws_sessions_activity "
+            f"ON {tp}lti_workshop_sessions(activity_id)")
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}ws_sessions_activity_user "
+            f"ON {tp}lti_workshop_sessions(activity_user_id)")
+
+    def _migration_28(self, cursor):
+        """Track the session's KB + document binding on lti_workshop_sessions."""
+        tp = self.db.table_prefix
+        if not self._table_exists(cursor, 'lti_workshop_sessions'):
+            return
+        for col, decl in [
+            ("kb_id", "TEXT"),
+            ("document_file_id", "TEXT"),
+            ("document_name", "TEXT"),
+            ("document_status", "TEXT"),
+        ]:
+            if not self._column_exists(cursor, 'lti_workshop_sessions', col):
+                logger.info(f"Adding {col} column to lti_workshop_sessions")
+                cursor.execute(
+                    f"ALTER TABLE {tp}lti_workshop_sessions ADD COLUMN {col} {decl}")
+
+    def _migration_29(self, cursor):
+        """Attach an optional rubric to LTI activities (workshop grading).
+
+        Teachers pick a rubric when configuring a workshop activity; students
+        submit and get formative feedback evaluated against it. NULL means no
+        evaluation is generated.
+        """
+        tp = self.db.table_prefix
+        if not self._table_exists(cursor, 'lti_activities'):
+            return
+        if self._column_exists(cursor, 'lti_activities', 'rubric_id'):
+            return
+        logger.info("Adding rubric_id column to lti_activities")
+        cursor.execute(
+            f"ALTER TABLE {tp}lti_activities ADD COLUMN rubric_id TEXT")
+
+    def _migration_30(self, cursor):
+        """Store formative evaluations for workshop submissions.
+
+        One row per workshop session (upsert on resubmit/regrade). `criteria`
+        is a JSON array of criterion decompositions; `total_score` is a
+        *suggestion* — the final grade is always decided by the teacher.
+        """
+        tp = self.db.table_prefix
+        if self._table_exists(cursor, 'workshop_evaluations'):
+            return
+        logger.info("Creating workshop_evaluations table")
+        cursor.execute(f"""
+            CREATE TABLE {tp}workshop_evaluations (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                activity_id INTEGER NOT NULL,
+                rubric_id TEXT,
+                evaluator TEXT NOT NULL DEFAULT 'llm',
+                model_used TEXT,
+                status TEXT NOT NULL DEFAULT 'completed',
+                total_score REAL,
+                max_score REAL,
+                criteria JSON NOT NULL DEFAULT '[]',
+                overall_feedback TEXT,
+                raw_response TEXT,
+                error_message TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (session_id)
+                    REFERENCES {tp}lti_workshop_sessions(id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}workshop_eval_session "
+            f"ON {tp}workshop_evaluations(session_id)")
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS "
+            f"idx_{tp}workshop_eval_activity "
+            f"ON {tp}workshop_evaluations(activity_id)")

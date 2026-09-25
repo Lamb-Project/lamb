@@ -211,15 +211,41 @@ class LtiActivityManager:
         context_title: str = None,
         activity_name: str = None,
         chat_visibility_enabled: bool = False,
+        activity_type: str = "chat",
+        rubric_id: str = None,
     ) -> Optional[Dict[str, Any]]:
         """
-        Configure a new LTI activity:
-        1. Create OWI group for the activity
-        2. Add the group to each selected assistant model's access control
-        3. Store the activity and its assistant list in LAMB DB
+        Configure a new LTI activity.
+
+        - `chat` (default): create an OWI group, grant each selected assistant
+          model read access to it, then store the activity + assistant links.
+        - `workshop`: DB-only. Students build their own assistant, so no OWI
+          group is created and `assistant_ids` may be empty.
+
         Returns the activity dict or None on failure.
         """
         group_name = f"lti_activity_{resource_link_id}"
+
+        # Workshop activities never enter OWI chat — skip group + model wiring.
+        if activity_type == "workshop":
+            activity_id = self.db_manager.create_lti_activity(
+                resource_link_id=resource_link_id,
+                organization_id=organization_id,
+                owi_group_id="",
+                owi_group_name="",
+                configured_by_email=configured_by_email,
+                configured_by_name=configured_by_name,
+                context_id=context_id,
+                context_title=context_title,
+                activity_name=activity_name,
+                chat_visibility_enabled=chat_visibility_enabled,
+                activity_type=activity_type,
+                rubric_id=rubric_id,
+            )
+            if not activity_id:
+                logger.error(f"Failed to create LTI activity record for {resource_link_id}")
+                return None
+            return self.db_manager.get_lti_activity_by_resource_link(resource_link_id)
 
         # Get an OWI admin user to own the group
         # Use the instructor's OWI account
@@ -267,14 +293,17 @@ class LtiActivityManager:
             context_id=context_id,
             context_title=context_title,
             activity_name=activity_name,
-            chat_visibility_enabled=chat_visibility_enabled
+            chat_visibility_enabled=chat_visibility_enabled,
+            activity_type=activity_type,
+            rubric_id=rubric_id,
         )
         if not activity_id:
             logger.error(f"Failed to create LTI activity record for {resource_link_id}")
             return None
 
         # Store assistant links
-        self.db_manager.add_assistants_to_activity(activity_id, assistant_ids)
+        if assistant_ids:
+            self.db_manager.add_assistants_to_activity(activity_id, assistant_ids)
 
         return self.db_manager.get_lti_activity_by_resource_link(resource_link_id)
 
@@ -372,13 +401,15 @@ class LtiActivityManager:
         # Capture OWI user ID for dashboard chat queries
         owi_user_id = owi_user.get('id', '') if owi_user else ''
 
-        # Add to activity's OWI group
-        add_result = self.owi_group_manager.add_user_to_group_by_email(
-            group_id=activity['owi_group_id'],
-            user_email=email
-        )
-        if add_result.get("status") == "error" and "already a member" not in add_result.get("error", "").lower():
-            logger.warning(f"Could not add {email} to group: {add_result.get('error')}")
+        # Add to activity's OWI group (workshop activities have no OWI group).
+        owi_group_id = activity.get('owi_group_id')
+        if owi_group_id:
+            add_result = self.owi_group_manager.add_user_to_group_by_email(
+                group_id=owi_group_id,
+                user_email=email
+            )
+            if add_result.get("status") == "error" and "already a member" not in add_result.get("error", "").lower():
+                logger.warning(f"Could not add {email} to group: {add_result.get('error')}")
 
         # Record in LAMB DB (also updates access tracking)
         self.db_manager.create_lti_activity_user(

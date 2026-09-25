@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Workshop — Consent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-lg max-w-lg w-full p-8">
+        <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">&#x1F9E0;</div>
+        <h1 class="text-xl font-bold text-gray-900 mb-2 text-center">AI Workshop — Consent</h1>
+        <p class="text-gray-600 mb-4">
+            Before you start building your AI assistant, please read the following:
+        </p>
+        <ul class="list-disc pl-5 text-sm text-gray-600 space-y-2 mb-6">
+            <li>
+                Your chat messages and the documents you upload will be used to build
+                and test your AI assistant.
+            </li>
+            <li>
+                The assistant will only use the information you provide (instructions,
+                documents, knowledge base) to answer questions.
+            </li>
+        </ul>
+        <p class="text-sm text-gray-600 mb-6">
+            By clicking "I agree", you consent to this activity.
+        </p>
+        <form method="POST" action="/lamb/v1/workshop/consent">
+            <input type="hidden" name="token" value="{{ token }}" />
+            <button type="submit"
+                    class="w-full bg-blue-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                I agree
+            </button>
+        </form>
+    </div>
+</body>
+</html>

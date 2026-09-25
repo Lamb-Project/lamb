@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse, Response
 from utils.pipelines.auth import bearer_security, get_current_user
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Any, Dict, Optional, Union, Tuple
+from typing import Any, Dict, Optional, Union, Tuple, AsyncGenerator
 import importlib
 import os
 import glob
@@ -11,6 +11,7 @@ import json
 from lamb.logging_config import get_logger
 from lamb.auth_context import AuthContext, get_optional_auth_context
 from lamb.completions.task_routing import maybe_route_non_streaming_task
+from lamb.completions.tools.loop import ToolLoop
 from utils.langsmith_config import traceable_llm_call, add_trace_metadata, is_tracing_enabled
 import traceback
 import asyncio
@@ -182,6 +183,8 @@ async def create_completion(
                 body=request,
                 llm=plugin_config["llm"],
                 assistant_owner=assistant_details.owner,
+                tools=request.get("tools"),
+                tool_choice=request.get("tool_choice", "auto"),
             )
             logger.debug("Returning streaming response")
             if connector == "ollama":
@@ -195,19 +198,21 @@ async def create_completion(
                 generator, usage_out = llm_response
             else:
                 generator, usage_out = llm_response, None
-            
+
             async def _tracked_stream():
-                async for chunk in generator:
+                async for chunk in _stream_with_observability(
+                    generator,
+                    request=request,
+                    assistant_details=assistant_details,
+                    rag_context=rag_context,
+                    obs_messages=messages,
+                    usage_out=usage_out,
+                    provider=provider,
+                    connector=connector,
+                    assistant=assistant,
+                    llm=llm,
+                ):
                     yield chunk
-                # Stream finished — fire-and-forget usage log
-                if usage_out and provider:
-                    db_manager.log_token_usage(
-                        assistant_id=assistant,
-                        org_id=assistant_details.organization_id,
-                        model_name=llm,
-                        provider=provider,
-                        usage_data=usage_out
-                    )
 
             return StreamingResponse(_tracked_stream(), media_type="text/event-stream")
         else:
@@ -253,6 +258,140 @@ def get_assistant_details(assistant: int) -> Any:
         logger.error(f"Assistant with ID '{assistant}' not found")
         raise HTTPException(status_code=404, detail=f"Assistant with ID '{assistant}' not found")
     return assistant_details
+
+
+def build_observability_payload(
+    assistant_details,
+    request: dict,
+    rag_context: Optional[dict],
+    messages: list
+) -> dict:
+    """
+    Build the observability SSE frame payload from available scope variables.
+    Called after the generator completes, before [DONE].
+    """
+    # Last user message
+    user_input = ""
+    for msg in reversed(request.get("messages", [])):
+        if msg.get("role") == "user":
+            user_input = msg.get("content", "")
+            break
+
+    # Normalize RAG sources with truncated content
+    sources = []
+    if rag_context:
+        for s in rag_context.get("sources", []):
+            sources.append({
+                "document_id": s.get("document_id", ""),
+                "chunk_id": s.get("chunk_id", ""),
+                "similarity": s.get("similarity", 0.0),
+                "content": s.get("content", "")[:500],
+            })
+
+    tools = request.get("tools") or []
+
+    # The assistant's configured model, mirroring parse_plugin_config defaults.
+    model = "gpt-4"
+    try:
+        callback = json.loads(assistant_details.metadata or "{}")
+        model = callback.get("llm") or model
+    except Exception:
+        pass
+
+    # Reconstruct the shape of the actual request body sent to the LLM:
+    # model + tools + messages in one object (OpenAI-compatible).
+    request_body = {
+        "model": model,
+        "tools": tools,
+        "messages": messages,
+    }
+
+    return {
+        "type": "observability",
+        "data": {
+            "assistant_name": assistant_details.name,
+            "system_instructions": assistant_details.system_prompt,
+            "user_input": user_input,
+            "rag_context": rag_context.get("context", "") if rag_context else "",
+            "retrieved_sources": sources,
+            "final_llm_messages": messages,
+            "tools": tools,
+            "request_body": request_body,
+        }
+    }
+
+
+def observability_enabled(request: dict) -> bool:
+    """
+    Check whether the request asks for observability SSE frames.
+    Phase 1: request-level flag only (no org feature gate yet).
+    """
+    return request.get("observability", False) is True
+
+
+async def _stream_with_observability(
+    generator,
+    *,
+    request: dict,
+    assistant_details,
+    rag_context,
+    obs_messages,
+    usage_out,
+    provider,
+    connector: str,
+    assistant: int,
+    llm: str,
+) -> AsyncGenerator[str, None]:
+    """
+    Wrap a connector's async chunk generator and inject an observability SSE
+    frame right before [DONE], then log token usage once the stream finishes.
+
+    This centralises the duplicated "inject obs + log usage" logic that
+    previously lived in three places (create_completion's _tracked_stream,
+    run_lamb_assistant's _tracked_stream, and run_lamb_assistant's
+    _tool_stream), so future changes only touch one spot.
+
+    Args:
+        generator: async iterator of raw SSE chunks from a connector.
+        request: original completion request (read for the observability flag).
+        assistant_details: assistant DB record (for building the obs payload).
+        rag_context: RAG results (for building the obs payload).
+        obs_messages: messages used to build the obs payload. For the ToolLoop
+            path pass the *final* messages (after tool rounds) so the payload
+            reflects what the LLM actually saw; elsewhere pass `messages`.
+        usage_out: usage dict from tracked connectors (may be None).
+        provider: provider string for the pricing table (may be None).
+        connector: connector name (used to skip usage logging for free LLMs).
+        assistant: assistant id (for token usage log).
+        llm: model name (for token usage log).
+    """
+    obs_injected = False
+    async for chunk in generator:
+        # Inject observability frame before [DONE] so frontend SSE parser
+        # sees it before returning on [DONE].
+        if observability_enabled(request) and not obs_injected and "data: [DONE]" in chunk:
+            obs_payload = build_observability_payload(
+                assistant_details, request, rag_context, obs_messages
+            )
+            yield f"data: {json.dumps(obs_payload)}\n\n"
+            obs_injected = True
+        yield chunk
+    # Fallback: if the generator never emitted [DONE], inject here.
+    if observability_enabled(request) and not obs_injected:
+        obs_payload = build_observability_payload(
+            assistant_details, request, rag_context, obs_messages
+        )
+        yield f"data: {json.dumps(obs_payload)}\n\n"
+    # Log usage when stream completes for tracked connectors.
+    # Skip ollama (free) and orgs without an organization.
+    if connector != "ollama" and usage_out and provider and assistant_details.organization_id is not None:
+        db_manager.log_token_usage(
+            assistant_id=assistant,
+            org_id=assistant_details.organization_id,
+            model_name=llm,
+            provider=provider,
+            usage_data=usage_out
+        )
 
 
 def _provider_for_connector(connector: str) -> str | None:
@@ -345,6 +484,15 @@ def resolve_completion_config(assistant, preference):
             preference.get('llm'), preference.get('connector'),
             available_providers=set(load_plugins('connectors')))
     except ValueError as error:
+        # Virtual principals (e.g. LTI workshop students) and deleted users have
+        # no Creator_users row, so no organization can be resolved. If the
+        # assistant pinned an explicit connector + model, honor it instead of
+        # failing the completion with a hard 503.
+        if preference.get('connector') and preference.get('llm'):
+            logger.warning(
+                "Model resolution failed for assistant %s (%s); using pinned %s/%s",
+                assistant.id, error, preference['connector'], preference['llm'])
+            return dict(preference)
         raise HTTPException(503, str(error))
     logger.info('Completion model resolution: preferred=%s/%s effective=%s/%s',
                 preference.get('connector'), preference.get('llm'), resolved['provider'], resolved['model'])
@@ -526,10 +674,93 @@ async def run_lamb_assistant(
             stream=stream,
             body=request, # Pass the original request dict as body
             llm=llm,
-            assistant_owner=assistant_details.owner
+            assistant_owner=assistant_details.owner,
+            tools=request.get("tools"),
+            tool_choice=request.get("tool_choice", "auto"),
         )
 
         if stream:
+            tools = request.get("tools")
+            use_tool_loop = bool(tools)
+
+            if use_tool_loop:
+                # ── ToolLoop path: function-calling rounds ──
+                async def _tool_stream():
+                    tool_loop = ToolLoop()
+                    final_msgs = None
+                    async for event in tool_loop.run(
+                        messages=messages,
+                        tools=tools,
+                        tool_choice=request.get("tool_choice", "auto"),
+                        llm_call_fn=lambda msgs, tl, tc: connectors[connector](
+                            messages=msgs,
+                            stream=False,
+                            body=request,
+                            llm=llm,
+                            assistant_owner=assistant_details.owner,
+                            tools=tl,
+                            tool_choice=tc,
+                        ),
+                        assistant=assistant_details,
+                        request=request,
+                    ):
+                        if event["type"] in ("thinking", "tool", "tool_done"):
+                            yield f"data: {json.dumps({'type': 'tool_event', 'data': event})}\n\n"
+                        elif event["type"] == "result":
+                            final_msgs = event["messages"]
+
+                    if final_msgs is None:
+                        final_msgs = messages
+
+                    # Echo the tool exchanges produced this turn back to the
+                    # client (assistant tool_calls + role:tool results) so it can
+                    # persist them and resend them on later turns. Without this
+                    # the model loses the record of prior tool invocations across
+                    # a multi-turn conversation.
+                    appended = final_msgs[len(messages):]
+                    tool_messages = [
+                        m for m in appended
+                        if m.get("role") == "tool"
+                        or (m.get("role") == "assistant" and m.get("tool_calls"))
+                    ]
+                    if tool_messages:
+                        yield f"data: {json.dumps({'type': 'tool_messages', 'data': {'messages': tool_messages}})}\n\n"
+
+                    # Stream final text reply
+                    gen_result = await connectors[connector](
+                        messages=final_msgs,
+                        stream=True,
+                        body=request,
+                        llm=llm,
+                        assistant_owner=assistant_details.owner,
+                    )
+                    if isinstance(gen_result, tuple):
+                        gen, usage_out = gen_result
+                    else:
+                        gen, usage_out = gen_result, None
+
+                    async for chunk in _stream_with_observability(
+                        gen,
+                        request=request,
+                        assistant_details=assistant_details,
+                        rag_context=rag_context,
+                        obs_messages=final_msgs,
+                        usage_out=usage_out,
+                        provider=provider,
+                        connector=connector,
+                        assistant=assistant,
+                        llm=llm,
+                    ):
+                        yield chunk
+
+                logger.debug("Returning ToolLoop streaming response")
+                return StreamingResponse(
+                    _tool_stream(),
+                    media_type="text/event-stream",
+                    headers=final_headers
+                )
+
+            # ── Standard (non-tool) streaming path ──
             # Tracked connectors return (generator, usage_out); others return the generator directly
             if isinstance(llm_response, tuple):
                 generator, usage_out = llm_response
@@ -537,17 +768,19 @@ async def run_lamb_assistant(
                 generator, usage_out = llm_response, None
 
             async def _tracked_stream():
-                async for chunk in generator:
+                async for chunk in _stream_with_observability(
+                    generator,
+                    request=request,
+                    assistant_details=assistant_details,
+                    rag_context=rag_context,
+                    obs_messages=messages,
+                    usage_out=usage_out,
+                    provider=provider,
+                    connector=connector,
+                    assistant=assistant,
+                    llm=llm,
+                ):
                     yield chunk
-                # Log usage when stream completes for tracked connectors
-                if connector != "ollama" and usage_out and provider and assistant_details.organization_id is not None:
-                    db_manager.log_token_usage(
-                        assistant_id=assistant,
-                        org_id=assistant_details.organization_id,
-                        model_name=llm,
-                        provider=provider,
-                        usage_data=usage_out
-                    )
 
             # The openai.py connector returns an async generator yielding SSE strings
             # Wrap this directly in StreamingResponse
