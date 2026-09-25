@@ -315,24 +315,38 @@ class LiteShell:
 
     def model_result(self, command_str, payload):
         """Bound the model view while raw ShellResult/audit/transcript stay intact."""
-        from lamb.aac.result_store import ResultStore, compact
+        from lamb.aac.result_store import ResultStore, compact, encode
         from lamb.aac.result_authority import authority
         try:
-            key, args, _, _ = prepare_command(command_str)
+            key, args, kwargs, _ = prepare_command(command_str)
         except (ValueError, TypeError):
-            key, args = 'unknown', []
+            key, args, kwargs = 'unknown', [], {}
         origin = {'command': key, 'authority': authority(key, args, payload)}
         if payload.get('skill_loaded'):
             origin['skill_id'] = payload['skill_loaded']
-        if self.history and self.history[-1].command == command_str and self.history[-1].result_binding:
+        executed = self.history and self.history[-1].command == command_str and self.history[-1].success
+        if executed and self.history[-1].result_binding:
             origin['moodle'] = self.history[-1].result_binding
+        notes = {}
+        # Evidence notes only for a Moodle read or write this shell just completed,
+        # selected by command identity. Failures, workflow loads and pending
+        # approvals claim no source evidence. Source data cannot supply notes.
+        if (origin.get('moodle') and payload.get('success') is True and not payload.get('skill_loaded')
+                and not payload.get('awaiting_user_confirmation')):
+            from lamb.moodle.glossary import glossary_key, field_notes
+            origin['glossary'] = glossary_key(key, kwargs)
+            notes = field_notes(origin['glossary'])
         try:
             store = ResultStore(int(self.organization_id), int(self.user_id))
         except (ValueError, TypeError):
             logger.warning('Private AAC result storage unavailable; full readback caching is disabled for this result')
             store = None
-        return compact(payload, store=store, origin=origin,
-                       trusted_workflow=bool(payload.get('skill_loaded')) or key == 'skill.load')
+        reserve = len(encode({'field_notes': notes})) if notes else 0
+        projected = compact(payload, store=store, origin=origin, reserve=reserve,
+                            trusted_workflow=bool(payload.get('skill_loaded')) or key == 'skill.load')
+        if notes:
+            projected = {**projected, 'field_notes': notes}
+        return projected
 
     async def _dispatch(self, command_str: str, *, confirmed: bool = False, review: dict | None = None) -> ShellResult:
         key, args, kwargs, help_requested = prepare_command(command_str, self.allowlist)

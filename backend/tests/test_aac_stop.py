@@ -64,7 +64,10 @@ class StopTests(unittest.IsolatedAsyncioTestCase):
     async def test_provider_close_failure_still_preserves_partial(self):
         a,p,s=agent([message('Partial response')], max_tool_rounds=0)
         stream=a.chat_stream('hello')
-        await anext(stream);text=await anext(stream)
+        await anext(stream)
+        self.assertIn('tool-round limit', await anext(stream))
+        self.assertEqual((await anext(stream))['status'], 'thinking')
+        text=await anext(stream)
         p.streams[0].close=AsyncMock(side_effect=RuntimeError('close failed'))
         with self.assertRaisesRegex(RuntimeError,'close failed'):await stream.aclose()
         self.assertEqual(a.conversation[-1],{'role':'assistant','content':text})

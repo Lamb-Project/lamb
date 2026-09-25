@@ -61,6 +61,19 @@ def append_turn_language(agent):
             ' Keep resource names and commands unchanged. Explicitly requested foreign-language content may use its requested language.'})
 
 
+def budget_notice(agent):
+    """Execution fact only: reaching a budget does not prove task failure."""
+    state = agent.skill_state or {}
+    code = state.get('response_language_policy', {}).get('effective_language', state.get('ui_language', 'en'))
+    messages = {
+        'en': 'This turn reached its tool-round limit ({limit}). No more tools will run this turn. If more investigation is needed, ask me to continue in this conversation.',
+        'es': 'Este turno ha alcanzado su límite de rondas de herramientas ({limit}). No se ejecutarán más herramientas en este turno. Si hace falta investigar más, pídeme que continúe en esta conversación.',
+        'ca': 'Aquest torn ha arribat al límit de rondes d’eines ({limit}). No s’executaran més eines en aquest torn. Si cal investigar més, demana’m que continuï en aquesta conversa.',
+        'eu': 'Txanda hau tresna-txanden mugara iritsi da ({limit}). Ez da tresna gehiago exekutatuko txanda honetan. Gehiago ikertu behar bada, eskatu elkarrizketa honetan jarraitzeko.',
+    }
+    return messages.get(code, messages['en']).format(limit=agent.max_tool_rounds) + '\n\n'
+
+
 def confirmation_fallback(agent):
     """A provider ignoring disabled tools must still expose the saved approval."""
     state = agent.skill_state or {}
