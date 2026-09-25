@@ -484,6 +484,15 @@ def resolve_completion_config(assistant, preference):
             preference.get('llm'), preference.get('connector'),
             available_providers=set(load_plugins('connectors')))
     except ValueError as error:
+        # Virtual principals (e.g. LTI workshop students) and deleted users have
+        # no Creator_users row, so no organization can be resolved. If the
+        # assistant pinned an explicit connector + model, honor it instead of
+        # failing the completion with a hard 503.
+        if preference.get('connector') and preference.get('llm'):
+            logger.warning(
+                "Model resolution failed for assistant %s (%s); using pinned %s/%s",
+                assistant.id, error, preference['connector'], preference['llm'])
+            return dict(preference)
         raise HTTPException(503, str(error))
     logger.info('Completion model resolution: preferred=%s/%s effective=%s/%s',
                 preference.get('connector'), preference.get('llm'), resolved['provider'], resolved['model'])

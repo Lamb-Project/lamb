@@ -49,6 +49,21 @@ def _async_gen(*chunks):
     return gen()
 
 
+@pytest.fixture(autouse=True)
+def _bypass_org_config_resolution():
+    """Skip org model resolution for these tests.
+
+    The completion pipeline resolves the assistant's model through the owner's
+    organization. These tests use a synthetic owner and mock the connector
+    directly, so pass the plugin preference through unchanged.
+    """
+    with patch(
+        "lamb.completions.main.resolve_completion_config",
+        side_effect=lambda assistant, preference: dict(preference),
+    ):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # T1: Observability frame appears in stream when flag is set
 # ---------------------------------------------------------------------------
