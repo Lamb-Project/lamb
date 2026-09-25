@@ -97,7 +97,8 @@ describe('ObservabilityPanel — renders observability data', () => {
 		expect(screen.getByText('tools')).toBeInTheDocument();
 		expect(screen.getByText(/messages \(3\)/)).toBeInTheDocument();
 		// The raw JSON includes the calculator tool and the tool_calls structure.
-		expect(screen.getByText(/"calculator"/)).toBeInTheDocument();
+		// "calculator" appears in both the tools block and the messages block.
+		expect(screen.getAllByText(/"calculator"/).length).toBeGreaterThanOrEqual(1);
 		expect(screen.getByText(/"tool_calls"/)).toBeInTheDocument();
 		expect(screen.getByText(/"call_calc_1"/)).toBeInTheDocument();
 	});
@@ -127,9 +128,10 @@ describe('ObservabilityPanel — renders observability data', () => {
 		// No "View raw JSON" toggle button anymore.
 		expect(screen.queryByRole('button', { name: /View raw JSON/ })).not.toBeInTheDocument();
 		// The tools/messages are immediately rendered.
-		expect(screen.getByText(/"calculator"/)).toBeInTheDocument();
+		// "calculator" appears in both the tools block and the messages block.
+		expect(screen.getAllByText(/"calculator"/).length).toBeGreaterThanOrEqual(1);
 		expect(screen.getByText(/"tool_calls"/)).toBeInTheDocument();
-		expect(screen.getByText(/"call_calc_1"/)).not.toBeInTheDocument();
+		expect(screen.queryByText(/"call_calc_1"/)).not.toBeInTheDocument();
 	});
 
 	test('C6: shows "No tools defined" when the request has no tools', () => {

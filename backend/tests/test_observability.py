@@ -299,14 +299,18 @@ async def test_sources_contain_similarity(
 
     mock_db.get_assistant_by_id.return_value = _make_assistant()
 
-    mock_connector = AsyncMock()
-    mock_connector.return_value = _async_gen(
-        'data: {"content":"Test"}\n\n',
-    ), None
+    # With tools present the pipeline runs the ToolLoop, whose llm call uses
+    # stream=False and expects a ChatCompletion-shaped response. The final text
+    # reply is then streamed with stream=True (returned as a (gen, usage) tuple
+    # by tracked connectors).
+    async def _connector(*args, **kwargs):
+        if kwargs.get("stream"):
+            return _async_gen('data: {"content":"Hello"}\n\n'), None
+        return {"choices": [{"message": {"content": "Hello", "tool_calls": []}}]}
 
     mock_load.return_value = (
         {"default": MagicMock()},
-        {"openai": mock_connector},
+        {"openai": _connector},
         {"simple_rag": AsyncMock()},
     )
 

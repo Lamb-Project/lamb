@@ -97,6 +97,11 @@ class ToolLoop:
             try:
                 response = await llm_call_fn(messages, tools, tool_choice)
                 response = _normalize_response(response)
+                # Access the choice inside the try: a connector may return an
+                # unexpected shape (e.g. a streaming tuple) and must degrade to
+                # a result event instead of crashing the whole stream.
+                choice = response.choices[0]
+                msg = choice.message
             except Exception as e:
                 logger.error("ToolLoop LLM call failed: %s", e)
                 messages.append({
@@ -105,9 +110,6 @@ class ToolLoop:
                 })
                 yield {"type": "result", "messages": messages}
                 return
-
-            choice = response.choices[0]
-            msg = choice.message
 
             # No tool_calls → we're done; yield result and exit loop
             if not msg.tool_calls:

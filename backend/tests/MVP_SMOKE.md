@@ -132,4 +132,4 @@ docker compose exec backend python -m pytest tests/test_workshop_kb.py tests/tes
   tests/test_workshop_dashboard.py tests/test_workshop_migrations.py -q
 ```
 
-> Note: the repository currently has 4 known failing tests unrelated to this smoke test (`test_observability_payload_has_all_fields`, `ObservabilityPanel` C4/C5, `page.svelte.test.js` h1).
+> The unit suites are currently green alongside this smoke test: backend `pytest tests/` = 161 passed, frontend `npm run test:unit` = 169 passed.
