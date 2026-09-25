@@ -104,7 +104,9 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
             for cap in [0,1,2]:
                 with self.subTest(streaming=streaming,cap=cap):
                     a,p,s=agent([*[message(tools=[tool(ident=f't{i}')]) for i in range(cap)],message('done')],max_tool_rounds=cap)
-                    self.assertEqual(await turn(a,streaming),'done')
+                    result = await turn(a,streaming)
+                    self.assertTrue(result.endswith('done'))
+                    self.assertEqual(result.count('tool-round limit'),1)
                     self.assertEqual(s.execute.await_count,cap)
                     self.assertNotIn('tools',p.calls[-1])
                     self.assertEqual(len(p.calls),cap+1)

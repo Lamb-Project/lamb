@@ -539,12 +539,36 @@ class AgentLoop(SkillRouting):
                 return
             yield {"status": "thinking"}
             tools_enabled = tool_rounds < self.max_tool_rounds and not self.pending_action
+            if not tools_enabled:
+                from lamb.aac.language import budget_notice
+                notice = budget_notice(self)
+                # Persist before yielding: even a failed final request leaves the
+                # execution boundary visible and the evidence available to resume.
+                self.conversation.append({"role": "assistant", "content": notice})
+                if self.session_logger:
+                    self.session_logger.log_agent_response(notice)
+                yield notice
+                # The notice is already saved; interrupted provider text starts
+                # a new partial response rather than duplicating that notice.
+                yield {"status": "thinking"}
             from lamb.aac.result_store import provider_messages
             conversation = provider_messages(self.conversation)
             if self.pack and self.skill_state.get('brief'):
                 from lamb.aac.glossary import model_messages
                 conversation = model_messages(conversation, self.skill_state['brief']['glossary'])
             messages = [{"role": "system", "content": self.system_prompt}] + conversation
+            if not tools_enabled:
+                # Request-local, never stored as an instruction that could disable
+                # tools again when this conversation is resumed on a later turn.
+                messages.append({"role": "system", "content":
+                    "This turn's tool-round budget is exhausted. No more tools may run this turn. "
+                    "The application has already displayed the budget notice; do not repeat it. "
+                    "Answer from the evidence already returned: distinguish supported findings, "
+                    "unresolved questions and the next useful check. Missing work is not evidence "
+                    "that source data is unavailable. Do not invent a completion percentage. "
+                    "If the evidence already answers the request, say so without inventing remaining work. "
+                    "Otherwise offer continuation in this same conversation. Continuation grants "
+                    "neither write approval nor broader permissions. Keep the response concise."})
             message = None
             async with aclosing(self._request_message(messages, tools_enabled, streaming)) as events:
                 async for event in events:
@@ -579,9 +603,6 @@ class AgentLoop(SkillRouting):
                     self.conversation.append(self._result_message(result, model_command, role="tool", tool_call_id=tc.id))
                     yield {"status": "tool_done", "command": command, "success": result.get("success", False),
                            "awaiting_user_confirmation": bool(result.get("awaiting_user_confirmation"))}
-                if tool_rounds >= self.max_tool_rounds:
-                    self.conversation.append({"role": "user", "content":
-                        "[System: Maximum tool rounds reached. Respond using the results already available. No further tools are allowed this turn.]"})
                 continue
 
             # A provider that ignores the no-tools request must not execute more work.

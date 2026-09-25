@@ -81,7 +81,10 @@ class Measurements(unittest.IsolatedAsyncioTestCase):
     async def test_interrupted_usage_is_unknown_and_stream_is_closed(self):
         a,p,s=agent([message('Partial')],session_logger=self.log,max_tool_rounds=0)
         stream=a.chat_stream('hi')
-        await anext(stream); await anext(stream)
+        await anext(stream)
+        self.assertIn('tool-round limit', await anext(stream))
+        self.assertEqual((await anext(stream))['status'], 'thinking')
+        await anext(stream)
         await stream.aclose()
         self.assertTrue(p.streams[0].closed)
         self.assertEqual(self.events('context_response')[-1]['outcome'],'interrupted')
