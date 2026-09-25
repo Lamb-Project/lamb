@@ -6,7 +6,6 @@ import os
 from typing import Optional
 
 import typer
-from rich.progress import BarColumn, Progress, TextColumn
 
 from lamb_cli.client import get_client
 from lamb_cli.config import get_output_format
@@ -169,6 +168,8 @@ def share_kb(
 def upload_files_cmd(
     kb_id: str = typer.Argument(..., help="Knowledge base ID."),
     files: list[str] = typer.Argument(..., help="File paths to upload."),
+    plugin: Optional[str] = typer.Option(None, "--plugin", help="Ingestion plugin for uploaded files, e.g. markitdown_ingest for PDF."),
+    output: str = typer.Option(None, "-o", "--output", help="Output format."),
 ) -> None:
     """Upload files to a knowledge base."""
     # Validate files exist
@@ -178,20 +179,15 @@ def upload_files_cmd(
             raise typer.Exit(1)
 
     with get_client() as client:
-        with Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("{task.completed}/{task.total}"),
-            transient=True,
-        ) as progress:
-            task = progress.add_task("Uploading files", total=len(files))
-            data = client.upload_files(
-                f"/creator/knowledgebases/kb/{kb_id}/files",
-                file_paths=files,
-            )
-            progress.update(task, completed=len(files))
-    count = len(files)
-    print_success(f"Uploaded {count} file{'s' if count != 1 else ''} to knowledge base {kb_id}.")
+        if plugin:
+            data = [client.post_multipart_form(f"/creator/knowledgebases/kb/{kb_id}/plugin-ingest-file", fp,
+                    data={"plugin_name":plugin}) for fp in files]
+        else:
+            data = client.upload_files(f"/creator/knowledgebases/kb/{kb_id}/files", file_paths=files)
+    if (output or get_output_format()) == "json":
+        format_output({"ingestion_response":data,"verification_required":True},[],"json")
+    else:
+        print_success(f"Submitted {len(files)} file{'s' if len(files) != 1 else ''}. Verify ingestion in KB details and query results.")
 
 
 @app.command("ingest")
@@ -209,7 +205,7 @@ def ingest_kb(
     if url:
         plugin_params["url"] = url
     if youtube:
-        plugin_params["youtube_url"] = youtube
+        plugin_params["video_url"] = youtube
     if param:
         for p in param:
             if "=" not in p:
@@ -219,7 +215,7 @@ def ingest_kb(
             plugin_params[key] = value
 
     if plugin_params:
-        body["plugin_params"] = plugin_params
+        body["parameters"] = plugin_params
 
     with get_client() as client:
         data = client.post(f"/creator/knowledgebases/kb/{kb_id}/plugin-ingest-base", json=body)
@@ -303,3 +299,19 @@ def list_query_plugins(
         data = client.get("/creator/knowledgebases/query-plugins")
     plugins = data if isinstance(data, list) else data.get("plugins", [])
     format_output(plugins, PLUGIN_COLUMNS, fmt)
+
+
+@app.command('jobs')
+def ingestion_jobs(kb_id: str = typer.Argument(...), output: str = typer.Option(None, '-o', '--output')):
+    """List ingestion jobs with status, progress and errors."""
+    with get_client() as client:
+        data=client.get(f'/creator/knowledgebases/kb/{kb_id}/ingestion-jobs')
+    format_output(data, [(key, key.replace('_', ' ').title()) for key in data] if isinstance(data, dict) else [('status', 'Status'), ('document_count', 'Documents')], output or 'json')
+
+
+@app.command('status')
+def ingestion_status(kb_id: str = typer.Argument(...), output: str = typer.Option(None, '-o', '--output')):
+    """Show ingestion readiness and failure summary."""
+    with get_client() as client:
+        data=client.get(f'/creator/knowledgebases/kb/{kb_id}/ingestion-status')
+    format_output(data, [(key, key.replace('_', ' ').title()) for key in data] if isinstance(data, dict) else [('status', 'Status'), ('document_count', 'Documents')], output or 'json')

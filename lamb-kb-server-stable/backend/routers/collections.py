@@ -19,6 +19,7 @@ from database.models import FileRegistry, FileStatus # Needed for ingest backgro
 # Schema imports
 from schemas.collection import (
     CollectionCreate,
+    CollectionPropertiesUpdate,
     CollectionResponse,
     CollectionList,
     CollectionCreateResponse,
@@ -835,6 +836,31 @@ async def bulk_update_embeddings_apikey(
     )
 
     return result
+
+
+@router.patch("/{collection_id}", response_model=CollectionResponse, tags=["Collections"])
+async def update_collection_properties(
+    collection_id: int, updates: CollectionPropertiesUpdate, db: Session = Depends(get_db)
+):
+    """Update metadata through the authenticated KB service boundary."""
+    fields = updates.model_dump(exclude_none=True)
+    if not fields:
+        raise HTTPException(status_code=400, detail="Provide at least one collection property")
+    from database.models import Visibility
+    from sqlalchemy.exc import IntegrityError
+    if "visibility" in fields:
+        fields["visibility"] = Visibility(fields["visibility"])
+    try:
+        collection = CollectionService.update_collection(db, collection_id, **fields)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Collection name already exists")
+    except ValueError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Invalid collection properties")
+    if collection is None:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    return CollectionsService._sanitize_collection(collection)
 
 
 # Get a specific collection

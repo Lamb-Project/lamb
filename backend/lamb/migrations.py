@@ -83,6 +83,7 @@ class MigrationRunner:
             logger.error(f"Migration error: {e}")
             raise
         finally:
+            connection.close()
             # Clean up OWI connection if it was opened
             if self._owi_db is not None:
                 try:

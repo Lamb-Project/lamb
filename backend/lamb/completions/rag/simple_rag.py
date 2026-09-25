@@ -321,3 +321,6 @@ def rag_processor(
             "assistant_data": assistant_dict,
             "raw_responses": all_responses if all_responses else None
         }
+
+
+AAC_DESCRIPTION = 'Queries selected knowledge bases using the last user message.'

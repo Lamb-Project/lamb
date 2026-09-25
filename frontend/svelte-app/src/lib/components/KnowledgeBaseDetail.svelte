@@ -1,4 +1,7 @@
 <script>
+ import { knowledgeBaseFileUrl } from '$lib/services/knowledgeBaseFileUrl';
+ import { clearWorkspaceDirty } from '$lib/services/frontendManage';
+ let ingestionForm;
     import { onMount } from 'svelte';
     import { getKnowledgeBaseDetails, getIngestionPlugins, uploadFileWithPlugin, runBaseIngestionPlugin, deleteKnowledgeBaseFile, listIngestionJobs, retryIngestionJob, cancelIngestionJob, getIngestionJobStatus, getIngestionConfig } from '$lib/services/knowledgeBaseService';
     import { _ } from '$lib/i18n';
@@ -146,7 +149,11 @@
 
     // Ingestion state
     /** @type {'files' | 'ingest' | 'query'} */
-    let activeTab = $state('files'); // New state for tabs: 'files' or 'ingest' or 'query'
+    let activeTab = $state('files');
+    $effect(() => {
+        const tab = $page.url.searchParams.get('aacTab');
+        if (kb && ['files', 'ingest', 'query'].includes(tab)) selectTab(tab);
+    }); // New state for tabs: 'files' or 'ingest' or 'query'
     /** @type {IngestionPlugin[]} */
     let plugins = $state([]);
     let loadingPlugins = $state(false);
@@ -913,6 +920,7 @@
             const result = await uploadFileWithPlugin(kbId, selectedFile, selectedPlugin.name, pluginParams);
             console.log('Upload result:', result);
             uploadSuccess = true;
+            clearWorkspaceDirty(ingestionForm);
             selectedFile = null;
             resetFileInput();
             resetPluginParams();
@@ -950,6 +958,7 @@
             const result = await runBaseIngestionPlugin(kbId, selectedPlugin.name, pluginParams);
             console.log('Base ingestion result:', result);
             uploadSuccess = true;
+            clearWorkspaceDirty(ingestionForm);
             resetPluginParams();
             await loadKnowledgeBase(kbId);
         } catch (err) {
@@ -1056,6 +1065,10 @@
     }
 
 </script>
+{#if kb && !loading && !error}
+<span hidden data-aac-resource="kb" data-aac-id={kbId} data-aac-tab={activeTab}></span>
+{/if}
+
 
 <div class="bg-white shadow overflow-hidden sm:rounded-lg">
     <!-- Loading state -->
@@ -1260,7 +1273,7 @@
                                                             <div class="text-sm font-medium text-gray-900 truncate" title={file.filename}>
                                                                 {#if file.file_url}
                                                                     <a 
-                                                                        href={file.file_url} 
+                                                                        href={knowledgeBaseFileUrl(file.file_url)}
                                                                         target="_blank" 
                                                                         rel="noopener noreferrer"
                                                                         class="text-[#2271b3] hover:text-[#195a91] hover:underline truncate block"
@@ -1362,7 +1375,7 @@
                                 <!-- ... no plugins message ... -->
                             {:else}
                                 <!-- Ingestion Form -->
-                                <form onsubmit={(e) => { e.preventDefault(); handleSubmitIngestion(); }} class="space-y-6">
+                                <form bind:this={ingestionForm} onsubmit={(e) => { e.preventDefault(); handleSubmitIngestion(); }} class="space-y-6">
                                     <!-- File selection (required for file-ingest, optional for other plugins that support file input) -->
                                     {#if pluginCanUseFileUpload(selectedPlugin)}
                                         <div>
@@ -1637,7 +1650,7 @@
                                 {$_('knowledgeBases.detail.query.title', { default: 'Query Knowledge Base' })}
                             </h3>
                             
-                            <form onsubmit={(e) => { e.preventDefault(); handleQuerySubmit(); }} class="space-y-4">
+                            <form data-aac-transient onsubmit={(e) => { e.preventDefault(); handleQuerySubmit(); }} class="space-y-4">
                                 <div>
                                     <label for="query-text" class="block text-sm font-medium text-gray-700">
                                         {$_('knowledgeBases.detail.query.inputLabel', { default: 'Enter your query:' })}
@@ -1697,7 +1710,7 @@
                                                     {#if result.metadata?.file_url && result.metadata?.filename}
                                                         <div class="mb-2 text-sm">
                                                             <a 
-                                                                href={result.metadata.file_url} 
+                                                                href={knowledgeBaseFileUrl(result.metadata.file_url)}
                                                                 target="_blank" 
                                                                 rel="noopener noreferrer"
                                                                 class="text-[#2271b3] hover:text-[#195a91] hover:underline font-medium"
@@ -2017,7 +2030,7 @@
                                 <div class="flex flex-wrap gap-2">
                                     {#if stats.output_files.markdown_url}
                                         <a 
-                                            href={stats.output_files.markdown_url} 
+                                            href={knowledgeBaseFileUrl(stats.output_files.markdown_url)}
                                             target="_blank" 
                                             rel="noopener noreferrer"
                                             class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md hover:bg-emerald-100 transition-colors text-sm"
@@ -2030,7 +2043,7 @@
                                     {/if}
                                     {#if stats.output_files.images_folder_url}
                                         <a 
-                                            href={stats.output_files.images_folder_url} 
+                                            href={knowledgeBaseFileUrl(stats.output_files.images_folder_url)}
                                             target="_blank" 
                                             rel="noopener noreferrer"
                                             class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-md hover:bg-purple-100 transition-colors text-sm"
@@ -2043,7 +2056,7 @@
                                     {/if}
                                     {#if stats.output_files.original_file_url}
                                         <a 
-                                            href={stats.output_files.original_file_url} 
+                                            href={knowledgeBaseFileUrl(stats.output_files.original_file_url)}
                                             target="_blank" 
                                             rel="noopener noreferrer"
                                             class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 text-gray-700 border border-gray-200 rounded-md hover:bg-gray-100 transition-colors text-sm"

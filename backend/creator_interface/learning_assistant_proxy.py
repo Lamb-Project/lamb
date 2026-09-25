@@ -205,6 +205,21 @@ async def proxy_assistant_chat(
                 latest_user_message = msg.get("content", "")
                 break
         
+        # A chat ID identifies both its owner and its assistant. A one-message
+        # CLI/AAC follow-up needs saved context; browsers may already send history.
+        if chat_id:
+            saved_chat = chats_service.get_chat(chat_id, user_id)
+            if (not saved_chat or saved_chat.get("user_id") != user_id
+                    or saved_chat.get("assistant_id") != assistant_id):
+                raise HTTPException(status_code=404, detail="Chat not found")
+            if len(messages) == 1 and messages[0].get("role") == "user":
+                saved_messages = saved_chat.get("chat", {}).get("history", {}).get("messages", {})
+                history = sorted(saved_messages.values(), key=lambda m: m.get("timestamp", 0))
+                body["messages"] = [
+                    {"role": m["role"], "content": m.get("content", "")}
+                    for m in history if m.get("role") in ("user", "assistant")
+                ] + messages
+
         # 7. Save user message to chat (create new chat if needed)
         if persist_chat and latest_user_message:
             try:

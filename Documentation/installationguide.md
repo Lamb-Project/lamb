@@ -1,5 +1,7 @@
 # LAMB Installation Guide
 
+For Docker upgrades, use the [official 0.6 → 0.7 migration procedure](migrating-to-lamb-next.md). Do not start the new stack against empty volumes before copying existing data. See [0.7 deployment release notes](release-notes-0.7.md).
+
 This guide provides a complete, step-by-step process for installing the LAMB application from scratch on a macOS-like environment. It is intended to be used by an automated agent.
 
 **Core Strategy:**
@@ -20,6 +22,18 @@ If you ever need an OPENAI_API_KEY, you can get it running the following command
 ```bash
 llm keys get openai
 ```
+
+---
+
+### Conventions
+
+`$LAMB_PROJECT_PATH` is the directory where the repository is installed (for example `/opt/lamb`). Export it before you begin:
+
+```bash
+export LAMB_PROJECT_PATH=/opt/lamb
+```
+
+> This is the **manual, non-Docker** installation path. For the recommended Docker setup, see [deployLocal.md](./deployLocal.md).
 
 ---
 

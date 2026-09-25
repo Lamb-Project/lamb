@@ -9,7 +9,9 @@ services:
       PORT: ${LAMB_PORT:-9099}
       OWI_BASE_URL: ${OWI_BASE_URL?Set OWI_BASE_URL}
       OWI_PUBLIC_BASE_URL: ${OWI_PUBLIC_BASE_URL:-http://localhost:8080}
-      OWI_PATH: ${OWI_PATH?Set OWI_PATH}
+      LAMB_DB_PATH: /data/lamb
+      LAMB_DB_PREFIX: ${LAMB_DB_PREFIX-LAMB_}
+      OWI_PATH: /data/openwebui
       LAMB_KB_SERVER: ${LAMB_KB_SERVER:-http://kb:9090}
       LAMB_BACKEND_HOST: ${LAMB_BACKEND_HOST?Set LAMB_BACKEND_HOST}
       LAMB_WEB_HOST: ${LAMB_WEB_HOST?Set LAMB_WEB_HOST}
@@ -21,7 +23,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL?Set OPENAI_BASE_URL}
       OPENAI_MODEL: ${OPENAI_MODEL?Set OPENAI_MODEL}
-      OPENAI_MODELS: ${OPENAI_MODELS:-gpt-4o-mini,gpt-4o}
+      OPENAI_MODELS: ${OPENAI_MODELS:-gpt-5-mini,gpt-4o-mini,gpt-4o}
       SIGNUP_SECRET_KEY: ${SIGNUP_SECRET_KEY?Set SIGNUP_SECRET_KEY}
       LTI_SECRET: ${LTI_SECRET:-lamb-lti-secret-key-2024}
       OWI_ADMIN_NAME: ${OWI_ADMIN_NAME?Set OWI_ADMIN_NAME}
@@ -33,6 +35,7 @@ services:
       - "9099:9099"
     volumes:
       - lamb-data:/data/lamb
+      - lamb-static:/app/backend/static
       - openwebui-data:/data/openwebui
     depends_on:
       kb:
@@ -50,6 +53,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: ${KB_PORT:-9090}
+      KB_CONFIG_PATH: /app/backend/data/config.json
       HOME_URL: ${KB_HOME_URL:-http://localhost:9090}
       LAMB_API_KEY: ${LAMB_API_KEY:-0p3n-w3bu!}
       EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-nomic-embed-text}
@@ -98,6 +102,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: ${OPENWEBUI_PORT:-8080}
+      DATA_DIR: /app/backend/data
       WEBUI_AUTH_TRUSTED_EMAIL_HEADER: ${WEBUI_AUTH_TRUSTED_EMAIL_HEADER:-X-User-Email}
       WEBUI_AUTH_TRUSTED_NAME_HEADER: ${WEBUI_AUTH_TRUSTED_NAME_HEADER:-X-User-Name}
       DEFAULT_USER_ROLE: ${DEFAULT_USER_ROLE:-user}
@@ -124,6 +129,7 @@ services:
 
 volumes:
   lamb-data:
+  lamb-static:
   kb-data:
   kb-static:
   openwebui-data:

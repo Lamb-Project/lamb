@@ -139,3 +139,6 @@ def rag_processor(
             "context": f"ERROR: Failed to load rubric - {str(e)}",
             "sources": []
         }
+
+
+AAC_DESCRIPTION = 'Formats the selected rubric as grounding context.'

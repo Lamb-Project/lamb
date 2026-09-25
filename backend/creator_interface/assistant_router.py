@@ -316,10 +316,23 @@ def sanitize_filename(filename: str) -> str:
     return filename[:100] if filename else "assistant_export"
 
 
+@router.get("/capabilities")
+async def get_assistant_capabilities(auth: AuthContext = Depends(get_auth_context), request: Request = None):
+    """Use the same authenticated Creator instance for discovery and writes."""
+    from lamb.completions.main import list_processors_and_connectors
+    from lamb.assistant_model_config import model_configuration
+    from lamb.completions.org_config_resolver import OrganizationConfigResolver
+    capabilities = await list_processors_and_connectors(auth=auth)
+    configured = OrganizationConfigResolver(auth.user['email']).get_global_default_model_config()
+    defaults = (auth.organization.get('config') or {}).get('assistant_defaults') or {}
+    from lamb.aac.brief import capability_map
+    installation = await capability_map(auth, request.app.routes if request else ())
+    return {**capabilities, **model_configuration(capabilities, defaults, configured), 'capability_map':installation}
+
+
 REQUIRED_PLUGIN_METADATA_KEYS = (
     "prompt_processor",
     "connector",
-    "llm",
     "rag_processor",
 )
 
@@ -429,6 +442,17 @@ def prepare_assistant_body(
             # Fallback: create prefixed name (for backward compatibility)
             prefixed_name = f"{creator_user['id']}_{original_name}"
 
+        metadata = _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", "")))
+        parsed_metadata = json.loads(metadata) if isinstance(metadata, str) else metadata
+        prompt_template = original_body.get("prompt_template", "")
+        # Only default new, omitted templates for the built-in augmentation path.
+        # Explicit templates (including empty ones) and custom processors retain their semantics.
+        if ("prompt_template" not in original_body
+                and parsed_metadata.get("prompt_processor") == "simple_augment"
+                and parsed_metadata.get("rag_processor") in {
+                    "simple_rag", "single_file_rag", "context_aware_rag", "hierarchical_rag", "rubric_rag"}):
+            prompt_template = "Context:\n{context}\n\nUser: {user_input}"
+
         # Build the body according to Assistant class structure
         new_body = {
             "name": prefixed_name,  # Use prefixed name
@@ -437,11 +461,11 @@ def prepare_assistant_body(
             "owner": creator_user['email'],
             # Handle metadata as source of truth, copy to api_callback for backward compatibility
             # Ensure essential defaults (prompt_processor) are set
-            "metadata": _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", ""))),
-            "api_callback": _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", ""))),
+            "metadata": metadata,
+            "api_callback": metadata,
             # Check for system_prompt first, then instructions as fallback
             "system_prompt": original_body.get("system_prompt", original_body.get("instructions", "")),
-            "prompt_template": original_body.get("prompt_template", ""),
+            "prompt_template": prompt_template,
             # Removed unused fields: pre_retrieval_endpoint, post_retrieval_endpoint, RAG_endpoint
             # These are still expected by the backend but we'll pass empty strings
             "pre_retrieval_endpoint": "",
@@ -590,6 +614,9 @@ async def create_assistant_directly(request: Request, auth: AuthContext = Depend
         )
         if error:
             raise HTTPException(status_code=400, detail=error)
+
+        from lamb.uploaded_files import validate_file_binding
+        validate_file_binding(new_body["api_callback"], creator_user["email"])
 
         # 6. Create Assistant in DB
         assistant_id = None
@@ -1274,6 +1301,8 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         # prepare_assistant_body() sets owner to the calling user (correct for
         # create, an ownership-takeover hole on update); preserve the existing owner.
         new_body["owner"] = current.owner
+        from lamb.uploaded_files import validate_file_binding
+        validate_file_binding(new_body["api_callback"], current.owner)
 
         logger.info(f"Prepared body for update (Assistant ID {assistant_id}): {new_body}")
 

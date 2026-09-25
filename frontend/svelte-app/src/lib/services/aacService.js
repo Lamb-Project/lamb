@@ -1,3 +1,6 @@
+import { get } from 'svelte/store';
+import { locale } from '$lib/i18n';
+import { serveFrontendAction } from '$lib/services/frontendManage';
 import { apiFetch, apiJson } from '$lib/services/apiClient';
 
 /**
@@ -46,9 +49,9 @@ export async function getSession(sessionId) {
  * @param {Object} [params.context]
  * @returns {Promise<AacSession>}
  */
-export async function createSession({ assistantId, skill, context } = {}) {
+export async function createSession({ assistantId, skill, context, learningScenarioId = null } = {}) {
 	/** @type {Object} */
-	const body = {};
+	const body = { ui_language: get(locale) || "en", learning_scenario_id: learningScenarioId };
 	if (assistantId != null) body.assistant_id = assistantId;
 	if (skill) {
 		body.skill = skill;
@@ -70,7 +73,7 @@ export async function createSession({ assistantId, skill, context } = {}) {
 export async function sendMessage(sessionId, message) {
 	return apiJson(`/aac/sessions/${sessionId}/message`, {
 		method: 'POST',
-		body: JSON.stringify({ message }),
+		body: JSON.stringify({ message, ui_language: get(locale) || "en" }),
 	});
 }
 
@@ -95,12 +98,18 @@ export async function sendMessage(sessionId, message) {
  * @param {(obsPayload: Object) => void} [onObservability] - called for observability frames
  */
 export async function sendMessageStream(sessionId, message, onChunk, onDone, onError, onStatus, signal, onObservability) {
+    const frontendChannel = crypto.randomUUID();
+    const frontendAbort = new AbortController();
+    const abortFrontend = () => frontendAbort.abort();
+    signal?.addEventListener('abort', abortFrontend, { once: true });
+    const seenActions = new Set();
+    try {
 	let res;
 	try {
 		res = await apiFetch(`/aac/sessions/${sessionId}/message/stream`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ message }),
+			body: JSON.stringify({ message, frontend_channel: frontendChannel, ui_language: get(locale) || "en" }),
 			signal,
 		});
 	} catch (e) {
@@ -119,46 +128,53 @@ export async function sendMessageStream(sessionId, message, onChunk, onDone, onE
 	}
 
 	const reader = res.body?.getReader();
-	if (!reader) return;
-
+	if (!reader) { onError?.('Empty response stream'); return; }
 	const decoder = new TextDecoder();
 	let buffer = '';
-
+	let completed = false;
+	let failed = false;
+	async function consume(line) {
+		if (!line.startsWith('data:')) return;
+		const payload = line.slice(5).trim();
+		if (payload === '[DONE]') { completed = true; return; }
+		let data;
+		try { data = JSON.parse(payload); } catch (_) { return; }
+		// Observability frames get their own callback
+		if (data.type === 'observability') { onObservability?.(data.data); return; }
+        if (data.frontend_action && !seenActions.has(data.frontend_action.action_id)) {
+            seenActions.add(data.frontend_action.action_id);
+            await serveFrontendAction(sessionId, frontendChannel, data.frontend_action, frontendAbort.signal);
+        }
+		if (data.content) onChunk(data.content);
+		if (data.status) onStatus?.(data);
+		if (data.error) { failed = true; onError?.(data.error); }
+		if (data.done) { completed = true; onDone?.(data.stats || {}); }
+	}
 	try {
-		while (true) {
-			if (signal?.aborted) {
-				try { await reader.cancel(); } catch (_) { /* noop */ }
-				return;
-			}
+		while (!completed) {
+			if (signal?.aborted) return;
 			const { done, value } = await reader.read();
-			if (done) break;
-
-			buffer += decoder.decode(value, { stream: true });
+			buffer += decoder.decode(value, { stream: !done });
 			const lines = buffer.split('\n');
 			buffer = lines.pop() || '';
-
-			for (const line of lines) {
-				if (!line.startsWith('data: ')) continue;
-				const payload = line.slice(6);
-				if (payload === '[DONE]') return;
-				try {
-					const data = JSON.parse(payload);
-					// Observability frames get their own callback
-					if (data.type === 'observability') {
-						if (onObservability) onObservability(data.data);
-						continue;
-					}
-					if (data.content) onChunk(data.content);
-					else if (data.status && onStatus) onStatus(data);
-					if (data.done && onDone) onDone(data.stats || {});
-					if (data.error && onError) onError(data.error);
-				} catch (_) { /* ignore parse errors */ }
+			for (const line of lines) await consume(line);
+			if (done) {
+				if (buffer) await consume(buffer);
+				if (!completed && !failed) onError?.('Response interrupted. Please try again.');
+				break;
 			}
 		}
 	} catch (e) {
-		if (e?.name === 'AbortError') return;
-		throw e;
+		if (e?.name !== 'AbortError') throw e;
+	} finally {
+		try { await reader.cancel(); } catch (_) { /* already closed */ }
+		reader.releaseLock();
 	}
+    } finally {
+        frontendAbort.abort();
+        signal?.removeEventListener('abort', abortFrontend);
+    }
+
 }
 
 /**

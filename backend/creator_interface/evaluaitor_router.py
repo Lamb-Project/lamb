@@ -311,11 +311,13 @@ async def update_rubric(
             existing_metadata = rubric_data_obj.get('metadata', {})
 
         # Prepare metadata, preserving createdAt
-        metadata = {
-            "subject": subject,
-            "gradeLevel": gradeLevel,
-            "createdAt": existing_metadata.get("createdAt", datetime.now().isoformat())
-        }
+        submitted = await request.form()
+        metadata = dict(existing_metadata)
+        metadata.setdefault("createdAt", datetime.now().isoformat())
+        if "subject" in submitted:
+            metadata["subject"] = subject
+        if "gradeLevel" in submitted:
+            metadata["gradeLevel"] = gradeLevel
 
         # Call business logic
         result = rubric_service.update_rubric_logic(

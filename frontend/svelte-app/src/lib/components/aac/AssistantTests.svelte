@@ -17,7 +17,7 @@
 	/** @type {Array} */
 	let evaluations = $state([]);
 
-	let loading = $state(false);
+	let loading = $state(true);
 	let running = $state(false);
 	let error = $state('');
 
@@ -159,6 +159,8 @@
 		mixed: { label: '🤔 Mixed', color: 'bg-yellow-100 text-yellow-700' },
 	};
 </script>
+{#if !loading && !error}<span hidden data-aac-resource="assistant" data-aac-id={assistantId} data-aac-tab="tests"></span>{/if}
+
 
 <div class="px-6 py-4 space-y-6">
 	{#if error}
@@ -175,20 +177,20 @@
 		<div>
 			<div class="flex items-center justify-between mb-3">
 				<h3 class="text-lg font-semibold text-gray-800">
-					Test Scenarios ({scenarios.length})
+					{$_('assistantTestCases.title')} ({scenarios.length})
 				</h3>
 				<div class="flex gap-2">
 					<button
 						onclick={() => showAddForm = !showAddForm}
 						class="px-3 py-1.5 text-sm font-medium rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
 					>
-						+ Add Scenario
+						+ {$_('assistantTestCases.add')}
 					</button>
 				</div>
 			</div>
 
 			{#if showAddForm}
-				<div class="bg-gray-50 border rounded-lg p-4 mb-4 space-y-3">
+				<div data-aac-edit-form class="bg-gray-50 border rounded-lg p-4 mb-4 space-y-3">
 					<input bind:value={newTitle} placeholder="Title (e.g., 'Basic question about topic')"
 						class="w-full px-3 py-2 border rounded text-sm" />
 					<textarea bind:value={newMessage} placeholder="Student message / test prompt"
@@ -216,7 +218,7 @@
 			{/if}
 
 			{#if scenarios.length === 0}
-				<p class="text-gray-400 text-sm italic">No test scenarios yet. Add some or let the agent generate them.</p>
+				<p class="text-gray-400 text-sm italic">{$_('assistantTestCases.empty')}</p>
 			{:else}
 				<div class="border rounded-lg overflow-hidden">
 					<table class="w-full text-sm">
@@ -374,8 +376,8 @@
 <!-- Delete Scenario Confirmation Modal -->
 <ConfirmationModal
     bind:isOpen={showDeleteScenarioModal}
-    title="Delete Test Scenario"
-    message="Are you sure you want to delete this test scenario? This action cannot be undone."
+    title={$_('assistantTestCases.delete')}
+    message={$_('assistantTestCases.confirmDelete')}
     confirmText="Delete"
     variant="danger"
     onconfirm={confirmDeleteScenario}

@@ -1,3 +1,5 @@
+# AAC disconnect cleanup depends on response/background ordering. Before upgrading
+# FastAPI/Starlette, run test_aac_router disconnect tests for both ASGI paths.
 fastapi==0.111.0
 uvicorn[standard]==0.31.1
 pydantic==2.11.0
@@ -74,3 +76,6 @@ llama-index-llms-ollama==0.2.2
 
 # migration script from v01 to v02
 python-dotenv>=1.2.1
+
+# Versioned AAC pack manifests and routing
+PyYAML==6.0.3

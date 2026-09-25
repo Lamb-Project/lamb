@@ -1,10 +1,12 @@
 <script>
+    import { showSession, sidebarBusy } from '$lib/stores/aacStore.svelte';
     import AssistantsList from '$lib/components/AssistantsList.svelte';
     import AssistantForm from '$lib/components/assistants/AssistantForm.svelte'; 
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import ChatInterface from '$lib/components/ChatInterface.svelte';
     import ChatAnalytics from '$lib/components/analytics/ChatAnalytics.svelte';
     import { _, locale } from '$lib/i18n';
+    import { isKbBasedRag } from '$lib/utils/ragProcessorHelpers.js';
     import { user } from '$lib/stores/userStore';
     import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte'; // Generic confirmation modal
     import NotificationModal from '$lib/components/modals/NotificationModal.svelte';
@@ -56,6 +58,7 @@
     /** @type {string | null | undefined} */
     let currentLocale = $state(null);
     /** @type {any | null} */ // Revert to 'any' as workaround for persistent type issues
+    let lastAacRequest = '';
     let selectedAssistantData = $state(null);
     /** @type {number | null} */
     let lastAttemptedId = $state(null); // Correct Svelte 5 rune syntax
@@ -86,7 +89,7 @@
      * @param {string} skill
      */
     async function launchAacSkill(skill) {
-        if (!selectedAssistantData?.id || aacLaunching) return;
+        if (!selectedAssistantData?.id || aacLaunching || $sidebarBusy) return;
         aacLaunching = true;
         try {
             const lang = currentLocale === 'ca' ? 'Catalan' : currentLocale === 'es' ? 'Spanish' : currentLocale === 'eu' ? 'Basque' : 'English';
@@ -100,7 +103,7 @@
             activeAacSessionId = session.id;
             aacFirstMessage = '';
             aacSkillStartup = true;
-            detailSubView = 'aac';
+            showSession(session.id, title, selectedAssistantData.id, skill, true);
         } catch (e) {
             console.error('AAC launch error:', e);
             detailError = `Agent error: ${e.message}`;
@@ -316,7 +319,7 @@
                 selectedAssistantData = fullAssistantData;
                 console.log("Assigned selectedAssistantData:", selectedAssistantData);
                 // Update URL (remove startInEdit param if it was there) - this is fine now
-                goto(`${base}/assistants?view=detail&id=${id}`, { replaceState: true, noScroll: true });
+                goto(`${base}/assistants?view=detail&id=${id}&aacTab=${$page.url.searchParams.get("aacTab") || "properties"}&aacRequest=${$page.url.searchParams.get("aacRequest") || ""}`, { replaceState: true, noScroll: true });
             } else {
                 detailError = $_('assistant_not_found', { values: { id } });
                 console.error(detailError);
@@ -379,6 +382,9 @@
             console.log("Page store updated:", currentPage.url.searchParams.toString());
             const viewParam = currentPage.url.searchParams.get('view');
             const idParam = currentPage.url.searchParams.get('id');
+            const requestedAacTab = currentPage.url.searchParams.get("aacTab");
+            const aacRequest = currentPage.url.searchParams.get("aacRequest") || "";
+            if (["properties", "tests", "chat", "activity", "edit"].includes(requestedAacTab)) detailSubView = requestedAacTab === "activity" ? "analytics" : requestedAacTab;
             const startInEditParam = currentPage.url.searchParams.get('startInEdit');
             console.log(`[+page.svelte] URL Params: view=${viewParam}, id=${idParam}, startInEdit=${startInEditParam}`);
             
@@ -410,11 +416,12 @@
                     // Set the view to detail if not already there
                     if (currentView !== 'detail') {
                         currentView = 'detail';
-                        detailSubView = 'properties'; // Reset subview when entering detail
+                        detailSubView = ['properties', 'tests', 'chat', 'activity', 'edit'].includes(requestedAacTab) ? (requestedAacTab === 'activity' ? 'analytics' : requestedAacTab) : 'properties'; // URL-selected workspace tab
                     }
                     
                     // Fetch only if the ID is different from the currently loaded one
-                    if (selectedAssistantData?.id !== assistantId.toString()) {
+                    if (selectedAssistantData?.id !== assistantId.toString() || aacRequest !== lastAacRequest) {
+                        lastAacRequest = aacRequest;
                         console.log(`[+page.svelte] Fetching detail for new ID: ${assistantId}`); 
                         fetchAssistantDetail(assistantId); // Call without edit flag
                     } else {
@@ -695,13 +702,13 @@
 	async function fetchKnowledgeBasesForDetail() {
 		if (loadingKnowledgeBases || kbFetchTriggered) return; // Don't refetch if loading or already triggered for this assistant
 
-        // Check if the currently displayed assistant uses simple_rag
+        // Fetch collection labels for every KB-based RAG processor.
         let ragProcessor = '';
         const callbackData = getAssistantMetadataObject(selectedAssistantData);
         ragProcessor = callbackData.rag_processor || '';
 
-		if (ragProcessor !== 'simple_rag') {
-			console.log('Skipping KB fetch for detail view (not simple_rag)');
+		if (!isKbBasedRag(ragProcessor)) {
+			console.log('Skipping KB fetch for detail view (not KB-based RAG)');
             accessibleKnowledgeBases = []; // Clear if not needed
             knowledgeBaseError = '';
             kbFetchTriggered = true; // Mark as checked for this load
@@ -881,6 +888,10 @@
     });
 
 </script>
+{#if selectedAssistantData && !loadingDetail && !detailError && currentView === 'detail' && !['tests', 'analytics', 'edit', 'chat'].includes(detailSubView)}
+<span hidden data-aac-resource="assistant" data-aac-id={selectedAssistantData.id} data-aac-tab={detailSubView}></span>
+{/if}
+
 
 <h1 class="text-3xl font-bold mb-4 text-brand">{currentLocale ? $_('assistants.title') : 'Learning Assistants'}</h1>
 
@@ -961,10 +972,12 @@
 {#if currentView === 'list'}
     <div class="mt-6">
         <div class="bg-white shadow rounded-lg p-4 border border-gray-200">
+            {#key $page.url.searchParams.get('aacRequest')}
             <AssistantsList
                on:delete={handleDeleteRequest}
                on:export={handleExportRequest}
             />
+            {/key}
         </div>
     </div>
 {:else if currentView === 'create'}
@@ -1039,26 +1052,7 @@
             </button>
         {/each}
 
-        <!-- AAC skill launch buttons (separator + buttons) -->
-        {#if isOwner}
-            <span class="border-l border-gray-300 mx-2 h-6 self-center"></span>
-            <button
-                onclick={() => launchAacSkill('explain-assistant')}
-                disabled={aacLaunching}
-                class="py-1.5 px-3 text-xs font-medium rounded-md bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 disabled:opacity-50 disabled:cursor-wait"
-                title="Let the AI agent explain how this assistant works"
-            >
-                {aacLaunching ? '⏳' : '🔍'} Agent Explain
-            </button>
-            <button
-                onclick={() => launchAacSkill('improve-assistant')}
-                disabled={aacLaunching}
-                class="py-1.5 px-3 text-xs font-medium rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 disabled:opacity-50 disabled:cursor-wait"
-                title="Let the AI agent suggest improvements"
-            >
-                {aacLaunching ? '⏳' : '✨'} Agent Improve
-            </button>
-        {/if}
+
     </div>
 
     <!-- Wrapper for Detail Content -->
@@ -1383,8 +1377,8 @@
                                                 </div>
                                             {/if}
 
-                                            <!-- Knowledge Bases (if simple_rag) -->
-                                            {#if apiCallback.rag_processor === 'simple_rag'}
+                                            <!-- Knowledge bases for all collection-based RAG processors -->
+                                            {#if isKbBasedRag(apiCallback.rag_processor)}
                                                 <div>
                                                     <div class="font-medium text-gray-700 mb-1">{$_('assistants.form.knowledgeBases.label', { default: 'Knowledge Bases' })}</div>
                                                     {#if loadingKnowledgeBases}
@@ -1537,15 +1531,15 @@
                     <strong class="font-bold">{currentLocale ? $_('assistants.detail.configErrorTitle', { default: 'Configuration Error:' }) : 'Configuration Error:'}</strong>
                     <span class="block sm:inline">{configError} - {currentLocale ? $_('assistants.chatDisabled') : 'Chat functionality is disabled.'}</span>
                 </div>
-            {:else if lambServerUrl && userToken}
+            {:else if userToken}
                 <!-- Header for Chat View (Optional: can add title or keep it clean) -->
                 <div class="px-6 py-4 border-b border-gray-200">
                      <h2 class="text-xl font-semibold text-gray-800">
                         {currentLocale ? $_('assistants.detail.chatTitle', { default: 'Chat' }) : 'Chat'}
                      </h2>
                 </div>
+                <span hidden data-aac-resource="assistant" data-aac-id={selectedAssistantData.id} data-aac-tab="chat"></span>
                 <ChatInterface 
-                    apiUrl={lambServerUrl} 
                     userToken={userToken} 
                     assistantId={selectedAssistantData.id} 
                     initialModel={selectedAssistantData.llm}
@@ -1557,26 +1551,20 @@
         {:else if detailSubView === 'analytics'}
             <!-- Analytics Tab Content -->
             <div class="px-6 py-4">
+                {#key selectedAssistantData.id + ':' + $page.url.searchParams.get('aacRequest')}
                 <ChatAnalytics assistant={selectedAssistantData} />
+                {/key}
             </div>
         {:else if detailSubView === 'tests'}
             <!-- Tests Tab -->
+            {#key selectedAssistantData.id + ':' + $page.url.searchParams.get('aacRequest')}
             <AssistantTests
                 assistantId={selectedAssistantData.id}
                 onLaunchSkill={(skill) => launchAacSkill(skill)}
             />
-        {:else if detailSubView === 'aac' && activeAacSessionId}
-            <!-- AAC Agent Terminal — key forces remount on session/startup change -->
-            {#key `${activeAacSessionId}-${aacSkillStartup}`}
-            <div class="h-[700px]">
-                <AacTerminal
-                    sessionId={activeAacSessionId}
-                    firstMessage={aacFirstMessage}
-                    resumed={!aacFirstMessage && !aacSkillStartup}
-                    skillStartup={aacSkillStartup}
-                />
-            </div>
             {/key}
+        {:else if detailSubView === 'aac' && activeAacSessionId}
+            <div class="p-6"><button onclick={() => showSession(activeAacSessionId)}>Open this conversation in AAC</button></div>
         {/if}
     {/if}
     </div> <!-- Closes Wrapper for Detail Content -->

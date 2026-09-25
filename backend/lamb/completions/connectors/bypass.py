@@ -16,7 +16,7 @@ def format_simple_response(messages: list) -> str:
     """Get the last message content"""
     print(messages[-1]["content"])
     return messages[-1]["content"] if messages else "No messages provided"
-    
+
 
 def format_conversation_response(messages: list) -> str:
     """Format all messages as a conversation"""
@@ -25,7 +25,7 @@ def format_conversation_response(messages: list) -> str:
 async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None, tools: Optional[list] = None, tool_choice: Optional[Any] = None):
     """
     Bypass connector that returns OpenAI-compatible responses
-    
+
     Args:
         messages: List of message dictionaries
         stream: Whether to stream the response
@@ -60,7 +60,7 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
             }
             yield f"data: {json.dumps(first_chunk)}\n\n"
             await asyncio.sleep(0.017)  # 3x faster (was 0.05)
-            
+
             # Simulate streaming response
             response_text = content  # Use the formatted content
             for word in response_text.split():
@@ -117,4 +117,6 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
                 "completion_tokens": 0,
                 "total_tokens": 0
             }
-        } 
+        }
+
+AAC_DESCRIPTION = 'Returns assembled input for inspection instead of generating a final answer.'

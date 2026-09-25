@@ -50,18 +50,18 @@ def _get_ollama_session(base_url: str) -> aiohttp.ClientSession:
 async def get_available_llms(assistant_owner: Optional[str] = None): # Make async
     """
     Return list of available LLMs from Ollama API
-    
+
     Args:
         assistant_owner: Optional assistant owner email to get org-specific models
     """
     base_url = None
-    
+
     # Get organization-specific configuration if available
     if assistant_owner:
         try:
             config_resolver = OrganizationConfigResolver(assistant_owner)
             ollama_config = config_resolver.get_provider_config("ollama")
-            
+
             if ollama_config and ollama_config.get("enabled", True):
                 base_url = ollama_config.get("base_url")
                 # If models are pre-configured, return them
@@ -75,7 +75,7 @@ async def get_available_llms(assistant_owner: Optional[str] = None): # Make asyn
                            f"Falling back to environment variables.")
             # Fall through to env var fallback instead of returning empty list
             base_url = None
-    
+
     # Fallback to environment variables only when no assistant_owner (backward compat)
     if not base_url:
         if os.getenv("OLLAMA_ENABLED", "false").lower() != "true":
@@ -137,7 +137,7 @@ def format_messages_for_ollama(messages: list) -> list:
 async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None, use_small_fast_model: bool = False, tools: Optional[list] = None, tool_choice: Optional[Any] = None): # Make async
     """
     Ollama connector that returns OpenAI-compatible responses
-    
+
     Args:
         messages: List of conversation messages
         stream: Whether to stream the response
@@ -155,23 +155,23 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
     model = None
     org_name = "Unknown"
     config_source = "env_vars"
-    
+
     if assistant_owner:
         try:
             config_resolver = OrganizationConfigResolver(assistant_owner)
             org_name = config_resolver.organization.get('name', 'Unknown')
-            
+
             # Handle small-fast-model logic
             if use_small_fast_model:
                 small_fast_config = config_resolver.get_small_fast_model_config()
-                
+
                 if small_fast_config.get('provider') == 'ollama' and small_fast_config.get('model'):
                     llm = small_fast_config['model']
                     logger.info(f"Using small-fast-model: {llm}")
                     print(f"🚀 [Ollama] Using small-fast-model: {llm}")
                 else:
                     logger.warning("Small-fast-model requested but not configured for Ollama, using default")
-            
+
             ollama_config = config_resolver.get_provider_config("ollama")
 
             if ollama_config:
@@ -187,7 +187,7 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
         except Exception as e:
             print(f"❌ [Ollama] Error getting organization config for {assistant_owner}: {e}")
             logger.error(f"Error getting org config for {assistant_owner}: {e}, falling back to env vars")
-    
+
     # Fallback to environment variables
     if not base_url:
         import config
@@ -197,7 +197,7 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
         else:
             print(f"🔧 [Ollama] Using environment variable configuration (fallback for {assistant_owner})")
         logger.info("Using environment variable configuration")
-    
+
     if not model:
         model = llm or os.getenv("OLLAMA_MODEL", "llama3.1")
 
@@ -208,47 +208,47 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
     # 4. First available model → use that
     resolved_model = model
     fallback_used = False
-    
+
     if assistant_owner and config_source == "organization":
         try:
             config_resolver = OrganizationConfigResolver(assistant_owner)
             ollama_config = config_resolver.get_provider_config("ollama")
             available_models = ollama_config.get("models", [])
             org_default_model = ollama_config.get("default_model")
-            
+
             # Get global default model configuration
             global_default_config = config_resolver.get_global_default_model_config()
             global_default_provider = global_default_config.get('provider', '')
             global_default_model = global_default_config.get('model', '')
-            
+
             # Check if requested model is available
             if resolved_model not in available_models and available_models:
                 original_model = resolved_model
-                
+
                 # Try global default model first (if it's configured for Ollama)
                 if global_default_provider == 'ollama' and global_default_model and global_default_model in available_models:
                     resolved_model = global_default_model
                     fallback_used = True
                     logger.warning(f"Model '{original_model}' not available for org '{org_name}', using global default: '{resolved_model}'")
                     print(f"⚠️  [Ollama] Model '{original_model}' not enabled, using global default: '{resolved_model}'")
-                
+
                 # Try organization's per-provider default model
                 elif org_default_model and org_default_model in available_models:
                     resolved_model = org_default_model
                     fallback_used = True
                     logger.warning(f"Model '{original_model}' not available for org '{org_name}', using org default: '{resolved_model}'")
                     print(f"⚠️  [Ollama] Model '{original_model}' not enabled, using org default: '{resolved_model}'")
-                
+
                 # If org default is also not available, use first available model
                 elif available_models:
                     resolved_model = available_models[0]
                     fallback_used = True
                     logger.warning(f"Model '{original_model}' and defaults not available for org '{org_name}', using first available: '{resolved_model}'")
                     print(f"⚠️  [Ollama] Model '{original_model}' not enabled, using first available: '{resolved_model}'")
-                
+
                 # Note: Unlike OpenAI, we don't raise an error if no models are configured
                 # because Ollama might have models available that aren't in the config
-        
+
         except Exception as e:
             logger.error(f"Error during model resolution for {assistant_owner}: {e}")
             # Continue with original model if resolution fails
@@ -298,21 +298,21 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
                     if not content:
                         return (False, f"Empty response from Ollama for model {model_to_use}")
                     return (True, content)
-                        
+
         except aiohttp.ClientResponseError as e:
             error_msg = f"API Error ({e.status}) for model {model_to_use}: {e.message}"
             logger.error(f"Ollama {error_msg}")
-            
+
             # Check if this is a model-not-found error (404) and fallback is available
             if e.status == 404 and attempt_fallback and org_default_for_fallback and model_to_use != org_default_for_fallback:
                 logger.warning(f"Model '{model_to_use}' not found, attempting fallback to '{org_default_for_fallback}'")
                 print(f"🔄 [Ollama] Model not found, retrying with org default: '{org_default_for_fallback}'")
-                
+
                 # Retry with org default
                 fallback_params = ollama_params.copy()
                 fallback_params["model"] = org_default_for_fallback
                 success, result = await _attempt_ollama_call_with_fallback(org_default_for_fallback, fallback_params, is_stream, attempt_fallback=False)
-                
+
                 if success:
                     logger.info(f"✅ Ollama fallback to '{org_default_for_fallback}' succeeded")
                     print(f"✅ [Ollama] Fallback successful with model: '{org_default_for_fallback}'")
@@ -326,14 +326,14 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
                         f"Please verify models are pulled in Ollama"
                     )
                     return (False, comprehensive_error)
-            
+
             return (False, error_msg)
-            
+
         except (asyncio.TimeoutError, aiohttp.ClientError) as e:
             error_msg = f"Connection error for model {model_to_use}: {str(e)}"
             logger.error(f"Ollama {error_msg}")
             return (False, error_msg)
-            
+
         except Exception as e:
             error_msg = f"Unexpected error for model {model_to_use}: {str(e)}"
             logger.error(f"Ollama {error_msg}", exc_info=True)
@@ -474,7 +474,7 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
         else:
             # Non-streaming: use aiohttp
             content = f"[Ollama Error] Failed to get response from model {resolved_model}" # Default error
-            
+
             # Prepare Ollama request payload for non-streaming
             ollama_params = {
                 "model": resolved_model,
@@ -488,7 +488,7 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
                 for key in ["temperature", "top_p", "top_k"]:
                     if key in body:
                         ollama_params[key] = body[key]
-            
+
             try:
                 session = _get_ollama_session(base_url)
                 async with session.post(f"{base_url}/api/chat", json=ollama_params) as response:
@@ -574,4 +574,6 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
     # Keeping general exception catch
     except Exception as e:
         logger.error(f"Unexpected error in Ollama connector: {str(e)}", exc_info=True)
-        raise # Re-raise the original exception 
+        raise # Re-raise the original exception
+
+AAC_DESCRIPTION = 'Sends completions to the configured Ollama endpoint.'

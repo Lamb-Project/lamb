@@ -212,74 +212,46 @@ class OrganizationConfigResolver:
             "model": model
         }
 
-    def resolve_model_for_completion(self, requested_model: Optional[str] = None, 
-                                     requested_provider: Optional[str] = None) -> Dict[str, str]:
+    def resolve_model_for_completion(self, requested_model=None, requested_provider=None,
+                                     available_providers=None):
+        """Resolve preferences against enabled org configuration, never a live model probe.
+
+        Installed/enabled connectors supplied by the caller bound the fallback set.
+        Empty or omitted catalogs are unknown, not an explicit disable. A nonempty
+        catalog remains an allowlist. Stored assistant preferences are untouched.
         """
-        Resolve which model to use for a completion using the hierarchy:
-        1. Explicitly requested model/provider
-        2. Global default model
-        3. Per-provider default model
-        4. First available model from provider
-        
-        Args:
-            requested_model: Explicitly requested model name (optional)
-            requested_provider: Explicitly requested provider (optional)
-        
-        Returns:
-            Dict with 'provider' and 'model' keys
-        
-        Raises:
-            ValueError: If no model can be resolved
-        """
-        # 1. If explicit model and provider requested, use that
-        if requested_model and requested_provider:
-            # Validate it exists in provider config
-            provider_config = self.get_provider_config(requested_provider)
-            if provider_config and requested_model in provider_config.get('models', []):
-                return {"provider": requested_provider, "model": requested_model}
-            else:
-                logger.warning(f"Requested model {requested_provider}/{requested_model} not available, falling back")
-        
-        # 2. Try global default model
-        global_default = self.get_global_default_model_config()
-        if global_default.get('provider') and global_default.get('model'):
-            provider = global_default['provider']
-            model = global_default['model']
-            provider_config = self.get_provider_config(provider)
-            if provider_config and model in provider_config.get('models', []):
-                logger.info(f"Using global default model: {provider}/{model}")
-                return {"provider": provider, "model": model}
-            else:
-                logger.warning(f"Global default model {provider}/{model} not available, falling back")
-        
-        # 3. Try per-provider default (if provider is known)
-        if requested_provider:
-            provider_config = self.get_provider_config(requested_provider)
-            if provider_config:
-                default_model = provider_config.get('default_model')
-                models = provider_config.get('models', [])
-                if default_model and default_model in models:
-                    logger.info(f"Using provider default model: {requested_provider}/{default_model}")
-                    return {"provider": requested_provider, "model": default_model}
-                elif models:
-                    model = models[0]
-                    logger.info(f"Using first available model from provider: {requested_provider}/{model}")
-                    return {"provider": requested_provider, "model": model}
-        
-        # 4. Try first available provider and model
-        org_config = self.organization.get('config', {})
-        setups = org_config.get('setups', {})
-        setup = setups.get(self.setup_name, {})
-        providers = setup.get('providers', {})
-        
-        for provider_name, provider_config in providers.items():
-            if provider_config.get('enabled', True) and provider_config.get('models'):
-                model = provider_config['models'][0]
-                logger.info(f"Using first available provider: {provider_name}/{model}")
-                return {"provider": provider_name, "model": model}
-        
-        raise ValueError("No models configured for this organization")
-    
+        def config_for(provider):
+            if not provider or (available_providers is not None and provider not in available_providers):
+                return {}
+            config = self.get_provider_config(provider)
+            return config if config and config.get('enabled', True) else {}
+
+        def allowed(provider, model):
+            config = config_for(provider)
+            catalog = config.get('models')
+            return bool(config and model and (not catalog or model in catalog))
+
+        def select(provider, model):
+            if (provider, model) != (requested_provider, requested_model):
+                logger.warning('Using organization model fallback: %s/%s', provider, model)
+            return {'provider': provider, 'model': model}
+
+        if allowed(requested_provider, requested_model):
+            return select(requested_provider, requested_model)
+        default = self.get_global_default_model_config()
+        if allowed(default.get('provider'), default.get('model')):
+            return select(default['provider'], default['model'])
+        providers = self.organization.get('config', {}).get('setups', {}).get(self.setup_name, {}).get('providers', {})
+        for provider in dict.fromkeys([requested_provider, *providers]):
+            config = config_for(provider)
+            catalog = config.get('models') or []
+            model = config.get('default_model')
+            if allowed(provider, model):
+                return select(provider, model)
+            if catalog:
+                return select(provider, catalog[0])
+        raise ValueError('No enabled model and connector configured for this organization')
+
     def _load_from_env(self, provider: str) -> Dict[str, Any]:
         """Load provider configuration from environment variables"""
         if provider == "openai":

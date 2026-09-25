@@ -74,10 +74,20 @@ async def _resolve_kb_ids(ctx: "CommandContext", collections: str) -> str:
 # Assistant commands (async HTTP → /creator/assistant/*)
 # ---------------------------------------------------------------------------
 
+def _list_params(kwargs, limit=50, **extra):
+    params = {"limit": int(kwargs.get("limit", kwargs.get("l", limit))), "offset": int(kwargs.get("offset", 0)), **extra}
+    if params['limit'] < 1 or params['offset'] < 0:
+        raise ValueError("limit must be positive and offset nonnegative")
+    for key, alias in (("search", "s"), ("subject", "subject")):
+        if key in kwargs or alias in kwargs:
+            params[key] = kwargs.get(key, kwargs.get(alias))
+    return params
+
+
 @register("assistant.list")
 async def assistant_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List all assistants for the current user."""
-    return _unwrap(await ctx.http.get("/creator/assistant/get_assistants", params={"limit": 100}))
+    return _unwrap(await ctx.http.get("/creator/assistant/get_assistants", params=_list_params(kwargs)))
 
 
 @register("assistant.list-shared")
@@ -128,22 +138,51 @@ async def assistant_get(ctx: "CommandContext", args: list[str], kwargs: dict) ->
 @register("assistant.config")
 async def assistant_config(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Show available connectors, models, and processors."""
-    return _unwrap(await ctx.http.get("/creator/assistant/defaults"))
+    capabilities = _unwrap(await ctx.http.get("/creator/assistant/capabilities"))
+    raw = _unwrap(await ctx.http.get("/creator/assistant/defaults"))
+    form_defaults = raw.get("config", raw)
+    return {"capabilities": capabilities,
+            "defaults": {**form_defaults, **capabilities.get("model_defaults", {"connector": "", "llm": ""})},
+            "form_defaults": form_defaults,
+            "global_default_model": capabilities.get("global_default_model", {}),
+            "global_default_available": capabilities.get("global_default_available", False)}
 
 
 @register("assistant.debug")
 async def assistant_debug(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
-    """Run a message through an assistant's full pipeline without calling the LLM. Shows what the LLM would see."""
+    """Inspect this input through prompt assembly without saving a test or chat."""
     if not args:
         raise ValueError("Usage: lamb assistant debug <id> --message \"text\"")
     assistant_id = args[0]
     message = kwargs.get("message", kwargs.get("m", ""))
     if not message:
         raise ValueError("Provide --message or -m with the test input")
-    return _unwrap(await ctx.http.post(
-        f"/creator/assistant/{assistant_id}/tests/run",
-        json={"message": message, "debug_bypass": True},
+    response = _unwrap(await ctx.http.post(
+        f"/creator/assistant/{assistant_id}/chat/completions",
+        json={"messages": [{"role": "user", "content": message}],
+              "debug_bypass": True, "stream": False, "persist_chat": False},
     ))
+    try:
+        if response.get("model") != "debug-bypass":
+            raise ValueError("not a bypass response")
+        content = response["choices"][0]["message"]["content"]
+        if not content.startswith("Messages:\n"):
+            raise ValueError("missing assembled messages")
+        messages, _ = json.JSONDecoder().raw_decode(content[len("Messages:\n"):])
+        if not isinstance(messages, list) or not messages or not all(
+            isinstance(m, dict) and "role" in m and "content" in m for m in messages
+        ):
+            raise ValueError("invalid assembled messages")
+    except (AttributeError, KeyError, IndexError, TypeError, ValueError) as exc:
+        raise ValueError("Debug inspection failed: no valid assembled input returned. "
+                         "Do not claim retrieval was verified; no saved test was run.") from exc
+    return {"evidence_type": "assistant_pipeline_debug", "assistant_id": assistant_id,
+            "input_message": message, "assembled_messages": messages,
+            "saved_test_run": False, "persisted_chat": False,
+            "limitations": "Shows assembled input for this new invocation, not a trace of an earlier answer. "
+                           "Bypasses the final answer model; preprocessing may still use models. "
+                           "Does not evaluate answer quality or expose ranks/scores of omitted chunks."}
+
 
 
 @register("assistant.create")
@@ -152,6 +191,8 @@ async def assistant_create(ctx: "CommandContext", args: list[str], kwargs: dict)
     if not args:
         raise ValueError("Usage: lamb assistant create <name> [--system-prompt ...] [--llm ...]")
     name = args[0]
+    if kwargs.get("rubric_id"):
+        await ctx.http.get(f"/creator/rubrics/{kwargs['rubric_id']}")
 
     metadata: dict[str, Any] = {}
     for key in ("llm", "connector", "prompt_processor", "rag_processor",
@@ -159,12 +200,13 @@ async def assistant_create(ctx: "CommandContext", args: list[str], kwargs: dict)
         if key in kwargs:
             metadata[key] = kwargs[key]
 
+    _capabilities(metadata, kwargs)
     body: dict[str, Any] = {"name": name}
     if kwargs.get("system_prompt"):
         body["system_prompt"] = kwargs["system_prompt"]
     if kwargs.get("description") or kwargs.get("d"):
         body["description"] = kwargs.get("description", kwargs.get("d", ""))
-    if kwargs.get("prompt_template"):
+    if "prompt_template" in kwargs:
         body["prompt_template"] = kwargs["prompt_template"]
     if kwargs.get("rag_top_k"):
         body["RAG_Top_k"] = int(kwargs["rag_top_k"])
@@ -182,6 +224,8 @@ async def assistant_update(ctx: "CommandContext", args: list[str], kwargs: dict)
     if not args:
         raise ValueError("Usage: lamb assistant update <id> [--name ...] [--system-prompt ...]")
     assistant_id = args[0]
+    if kwargs.get("rubric_id"):
+        await ctx.http.get(f"/creator/rubrics/{kwargs['rubric_id']}")
 
     # Fetch current assistant to merge with
     current = _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{assistant_id}"))
@@ -227,9 +271,29 @@ async def assistant_update(ctx: "CommandContext", args: list[str], kwargs: dict)
                 "rubric_id", "rubric_format"):
         if key in kwargs:
             existing_meta[key] = kwargs[key]
+    _capabilities(existing_meta, kwargs)
     body["metadata"] = json.dumps(existing_meta)
 
     return _unwrap(await ctx.http.put(f"/creator/assistant/update_assistant/{assistant_id}", json=body))
+
+
+async def _publish_assistant(ctx, args, published):
+    data = _unwrap(await ctx.http.put(f"/creator/assistant/publish/{args[0]}", json={"publish_status": published}))
+    if isinstance(data, dict) and data.get("success") is False:
+        raise ValueError(data.get("error", "Publication failed"))
+    return {"id": args[0], "published": published, "response": data}
+
+
+@register("assistant.publish")
+async def assistant_publish(ctx, args, kwargs):
+    """Publish an owned assistant in LAMB; does not configure an external LMS."""
+    return await _publish_assistant(ctx, args, True)
+
+
+@register("assistant.unpublish")
+async def assistant_unpublish(ctx, args, kwargs):
+    """Unpublish an owned assistant in LAMB."""
+    return await _publish_assistant(ctx, args, False)
 
 
 @register("assistant.delete")
@@ -247,7 +311,7 @@ async def assistant_delete(ctx: "CommandContext", args: list[str], kwargs: dict)
 @register("rubric.list")
 async def rubric_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List your rubrics."""
-    result = _unwrap(await ctx.http.get("/creator/rubrics", params={"limit": 100}))
+    result = _unwrap(await ctx.http.get("/creator/rubrics", params=_list_params(kwargs, tab="my")))
     if isinstance(result, dict) and "rubrics" in result:
         return result["rubrics"]
     return result
@@ -256,7 +320,7 @@ async def rubric_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> A
 @register("rubric.list-public")
 async def rubric_list_public(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List public rubrics (templates)."""
-    result = _unwrap(await ctx.http.get("/creator/rubrics/public", params={"limit": 100}))
+    result = _unwrap(await ctx.http.get("/creator/rubrics", params=_list_params(kwargs, tab="templates")))
     if isinstance(result, dict) and "rubrics" in result:
         return result["rubrics"]
     return result
@@ -306,7 +370,7 @@ async def kb_get(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
 @register("template.list")
 async def template_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List your prompt templates."""
-    return _unwrap(await ctx.http.get("/creator/prompt-templates/list"))
+    return _unwrap(await ctx.http.get("/creator/prompt-templates/list", params=_list_params(kwargs)))
 
 
 @register("template.get")
@@ -332,49 +396,72 @@ async def assistant_list_published(ctx: "CommandContext", args: list[str], kwarg
 # ---------------------------------------------------------------------------
 
 @register("test.scenarios")
+@register("test.cases")
 async def test_scenarios(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
-    """List test scenarios for an assistant."""
+    """List test cases for an assistant."""
     if not args:
-        raise ValueError("Usage: lamb test scenarios <assistant_id>")
+        raise ValueError("Usage: lamb test cases <assistant_id>")
     return _unwrap(await ctx.http.get(f"/creator/assistant/{args[0]}/tests/scenarios"))
 
 
 @register("test.add")
 async def test_add(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
-    """Add a test scenario to an assistant."""
+    """Add a test case to an assistant."""
     if not args:
         raise ValueError("Usage: lamb test add <assistant_id> <title> --message \"text\"")
     assistant_id = args[0]
-    title = args[1] if len(args) > 1 else kwargs.get("title", "Test scenario")
+    title = args[1] if len(args) > 1 else kwargs.get("title", "Test case")
     message = kwargs.get("message", kwargs.get("m", ""))
-    if not message:
-        raise ValueError("Provide --message with the test input")
+    if not message and "messages" not in kwargs:
+        raise ValueError("Provide --message or --messages with the test input")
     return _unwrap(await ctx.http.post(
         f"/creator/assistant/{assistant_id}/tests/scenarios",
         json={
             "title": title,
-            "message": message,
-            "description": kwargs.get("description", ""),
+            "messages": _messages(kwargs),
+            "description": kwargs.get("description", kwargs.get("d", "")),
             "scenario_type": kwargs.get("type", kwargs.get("t", "single_turn")),
             "expected_behavior": kwargs.get("expected", kwargs.get("e", "")),
         },
     ))
 
 
+@register("test.update")
+async def test_update(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+    """Patch explicitly supplied test case fields; keep test case identity and history."""
+    body = {}
+    for field, names in {"title":("title",), "description":("description","d"),
+                         "expected_behavior":("expected","e"), "scenario_type":("type","t")}.items():
+        for name in names:
+            if name in kwargs:
+                body[field] = kwargs[name]
+                break
+    if "message" in kwargs or "m" in kwargs:
+        body["messages"] = [{"role":"user","content":kwargs.get("message",kwargs.get("m"))}]
+    if not body:
+        raise ValueError("Provide at least one field to update")
+    return _unwrap(await ctx.http.put(
+        f"/creator/assistant/{args[0]}/tests/scenarios/{args[1]}", json=body))
+
+
 @register("test.run")
 async def test_run(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
-    """Run test scenarios through the real completion pipeline."""
+    """Run test cases through the real completion pipeline."""
     if not args:
-        raise ValueError("Usage: lamb test run <assistant_id> [--scenario <id>] [--bypass]")
+        raise ValueError("Usage: lamb test run <assistant_id> [--case <id>] [--bypass]")
     assistant_id = args[0]
     bypass = kwargs.get("bypass", kwargs.get("b", False))
     body: dict[str, Any] = {
         "debug_bypass": bypass is True or bypass == "true",
     }
-    scenario_id = kwargs.get("scenario", kwargs.get("s"))
+    scenario_id = kwargs.get("case", kwargs.get("scenario", kwargs.get("s")))
     if scenario_id:
         body["scenario_id"] = scenario_id
-    return _unwrap(await ctx.http.post(f"/creator/assistant/{assistant_id}/tests/run", json=body))
+    import asyncio
+    try:
+        return _unwrap(await asyncio.wait_for(ctx.http.post(f"/creator/assistant/{assistant_id}/tests/run", json=body), float(kwargs.get('timeout', 900))))
+    except asyncio.TimeoutError as exc:
+        raise ValueError('Test batch timed out; inspect saved test runs before retrying. Some runs may already have completed.') from exc
 
 
 @register("test.runs")
@@ -382,7 +469,7 @@ async def test_runs(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any
     """List test runs for an assistant."""
     if not args:
         raise ValueError("Usage: lamb test runs <assistant_id>")
-    return _unwrap(await ctx.http.get(f"/creator/assistant/{args[0]}/tests/runs"))
+    return _unwrap(await ctx.http.get(f"/creator/assistant/{args[0]}/tests/runs", params={"limit": _list_params(kwargs, limit=20)["limit"]}))
 
 
 @register("test.run-detail")
@@ -400,14 +487,17 @@ async def test_run_detail(ctx: "CommandContext", args: list[str], kwargs: dict) 
 async def test_evaluate(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Record an evaluation for a test run."""
     if len(args) < 2:
-        raise ValueError("Usage: lamb test evaluate <run_id> <verdict: good|bad|mixed> [<assistant_id>]")
+        raise ValueError("Usage: lamb test evaluate <run_id> <assistant_id> <verdict: good|bad|mixed>")
     run_id = args[0]
-    verdict = args[1]
+    # Canonical CLI order is RUN_ID ASSISTANT_ID VERDICT. Retain the old
+    # AAC order for already-saved recipes and conversations.
+    canonical = len(args) == 3 and args[2] in ("good", "bad", "mixed")
+    verdict = args[2] if canonical else args[1]
     if verdict not in ("good", "bad", "mixed"):
         raise ValueError("Verdict must be 'good', 'bad', or 'mixed'")
-    assistant_id = args[2] if len(args) > 2 else kwargs.get("assistant", kwargs.get("a", ""))
+    assistant_id = args[1] if canonical else (args[2] if len(args) > 2 else kwargs.get("assistant", kwargs.get("a", "")))
     if not assistant_id:
-        raise ValueError("Usage: lamb test evaluate <run_id> <verdict> <assistant_id>")
+        raise ValueError("Usage: lamb test evaluate <run_id> <assistant_id> <verdict>")
     return _unwrap(await ctx.http.post(
         f"/creator/assistant/{assistant_id}/tests/runs/{run_id}/evaluate",
         json={
@@ -434,8 +524,10 @@ async def assistant_chat(ctx: "CommandContext", args: list[str], kwargs: dict) -
     body: dict[str, Any] = {
         "messages": [{"role": "user", "content": message}],
         "stream": False,
-        "persist_chat": False,
+        "persist_chat": kwargs.get("persist") in (True, "true"),
     }
+    if kwargs.get("chat_id"):
+        body["chat_id"] = kwargs["chat_id"]
     bypass = kwargs.get("bypass", kwargs.get("b", False))
     if bypass is True or bypass == "true":
         body["debug_bypass"] = True
@@ -449,7 +541,7 @@ async def assistant_chat(ctx: "CommandContext", args: list[str], kwargs: dict) -
         choices = result.get("choices", [])
         if choices:
             content = choices[0].get("message", {}).get("content", "")
-            return {"response": content, "model": result.get("model", ""), "usage": result.get("usage", {})}
+            return {"response": content, "model": result.get("model", ""), "usage": result.get("usage", {}), "chat_id": result.get("chat_id")}
     return result
 
 
@@ -485,7 +577,12 @@ async def session_rename(ctx: "CommandContext", args: list[str], kwargs: dict) -
 def skill_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List available AAC skills with descriptions and requirements."""
     from lamb.aac.skill_loader import list_skills
-    return list_skills()
+    pack = ctx.knowledge.get('pack')
+    if not pack:
+        return list_skills()
+    from lamb.aac.pack_loader import allowed_skills
+    allowed = allowed_skills(pack, ctx.knowledge['brief']['layers'])
+    return [s for s in list_skills(pack.skills_dir) if s['id'] in allowed]
 
 
 @register("skill.load", local=True)
@@ -502,12 +599,16 @@ def skill_load(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
     if "language" in kwargs:
         context["language"] = kwargs["language"]
 
-    skill = load_skill(skill_id, context)
+    pack = ctx.knowledge.get('pack')
+    if pack:
+        from lamb.aac.pack_loader import allowed_skills
+        if skill_id not in allowed_skills(pack, ctx.knowledge['brief']['layers']):
+            raise ValueError('This workflow is outside your role; ask the appropriate administrator')
+    skill = load_skill(skill_id, context, pack.skills_dir if pack else None)
     return {
         "skill_id": skill_id,
         "name": skill["metadata"].get("name", skill_id),
         "prompt": skill["prompt"],
-        "startup_actions": skill["startup_actions"],
     }
 
 
@@ -515,121 +616,92 @@ def skill_load(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
 # Documentation commands (LOCAL — sync, read files, no HTTP)
 # ---------------------------------------------------------------------------
 
-_DOCS_DIR = None
-
-
-def _get_docs_dir():
-    """Resolve the aac_docs directory path (lazy, cached)."""
-    global _DOCS_DIR
-    if _DOCS_DIR is None:
-        from pathlib import Path
-        _DOCS_DIR = Path(__file__).parents[1] / "docs"
-    return _DOCS_DIR
-
-
-def _parse_front_matter(text: str) -> tuple[dict, str]:
-    """Parse YAML front matter from a markdown file. Returns (metadata, body)."""
-    if not text.startswith("---"):
-        return {}, text
-    end = text.find("---", 3)
-    if end == -1:
-        return {}, text
-    import yaml
-    try:
-        meta = yaml.safe_load(text[3:end]) or {}
-    except Exception:
-        meta = {}
-    body = text[end + 3:].lstrip("\n")
-    return meta, body
-
-
 @register("docs.index", local=True)
 def docs_index(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
-    """List available LAMB documentation topics with summaries."""
-    docs_dir = _get_docs_dir()
-    index_file = docs_dir / "index.md"
-    if not index_file.exists():
-        raise ValueError("Documentation index not found")
-
-    meta, body = _parse_front_matter(index_file.read_text(encoding="utf-8"))
-
-    sections = []
-    for md_file in sorted(docs_dir.glob("*.md")):
-        if md_file.name == "index.md":
-            continue
-        file_meta, _ = _parse_front_matter(md_file.read_text(encoding="utf-8"))
-        if not file_meta.get("topic"):
-            continue
-        sections.append({
-            "topic": file_meta["topic"],
-            "file": md_file.name,
-            "covers": file_meta.get("covers", []),
-            "answers": file_meta.get("answers", []),
-        })
-
-    return {
-        "version": meta.get("version", "unknown"),
-        "topics": [s["topic"] for s in sections],
-        "sections": sections,
-    }
+    """List documentation topics, language-neutral anchors and locale coverage."""
+    from lamb.aac.documentation import manifest
+    data = manifest()
+    language = ctx.knowledge.get('brief', {}).get('session_language', 'en')
+    return {'version':data['version'], 'topics':list(data['topics']), 'sections':data['topics'],
+            'language':language, 'coverage':data['coverage'][language]}
 
 
 @register("docs.read", local=True)
 def docs_read(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
-    """Read a specific LAMB documentation topic. Use --section to read only a subsection."""
-    if not args:
-        raise ValueError(
-            "Usage: lamb docs read <topic> [--section \"heading\"]\n"
-            "Use 'lamb docs index' to see available topics."
-        )
-    topic = args[0]
-    section = kwargs.get("section")
+    """Read a documentation topic, optionally --section ANCHOR_ID, in the session language."""
+    from lamb.aac.documentation import read_topic
+    language = ctx.knowledge.get('brief', {}).get('session_language', 'en')
+    result = read_topic(args[0], language, kwargs.get('section'))
+    # Keep proof of an actual missing section for the translation escape hatch.
+    if result['fallback_sections'] and ctx.knowledge.get('state') is not None:
+        ctx.knowledge['state']['documentation_fallback'] = {
+            'topic':args[0], 'sections':result['fallback_sections'], 'language':language}
+        ctx.knowledge['state'].setdefault('documentation_notices', {})[args[0]] = result['fallback_sections']
+    return result
 
-    docs_dir = _get_docs_dir()
-    candidates = [docs_dir / topic, docs_dir / f"{topic}.md"]
-    doc_file = None
-    for c in candidates:
-        if c.exists() and c.is_file():
-            doc_file = c
-            break
 
-    if not doc_file:
-        available = [f.stem for f in docs_dir.glob("*.md") if f.name != "index.md"]
-        raise ValueError(f"Topic '{topic}' not found. Available: {available}")
+@register("glossary", local=True)
+def glossary_lookup(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
+    """Look up a domain term in the pinned session glossary: lamb glossary TERM."""
+    from lamb.aac.glossary import lookup
+    glossary = ctx.knowledge.get('brief', {}).get('glossary', {})
+    entries = lookup(glossary, args[0])
+    return {'term':args[0], 'entries':entries, 'language':glossary.get('language','en'),
+            'source':'pinned_pack_glossary', 'machine_translation':False}
 
-    meta, body = _parse_front_matter(doc_file.read_text(encoding="utf-8"))
 
-    if section:
-        lines = body.split("\n")
-        section_lower = section.lower().strip()
-        in_section = False
-        section_lines = []
-        for line in lines:
-            if line.startswith("## "):
-                if in_section:
-                    break
-                heading = line[3:].strip().lower()
-                if section_lower in heading:
-                    in_section = True
-                    section_lines.append(line)
-            elif line.startswith("# ") and in_section:
-                break
-            elif in_section:
-                section_lines.append(line)
+@register("translate")
+async def translate_text(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
+    """Translate an unknown blocking term or missing documentation section through the configured utility model."""
+    from lamb.aac.translation import translate
+    return await translate(ctx.knowledge, ctx.user_email, args[0] if args else '', kwargs)
 
-        if not section_lines:
-            headings = [l[3:].strip() for l in lines if l.startswith("## ")]
-            raise ValueError(
-                f"Section '{section}' not found in '{topic}'. "
-                f"Available sections: {headings}"
-            )
-        body = "\n".join(section_lines).strip()
 
-    return {
-        "topic": meta.get("topic", topic),
-        "file": doc_file.name,
-        "content": body,
-    }
+# Existing CLI analytics vocabulary; the API remains the authorization boundary.
+def _analytics_params(kwargs, defaults=None):
+    params = dict(defaults or {})
+    for key in ("page", "per_page", "user_id", "start_date", "end_date", "period"):
+        if key in kwargs:
+            params[key] = kwargs[key]
+    if "search" in kwargs:
+        params["search_content"] = kwargs["search"]
+    for key in ("page", "per_page"):
+        if key in params:
+            params[key] = int(params[key])
+            if params[key] < 1:
+                raise ValueError(f"{key} must be positive")
+    if "period" in params and params["period"] not in {"day", "week", "month"}:
+        raise ValueError("period must be day, week or month")
+    return params
+
+
+@register("analytics.chats")
+async def analytics_chats(ctx, args, kwargs):
+    """List assistant chats with CLI-compatible filters."""
+    data = await ctx.http.get(f"/creator/analytics/assistant/{args[0]}/chats",
+                             params=_analytics_params(kwargs, {"page": 1, "per_page": 20}))
+    return data.get("chats", [])
+
+
+@register("analytics.chat-detail")
+async def analytics_chat_detail(ctx, args, kwargs):
+    """Get an authorized assistant chat and its messages."""
+    from urllib.parse import quote
+    return await ctx.http.get(f"/creator/analytics/assistant/{args[0]}/chats/{quote(args[1], safe='')}")
+
+
+@register("analytics.stats")
+async def analytics_stats(ctx, args, kwargs):
+    """Get assistant chat statistics."""
+    return await ctx.http.get(f"/creator/analytics/assistant/{args[0]}/stats",
+                             params=_analytics_params(kwargs))
+
+
+@register("analytics.timeline")
+async def analytics_timeline(ctx, args, kwargs):
+    """Get assistant activity by day, week or month."""
+    return await ctx.http.get(f"/creator/analytics/assistant/{args[0]}/timeline",
+                             params=_analytics_params(kwargs, {"period": "day"}))
 
 
 # ---------------------------------------------------------------------------
@@ -640,7 +712,423 @@ def docs_read(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
 def help_cmd(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict[str, str]:
     """Show available commands."""
     result = {}
+    pack = ctx.knowledge.get('pack')
+    allowed = None
+    if pack:
+        from lamb.aac.pack_loader import allowed_commands
+        allowed = allowed_commands(pack, ctx.knowledge['brief']['layers'])
     for key, func in sorted(COMMAND_REGISTRY.items()):
+        if allowed is not None and key not in allowed:
+            continue
+        replacement = {'test.scenarios': 'test.cases', 'test.scenario-detail': 'test.case-detail', 'test.delete-scenario': 'test.delete-case'}.get(key)
+        if replacement and (allowed is None or replacement in allowed):
+            continue
         doc = func.__doc__ or ""
         result[f"lamb {key.replace('.', ' ')}"] = doc.split("\n")[0].strip()
     return result
+
+
+@register("kb.create")
+async def kb_create(ctx, args, kwargs):
+    """Create a knowledge base: kb create NAME [--description TEXT]."""
+    return _unwrap(await ctx.http.post('/creator/knowledgebases', json={
+        'name': args[0], 'description': kwargs.get('description', kwargs.get('d', '')), **_fields(kwargs, ('access_control',))}))
+
+
+@register("kb.query")
+async def kb_query(ctx, args, kwargs):
+    """Query actual KB content: kb query KB_ID TEXT [--top-k N] [--threshold N] [--plugin NAME]."""
+    body = {'query_text': args[1]}
+    params = {}
+    top = kwargs.get('top_k', kwargs.get('k'))
+    if top is not None:
+        top = int(top)
+        if top < 1: raise ValueError('top-k must be positive')
+        params['top_k'] = top
+    threshold = kwargs.get('threshold', kwargs.get('t'))
+    if threshold is not None:
+        import math
+        threshold = float(threshold)
+        if not math.isfinite(threshold): raise ValueError('threshold must be finite')
+        params['threshold'] = threshold
+    if params: body['plugin_params'] = params
+    if kwargs.get('plugin', kwargs.get('p')): body['plugin_name'] = kwargs.get('plugin', kwargs.get('p'))
+    result = _unwrap(await ctx.http.post(f'/creator/knowledgebases/kb/{args[0]}/query', json=body))
+    evidence = {"type": "direct_kb_query", "query": body,
+                "limitations": "Separate KB probe, not proof of an assistant's injected context. "
+                               "Only returned chunks have observed ranks/scores. Absence does not establish "
+                               "an omitted chunk's score, language-related cause, or that a larger top-k fixes it."}
+    return {**result, "evidence": evidence} if isinstance(result, dict) else {"result": result, "evidence": evidence}
+
+
+@register("test.evaluations")
+async def test_evaluations(ctx, args, kwargs):
+    """Read stored evaluations before reporting test outcomes: test evaluations ASSISTANT_ID."""
+    return _unwrap(await ctx.http.get(f'/creator/assistant/{args[0]}/tests/evaluations'))
+
+
+def _apply_weights(criteria, value):
+    """Change named weights without asking an agent to reproduce criteria/level IDs."""
+    import copy
+    import math
+    weights = json.loads(value)
+    if not isinstance(weights, dict) or not weights:
+        raise ValueError('weights must be a nonempty JSON object of exact criterion names and percentages')
+    result = copy.deepcopy(criteria)
+    for name, weight in weights.items():
+        matches = [c for c in result if c.get('name') == name]
+        if len(matches) != 1:
+            raise ValueError(f'Criterion name must match exactly one existing criterion: {name}')
+        if type(weight) not in (int, float) or not math.isfinite(weight) or not 0 <= weight <= 100:
+            raise ValueError('Weights must be finite numbers between 0 and 100')
+        matches[0]['weight'] = weight
+    all_weights = [c.get('weight', 0) for c in result]
+    if any(type(w) not in (int, float) or not math.isfinite(w) or not 0 <= w <= 100 for w in all_weights):
+        raise ValueError('Every resulting weight must be a finite percentage')
+    original_total = sum(c.get('weight', 0) for c in criteria)
+    incremental_repair = len(weights) == 1 and len(criteria) > 1 and not math.isclose(original_total, 100, abs_tol=0.000001)
+    if not incremental_repair and not math.isclose(sum(all_weights), 100, abs_tol=0.000001):
+        raise ValueError('Resulting criterion weights must total 100; provide all changed weights together')
+    return result
+
+
+def _rubric_form(current, changes):
+    current = current.get('rubric', current)
+    raw = current.get('rubric_data', current)
+    raw = json.loads(raw) if isinstance(raw, str) else raw
+    metadata = raw.get('metadata', {})
+    form = {'title': raw.get('title', current.get('title', '')),
+            'description': raw.get('description', ''), 'subject': metadata.get('subject', ''),
+            'gradeLevel': metadata.get('gradeLevel', ''), 'scoringType': raw.get('scoringType', 'points'),
+            'maxScore': raw.get('maxScore', 10), 'criteria': raw.get('criteria', [])}
+    mapping = {'grade_level':'gradeLevel', 'scoring_type':'scoringType', 'max_score':'maxScore'}
+    for key, value in changes.items():
+        if key not in {'o', 'output', 'weights'}: form[mapping.get(key, key)] = value
+    criteria = form['criteria']
+    if isinstance(criteria, str): criteria = json.loads(criteria)
+    if not isinstance(criteria, list) or not criteria or not all(isinstance(c, dict) for c in criteria):
+        raise ValueError('criteria must be a nonempty JSON array of criterion objects')
+    if 'weights' in changes:
+        if 'criteria' in changes: raise ValueError('Use either --weights or --criteria, not both')
+        criteria = _apply_weights(criteria, changes['weights'])
+    if not form['title'].strip(): raise ValueError('Rubric title is required')
+    form['criteria'] = json.dumps(criteria, ensure_ascii=False)
+    return form
+
+
+@register("rubric.create")
+async def rubric_create(ctx, args, kwargs):
+    """Create rubric: rubric create TITLE --criteria JSON [--description TEXT] [--max-score N]. Server validates criteria/levels/weights."""
+    return await ctx.http.post('/creator/rubrics', data=_rubric_form({}, {**kwargs, 'title':args[0]}))
+
+
+@register("rubric.update")
+async def rubric_update(ctx, args, kwargs):
+    """Edit rubric: rubric update ID [--title TEXT] [--criteria JSON]. Unspecified fields and criteria are preserved."""
+    if not set(kwargs) - {'o', 'output'}: raise ValueError('Provide at least one rubric field to update')
+    current = await ctx.http.get(f'/creator/rubrics/{args[0]}')
+    return await ctx.http.put(f'/creator/rubrics/{args[0]}', data=_rubric_form(current, kwargs))
+
+
+@register("kb.jobs")
+async def kb_jobs(ctx, args, kwargs):
+    """List ingestion jobs, terminal status and errors: kb jobs KB_ID."""
+    return await ctx.http.get(f'/creator/knowledgebases/kb/{args[0]}/ingestion-jobs')
+
+
+@register("kb.status")
+async def kb_status(ctx, args, kwargs):
+    """Inspect ingestion status and failures: kb status KB_ID."""
+    return await ctx.http.get(f'/creator/knowledgebases/kb/{args[0]}/ingestion-status')
+
+
+@register("frontend-manage.current")
+async def frontend_current(ctx, args, kwargs):
+    """Read the connected browser's current workspace; unavailable without a frontend turn."""
+    if ctx.frontend is None:
+        raise ValueError('No connected frontend for this turn. Guide the user; do not claim navigation.')
+    return await ctx.frontend({'operation': 'current'})
+
+
+@register("frontend-manage.open")
+async def frontend_open(ctx, args, kwargs):
+    """Open assistants, assistant-create, assistant ID --tab properties|tests|chat|activity|edit, kb ID --tab files|ingest|query, or rubric UUID. Waits for the browser."""
+    from lamb.aac.frontend import destination
+    target = destination(args, kwargs)
+    if ctx.frontend is None:
+        raise ValueError('No connected frontend for this turn. Guide the user; do not claim navigation.')
+    paths = {'assistant': '/creator/assistant/get_assistant/', 'kb': '/creator/knowledgebases/kb/', 'rubric': '/creator/rubrics/', 'learning-scenario': '/creator/aac/learning-scenarios/'}
+    if target['resource'] in paths:
+        await ctx.http.get(paths[target['resource']] + target['id'])  # normal caller resource permissions, before emitting an action
+    return await ctx.frontend({'operation': 'open', **target})
+
+
+# Educator operations use the same authenticated Creator endpoints as lamb-cli.
+def _fields(kwargs, names):
+    return {name: kwargs[name] for name in names if name in kwargs}
+
+
+def _switch(kwargs):
+    if ('enable' in kwargs) == ('disable' in kwargs):
+        raise ValueError('Specify exactly one of --enable or --disable')
+    return ('enable' in kwargs) == (kwargs.get('enable', kwargs.get('disable')) not in (False, 'false'))
+
+
+def _capabilities(metadata, kwargs):
+    values = dict(metadata.get('capabilities') or {})
+    for name in ('vision', 'image_generation'):
+        if name in kwargs or 'no_' + name in kwargs:
+            values[name] = name in kwargs and kwargs[name] not in (False, 'false')
+    if values:
+        metadata['capabilities'] = values
+
+
+def _messages(kwargs):
+    if 'messages' in kwargs:
+        if 'message' in kwargs or 'm' in kwargs:
+            raise ValueError('Use either --messages JSON or --message TEXT')
+        messages = json.loads(kwargs['messages'])
+        if not isinstance(messages, list) or not messages or not all(
+            isinstance(m, dict) and m.get('role') in {'user', 'assistant', 'system'}
+            and isinstance(m.get('content'), str) and m['content'].strip() for m in messages):
+            raise ValueError('messages must be a nonempty JSON array of role/content messages')
+        return messages
+    message = kwargs.get('message', kwargs.get('m', ''))
+    if not message:
+        raise ValueError('Provide --message TEXT or --messages JSON')
+    return [{'role': 'user', 'content': message}]
+
+
+@register("whoami")
+async def whoami(ctx, args, kwargs):
+    """Show the authenticated user and permissions."""
+    return _unwrap(await ctx.http.get('/creator/user/current'))
+
+
+@register("assistant.export")
+async def assistant_export(ctx, args, kwargs):
+    """Export assistant configuration as JSON: assistant export ID."""
+    return _unwrap(await ctx.http.get(f'/creator/assistant/export/{args[0]}'))
+
+
+@register("kb.list-shared")
+async def kb_list_shared(ctx, args, kwargs):
+    """List shared knowledge bases."""
+    return _unwrap(await ctx.http.get('/creator/knowledgebases/shared'))
+
+
+@register("kb.plugins")
+async def kb_plugins(ctx, args, kwargs):
+    """List ingestion plugins before selecting a non-file ingestion workflow."""
+    return _unwrap(await ctx.http.get('/creator/knowledgebases/ingestion-plugins'))
+
+
+@register("kb.query-plugins")
+async def kb_query_plugins(ctx, args, kwargs):
+    """List available query plugins."""
+    return _unwrap(await ctx.http.get('/creator/knowledgebases/query-plugins'))
+
+
+@register("job.get")
+async def job_get(ctx, args, kwargs):
+    """Read an ingestion job: job get KB_ID JOB_ID."""
+    return _unwrap(await ctx.http.get(f'/creator/knowledgebases/kb/{args[0]}/ingestion-jobs/{args[1]}'))
+
+
+@register("test.scenario-detail")
+@register("test.case-detail")
+async def test_scenario_detail(ctx, args, kwargs):
+    """Read a saved test case: test case-detail SCENARIO_ID ASSISTANT_ID."""
+    return _unwrap(await ctx.http.get(f'/creator/assistant/{args[1]}/tests/scenarios/{args[0]}'))
+
+
+@register("kb.delete")
+async def kb_delete(ctx, args, kwargs):
+    """Delete a knowledge base: kb delete KB_ID."""
+    return _unwrap(await ctx.http.delete(f'/creator/knowledgebases/kb/{args[0]}'))
+
+
+@register("kb.delete-file")
+async def kb_delete_file(ctx, args, kwargs):
+    """Delete an ingested KB file by ID: kb delete-file KB_ID FILE_ID."""
+    return _unwrap(await ctx.http.delete(f'/creator/knowledgebases/kb/{args[0]}/files/{args[1]}'))
+
+
+@register("rubric.delete")
+async def rubric_delete(ctx, args, kwargs):
+    """Delete a rubric: rubric delete ID."""
+    return _unwrap(await ctx.http.delete(f'/creator/rubrics/{args[0]}'))
+
+
+@register("template.delete")
+async def template_delete(ctx, args, kwargs):
+    """Delete a prompt template: template delete ID."""
+    return _unwrap(await ctx.http.delete(f'/creator/prompt-templates/{args[0]}'))
+
+
+@register("test.delete-scenario")
+@register("test.delete-case")
+async def test_delete_scenario(ctx, args, kwargs):
+    """Delete a saved test case: test delete-case CASE_ID ASSISTANT_ID."""
+    return _unwrap(await ctx.http.delete(f'/creator/assistant/{args[1]}/tests/scenarios/{args[0]}'))
+
+
+@register("job.retry")
+async def job_retry(ctx, args, kwargs):
+    """Retry an ingestion job: job retry KB_ID JOB_ID."""
+    return _unwrap(await ctx.http.post(f'/creator/knowledgebases/kb/{args[0]}/ingestion-jobs/{args[1]}/retry'))
+
+
+@register("job.cancel")
+async def job_cancel(ctx, args, kwargs):
+    """Cancel an ingestion job: job cancel KB_ID JOB_ID."""
+    return _unwrap(await ctx.http.post(f'/creator/knowledgebases/kb/{args[0]}/ingestion-jobs/{args[1]}/cancel'))
+
+
+@register("kb.update")
+async def kb_update(ctx, args, kwargs):
+    """Update selected KB fields: kb update ID --name TEXT --description TEXT --access-control private|public."""
+    body = _fields(kwargs, ('name', 'description', 'access_control'))
+    if not body: raise ValueError('Provide at least one field to update')
+    return _unwrap(await ctx.http.patch(f'/creator/knowledgebases/kb/{args[0]}', json=body))
+
+
+@register("kb.share")
+async def kb_share(ctx, args, kwargs):
+    """Change organization sharing: kb share ID --enable|--disable."""
+    return _unwrap(await ctx.http.put(f'/creator/knowledgebases/kb/{args[0]}/share', json={'is_shared': _switch(kwargs)}))
+
+
+@register("template.share")
+async def template_share(ctx, args, kwargs):
+    """Change organization sharing: template share ID --enable|--disable."""
+    return _unwrap(await ctx.http.put(f'/creator/prompt-templates/{args[0]}/share', json={'is_shared': _switch(kwargs)}))
+
+
+@register("rubric.share")
+async def rubric_share(ctx, args, kwargs):
+    """Change rubric public visibility: rubric share ID --enable|--disable."""
+    return _unwrap(await ctx.http.put(f'/creator/rubrics/{args[0]}/visibility', data={'is_public': str(_switch(kwargs)).lower()}))
+
+
+@register("rubric.duplicate")
+async def rubric_duplicate(ctx, args, kwargs):
+    """Duplicate an accessible rubric: rubric duplicate ID."""
+    return _unwrap(await ctx.http.post(f'/creator/rubrics/{args[0]}/duplicate'))
+
+
+@register("rubric.generate")
+async def rubric_generate(ctx, args, kwargs):
+    """Generate an unsaved rubric preview: rubric generate PROMPT --language en|es|ca|eu [--model NAME]."""
+    body = {'prompt': args[0], 'language': kwargs.get('language', kwargs.get('lang', 'en'))}
+    if body['language'] not in {'en', 'es', 'ca', 'eu'}: raise ValueError('Unsupported language')
+    if kwargs.get('model', kwargs.get('m')): body['model'] = kwargs.get('model', kwargs.get('m'))
+    data = _unwrap(await ctx.http.post('/creator/rubrics/ai-generate', json=body))
+    if not isinstance(data, dict) or not data.get('success'): raise ValueError(data.get('error', 'Rubric generation failed') if isinstance(data, dict) else 'Invalid generation response')
+    return data.get('rubric', {})
+
+
+@register("template.list-shared")
+async def template_list_shared(ctx, args, kwargs):
+    """List shared prompt templates."""
+    return _unwrap(await ctx.http.get('/creator/prompt-templates/shared', params=_list_params(kwargs)))
+
+
+@register("template.create")
+async def template_create(ctx, args, kwargs):
+    """Create a prompt template: template create NAME [--description TEXT] [--system-prompt TEXT] [--prompt-template TEXT] [--shared]."""
+    body = {'name': args[0], 'is_shared': kwargs.get('shared', False) not in (False, 'false')}
+    body.update(_fields(kwargs, ('description', 'system_prompt', 'prompt_template')))
+    return _unwrap(await ctx.http.post('/creator/prompt-templates/create', json=body))
+
+
+@register("template.update")
+async def template_update(ctx, args, kwargs):
+    """Edit selected template fields: template update ID --name TEXT --description TEXT --system-prompt TEXT --prompt-template TEXT."""
+    body = _fields(kwargs, ('name', 'description', 'system_prompt', 'prompt_template'))
+    if not body: raise ValueError('Provide at least one field to update')
+    return _unwrap(await ctx.http.put(f'/creator/prompt-templates/{args[0]}', json=body))
+
+
+@register("template.duplicate")
+async def template_duplicate(ctx, args, kwargs):
+    """Duplicate a template: template duplicate ID [--new-name NAME]."""
+    body = _fields(kwargs, ('new_name',))
+    return _unwrap(await ctx.http.post(f'/creator/prompt-templates/{args[0]}/duplicate', json=body))
+
+
+@register("template.export")
+async def template_export(ctx, args, kwargs):
+    """Return template JSON without writing a file: template export ID [ID ...]."""
+    return _unwrap(await ctx.http.post('/creator/prompt-templates/export', json={'template_ids': [int(x) for x in args]}))
+
+
+@register("kb.ingest")
+async def kb_ingest(ctx, args, kwargs):
+    """Run non-file ingestion: kb ingest KB_ID --plugin NAME [--url URL] [--youtube URL] [--param key=value ...]."""
+    params = {}
+    if kwargs.get('url'): params['url'] = kwargs['url']
+    if kwargs.get('youtube'): params['video_url'] = kwargs['youtube']
+    for value in kwargs.get('param', []):
+        if '=' not in value: raise ValueError('Use --param key=value')
+        key, value = value.split('=', 1)
+        params[key] = value
+    body = {'plugin_name': kwargs.get('plugin', kwargs.get('p'))}
+    if not body['plugin_name']: raise ValueError('Provide --plugin NAME')
+    catalogue = _unwrap(await ctx.http.get('/creator/knowledgebases/ingestion-plugins'))
+    plugins = catalogue if isinstance(catalogue, list) else catalogue.get('plugins', [])
+    selected = next((plugin for plugin in plugins if plugin.get('name') == body['plugin_name']), None)
+    if not selected: raise ValueError('Ingestion plugin is not available; inspect lamb kb plugins')
+    if selected.get('kind') not in {'base-ingest', 'remote-ingest'}:
+        from lamb.aac.liteshell.shell import FILESYSTEM_MESSAGE
+        raise ValueError(FILESYSTEM_MESSAGE)
+    if params: body['parameters'] = params
+    return _unwrap(await ctx.http.post(f'/creator/knowledgebases/kb/{args[0]}/plugin-ingest-base', json=body))
+
+
+@register('learning-scenario.list')
+async def learning_scenario_list(ctx, args, kwargs):
+    """List personal learning scenarios and the default ID."""
+    return _unwrap(await ctx.http.get('/creator/aac/learning-scenarios'))
+
+@register('learning-scenario.get')
+async def learning_scenario_get(ctx, args, kwargs):
+    """Read a learning scenario including its revision before proposing edits."""
+    return _unwrap(await ctx.http.get('/creator/aac/learning-scenarios/'+args[0]))
+
+@register('learning-scenario.create')
+async def learning_scenario_create(ctx, args, kwargs):
+    """Create TITLE --content TEXT. No local file; requires approval."""
+    return _unwrap(await ctx.http.post('/creator/aac/learning-scenarios', json={'title':args[0], 'content':kwargs.get('content', '')}))
+
+@register('learning-scenario.update')
+async def learning_scenario_update(ctx, args, kwargs):
+    """Update ID --revision N [--title TEXT] [--content TEXT]; show proposed content for approval."""
+    body = _fields(kwargs, ('title', 'content'))
+    body['revision'] = int(kwargs['revision'])
+    return _unwrap(await ctx.http.put('/creator/aac/learning-scenarios/'+args[0], json=body))
+
+@register('learning-scenario.remove')
+async def learning_scenario_remove(ctx, args, kwargs):
+    """Remove ID --revision N from selection, clear its default, retain historical chats."""
+    return _unwrap(await ctx.http.delete('/creator/aac/learning-scenarios/'+args[0], params={'revision':int(kwargs['revision'])}))
+
+@register('learning-scenario.duplicate')
+async def learning_scenario_duplicate(ctx, args, kwargs):
+    """Duplicate ID --title TEXT into an independent learning scenario."""
+    return _unwrap(await ctx.http.post('/creator/aac/learning-scenarios/'+args[0]+'/duplicate', json={'title':kwargs['title']}))
+
+@register('learning-scenario.default')
+async def learning_scenario_default(ctx, args, kwargs):
+    """Set the personal default to ID, or use none to clear it."""
+    return _unwrap(await ctx.http.put('/creator/aac/learning-scenarios/default', json={'scenario_id':None if args[0]=='none' else args[0]}))
+
+@register('learning-scenario.selected')
+async def learning_scenario_selected(ctx, args, kwargs):
+    """Inspect the selected scenario of SESSION_ID."""
+    return _unwrap(await ctx.http.get('/creator/aac/sessions/'+args[0]+'/learning-scenario'))
+
+@register('learning-scenario.select')
+async def learning_scenario_select(ctx, args, kwargs):
+    """Select ID|none|default for an idle SESSION_ID; busy/pending sessions refuse changes."""
+    return _unwrap(await ctx.http.put('/creator/aac/sessions/'+args[0]+'/learning-scenario', json={'scenario_id':None if args[1]=='none' else args[1]}))

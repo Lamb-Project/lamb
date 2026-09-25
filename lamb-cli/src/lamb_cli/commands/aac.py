@@ -83,6 +83,7 @@ def list_skills(
 
 @app.command("start")
 def start_session(
+    scenario: Optional[str] = typer.Option(None, "--scenario", help="Learning scenario ID, default, or none (empty)."),
     assistant_id: Optional[int] = typer.Option(None, "--assistant", "-a", help="Existing assistant ID to work on."),
     skill: Optional[str] = typer.Option(None, "--skill", "-s", help="Skill to launch (e.g., improve-assistant, create-assistant)."),
     language: Optional[str] = typer.Option(None, "--language", "--lang", help="Language for agent responses (e.g., English, Catalan, Spanish)."),
@@ -99,21 +100,30 @@ def start_session(
         lamb aac start  # free-form, no skill
     """
     fmt = output or get_output_format()
-    body: dict = {}
+    body: dict = {"learning_scenario_id": None if scenario in (None, "none") else scenario}
     if assistant_id is not None:
         body["assistant_id"] = assistant_id
     if skill:
         body["skill"] = skill
-        context: dict = {}
-        if assistant_id is not None:
-            context["assistant_id"] = assistant_id
-        if language:
-            context["language"] = language
+    context: dict = {}
+    if assistant_id is not None:
+        context["assistant_id"] = assistant_id
+    if language:
+        context["language"] = language
+        locales = {"english": "en", "spanish": "es", "catalan": "ca", "basque": "eu",
+                   "en": "en", "es": "es", "ca": "ca", "eu": "eu"}
+        if language.lower() in locales:
+            body["ui_language"] = locales[language.lower()]
+    if context:
         body["context"] = context
 
     err_console.print("[dim]Starting session...[/dim]")
     with get_client(timeout=120.0) as client:
         data = client.post("/creator/aac/sessions", json=body)
+
+    if fmt == "json":
+        print_json(data)
+        return
 
     session_id = data.get("id", "")
     print_success(f"Session started: {session_id}")
@@ -131,8 +141,6 @@ def start_session(
             )
     elif data.get("error"):
         print_error(data["error"])
-    elif fmt == "json":
-        print_json(data)
     else:
         format_output(data, SESSION_LIST_COLUMNS, fmt, detail_fields=SESSION_DETAIL_FIELDS)
 
@@ -180,7 +188,7 @@ def get_session(
     """Get session details."""
     fmt = output or get_output_format()
     with get_client() as client:
-        data = client.get(f"/creator/aac/sessions/{session_id}")
+        data = client.get(f"/creator/aac/sessions/{session_id}", params={"diagnostics": "true"})
     if fmt == "json":
         print_json(data)
     else:
@@ -304,7 +312,7 @@ def show_history(
     """Show the conversation history for a session."""
     fmt = output or get_output_format()
     with get_client() as client:
-        data = client.get(f"/creator/aac/sessions/{session_id}")
+        data = client.get(f"/creator/aac/sessions/{session_id}", params={"diagnostics": "true"})
     conversation = data.get("conversation", [])
     if fmt == "json":
         print_json(conversation)
@@ -323,7 +331,7 @@ def show_tools(
     """Show the tool audit log for a session."""
     fmt = output or get_output_format()
     with get_client() as client:
-        data = client.get(f"/creator/aac/sessions/{session_id}")
+        data = client.get(f"/creator/aac/sessions/{session_id}", params={"diagnostics": "true"})
     audit = data.get("tool_audit", [])
     title = data.get("title", "")
     created = data.get("created_at", "")[:10]
@@ -391,7 +399,7 @@ def _show_history(session_id: str) -> None:
     """Helper for interactive mode."""
     try:
         with get_client() as client:
-            data = client.get(f"/creator/aac/sessions/{session_id}")
+            data = client.get(f"/creator/aac/sessions/{session_id}", params={"diagnostics": "true"})
         _print_conversation(data.get("conversation", []))
     except Exception as e:
         print_error(str(e))
@@ -401,7 +409,7 @@ def _show_session(session_id: str) -> None:
     """Helper for interactive mode."""
     try:
         with get_client() as client:
-            data = client.get(f"/creator/aac/sessions/{session_id}")
+            data = client.get(f"/creator/aac/sessions/{session_id}", params={"diagnostics": "true"})
         s = _enrich_session(data)
         console.print(f"  Turns: [cyan]{s['_turn_count']}[/cyan]")
         console.print(f"  Status: [cyan]{s.get('status', '?')}[/cyan]")
@@ -432,3 +440,18 @@ def _print_conversation(conversation: list[dict]) -> None:
             if len(raw) > 200:
                 raw = raw[:200] + "..."
             console.print(f"[dim]  ← {raw}[/dim]")
+
+
+@app.command("attach")
+def attach_file(
+    file: str = typer.Argument(..., help="Local txt, md, json or pdf file to stage for AAC."),
+    output: str = typer.Option(None, "-o", "--output", help="Output format."),
+):
+    """Upload a file; use the returned path with AAC kb upload or assistant --file-path."""
+    from pathlib import Path
+    if not Path(file).is_file():
+        print_error("File not found")
+        raise typer.Exit(1)
+    with get_client() as client:
+        data = client.upload_file("/creator/aac/files", file)
+    format_output(data, [("path", "Reference"), ("name", "Name"), ("size", "Bytes")], output or get_output_format())

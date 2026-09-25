@@ -164,7 +164,11 @@ git checkout <branch>
 
 ## Phase 3: Create the `.env` File
 
-The `.env` file lives in the repo root (same directory as `docker-compose.next.yaml`).
+The `.env` file lives in the repo root (same directory as `docker-compose.next.yaml`). Start from the committed template:
+
+```bash
+cp .env.next.example .env
+```
 
 ### 3.1 — Required Variables (compose fails if missing)
 
@@ -300,7 +304,7 @@ The expected data locations inside the old project:
 
 ### 3.5.2 — Run the migration
 
-Follow the step-by-step guide in **`Documentation/slop-docs/migrating-to-lamb-next.md`**, using the paths above. The migration document covers:
+Follow the step-by-step guide in **[migrating-to-lamb-next.md](./migrating-to-lamb-next.md)**, using the paths above. The migration document covers:
 
 1. Creating named volumes with `docker compose up --no-start`
 2. Copying the LAMB database into `lamb-data`
@@ -313,9 +317,10 @@ Follow the step-by-step guide in **`Documentation/slop-docs/migrating-to-lamb-ne
 
 ### 3.5.3 — Critical gotcha
 
-**Stop the old stack first.** If the old LAMB containers are still running with bind-mounts to these data directories, the copy may produce inconsistent results. Ask the user to run this from the old project directory before migrating:
+**Stop the old stack first.** If the legacy LAMB containers (from the pre-`next` `docker-compose.yaml` stack) are still running with bind-mounts to these data directories, the copy may produce inconsistent results. Ask the user to run this from the old project directory before migrating:
 
 ```bash
+# Run in the OLD project directory (legacy stack) — not in the new install location
 docker compose -f docker-compose.yaml down
 ```
 
@@ -377,6 +382,33 @@ On Windows with Docker Desktop:
 - Volume mounts work with WSL2 paths. If the repo is on a Windows drive (e.g., `C:\`), use the Docker Desktop file sharing settings to allow that drive.
 
 ---
+
+### 4.5 — Development Overlay (Hot Reload)
+
+For source development, layer `docker-compose.next.dev.yaml` on top of the
+base stack:
+
+```bash
+docker compose \
+  -f docker-compose.next.yaml \
+  -f docker-compose.next.dev.yaml \
+  up -d
+```
+
+The overlay bind-mounts each Python service independently, runs Uvicorn with
+`--reload`, and adds the Vite frontend at `http://localhost:5173`. The base
+stack's named data volumes are reused unchanged. When Python dependency files
+change, rebuild the affected image with `up -d --build`. When `package.json`
+changes, restart `frontend-dev` so its startup `npm install` runs again.
+
+Stop the development stack without deleting data:
+
+```bash
+docker compose \
+  -f docker-compose.next.yaml \
+  -f docker-compose.next.dev.yaml \
+  down
+```
 
 ## Phase 5: Verify the Deployment
 
@@ -611,13 +643,18 @@ WEBUI_SECRET_KEY=
 
 **Docker compose files:**
 - `docker-compose.next.yaml` — Main stack (CPU-only by default, safe for all platforms)
+- `docker-compose.next.dev.yaml` — Development overlay (source bind mounts, Python reload, and Vite on port 5173)
 - `docker-compose.next.gpu.yaml` — GPU override (CUDA hosts only; enables CUDA PyTorch build + `--gpus=all` for `openwebui` and `ollama`)
+- `docker-compose.next.prod.yaml` — Production overlay (Caddy and TLS)
 
 **Docker volumes:**
 - `lamb-data` — LAMB database and uploads
 - `kb-data` — KB server database and vector store
 - `kb-static` — KB server static files
 - `openwebui-data` — OpenWebUI database and configuration
+- `library-manager-data` — Library Manager database and imported documents
+- `frontend-node-modules` — Frontend development dependencies (development overlay only)
+- `frontend-npm-cache` — npm download cache (development overlay only)
 - `ollama-data` — Ollama models (only with Ollama profile)
 
 ---

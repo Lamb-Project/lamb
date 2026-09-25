@@ -1,0 +1,203 @@
+[
+  [
+    "whoami",
+    "get",
+    "/creator/user/current",
+    {}
+  ],
+  [
+    "assistant export 30",
+    "get",
+    "/creator/assistant/export/30",
+    {}
+  ],
+  [
+    "kb list-shared",
+    "get",
+    "/creator/knowledgebases/shared",
+    {}
+  ],
+  [
+    "kb plugins",
+    "get",
+    "/creator/knowledgebases/ingestion-plugins",
+    {}
+  ],
+  [
+    "kb query-plugins",
+    "get",
+    "/creator/knowledgebases/query-plugins",
+    {}
+  ],
+  [
+    "kb update 4 -n Renamed -d Notes",
+    "patch",
+    "/creator/knowledgebases/kb/4",
+    {
+      "json": {
+        "name": "Renamed",
+        "description": "Notes"
+      }
+    }
+  ],
+  [
+    "kb delete 4",
+    "delete",
+    "/creator/knowledgebases/kb/4",
+    {}
+  ],
+  [
+    "kb delete-file 4 7",
+    "delete",
+    "/creator/knowledgebases/kb/4/files/7",
+    {}
+  ],
+  [
+    "kb share 4 --enable",
+    "put",
+    "/creator/knowledgebases/kb/4/share",
+    {
+      "json": {
+        "is_shared": true
+      }
+    }
+  ],
+  [
+    "job get 4 abc",
+    "get",
+    "/creator/knowledgebases/kb/4/ingestion-jobs/abc",
+    {}
+  ],
+  [
+    "job retry 4 abc",
+    "post",
+    "/creator/knowledgebases/kb/4/ingestion-jobs/abc/retry",
+    {}
+  ],
+  [
+    "job cancel 4 abc",
+    "post",
+    "/creator/knowledgebases/kb/4/ingestion-jobs/abc/cancel",
+    {}
+  ],
+  [
+    "rubric delete abc",
+    "delete",
+    "/creator/rubrics/abc",
+    {}
+  ],
+  [
+    "rubric duplicate abc",
+    "post",
+    "/creator/rubrics/abc/duplicate",
+    {}
+  ],
+  [
+    "rubric share abc --disable",
+    "put",
+    "/creator/rubrics/abc/visibility",
+    {
+      "data": {
+        "is_public": "false"
+      }
+    }
+  ],
+  [
+    "rubric generate \"Assess source reasoning\" --lang es -m selected",
+    "post",
+    "/creator/rubrics/ai-generate",
+    {
+      "json": {
+        "prompt": "Assess source reasoning",
+        "language": "es",
+        "model": "selected"
+      }
+    }
+  ],
+  [
+    "template list-shared --limit 7 --offset 3",
+    "get",
+    "/creator/prompt-templates/shared",
+    {
+      "params": {
+        "limit": 7,
+        "offset": 3
+      }
+    }
+  ],
+  [
+    "template create Example -d Purpose --system-prompt Tutor --prompt-template \"{user_input}\" --shared",
+    "post",
+    "/creator/prompt-templates/create",
+    {
+      "json": {
+        "name": "Example",
+        "description": "Purpose",
+        "system_prompt": "Tutor",
+        "prompt_template": "{user_input}",
+        "is_shared": true
+      }
+    }
+  ],
+  [
+    "template update 9 -n Renamed",
+    "put",
+    "/creator/prompt-templates/9",
+    {
+      "json": {
+        "name": "Renamed"
+      }
+    }
+  ],
+  [
+    "template delete 9",
+    "delete",
+    "/creator/prompt-templates/9",
+    {}
+  ],
+  [
+    "template duplicate 9 --new-name Copy",
+    "post",
+    "/creator/prompt-templates/9/duplicate",
+    {
+      "json": {
+        "new_name": "Copy"
+      }
+    }
+  ],
+  [
+    "template share 9 --disable",
+    "put",
+    "/creator/prompt-templates/9/share",
+    {
+      "json": {
+        "is_shared": false
+      }
+    }
+  ],
+  [
+    "template export 9 10",
+    "post",
+    "/creator/prompt-templates/export",
+    {
+      "json": {
+        "template_ids": [
+          9,
+          10
+        ]
+      }
+    }
+  ],
+  [
+    "test scenario-detail abc 30",
+    "get",
+    "/creator/assistant/30/tests/scenarios/abc",
+    {}
+  ],
+  [
+    "test delete-scenario abc 30",
+    "delete",
+    "/creator/assistant/30/tests/scenarios/abc",
+    {}
+  ]
+]

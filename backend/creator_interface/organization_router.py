@@ -4909,3 +4909,63 @@ async def update_assistant_quota(assistant_id: int, body: QuotaUpdate, request: 
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
+
+async def _agent_settings_admin(request, org):
+    target = db_manager.get_organization_by_slug(org) if org else None
+    if org and not target:
+        raise HTTPException(404, 'Organization not found')
+    return await verify_organization_admin_access(request, target['id'] if target else None)
+
+
+@router.get('/org-admin/settings/aac', dependencies=[Depends(security)])
+async def get_agent_settings(request: Request, org: Optional[str] = None):
+    from lamb.aac.preferences import agent_settings, LANGUAGES
+    admin = await _agent_settings_admin(request, org)
+    config = admin['organization'].get('config', {})
+    setup = config.get('setups', {}).get('default', {})
+    providers = setup.get('providers', {})
+    choices = {name: list(dict.fromkeys((p.get('models') or []) + ([p['default_model']] if p.get('default_model') else [])))
+               for name, p in providers.items() if name in ('openai', 'ollama') and p.get('enabled') is not False}
+    from lamb.aac.pack_loader import load_pack, packs_root
+    warnings = []
+    try:
+        stored_settings = agent_settings(config)
+    except ValueError as exc:
+        stored_settings = {}
+        warnings.append(str(exc))
+    versions = set()
+    try:
+        versions.add(load_pack().version)
+    except (ValueError, OSError) as exc:
+        warnings.append(f'The default knowledge pack is unavailable: {exc}')
+    releases = packs_root() / 'releases' / 'lamb-default'
+    if releases.is_dir():
+        for directory in releases.iterdir():
+            if directory.is_dir():
+                try:
+                    versions.add(load_pack(version=directory.name).version)
+                except (ValueError, OSError):
+                    warnings.append(f'An installed knowledge pack could not be verified: {directory.name}')
+    return {'settings': stored_settings, 'warnings': warnings, 'models': choices,
+            'inherited_model': setup.get('global_default_model', {}), 'languages': LANGUAGES,
+            'pack_versions':sorted(versions), 'pack_channels':['stable','rc','beta']}
+
+
+@router.put('/org-admin/settings/aac', dependencies=[Depends(security)])
+async def update_agent_settings(request: Request, settings: Dict[str, Any], org: Optional[str] = None):
+    from copy import deepcopy
+    from lamb.aac.preferences import validate_settings
+    admin = await _agent_settings_admin(request, org)
+    config = deepcopy(admin['organization'].get('config', {}))
+    setup = config.setdefault('setups', {}).setdefault('default', {})
+    try:
+        validated = validate_settings(settings, setup.get('providers', {}))
+        from lamb.aac.pack_loader import load_pack
+        load_pack(validated)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    setup['aac'] = validated
+    if not db_manager.update_organization_config(admin['organization_id'], config):
+        raise HTTPException(500, 'Failed to save agent settings')
+    return {'settings': validated}

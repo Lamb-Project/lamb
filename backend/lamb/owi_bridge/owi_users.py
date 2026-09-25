@@ -798,7 +798,7 @@ class OwiUserManager:
                     clean_token = token['access_token']
                 else:
                     logger.error(
-                        f"Could not extract token from dictionary: {token}")
+                        "Could not extract token from dictionary")
                     return None
             else:
                 # If it's a string (traditional format), process it
@@ -819,9 +819,7 @@ class OwiUserManager:
             if response.status_code != 200:
                 logger.error(
                     f"Auth request failed with status {response.status_code}")
-                logger.error(f"Response content: {response.text}")
-                logger.error(f"Request URL: {response.request.url}")
-                logger.error(f"Request headers: {response.request.headers}")
+                # Rejected credentials and upstream bodies must never enter logs (#472).
                 return None
 
             return response.json()

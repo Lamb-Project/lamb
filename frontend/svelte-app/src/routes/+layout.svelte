@@ -6,7 +6,11 @@
 	import { base } from '$app/paths';
 	import Nav from '$lib/components/Nav.svelte';
 	import Footer from '$lib/components/Footer.svelte';
-	import GlobalAacTabBar from '$lib/components/aac/GlobalAacTabBar.svelte';
+	import AacSidebar from '$lib/components/aac/AacSidebar.svelte';
+	import { sidebarOpen, sidebarWidth, sidebarMobile, frontendDestination } from '$lib/stores/aacStore.svelte';
+	import { afterNavigate } from '$app/navigation';
+	import { markWorkspaceDirty, clearWorkspaceDirty } from '$lib/services/frontendManage';
+	afterNavigate(() => { clearWorkspaceDirty(); frontendDestination.set(null); });
 	import { replaceSessionWithToken } from '$lib/session/sessionManager';
 	import { get } from 'svelte/store';
 	import { user } from '$lib/stores/userStore';
@@ -103,10 +107,11 @@
 </script>
 
 <div class="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
+	<div class="lamb-workspace" class:agent-open={$sidebarOpen && !!$user.token} style:--aac-width={$sidebarWidth + "px"} inert={$sidebarOpen && $sidebarMobile && !!$user.token}>
 	<Nav />
-	<GlobalAacTabBar />
 
-	<main class="w-full mx-auto py-6 sm:px-6 lg:px-8 flex-grow">
+
+	<main oninputcapture={markWorkspaceDirty} onchangecapture={markWorkspaceDirty} class="w-full mx-auto py-6 sm:px-6 lg:px-8 flex-grow" class:aac-workspace={$sidebarOpen && !!$user.token}>
 		{#if sessionError}
 			<div class="max-w-md mx-auto mt-12 bg-red-50 border border-red-200 rounded-lg p-6 text-center">
 				<h2 class="text-lg font-semibold text-red-800">Unable to start session</h2>
@@ -121,4 +126,12 @@
 	</main>
 
 	<Footer />
+	</div>
+	{#if sessionReady && $user.token}<AacSidebar />{/if}
 </div>
+
+<style>
+.lamb-workspace { min-height: 100vh; display: flex; flex-direction: column; min-width: 0; width: 100%; }
+.lamb-workspace main { min-width: 0; overflow-x: auto; }
+@media (min-width: 920px) { .lamb-workspace.agent-open { width: calc(100% - var(--aac-width)); } }
+</style>

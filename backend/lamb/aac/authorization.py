@@ -20,6 +20,56 @@ logger = get_logger(__name__, component="AAC")
 
 # Default policy: which commands need confirmation
 DEFAULT_POLICY: dict[str, str] = {
+    "learning-scenario.list": "auto",
+    "learning-scenario.get": "auto",
+    "learning-scenario.create": "ask",
+    "learning-scenario.update": "ask",
+    "learning-scenario.remove": "ask",
+    "learning-scenario.duplicate": "ask",
+    "learning-scenario.default": "ask",
+    "learning-scenario.selected": "auto",
+    "learning-scenario.select": "ask",
+
+    'whoami': 'auto',
+    'glossary': 'auto',
+    'translate': 'auto',
+    'assistant.export': 'auto',
+    'kb.list-shared': 'auto',
+    'kb.plugins': 'auto',
+    'kb.query-plugins': 'auto',
+    'kb.update': 'ask',
+    'kb.delete': 'ask',
+    'kb.delete-file': 'ask',
+    'kb.share': 'ask',
+    'kb.ingest': 'ask',
+    'job.get': 'auto',
+    'job.retry': 'ask',
+    'job.cancel': 'ask',
+    'rubric.delete': 'ask',
+    'rubric.duplicate': 'ask',
+    'rubric.share': 'ask',
+    'rubric.generate': 'auto',
+    'template.list-shared': 'auto',
+    'template.create': 'ask',
+    'template.update': 'ask',
+    'template.delete': 'ask',
+    'template.duplicate': 'ask',
+    'template.share': 'ask',
+    'template.export': 'auto',
+    'test.cases': 'auto',
+    'test.case-detail': 'auto',
+    'test.delete-case': 'ask',
+    'test.scenario-detail': 'auto',
+    'test.delete-scenario': 'ask',
+
+    "frontend-manage.current": "auto", "frontend-manage.open": "auto",
+    "kb.jobs": "auto", "kb.status": "auto",
+    "kb.create": "ask", "kb.query": "auto",
+    "rubric.create": "ask", "rubric.update": "ask", "test.evaluations": "auto",
+    "analytics.chats": "auto",
+    "analytics.chat-detail": "auto",
+    "analytics.stats": "auto",
+    "analytics.timeline": "auto",
     # Reads — always auto
     "assistant.list": "auto",
     "assistant.list-shared": "auto",
@@ -48,6 +98,7 @@ DEFAULT_POLICY: dict[str, str] = {
     # Test commands — auto (low risk, user explicitly requests tests)
     "test.scenarios": "auto",
     "test.add": "auto",
+    "test.update": "ask",
     "test.run": "auto",
     "test.runs": "auto",
     "test.run-detail": "auto",
@@ -57,6 +108,8 @@ DEFAULT_POLICY: dict[str, str] = {
     # Writes — ask by default
     "assistant.create": "ask",
     "assistant.update": "ask",
+    "assistant.publish": "ask",
+    "assistant.unpublish": "ask",
     "assistant.delete": "ask",
 }
 
@@ -80,7 +133,7 @@ _APPROVAL_PHRASES = {
 }
 
 _REJECTION_WORDS = {
-    "no", "n", "nope", "nah", "cancel", "stop", "abort", "reject", "rejected",
+    "not", "no", "n", "nope", "nah", "cancel", "stop", "abort", "reject", "rejected",
     "don't", "dont", "negative", "wait",
     "cancela", "para", "detente",
     "cancel·la", "atura",
@@ -89,6 +142,7 @@ _REJECTION_WORDS = {
 
 _REJECTION_PHRASES = {
     "no thanks", "not now", "hold on", "never mind", "forget it",
+    "clear", "clear it", "clear pending action", "clear the pending action",
     "no gracias", "ahora no", "déjalo", "olvídalo",
     "no gràcies", "ara no", "deixa-ho",
 }
@@ -128,7 +182,7 @@ def classify_user_confirmation(message: str) -> str:
     is probably saying something more nuanced.
     """
     text = message.strip().rstrip("!.,;:").lower()
-    words = text.split()
+    words = [word.strip("!.,;:?") for word in text.split()]
 
     # Empty
     if not words:
@@ -138,6 +192,15 @@ def classify_user_confirmation(message: str) -> str:
     if len(words) > 8:
         return "other"
 
+    # Contradictory short replies must never approve a pending write.
+    approval_signals = [w for i,w in enumerate(words) if w in _APPROVAL_WORDS
+                        and not (w == "do" and i + 1 < len(words) and words[i + 1] == "not")]
+    if approval_signals and any(w in _REJECTION_WORDS for w in words):
+        return "other"
+
+    if words[:2] == ["do", "not"]:
+        return "reject"
+
     # Check exact phrase match first
     if text in _APPROVAL_PHRASES:
         return "approve"
@@ -146,7 +209,7 @@ def classify_user_confirmation(message: str) -> str:
 
     # Check if first word is a strong signal
     first = words[0]
-    if first in _APPROVAL_WORDS:
+    if first in approval_signals:
         return "approve"
     if first in _REJECTION_WORDS:
         return "reject"
@@ -154,7 +217,7 @@ def classify_user_confirmation(message: str) -> str:
     # Check if any word is a strong approval/rejection signal (for short messages)
     if len(words) <= 4:
         for w in words:
-            if w in _APPROVAL_WORDS:
+            if w in approval_signals:
                 return "approve"
         for w in words:
             if w in _REJECTION_WORDS:

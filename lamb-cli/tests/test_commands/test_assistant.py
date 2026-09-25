@@ -386,7 +386,8 @@ class TestAssistantConfig:
         assert "capabilities" in data
         assert "defaults" in data
         assert "openai" in data["capabilities"]["connectors"]
-        assert data["defaults"]["connector"] == "openai"
+        assert data["form_defaults"]["connector"] == "openai"
+        assert data["defaults"]["connector"] == ""
 
     def test_config_table(self, httpx_mock, mock_token):
         """Config command in default table mode prints to stderr."""
@@ -455,3 +456,14 @@ class TestParseMetadata:
         data = {"name": "test", "metadata": "not-json{"}
         result = _parse_metadata(data)
         assert "connector" not in result
+
+
+def test_config_uses_creator_form_sources_and_resolved_default(httpx_mock, mock_token):
+    caps={"connectors":{"ollama":{"available_llms":["qwen"]}},"model_defaults":{"connector":"ollama","llm":"qwen"},"global_default_model":{"provider":"ollama","model":"qwen"},"global_default_available":True}
+    httpx_mock.add_response(json=caps)
+    httpx_mock.add_response(json={"connector":"openai","llm":"old"})
+    result=runner.invoke(app,["assistant","config","-o","json"])
+    assert result.exit_code==0
+    data=json.loads(result.output)
+    assert data=={"capabilities":caps,"defaults":{"connector":"ollama","llm":"qwen"},"form_defaults":{"connector":"openai","llm":"old"},"global_default_model":caps["global_default_model"],"global_default_available":True}
+    assert [r.url.path for r in httpx_mock.get_requests()]==['/creator/assistant/capabilities','/creator/assistant/defaults']

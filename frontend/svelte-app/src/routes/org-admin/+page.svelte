@@ -1,4 +1,5 @@
 <script>
+    import AgentSettings from '$lib/components/aac/AgentSettings.svelte';
     import { onMount, onDestroy } from 'svelte';
     import { page } from '$app/stores';
     import { goto } from '$app/navigation';
@@ -3767,6 +3768,8 @@
                                             </div>
                                         {/if}
                                     </div>
+
+                                    {#key targetOrgSlug}<AgentSettings org={targetOrgSlug} />{/key}
 
                                     <!-- Global Model Configurations -->
                                     <div class="mt-8 space-y-6">

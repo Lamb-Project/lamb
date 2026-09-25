@@ -780,3 +780,5 @@ Returns:
         response = await _make_api_call_with_fallback(params) # Use helper with fallback
         logger.debug(f"Direct response created")
         return response.model_dump()
+
+AAC_DESCRIPTION = 'Sends completions to the configured OpenAI-compatible endpoint.'

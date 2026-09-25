@@ -1,4 +1,6 @@
 <script>
+  import { scenarioText } from '$lib/utils/learningScenarioText';
+  import { sidebarOpen } from '$lib/stores/aacStore.svelte';
   import { user } from '$lib/stores/userStore';
   import { clearCurrentSession, ensureProfileLoaded } from '$lib/session/sessionManager';
   import { onMount } from 'svelte';
@@ -75,8 +77,8 @@
 
 <nav class="bg-white shadow">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="flex justify-between h-16">
-      <div class="flex">
+    <div class="flex flex-wrap justify-between min-h-16 gap-y-2 py-1">
+      <div class="flex flex-wrap">
         <!-- Logo -->
         <div class="flex-shrink-0 flex items-center">
           <div class="flex items-center space-x-2">
@@ -90,7 +92,7 @@
         </div>
         
         <!-- Navigation links -->
-        <div class="hidden sm:ml-4 sm:flex sm:items-center sm:gap-1">
+        <div class="hidden sm:ml-4 sm:flex sm:flex-wrap sm:items-center sm:gap-1">
           
           <!-- Restore dynamic class based on $page.url.pathname and $user -->
           <!-- Restore: aria-disabled={!$user.isLoggedIn} -->
@@ -101,14 +103,12 @@
           >
             {localeLoaded ? $_('assistants.title') : 'Learning Assistants'}
           </a>
-          
-          <a
-            href="{base}/agent"
-            class="inline-flex items-center px-2 pt-1 border-b-2 text-sm font-medium whitespace-nowrap {$page.url.pathname.startsWith(base + '/agent') ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} {!$user.isLoggedIn ? 'opacity-50 pointer-events-none' : ''}"
-            aria-disabled={!$user.isLoggedIn}
-          >
-            🤖 {localeLoaded ? $_('nav.agent', { default: 'Agent' }) : 'Agent'}
-          </a>
+
+
+          {#if $user.isLoggedIn}
+          <a href="{base}/learning-scenarios" aria-current={$page.url.pathname === base + '/learning-scenarios' ? 'page' : undefined}
+             class="inline-flex items-center px-2 pt-1 border-b-2 text-sm font-medium whitespace-nowrap {$page.url.pathname === base + '/learning-scenarios' ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}">{scenarioText($locale).plural}</a>
+          {/if}
 
           {#if $user.isLoggedIn && $user.data?.role === 'admin'} <!-- System Admin link -->
           <a
@@ -178,9 +178,13 @@
         </div>
       </div>
       
+      {#if $user.isLoggedIn}
+      <a href="{base}/learning-scenarios" class="sm:hidden order-last w-full py-2 text-sm font-medium text-[#173f64]" aria-current={$page.url.pathname === base + '/learning-scenarios' ? 'page' : undefined}>{scenarioText($locale).plural}</a>
+      {/if}
       <!-- User info and Language selector section -->
       <div class="flex items-center gap-3">
         {#if $user.isLoggedIn}
+          <button class="rounded bg-[#173f64] text-white px-3 py-2 text-xs font-semibold whitespace-nowrap" onclick={() => sidebarOpen.set(true)} aria-label="Open LAMB AGENT">LAMB AGENT</button>
           <!-- Username -->
           <span class="text-sm font-medium text-gray-600 hidden sm:block">{$user.name || $user.email || ''}</span>
         {/if}

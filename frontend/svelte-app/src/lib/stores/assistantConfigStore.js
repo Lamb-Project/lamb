@@ -1,7 +1,8 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
-import { getApiUrl, getConfig } from '$lib/config';
+import { getApiUrl } from '$lib/config';
 import axios from 'axios';
+import { reconcileModelDefaults } from '$lib/utils/assistantModelConfig.js';
 
 /**
  * @typedef {Object} SystemCapabilities
@@ -38,7 +39,7 @@ const CACHE_DURATION_MS = 60 * 60 * 1000; // Cache for 1 hour
 function getUserScopedCacheKey(prefix) {
 	if (!browser) return prefix;
 	const email = localStorage.getItem('userEmail');
-	return email ? `${prefix}_${email}` : prefix;
+	return `${prefix}_v2_${getApiUrl('')}_${email || ''}`;
 }
 
 /** @type {AssistantConfigState} */
@@ -98,14 +99,13 @@ function isPlainObject(value) {
 	return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isAuthenticationError(error) {
+	return [401, 403].includes(error?.response?.status);
+}
+
 async function fetchSystemCapabilities() {
 	try {
-		const config = getConfig();
-		const lambServerBase = config?.api?.lambServer;
-		if (!lambServerBase) {
-			throw new Error('Lamb server base URL (lambServer) is not configured within config.api.');
-		}
-		const capabilitiesUrl = `${lambServerBase.replace(/\/$/, '')}/lamb/v1/completions/list`;
+		const capabilitiesUrl = getApiUrl('/assistant/capabilities');
 		console.log(`assistantConfigStore: Fetching capabilities from: ${capabilitiesUrl}`);
 
 		const token = browser ? localStorage.getItem('userToken') : null;
@@ -116,6 +116,7 @@ async function fetchSystemCapabilities() {
 		console.log('Fetched Capabilities (raw):', capabilities);
 		return capabilities;
 	} catch (error) {
+		if (isAuthenticationError(error)) throw error;
 		console.error('Error fetching system capabilities:', error);
 		// Return empty capabilities - never hardcode models that bypass org restrictions
 		return getFallbackCapabilities();
@@ -124,12 +125,7 @@ async function fetchSystemCapabilities() {
 
 async function fetchStaticDefaults() {
 	try {
-		const config = getConfig();
-		const lambServerBase = config?.api?.lambServer;
-		if (!lambServerBase) {
-			throw new Error('Lamb server base URL (lambServer) is not configured within config.api.');
-		}
-		const defaultsUrl = `${lambServerBase.replace(/\/$/, '')}/static/json/defaults.json`;
+		const defaultsUrl = getApiUrl('').replace(/\/creator\/$/, '/static/json/defaults.json');
 		console.log(`assistantConfigStore: Fetching defaults from: ${defaultsUrl}`);
 
 		const defaultsResponse = await axios.get(defaultsUrl);
@@ -174,6 +170,7 @@ async function fetchOrganizationDefaults() {
 		);
 		return null;
 	} catch (error) {
+		if (isAuthenticationError(error)) throw error;
 		if (axios.isAxiosError?.(error)) {
 			if (error.response?.status === 404) {
 				console.info('assistantConfigStore: No organization defaults configured yet.');
@@ -286,7 +283,7 @@ function createAssistantConfigStore() {
 				...staticConfig,
 				...(organizationOverrides || {})
 			};
-			const defaults = { config: mergedConfig };
+			const defaults = { config: reconcileModelDefaults(mergedConfig, capabilities) };
 			setCachedData(defaultsCacheKey, defaults);
 
 			set({
@@ -297,6 +294,15 @@ function createAssistantConfigStore() {
 				lastLoadedTimestamp: Date.now()
 			});
 		} catch (err) {
+			if (isAuthenticationError(err)) {
+				localStorage.removeItem(capsCacheKey);
+				localStorage.removeItem(defaultsCacheKey);
+				set({ systemCapabilities: getFallbackCapabilities(),
+					configDefaults: { config: reconcileModelDefaults({}, {}) }, loading: false,
+					error: 'Authentication failed. Sign in again to load your organization models.',
+					lastLoadedTimestamp: null });
+				return;
+			}
 			console.error('Error in loadConfig process:', err);
 			set({
 				systemCapabilities: cachedCapabilities || getFallbackCapabilities(),

@@ -1,0 +1,6612 @@
+{
+  "cli": {
+    "chat": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "message",
+          "kind": "TyperOption",
+          "opts": [
+            "--message",
+            "-m"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "chat_id",
+          "kind": "TyperOption",
+          "opts": [
+            "--chat-id"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "no_persist",
+          "kind": "TyperOption",
+          "opts": [
+            "--no-persist"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "timeout",
+          "kind": "TyperOption",
+          "opts": [
+            "--timeout"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "300",
+          "type": "<IntRange x>=1>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "bypass",
+          "kind": "TyperOption",
+          "opts": [
+            "--bypass",
+            "-b"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "login": {
+      "params": [
+        {
+          "name": "email",
+          "kind": "TyperOption",
+          "opts": [
+            "--email",
+            "-e"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "password",
+          "kind": "TyperOption",
+          "opts": [
+            "--password",
+            "-p"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "server_url",
+          "kind": "TyperOption",
+          "opts": [
+            "--server-url",
+            "-s"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "logout": {
+      "params": []
+    },
+    "status": {
+      "params": []
+    },
+    "whoami": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "aac.skills": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "aac.start": {
+      "params": [
+        {
+          "name": "scenario",
+          "kind": "TyperOption",
+          "opts": [
+            "--scenario"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "assistant_id",
+          "kind": "TyperOption",
+          "opts": [
+            "--assistant",
+            "-a"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "skill",
+          "kind": "TyperOption",
+          "opts": [
+            "--skill",
+            "-s"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "language",
+          "kind": "TyperOption",
+          "opts": [
+            "--language",
+            "--lang"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "aac.sessions": {
+      "params": [
+        {
+          "name": "skill",
+          "kind": "TyperOption",
+          "opts": [
+            "--skill",
+            "-s"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "assistant_id",
+          "kind": "TyperOption",
+          "opts": [
+            "--assistant",
+            "-a"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "with_errors",
+          "kind": "TyperOption",
+          "opts": [
+            "--errors"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "today",
+          "kind": "TyperOption",
+          "opts": [
+            "--today"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "limit",
+          "kind": "TyperOption",
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "50",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "aac.get": {
+      "params": [
+        {
+          "name": "session_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "session_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "aac.delete": {
+      "params": [
+        {
+          "name": "session_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "session_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "confirm",
+          "kind": "TyperOption",
+          "opts": [
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "aac.message": {
+      "params": [
+        {
+          "name": "session_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "session_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "message",
+          "kind": "TyperArgument",
+          "opts": [
+            "message"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "aac.chat": {
+      "params": [
+        {
+          "name": "session_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "session_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "aac.history": {
+      "params": [
+        {
+          "name": "session_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "session_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "aac.tools": {
+      "params": [
+        {
+          "name": "session_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "session_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "detail",
+          "kind": "TyperOption",
+          "opts": [
+            "--detail",
+            "-d"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "artifacts",
+          "kind": "TyperOption",
+          "opts": [
+            "--artifacts"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "filter_type",
+          "kind": "TyperOption",
+          "opts": [
+            "--filter",
+            "-f"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "aac.attach": {
+      "params": [
+        {
+          "name": "file",
+          "kind": "TyperArgument",
+          "opts": [
+            "file"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "learning-scenario.list": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "learning-scenario.get": {
+      "params": [
+        {
+          "name": "key",
+          "kind": "TyperArgument",
+          "opts": [
+            "key"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "learning-scenario.create": {
+      "params": [
+        {
+          "name": "title",
+          "kind": "TyperArgument",
+          "opts": [
+            "title"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "content",
+          "kind": "TyperOption",
+          "opts": [
+            "--content"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "learning-scenario.update": {
+      "params": [
+        {
+          "name": "key",
+          "kind": "TyperArgument",
+          "opts": [
+            "key"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "revision",
+          "kind": "TyperOption",
+          "opts": [
+            "--revision"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "title",
+          "kind": "TyperOption",
+          "opts": [
+            "--title"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "content",
+          "kind": "TyperOption",
+          "opts": [
+            "--content"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "learning-scenario.remove": {
+      "params": [
+        {
+          "name": "key",
+          "kind": "TyperArgument",
+          "opts": [
+            "key"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "revision",
+          "kind": "TyperOption",
+          "opts": [
+            "--revision"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "learning-scenario.duplicate": {
+      "params": [
+        {
+          "name": "key",
+          "kind": "TyperArgument",
+          "opts": [
+            "key"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "title",
+          "kind": "TyperOption",
+          "opts": [
+            "--title"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "learning-scenario.default": {
+      "params": [
+        {
+          "name": "key",
+          "kind": "TyperArgument",
+          "opts": [
+            "key"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "learning-scenario.selected": {
+      "params": [
+        {
+          "name": "session",
+          "kind": "TyperArgument",
+          "opts": [
+            "session"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "learning-scenario.select": {
+      "params": [
+        {
+          "name": "session",
+          "kind": "TyperArgument",
+          "opts": [
+            "session"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "key",
+          "kind": "TyperArgument",
+          "opts": [
+            "key"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "assistant.list": {
+      "params": [
+        {
+          "name": "limit",
+          "kind": "TyperOption",
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "50",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "offset",
+          "kind": "TyperOption",
+          "opts": [
+            "--offset"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "0",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "assistant.get": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "assistant.create": {
+      "params": [
+        {
+          "name": "name",
+          "kind": "TyperArgument",
+          "opts": [
+            "name"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "description",
+          "kind": "TyperOption",
+          "opts": [
+            "--description",
+            "-d"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "system_prompt",
+          "kind": "TyperOption",
+          "opts": [
+            "--system-prompt",
+            "-s"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "system_prompt_file",
+          "kind": "TyperOption",
+          "opts": [
+            "--system-prompt-file"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<typer.models.TyperPath object>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "connector",
+          "kind": "TyperOption",
+          "opts": [
+            "--connector"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "llm",
+          "kind": "TyperOption",
+          "opts": [
+            "--llm"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "prompt_processor",
+          "kind": "TyperOption",
+          "opts": [
+            "--prompt-processor"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "rag_processor",
+          "kind": "TyperOption",
+          "opts": [
+            "--rag-processor"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "file_path",
+          "kind": "TyperOption",
+          "opts": [
+            "--file-path"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "rubric_id",
+          "kind": "TyperOption",
+          "opts": [
+            "--rubric-id"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "rubric_format",
+          "kind": "TyperOption",
+          "opts": [
+            "--rubric-format"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "vision",
+          "kind": "TyperOption",
+          "opts": [
+            "--vision"
+          ],
+          "secondary_opts": [
+            "--no-vision"
+          ],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "image_generation",
+          "kind": "TyperOption",
+          "opts": [
+            "--image-generation"
+          ],
+          "secondary_opts": [
+            "--no-image-generation"
+          ],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "rag_top_k",
+          "kind": "TyperOption",
+          "opts": [
+            "--rag-top-k"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "rag_collections",
+          "kind": "TyperOption",
+          "opts": [
+            "--rag-collections"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "prompt_template",
+          "kind": "TyperOption",
+          "opts": [
+            "--prompt-template"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "interactive",
+          "kind": "TyperOption",
+          "opts": [
+            "--interactive",
+            "-i"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "assistant.update": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "name",
+          "kind": "TyperOption",
+          "opts": [
+            "--name",
+            "-n"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "description",
+          "kind": "TyperOption",
+          "opts": [
+            "--description",
+            "-d"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "system_prompt",
+          "kind": "TyperOption",
+          "opts": [
+            "--system-prompt",
+            "-s"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "connector",
+          "kind": "TyperOption",
+          "opts": [
+            "--connector"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "llm",
+          "kind": "TyperOption",
+          "opts": [
+            "--llm"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "prompt_processor",
+          "kind": "TyperOption",
+          "opts": [
+            "--prompt-processor"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "rag_processor",
+          "kind": "TyperOption",
+          "opts": [
+            "--rag-processor"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "file_path",
+          "kind": "TyperOption",
+          "opts": [
+            "--file-path"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "rubric_id",
+          "kind": "TyperOption",
+          "opts": [
+            "--rubric-id"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "rubric_format",
+          "kind": "TyperOption",
+          "opts": [
+            "--rubric-format"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "vision",
+          "kind": "TyperOption",
+          "opts": [
+            "--vision"
+          ],
+          "secondary_opts": [
+            "--no-vision"
+          ],
+          "required": false,
+          "default": "None",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "image_generation",
+          "kind": "TyperOption",
+          "opts": [
+            "--image-generation"
+          ],
+          "secondary_opts": [
+            "--no-image-generation"
+          ],
+          "required": false,
+          "default": "None",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "rag_top_k",
+          "kind": "TyperOption",
+          "opts": [
+            "--rag-top-k"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "rag_collections",
+          "kind": "TyperOption",
+          "opts": [
+            "--rag-collections"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "prompt_template",
+          "kind": "TyperOption",
+          "opts": [
+            "--prompt-template"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "interactive",
+          "kind": "TyperOption",
+          "opts": [
+            "--interactive",
+            "-i"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "assistant.delete": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "confirm",
+          "kind": "TyperOption",
+          "opts": [
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "assistant.publish": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "assistant.unpublish": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "assistant.export": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output_file",
+          "kind": "TyperOption",
+          "opts": [
+            "--output-file",
+            "-f"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<typer.models.TyperPath object>",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "assistant.config": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "model.list": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "kb.list": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "kb.list-shared": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "kb.get": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "kb.create": {
+      "params": [
+        {
+          "name": "name",
+          "kind": "TyperArgument",
+          "opts": [
+            "name"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "description",
+          "kind": "TyperOption",
+          "opts": [
+            "--description",
+            "-d"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "access_control",
+          "kind": "TyperOption",
+          "opts": [
+            "--access-control"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "kb.update": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "name",
+          "kind": "TyperOption",
+          "opts": [
+            "--name",
+            "-n"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "description",
+          "kind": "TyperOption",
+          "opts": [
+            "--description",
+            "-d"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "access_control",
+          "kind": "TyperOption",
+          "opts": [
+            "--access-control"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "kb.delete": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "confirm",
+          "kind": "TyperOption",
+          "opts": [
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "kb.share": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "enable",
+          "kind": "TyperOption",
+          "opts": [
+            "--enable"
+          ],
+          "secondary_opts": [
+            "--disable"
+          ],
+          "required": false,
+          "default": "None",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "kb.upload": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "files",
+          "kind": "TyperArgument",
+          "opts": [
+            "files"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": -1,
+          "is_flag": false
+        },
+        {
+          "name": "plugin",
+          "kind": "TyperOption",
+          "opts": [
+            "--plugin"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "kb.ingest": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "plugin",
+          "kind": "TyperOption",
+          "opts": [
+            "--plugin",
+            "-p"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "url",
+          "kind": "TyperOption",
+          "opts": [
+            "--url"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "youtube",
+          "kind": "TyperOption",
+          "opts": [
+            "--youtube"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "param",
+          "kind": "TyperOption",
+          "opts": [
+            "--param"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "kb.query": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "query_text",
+          "kind": "TyperArgument",
+          "opts": [
+            "query_text"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "plugin",
+          "kind": "TyperOption",
+          "opts": [
+            "--plugin",
+            "-p"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "top_k",
+          "kind": "TyperOption",
+          "opts": [
+            "--top-k",
+            "-k"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "threshold",
+          "kind": "TyperOption",
+          "opts": [
+            "--threshold",
+            "-t"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "FLOAT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "kb.delete-file": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "file_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "file_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "confirm",
+          "kind": "TyperOption",
+          "opts": [
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "kb.plugins": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "kb.query-plugins": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "kb.jobs": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "kb.status": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "library.list": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "library.create": {
+      "params": [
+        {
+          "name": "name",
+          "kind": "TyperArgument",
+          "opts": [
+            "name"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "description",
+          "kind": "TyperOption",
+          "opts": [
+            "--description",
+            "-d"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "library.get": {
+      "params": [
+        {
+          "name": "library_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "library_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "library.delete": {
+      "params": [
+        {
+          "name": "library_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "library_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "confirm",
+          "kind": "TyperOption",
+          "opts": [
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "library.share": {
+      "params": [
+        {
+          "name": "library_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "library_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "enable",
+          "kind": "TyperOption",
+          "opts": [
+            "--enable"
+          ],
+          "secondary_opts": [
+            "--disable"
+          ],
+          "required": false,
+          "default": "None",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "library.upload": {
+      "params": [
+        {
+          "name": "library_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "library_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "files",
+          "kind": "TyperArgument",
+          "opts": [
+            "files"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": -1,
+          "is_flag": false
+        },
+        {
+          "name": "plugin",
+          "kind": "TyperOption",
+          "opts": [
+            "--plugin",
+            "-p"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "title",
+          "kind": "TyperOption",
+          "opts": [
+            "--title",
+            "-t"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "library.import-url": {
+      "params": [
+        {
+          "name": "library_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "library_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "url",
+          "kind": "TyperOption",
+          "opts": [
+            "--url"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "plugin",
+          "kind": "TyperOption",
+          "opts": [
+            "--plugin",
+            "-p"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "url_import",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "title",
+          "kind": "TyperOption",
+          "opts": [
+            "--title",
+            "-t"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "depth",
+          "kind": "TyperOption",
+          "opts": [
+            "--depth"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "library.import-youtube": {
+      "params": [
+        {
+          "name": "library_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "library_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "url",
+          "kind": "TyperOption",
+          "opts": [
+            "--url"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "language",
+          "kind": "TyperOption",
+          "opts": [
+            "--language",
+            "-l"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "en",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "title",
+          "kind": "TyperOption",
+          "opts": [
+            "--title",
+            "-t"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "library.items": {
+      "params": [
+        {
+          "name": "library_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "library_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "status",
+          "kind": "TyperOption",
+          "opts": [
+            "--status",
+            "-s"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "limit",
+          "kind": "TyperOption",
+          "opts": [
+            "--limit"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "20",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "offset",
+          "kind": "TyperOption",
+          "opts": [
+            "--offset"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "0",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "library.item": {
+      "params": [
+        {
+          "name": "library_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "library_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "item_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "item_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "library.delete-item": {
+      "params": [
+        {
+          "name": "library_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "library_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "item_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "item_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "confirm",
+          "kind": "TyperOption",
+          "opts": [
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "library.plugins": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "library.import-config": {
+      "params": [
+        {
+          "name": "library_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "library_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "library.set-import-config": {
+      "params": [
+        {
+          "name": "library_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "library_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "image_descriptions",
+          "kind": "TyperOption",
+          "opts": [
+            "--image-descriptions"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "crawl_depth",
+          "kind": "TyperOption",
+          "opts": [
+            "--crawl-depth"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "library.export": {
+      "params": [
+        {
+          "name": "library_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "library_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output_file",
+          "kind": "TyperOption",
+          "opts": [
+            "--output-file",
+            "-f"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "library.import": {
+      "params": [
+        {
+          "name": "file_path",
+          "kind": "TyperArgument",
+          "opts": [
+            "file_path"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "job.list": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "status",
+          "kind": "TyperOption",
+          "opts": [
+            "--status",
+            "-s"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "limit",
+          "kind": "TyperOption",
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "50",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "offset",
+          "kind": "TyperOption",
+          "opts": [
+            "--offset"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "0",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "sort_by",
+          "kind": "TyperOption",
+          "opts": [
+            "--sort-by"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "sort_order",
+          "kind": "TyperOption",
+          "opts": [
+            "--sort-order"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "job.get": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "job_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "job_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "job.retry": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "job_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "job_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "job.cancel": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "job_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "job_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "job.watch": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "job_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "job_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "interval",
+          "kind": "TyperOption",
+          "opts": [
+            "--interval",
+            "-i"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "3.0",
+          "type": "FLOAT",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "job.status": {
+      "params": [
+        {
+          "name": "kb_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "kb_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "org.list": {
+      "params": [
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "org.get": {
+      "params": [
+        {
+          "name": "slug",
+          "kind": "TyperArgument",
+          "opts": [
+            "slug"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "org.create": {
+      "params": [
+        {
+          "name": "name",
+          "kind": "TyperArgument",
+          "opts": [
+            "name"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "slug",
+          "kind": "TyperOption",
+          "opts": [
+            "--slug",
+            "-s"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "admin_user_id",
+          "kind": "TyperOption",
+          "opts": [
+            "--admin-user-id"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "signup_enabled",
+          "kind": "TyperOption",
+          "opts": [
+            "--signup-enabled"
+          ],
+          "secondary_opts": [
+            "--signup-disabled"
+          ],
+          "required": false,
+          "default": "None",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "signup_key",
+          "kind": "TyperOption",
+          "opts": [
+            "--signup-key"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "org.update": {
+      "params": [
+        {
+          "name": "slug",
+          "kind": "TyperArgument",
+          "opts": [
+            "slug"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "name",
+          "kind": "TyperOption",
+          "opts": [
+            "--name",
+            "-n"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "status",
+          "kind": "TyperOption",
+          "opts": [
+            "--status"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "org.delete": {
+      "params": [
+        {
+          "name": "slug",
+          "kind": "TyperArgument",
+          "opts": [
+            "slug"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "confirm",
+          "kind": "TyperOption",
+          "opts": [
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "org.export": {
+      "params": [
+        {
+          "name": "slug",
+          "kind": "TyperArgument",
+          "opts": [
+            "slug"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output_file",
+          "kind": "TyperOption",
+          "opts": [
+            "--output-file",
+            "-f"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<typer.models.TyperPath object>",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "org.set-role": {
+      "params": [
+        {
+          "name": "slug",
+          "kind": "TyperArgument",
+          "opts": [
+            "slug"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "user_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "user_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "role",
+          "kind": "TyperArgument",
+          "opts": [
+            "role"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "org.dashboard": {
+      "params": [
+        {
+          "name": "org",
+          "kind": "TyperOption",
+          "opts": [
+            "--org"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "user.list": {
+      "params": [
+        {
+          "name": "org",
+          "kind": "TyperOption",
+          "opts": [
+            "--org"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "user.get": {
+      "params": [
+        {
+          "name": "user_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "user_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "org",
+          "kind": "TyperOption",
+          "opts": [
+            "--org"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "user.create": {
+      "params": [
+        {
+          "name": "email",
+          "kind": "TyperArgument",
+          "opts": [
+            "email"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "name",
+          "kind": "TyperArgument",
+          "opts": [
+            "name"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "password",
+          "kind": "TyperArgument",
+          "opts": [
+            "password"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "user_type",
+          "kind": "TyperOption",
+          "opts": [
+            "--user-type",
+            "-t"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "creator",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "enabled",
+          "kind": "TyperOption",
+          "opts": [
+            "--enabled"
+          ],
+          "secondary_opts": [
+            "--disabled"
+          ],
+          "required": false,
+          "default": "True",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "org",
+          "kind": "TyperOption",
+          "opts": [
+            "--org"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "user.update": {
+      "params": [
+        {
+          "name": "user_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "user_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "name",
+          "kind": "TyperOption",
+          "opts": [
+            "--name",
+            "-n"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "enabled",
+          "kind": "TyperOption",
+          "opts": [
+            "--enabled"
+          ],
+          "secondary_opts": [
+            "--disabled"
+          ],
+          "required": false,
+          "default": "None",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "user.delete": {
+      "params": [
+        {
+          "name": "user_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "user_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "org",
+          "kind": "TyperOption",
+          "opts": [
+            "--org"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "confirm",
+          "kind": "TyperOption",
+          "opts": [
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "user.enable": {
+      "params": [
+        {
+          "name": "user_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "user_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "user.disable": {
+      "params": [
+        {
+          "name": "user_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "user_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "user.reset-password": {
+      "params": [
+        {
+          "name": "user_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "user_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "new_password",
+          "kind": "TyperArgument",
+          "opts": [
+            "new_password"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "user.bulk-import": {
+      "params": [
+        {
+          "name": "file",
+          "kind": "TyperArgument",
+          "opts": [
+            "file"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "dry_run",
+          "kind": "TyperOption",
+          "opts": [
+            "--dry-run"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "org",
+          "kind": "TyperOption",
+          "opts": [
+            "--org"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "rubric.list": {
+      "params": [
+        {
+          "name": "limit",
+          "kind": "TyperOption",
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "50",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "offset",
+          "kind": "TyperOption",
+          "opts": [
+            "--offset"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "0",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "search",
+          "kind": "TyperOption",
+          "opts": [
+            "--search",
+            "-s"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "subject",
+          "kind": "TyperOption",
+          "opts": [
+            "--subject"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "rubric.list-public": {
+      "params": [
+        {
+          "name": "limit",
+          "kind": "TyperOption",
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "50",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "offset",
+          "kind": "TyperOption",
+          "opts": [
+            "--offset"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "0",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "search",
+          "kind": "TyperOption",
+          "opts": [
+            "--search",
+            "-s"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "subject",
+          "kind": "TyperOption",
+          "opts": [
+            "--subject"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "rubric.get": {
+      "params": [
+        {
+          "name": "rubric_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "rubric_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "rubric.delete": {
+      "params": [
+        {
+          "name": "rubric_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "rubric_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "confirm",
+          "kind": "TyperOption",
+          "opts": [
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "rubric.duplicate": {
+      "params": [
+        {
+          "name": "rubric_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "rubric_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "rubric.export": {
+      "params": [
+        {
+          "name": "rubric_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "rubric_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "format_",
+          "kind": "TyperOption",
+          "opts": [
+            "--format",
+            "-f"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "json",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "file",
+          "kind": "TyperOption",
+          "opts": [
+            "--file"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<typer.models.TyperPath object>",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "rubric.import": {
+      "params": [
+        {
+          "name": "file",
+          "kind": "TyperArgument",
+          "opts": [
+            "file"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "<typer.models.TyperPath object>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "rubric.share": {
+      "params": [
+        {
+          "name": "rubric_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "rubric_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "enable",
+          "kind": "TyperOption",
+          "opts": [
+            "--enable"
+          ],
+          "secondary_opts": [
+            "--disable"
+          ],
+          "required": false,
+          "default": "None",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "rubric.generate": {
+      "params": [
+        {
+          "name": "prompt",
+          "kind": "TyperArgument",
+          "opts": [
+            "prompt"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "language",
+          "kind": "TyperOption",
+          "opts": [
+            "--language",
+            "--lang"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "en",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "model",
+          "kind": "TyperOption",
+          "opts": [
+            "--model",
+            "-m"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "save_to",
+          "kind": "TyperOption",
+          "opts": [
+            "--save-to"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<typer.models.TyperPath object>",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "rubric.create": {
+      "params": [
+        {
+          "name": "title",
+          "kind": "TyperArgument",
+          "opts": [
+            "title"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "criteria",
+          "kind": "TyperOption",
+          "opts": [
+            "--criteria"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "description",
+          "kind": "TyperOption",
+          "opts": [
+            "--description"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "subject",
+          "kind": "TyperOption",
+          "opts": [
+            "--subject"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "grade_level",
+          "kind": "TyperOption",
+          "opts": [
+            "--grade-level"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "scoring_type",
+          "kind": "TyperOption",
+          "opts": [
+            "--scoring-type"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "points",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "max_score",
+          "kind": "TyperOption",
+          "opts": [
+            "--max-score"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "10",
+          "type": "FLOAT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "rubric.update": {
+      "params": [
+        {
+          "name": "rubric_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "rubric_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "title",
+          "kind": "TyperOption",
+          "opts": [
+            "--title"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "criteria",
+          "kind": "TyperOption",
+          "opts": [
+            "--criteria"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "weights",
+          "kind": "TyperOption",
+          "opts": [
+            "--weights"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "description",
+          "kind": "TyperOption",
+          "opts": [
+            "--description"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "subject",
+          "kind": "TyperOption",
+          "opts": [
+            "--subject"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "grade_level",
+          "kind": "TyperOption",
+          "opts": [
+            "--grade-level"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "scoring_type",
+          "kind": "TyperOption",
+          "opts": [
+            "--scoring-type"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "max_score",
+          "kind": "TyperOption",
+          "opts": [
+            "--max-score"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "FLOAT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "template.list": {
+      "params": [
+        {
+          "name": "limit",
+          "kind": "TyperOption",
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "50",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "offset",
+          "kind": "TyperOption",
+          "opts": [
+            "--offset"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "0",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "template.list-shared": {
+      "params": [
+        {
+          "name": "limit",
+          "kind": "TyperOption",
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "50",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "offset",
+          "kind": "TyperOption",
+          "opts": [
+            "--offset"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "0",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "template.get": {
+      "params": [
+        {
+          "name": "template_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "template_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "template.create": {
+      "params": [
+        {
+          "name": "name",
+          "kind": "TyperArgument",
+          "opts": [
+            "name"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "description",
+          "kind": "TyperOption",
+          "opts": [
+            "--description",
+            "-d"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "system_prompt",
+          "kind": "TyperOption",
+          "opts": [
+            "--system-prompt"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "prompt_template",
+          "kind": "TyperOption",
+          "opts": [
+            "--prompt-template"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "shared",
+          "kind": "TyperOption",
+          "opts": [
+            "--shared"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "template.update": {
+      "params": [
+        {
+          "name": "template_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "template_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "name",
+          "kind": "TyperOption",
+          "opts": [
+            "--name",
+            "-n"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "description",
+          "kind": "TyperOption",
+          "opts": [
+            "--description",
+            "-d"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "system_prompt",
+          "kind": "TyperOption",
+          "opts": [
+            "--system-prompt"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "prompt_template",
+          "kind": "TyperOption",
+          "opts": [
+            "--prompt-template"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "template.delete": {
+      "params": [
+        {
+          "name": "template_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "template_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "confirm",
+          "kind": "TyperOption",
+          "opts": [
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "template.duplicate": {
+      "params": [
+        {
+          "name": "template_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "template_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "new_name",
+          "kind": "TyperOption",
+          "opts": [
+            "--new-name"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "template.share": {
+      "params": [
+        {
+          "name": "template_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "template_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "enable",
+          "kind": "TyperOption",
+          "opts": [
+            "--enable"
+          ],
+          "secondary_opts": [
+            "--disable"
+          ],
+          "required": false,
+          "default": "None",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "template.export": {
+      "params": [
+        {
+          "name": "template_ids",
+          "kind": "TyperArgument",
+          "opts": [
+            "template_ids"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": -1,
+          "is_flag": false
+        },
+        {
+          "name": "file",
+          "kind": "TyperOption",
+          "opts": [
+            "-f",
+            "--file"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "<typer.models.TyperPath object>",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "test.scenarios": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "test.add": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "title",
+          "kind": "TyperArgument",
+          "opts": [
+            "title"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "message",
+          "kind": "TyperOption",
+          "opts": [
+            "--message",
+            "-m"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "messages_json",
+          "kind": "TyperOption",
+          "opts": [
+            "--messages"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "messages_file",
+          "kind": "TyperOption",
+          "opts": [
+            "--messages-file",
+            "-f"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "description",
+          "kind": "TyperOption",
+          "opts": [
+            "--description",
+            "-d"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "expected",
+          "kind": "TyperOption",
+          "opts": [
+            "--expected",
+            "-e"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "scenario_type",
+          "kind": "TyperOption",
+          "opts": [
+            "--type",
+            "-t"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "single_turn",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "test.update": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "scenario_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "scenario_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "title",
+          "kind": "TyperOption",
+          "opts": [
+            "--title"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "message",
+          "kind": "TyperOption",
+          "opts": [
+            "--message",
+            "-m"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "description",
+          "kind": "TyperOption",
+          "opts": [
+            "--description",
+            "-d"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "expected",
+          "kind": "TyperOption",
+          "opts": [
+            "--expected",
+            "-e"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "scenario_type",
+          "kind": "TyperOption",
+          "opts": [
+            "--type",
+            "-t"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "test.scenario-detail": {
+      "params": [
+        {
+          "name": "scenario_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "scenario_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "test.delete-scenario": {
+      "params": [
+        {
+          "name": "scenario_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "scenario_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "confirm",
+          "kind": "TyperOption",
+          "opts": [
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    },
+    "test.run": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "scenario_id",
+          "kind": "TyperOption",
+          "opts": [
+            "--case",
+            "--scenario",
+            "-s"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "bypass",
+          "kind": "TyperOption",
+          "opts": [
+            "--bypass",
+            "-b"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "timeout",
+          "kind": "TyperOption",
+          "opts": [
+            "--timeout"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "900.0",
+          "type": "<FloatRange x>=1.0>",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "test.runs": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "limit",
+          "kind": "TyperOption",
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "20",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "test.run-detail": {
+      "params": [
+        {
+          "name": "run_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "run_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "test.evaluate": {
+      "params": [
+        {
+          "name": "run_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "run_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "verdict",
+          "kind": "TyperArgument",
+          "opts": [
+            "verdict"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "notes",
+          "kind": "TyperOption",
+          "opts": [
+            "--notes",
+            "-n"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "test.evaluations": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "analytics.chats": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "page",
+          "kind": "TyperOption",
+          "opts": [
+            "--page"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "1",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "per_page",
+          "kind": "TyperOption",
+          "opts": [
+            "--per-page"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "20",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "user_id",
+          "kind": "TyperOption",
+          "opts": [
+            "--user-id"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "search",
+          "kind": "TyperOption",
+          "opts": [
+            "--search"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "start_date",
+          "kind": "TyperOption",
+          "opts": [
+            "--start-date"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "end_date",
+          "kind": "TyperOption",
+          "opts": [
+            "--end-date"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "analytics.chat-detail": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "chat_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "chat_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "analytics.stats": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "start_date",
+          "kind": "TyperOption",
+          "opts": [
+            "--start-date"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "end_date",
+          "kind": "TyperOption",
+          "opts": [
+            "--end-date"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "analytics.timeline": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "period",
+          "kind": "TyperOption",
+          "opts": [
+            "--period"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "day",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "start_date",
+          "kind": "TyperOption",
+          "opts": [
+            "--start-date"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "end_date",
+          "kind": "TyperOption",
+          "opts": [
+            "--end-date"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "test.cases": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "test.case-detail": {
+      "params": [
+        {
+          "name": "scenario_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "scenario_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "test.delete-case": {
+      "params": [
+        {
+          "name": "scenario_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "scenario_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "INT",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "confirm",
+          "kind": "TyperOption",
+          "opts": [
+            "--confirm",
+            "-y"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "False",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        }
+      ]
+    }
+  },
+  "shell_contracts": {
+    "learning-scenario.list": [
+      0,
+      0,
+      ""
+    ],
+    "learning-scenario.get": [
+      1,
+      1,
+      ""
+    ],
+    "learning-scenario.create": [
+      1,
+      1,
+      "content"
+    ],
+    "learning-scenario.update": [
+      1,
+      1,
+      "revision title content"
+    ],
+    "learning-scenario.remove": [
+      1,
+      1,
+      "revision"
+    ],
+    "learning-scenario.duplicate": [
+      1,
+      1,
+      "title"
+    ],
+    "learning-scenario.default": [
+      1,
+      1,
+      ""
+    ],
+    "learning-scenario.selected": [
+      1,
+      1,
+      ""
+    ],
+    "learning-scenario.select": [
+      2,
+      2,
+      ""
+    ],
+    "whoami": [
+      0,
+      0,
+      ""
+    ],
+    "glossary": [
+      1,
+      1,
+      ""
+    ],
+    "translate": [
+      0,
+      1,
+      "reason command blocker topic section"
+    ],
+    "assistant.export": [
+      1,
+      1,
+      ""
+    ],
+    "kb.list-shared": [
+      0,
+      0,
+      ""
+    ],
+    "kb.plugins": [
+      0,
+      0,
+      ""
+    ],
+    "kb.query-plugins": [
+      0,
+      0,
+      ""
+    ],
+    "kb.update": [
+      1,
+      1,
+      "name n description d access_control"
+    ],
+    "kb.delete": [
+      1,
+      1,
+      ""
+    ],
+    "kb.delete-file": [
+      2,
+      2,
+      ""
+    ],
+    "kb.share": [
+      1,
+      1,
+      "enable disable"
+    ],
+    "kb.ingest": [
+      1,
+      1,
+      "plugin p url youtube param"
+    ],
+    "job.get": [
+      2,
+      2,
+      ""
+    ],
+    "job.retry": [
+      2,
+      2,
+      ""
+    ],
+    "job.cancel": [
+      2,
+      2,
+      ""
+    ],
+    "rubric.delete": [
+      1,
+      1,
+      ""
+    ],
+    "rubric.duplicate": [
+      1,
+      1,
+      ""
+    ],
+    "rubric.share": [
+      1,
+      1,
+      "enable disable"
+    ],
+    "rubric.generate": [
+      1,
+      1,
+      "language lang model m"
+    ],
+    "template.list-shared": [
+      0,
+      0,
+      "limit l offset"
+    ],
+    "template.create": [
+      1,
+      1,
+      "description d system_prompt prompt_template shared"
+    ],
+    "template.update": [
+      1,
+      1,
+      "name n description d system_prompt prompt_template"
+    ],
+    "template.delete": [
+      1,
+      1,
+      ""
+    ],
+    "template.duplicate": [
+      1,
+      1,
+      "new_name"
+    ],
+    "template.share": [
+      1,
+      1,
+      "enable disable"
+    ],
+    "template.export": [
+      1,
+      1000,
+      ""
+    ],
+    "test.scenario-detail": [
+      2,
+      2,
+      ""
+    ],
+    "test.delete-scenario": [
+      2,
+      2,
+      ""
+    ],
+    "frontend-manage.current": [
+      0,
+      0,
+      ""
+    ],
+    "frontend-manage.open": [
+      1,
+      2,
+      "tab"
+    ],
+    "kb.jobs": [
+      1,
+      1,
+      ""
+    ],
+    "kb.status": [
+      1,
+      1,
+      ""
+    ],
+    "kb.create": [
+      1,
+      1,
+      "description d access_control"
+    ],
+    "kb.query": [
+      2,
+      2,
+      "plugin p top_k k threshold t"
+    ],
+    "test.evaluations": [
+      1,
+      1,
+      ""
+    ],
+    "rubric.create": [
+      1,
+      1,
+      "criteria description subject grade_level scoring_type max_score"
+    ],
+    "rubric.update": [
+      1,
+      1,
+      "title criteria weights description subject grade_level scoring_type max_score"
+    ],
+    "assistant.list": [
+      0,
+      0,
+      "limit l offset"
+    ],
+    "assistant.list-shared": [
+      0,
+      0,
+      ""
+    ],
+    "assistant.get": [
+      1,
+      1,
+      ""
+    ],
+    "assistant.config": [
+      0,
+      0,
+      ""
+    ],
+    "assistant.debug": [
+      1,
+      1,
+      "message m"
+    ],
+    "assistant.create": [
+      1,
+      1,
+      "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format vision no_vision image_generation no_image_generation"
+    ],
+    "assistant.update": [
+      1,
+      1,
+      "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor rubric_id rubric_format vision no_vision image_generation no_image_generation"
+    ],
+    "assistant.publish": [
+      1,
+      1,
+      ""
+    ],
+    "assistant.unpublish": [
+      1,
+      1,
+      ""
+    ],
+    "assistant.delete": [
+      1,
+      1,
+      ""
+    ],
+    "assistant.list-published": [
+      0,
+      0,
+      ""
+    ],
+    "assistant.chat": [
+      1,
+      1,
+      "message m bypass b chat_id persist"
+    ],
+    "rubric.list": [
+      0,
+      0,
+      "limit l offset search s subject"
+    ],
+    "rubric.list-public": [
+      0,
+      0,
+      "limit l offset search s subject"
+    ],
+    "rubric.get": [
+      1,
+      1,
+      ""
+    ],
+    "rubric.export": [
+      1,
+      1,
+      "format f"
+    ],
+    "kb.list": [
+      0,
+      0,
+      ""
+    ],
+    "kb.get": [
+      1,
+      1,
+      ""
+    ],
+    "template.list": [
+      0,
+      0,
+      "limit l offset"
+    ],
+    "template.get": [
+      1,
+      1,
+      ""
+    ],
+    "test.update": [
+      2,
+      2,
+      "title message m description d type t expected e"
+    ],
+    "test.scenarios": [
+      1,
+      1,
+      ""
+    ],
+    "test.add": [
+      1,
+      2,
+      "title message m messages description d type t expected e"
+    ],
+    "test.run": [
+      1,
+      1,
+      "bypass b case scenario s timeout"
+    ],
+    "test.runs": [
+      1,
+      1,
+      "limit l"
+    ],
+    "test.run-detail": [
+      1,
+      2,
+      "assistant a"
+    ],
+    "test.evaluate": [
+      2,
+      3,
+      "assistant a notes n"
+    ],
+    "session.rename": [
+      1,
+      1,
+      "session s"
+    ],
+    "skill.list": [
+      0,
+      0,
+      ""
+    ],
+    "skill.load": [
+      1,
+      1,
+      "assistant a language"
+    ],
+    "docs.index": [
+      0,
+      0,
+      ""
+    ],
+    "docs.read": [
+      1,
+      1,
+      "section"
+    ],
+    "help": [
+      0,
+      0,
+      ""
+    ],
+    "analytics.chats": [
+      1,
+      1,
+      "page per_page user_id search start_date end_date"
+    ],
+    "analytics.chat-detail": [
+      2,
+      2,
+      ""
+    ],
+    "analytics.stats": [
+      1,
+      1,
+      "start_date end_date"
+    ],
+    "analytics.timeline": [
+      1,
+      1,
+      "period start_date end_date"
+    ],
+    "test.cases": [
+      1,
+      1,
+      ""
+    ],
+    "test.case-detail": [
+      2,
+      2,
+      ""
+    ],
+    "test.delete-case": [
+      2,
+      2,
+      ""
+    ]
+  },
+  "dispositions": {
+    "aac.attach": "intentional-filesystem-exclusion: frontend UI required; explicit liteshell boundary error",
+    "aac.chat": "not exposed: outer AAC session/client lifecycle",
+    "aac.delete": "not exposed: outer AAC session/client lifecycle",
+    "aac.get": "not exposed: outer AAC session/client lifecycle",
+    "aac.history": "not exposed: outer AAC session/client lifecycle",
+    "aac.message": "not exposed: outer AAC session/client lifecycle",
+    "aac.sessions": "not exposed: outer AAC session/client lifecycle",
+    "aac.skills": "adapter: skill.list; AAC session management stays outside its own shell",
+    "aac.start": "not exposed: outer AAC session/client lifecycle",
+    "aac.tools": "not exposed: outer AAC session/client lifecycle",
+    "analytics.chat-detail": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "analytics.chats": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "analytics.stats": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "analytics.timeline": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.config": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.create": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.delete": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.export": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.get": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.list": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.publish": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.unpublish": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "assistant.update": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "chat": "adapter: assistant.chat; streaming and persistence defaults differ",
+    "job.cancel": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "job.get": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "job.list": "adapter: kb.jobs",
+    "job.retry": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "job.status": "adapter: kb.status",
+    "job.watch": "not exposed: terminal polling loop; use job read/status operations",
+    "kb.create": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.delete": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.delete-file": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.get": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.ingest": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.jobs": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.list": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.list-shared": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.plugins": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.query": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.query-plugins": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.share": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.status": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.update": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "kb.upload": "intentional-filesystem-exclusion: frontend UI required; explicit liteshell boundary error",
+    "library.create": "deferred: library workflow outside dev 0.7 AAC scope",
+    "library.delete": "deferred: library workflow outside dev 0.7 AAC scope",
+    "library.delete-item": "deferred: library workflow outside dev 0.7 AAC scope",
+    "library.export": "deferred: library workflow outside dev 0.7 AAC scope",
+    "library.get": "deferred: library workflow outside dev 0.7 AAC scope",
+    "library.import": "intentional-filesystem-exclusion: frontend UI required; explicit liteshell boundary error",
+    "library.import-config": "deferred: library workflow outside dev 0.7 AAC scope",
+    "library.import-url": "deferred: library workflow outside dev 0.7 AAC scope",
+    "library.import-youtube": "deferred: library workflow outside dev 0.7 AAC scope",
+    "library.item": "deferred: library workflow outside dev 0.7 AAC scope",
+    "library.items": "deferred: library workflow outside dev 0.7 AAC scope",
+    "library.list": "deferred: library workflow outside dev 0.7 AAC scope",
+    "library.plugins": "deferred: library workflow outside dev 0.7 AAC scope",
+    "library.set-import-config": "deferred: library workflow outside dev 0.7 AAC scope",
+    "library.share": "deferred: library workflow outside dev 0.7 AAC scope",
+    "library.upload": "intentional-filesystem-exclusion: frontend UI required; explicit liteshell boundary error",
+    "login": "not exposed: local client identity/connectivity",
+    "logout": "not exposed: local client identity/connectivity",
+    "model.list": "adapter: assistant.config supplies model inventory; CLI spelling not registered",
+    "org.create": "not exposed: account/organization administration",
+    "org.dashboard": "not exposed: account/organization administration",
+    "org.delete": "not exposed: account/organization administration",
+    "org.export": "not exposed: account/organization administration",
+    "org.get": "not exposed: account/organization administration",
+    "org.list": "not exposed: account/organization administration",
+    "org.set-role": "not exposed: account/organization administration",
+    "org.update": "not exposed: account/organization administration",
+    "rubric.create": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "rubric.delete": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "rubric.duplicate": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "rubric.export": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "rubric.generate": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "rubric.get": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "rubric.import": "intentional-filesystem-exclusion: frontend UI required; explicit liteshell boundary error",
+    "rubric.list": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "rubric.list-public": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "rubric.share": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "rubric.update": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "status": "not exposed: local client identity/connectivity",
+    "template.create": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "template.delete": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "template.duplicate": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "template.export": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "template.get": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "template.list": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "template.list-shared": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "template.share": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "template.update": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.add": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.delete-scenario": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.evaluate": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.evaluations": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.run": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.run-detail": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.runs": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.scenario-detail": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.scenarios": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "user.bulk-import": "intentional-filesystem-exclusion: frontend UI required; explicit liteshell boundary error",
+    "user.create": "not exposed: account/organization administration",
+    "user.delete": "not exposed: account/organization administration",
+    "user.disable": "not exposed: account/organization administration",
+    "user.enable": "not exposed: account/organization administration",
+    "user.get": "not exposed: account/organization administration",
+    "user.list": "not exposed: account/organization administration",
+    "user.reset-password": "not exposed: account/organization administration",
+    "user.update": "not exposed: account/organization administration",
+    "whoami": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.update": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "learning-scenario.list": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "learning-scenario.get": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "learning-scenario.create": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "learning-scenario.update": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "learning-scenario.remove": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "learning-scenario.duplicate": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "learning-scenario.default": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "learning-scenario.selected": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "learning-scenario.select": "supported: authenticated owner-scoped scenario API; inline content; revision-checked edits; confirmation for mutations; selection requires idle session",
+    "test.cases": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.case-detail": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations",
+    "test.delete-case": "supported: authenticated Creator API; frontend-safe inline input/output; confirmation for mutations"
+  },
+  "shell_only": [
+    "assistant.chat",
+    "assistant.debug",
+    "assistant.list-published",
+    "assistant.list-shared",
+    "docs.index",
+    "docs.read",
+    "frontend-manage.current",
+    "frontend-manage.open",
+    "glossary",
+    "help",
+    "session.rename",
+    "skill.list",
+    "skill.load",
+    "translate"
+  ]
+}

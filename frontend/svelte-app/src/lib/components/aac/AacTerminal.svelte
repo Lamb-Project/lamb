@@ -1,8 +1,11 @@
 <script>
 	import { onMount, onDestroy, tick } from 'svelte';
+	import { _ } from 'svelte-i18n';
+	import { sidebarBusy, startupSessions, openTabs } from '$lib/stores/aacStore.svelte';
+	import { splitCanvasContent, canvasFromMessages } from '$lib/utils/aacCanvas.js';
 	import { sendMessageStream, getSession, sendMessage } from '$lib/services/aacService';
-	import { recordTabActivity } from '$lib/stores/aacStore.svelte';
 	import { renderMarkdownWithMath } from '$lib/utils/renderMarkdown.js';
+    import { agentWelcome } from '$lib/utils/aacWelcome.js';
 
 	// Abort any in-flight stream when the component unmounts so the fetch
 	// and getReader() loop stop running in the background (#352, H3).
@@ -21,9 +24,62 @@
 
 	/** @type {boolean} */
 	let loading = $state(false);
+	let historyLoading = $state(resumed && !firstMessage && !skillStartup);
+	$effect(() => { sidebarBusy.set(loading || historyLoading); });
 
 	/** @type {string} */
 	let statusText = $state('');
+    let lastActivity = $state('');
+    let activityStarted = $state(0);
+    let activitySeconds = $state(0);
+    $effect(() => {
+        if (!loading) return;
+        const timer = setInterval(() => {
+            activitySeconds = Math.floor((Date.now() - activityStarted) / 1000);
+        }, 1000);
+        return () => clearInterval(timer);
+    });
+    function beginProgress() {
+        lastActivity = '';
+        updateProgress({status: 'thinking'});
+    }
+    let responsePolicy = $state(null);
+    const languageNames = {en:'English',es:'Español',ca:'Català',eu:'Euskara'};
+    function updateProgress(event) {
+        if (event.status === 'policy') { responsePolicy = event.policy; return; }
+        if (stopped) return;
+        activityStarted = Date.now();
+        activitySeconds = 0;
+        if (event.status === 'thinking') {
+            statusText = lastActivity ? 'Reviewing the tool result…' : 'Preparing a response…';
+        } else if (event.status === 'tool') {
+            statusText = event.command || 'Using a tool…';
+        } else if (event.status === 'tool_done') {
+            lastActivity = `${event.awaiting_user_confirmation ? 'Awaiting your approval; not executed' : event.success ? 'Tool completed' : 'Tool reported a problem'}: ${event.command || 'Command'}`;
+            statusText = 'Reviewing the tool result…';
+        } else if (event.status === 'responding') {
+            statusText = '';
+        }
+        scrollToBottom();
+    }
+
+    let sessionTitle = $state('New conversation');
+    let stopped = $state(false);
+    async function refreshSessionInfo() {
+        try {
+            const session = await getSession(sessionId);
+            if(!isMounted)return;
+            responsePolicy=session.skill_info?.response_language_policy || null;
+            sessionTitle=session.display_title || session.title || 'New conversation';
+            openTabs.update(tabs=>tabs.map(t=>t.id===sessionId?{...t,title:sessionTitle}:t));
+        } catch (_) { /* transcript remains usable if metadata refresh fails */ }
+    }
+    function stopResponse() {
+        stopped=true;
+        statusText='Stopped';
+        streamAbort?.abort();
+    }
+
 
 	/** @type {boolean} */
 	let darkMode = $state(false);
@@ -31,7 +87,7 @@
 	/** @type {HTMLElement|null} */
 	let scrollContainer = null;
 
-	/** @type {HTMLInputElement|null} */
+	/** @type {HTMLTextAreaElement|null} */
 	let inputEl = null;
 
 	/** @type {Object|null} */
@@ -40,41 +96,15 @@
 	/** @type {boolean} */
 	let showStats = $state(false);
 
-	/** @type {{ title: string, content: string } | null} */
-	let canvasData = $state(null);
+	// Derive the latest canvas from the transcript, never mutate state while rendering.
+	let dismissedCanvas = $state(null);
+    let canvasDialog = $state(null);
+    function expandCanvas() { canvasDialog?.showModal(); canvasDialog?.querySelector("[data-canvas-back]")?.focus(); }
+	let latestCanvas = $derived(canvasFromMessages(messages));
+	let canvasData = $derived(latestCanvas?.key === dismissedCanvas ? null : latestCanvas);
 
-	/**
-	 * Split canvas directives from agent response.
-	 * @param {string} text
-	 * @returns {{ text: string, canvas: { title: string, content: string } | null }}
-	 */
-	function splitCanvasContent(text) {
-		if (!text) return { text: '', canvas: null };
-		const match = text.match(/<<<CANVAS(?:\s+title="([^"]*)")?>>>([\s\S]*?)<<<END_CANVAS>>>/);
-		if (!match) {
-			// Check for clear directive
-			if (text.includes('<<<CANVAS_CLEAR>>>')) {
-				return { text: text.replace(/<<<CANVAS_CLEAR>>>/g, '').trim(), canvas: null };
-			}
-			return { text, canvas: null };
-		}
-		const title = match[1] || '';
-		const canvasContent = match[2].trim();
-		const cleanText = text.replace(/<<<CANVAS[\s\S]*?<<<END_CANVAS>>>/, '').trim();
-		return { text: cleanText, canvas: { title, content: canvasContent } };
-	}
-
-	/**
-	 * Render an assistant message, extracting any canvas content.
-	 * @param {string} content
-	 * @returns {string}
-	 */
 	function renderAssistantMessage(content) {
-		const { text, canvas } = splitCanvasContent(content);
-		if (canvas) {
-			canvasData = canvas;
-		}
-		return renderMarkdown(text);
+		return renderMarkdown(splitCanvasContent(content).text);
 	}
 
 	onMount(async () => {
@@ -84,6 +114,7 @@
 		}
 
 		if (skillStartup) {
+            startupSessions.update(ids => { const next = new Set(ids); next.delete(sessionId); return next; });
 			// New skill session — trigger startup stream immediately
 			await triggerSkillStartup();
 		} else if (firstMessage) {
@@ -95,18 +126,24 @@
 			try {
 				const session = await getSession(sessionId);
 				if (!isMounted) return;
+                responsePolicy=session.skill_info?.response_language_policy || null;
+            sessionTitle=session.display_title || session.title || 'New conversation';
 				const conv = (session.conversation || []).filter(
-					m => (m.role === 'user' && !(m.content || '').startsWith('[System:'))
+					m => (m.role === 'user' && !(m.content || '').startsWith('[System:') && !(m.content || '').startsWith('[Application workflow instructions]'))
 					  || (m.role === 'assistant' && m.content && !m.tool_calls)
 				).map(m => ({ role: m.role, content: m.content || '' }));
 				if (conv.length > 0) {
 					messages = conv;
-					resumeNotice = true;
+				} else {
+                    const language = session.skill_info?.response_language_policy?.effective_language || session.skill_info?.ui_language || 'en';
+                    messages = [{ role: 'assistant', content: agentWelcome(language) }];
 				}
 			} catch (e) {
 				if (!isMounted) return;
 				if (e instanceof Error && e.message.startsWith('Session expired')) return;
 				messages = [{ role: 'system', content: `Error loading session: ${e.message}` }];
+			} finally {
+				if (isMounted) historyLoading = false;
 			}
 		}
 
@@ -116,10 +153,11 @@
 		inputEl?.focus();
 	});
 
-	let resumeNotice = $state(false);
 
 	async function triggerSkillStartup() {
 		loading = true;
+        stopped = false;
+        beginProgress();
 		let streamIdx = messages.length;
 		messages = [...messages, { role: 'assistant', content: '' }];
 		await tick();
@@ -136,15 +174,9 @@
 					messages = messages;
 					scrollToBottom();
 				},
-				(stats) => { lastStats = stats; statusText = ''; },
+				(stats) => { lastStats = stats; statusText = ''; void refreshSessionInfo(); },
 				(err) => { messages[streamIdx] = { role: 'system', content: `Error: ${err}` }; messages = messages; },
-				(status) => {
-					if (status.status === 'thinking') statusText = '🧠 Thinking...';
-					else if (status.status === 'tool') statusText = `⚡ ${status.command || 'Running'}...`;
-					else if (status.status === 'tool_done') statusText = `${status.success ? '✓' : '✗'} ${status.command || 'Done'}`;
-					else if (status.status === 'responding') statusText = '';
-					scrollToBottom();
-				},
+				updateProgress,
 				streamAbort.signal,
 			);
 		} catch (e) {
@@ -165,19 +197,16 @@
 
 	async function handleSend() {
 		const text = inputText.trim();
-		if (!text || loading) return;
+		if (!text || loading || historyLoading) return;
 
-		// Check if user was away >5 min — prepend context note
-		const wasAway = recordTabActivity(sessionId);
-		let messageToSend = text;
-		if (wasAway || resumeNotice) {
-			messageToSend = `[System: User returned after being away. Things may have changed — don't assume earlier data is still current.]\n${text}`;
-			resumeNotice = false;
-		}
+		// Send the user's exact reply so resumed approvals and cancellations
+		// reach the server's confirmation classifier without a hidden prefix.
 
 		messages = [...messages, { role: 'user', content: text }];
 		inputText = '';
 		loading = true;
+        stopped = false;
+        beginProgress();
 		lastStats = null;
 
 		await tick();
@@ -194,7 +223,7 @@
 		try {
 			await sendMessageStream(
 				sessionId,
-				messageToSend,
+				text,
 				(chunk) => {
 					statusText = '';
 					messages[streamIdx] = { ...messages[streamIdx], content: messages[streamIdx].content + chunk };
@@ -203,6 +232,7 @@
 				},
 				(stats) => {
 					lastStats = stats;
+                    void refreshSessionInfo();
 					statusText = '';
 				},
 				(err) => {
@@ -210,18 +240,7 @@
 					messages[streamIdx] = { role: 'system', content: `Error: ${err}` };
 					messages = messages;
 				},
-				(status) => {
-					if (status.status === 'thinking') {
-						statusText = '🧠 Thinking...';
-					} else if (status.status === 'tool') {
-						statusText = `⚡ ${status.command || 'Running command'}...`;
-					} else if (status.status === 'tool_done') {
-						statusText = `${status.success ? '✓' : '✗'} ${status.command || 'Done'}`;
-					} else if (status.status === 'responding') {
-						statusText = '';
-					}
-					scrollToBottom();
-				},
+				updateProgress,
 				streamAbort.signal,
 			);
 		} catch (e) {
@@ -248,7 +267,7 @@
 	});
 
 	function handleKeydown(e) {
-		if (e.key === 'Enter' && !e.shiftKey) {
+		if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
 			e.preventDefault();
 			handleSend();
 		}
@@ -276,11 +295,16 @@
 	}
 </script>
 
-<div class="flex flex-col lg:flex-row h-full gap-0">
+<div class="flex flex-col h-full min-h-0 gap-0">
+{#if responsePolicy?.fallback_applied}
+    <div role="status" class="px-3 py-2 text-sm bg-amber-50 text-amber-900 border-b border-amber-200">
+        {languageNames[responsePolicy.requested_language]} → {languageNames[responsePolicy.effective_language]}
+        <span> · LAMB AGENT · {$_('aacSettings.policyLabel')}</span>
+    </div>
+{/if}
 <!-- Terminal panel -->
 <div
-	class="flex flex-col font-mono text-sm rounded-lg border overflow-hidden transition-all duration-200
-	       {canvasData ? 'lg:w-[55%] h-[60%] lg:h-full' : 'w-full h-full'}"
+	class="flex flex-col font-sans text-sm rounded-lg border overflow-hidden w-full h-full min-h-0"
 	class:bg-gray-900={darkMode}
 	class:text-green-400={darkMode}
 	class:border-gray-700={darkMode}
@@ -296,7 +320,7 @@
 		class:border-gray-300={!darkMode}
 		class:bg-gray-100={!darkMode}
 	>
-		<span class="opacity-60">AAC Agent — Session {sessionId.slice(0, 8)}...</span>
+		<span class="opacity-60 truncate" title={sessionTitle}>{sessionTitle}</span>
 		<div class="flex gap-2 items-center">
 			{#if lastStats}
 				<button
@@ -348,7 +372,7 @@
 					<hr class="border-t-2" class:border-blue-400={darkMode} class:border-blue-300={!darkMode}>
 					<div class="flex gap-2 py-2.5 px-2 rounded" class:bg-gray-800={darkMode} class:bg-blue-50={!darkMode}>
 						<span class="shrink-0 font-bold" class:text-cyan-400={darkMode} class:text-blue-600={!darkMode}>$</span>
-						<span class="font-semibold" class:text-gray-100={darkMode} class:text-gray-800={!darkMode}>{msg.content}</span>
+						<span style="white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0" class="font-semibold" class:text-gray-100={darkMode} class:text-gray-800={!darkMode}>{msg.content}</span>
 					</div>
 					<hr class="border-t-2" class:border-blue-400={darkMode} class:border-blue-300={!darkMode}>
 				</div>
@@ -363,9 +387,15 @@
 			{/if}
 		{/each}
 
+        {#if canvasData}
+        <button class="canvas-preview" onclick={expandCanvas}><strong>{canvasData.title || 'Canvas'}</strong><span>Expand canvas</span></button>
+        {/if}
+        {#if stopped}<p role="status" class="text-sm">Stopped receiving the response. An action may still finish on the server; check its result before retrying.</p>{/if}
 		{#if loading && statusText}
-			<div class="pl-2 opacity-60 text-xs" class:text-yellow-400={darkMode} class:text-gray-500={!darkMode}>
-				{statusText}
+			<div class="pl-2 text-xs" class:text-yellow-300={darkMode} class:text-gray-600={!darkMode}>
+                <span role="status" aria-live="polite">{statusText}</span>
+                <span aria-hidden="true" class="ml-2 tabular-nums">{activitySeconds}s</span>
+                {#if lastActivity}<div class="mt-1 text-xs">{lastActivity}</div>{/if}
 			</div>
 		{:else if loading}
 			<div class="pl-2 opacity-60 animate-pulse">
@@ -382,18 +412,23 @@
 		class:border-gray-300={!darkMode}
 		class:bg-gray-100={!darkMode}
 	>
-		<span class="opacity-60" class:text-cyan-400={darkMode} class:text-blue-600={!darkMode}>$</span>
-		<input
-			bind:this={inputEl}
-			bind:value={inputText}
-			onkeydown={handleKeydown}
-			disabled={loading}
-			placeholder={loading ? 'Waiting for agent...' : 'Type a message...'}
-			class="flex-1 bg-transparent outline-none placeholder:opacity-40"
-		/>
+        <textarea
+            bind:this={inputEl}
+            bind:value={inputText}
+            onkeydown={handleKeydown}
+            disabled={loading || historyLoading}
+            rows="3"
+            aria-label="Message LAMB AGENT"
+            title="Enter to send; Shift+Enter for a new line"
+            placeholder={historyLoading ? 'Loading conversation...' : loading ? 'Waiting for agent...' : 'Type a message...'}
+            class="flex-1 min-w-0 resize-y min-h-[76px] max-h-[240px] bg-transparent outline-none placeholder:opacity-40"
+        ></textarea>
+        {#if loading}
+        <button onclick={stopResponse} class="px-3 py-2 rounded border border-red-300 text-red-700" aria-label="Stop response">Stop</button>
+        {:else}
 		<button
 			onclick={handleSend}
-			disabled={loading || !inputText.trim()}
+			disabled={loading || historyLoading || !inputText.trim()}
 			class="px-2 py-0.5 rounded text-xs transition-opacity"
 			class:opacity-60={loading || !inputText.trim()}
 			class:hover:opacity-100={!loading && inputText.trim()}
@@ -402,29 +437,34 @@
 		>
 			Send
 		</button>
+        {/if}
 	</div>
 </div>
-<!-- Canvas panel (side panel for structured content) -->
 {#if canvasData}
-	<div class="lg:w-[45%] w-full h-[40%] lg:h-full flex flex-col border rounded-lg overflow-hidden lg:ml-2 mt-2 lg:mt-0
-	            {darkMode ? 'bg-gray-800 border-gray-700 text-gray-200' : 'bg-white border-gray-300 text-gray-800'}">
-		<div class="flex items-center justify-between px-4 py-2 border-b
-		            {darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'}">
-			<h3 class="text-sm font-semibold truncate">{canvasData.title || 'Canvas'}</h3>
-			<button
-				onclick={() => canvasData = null}
-				class="text-xs opacity-50 hover:opacity-100 transition-opacity"
-				title="Close canvas"
-			>✕</button>
-		</div>
-		<div class="flex-1 overflow-y-auto px-4 py-3 aac-md font-sans text-sm leading-relaxed">
-			{@html renderMarkdown(canvasData.content)}
-		</div>
-	</div>
+<dialog bind:this={canvasDialog} class="canvas-dialog" aria-label={canvasData.title || 'Canvas'}>
+    <div class="canvas-heading">
+        <h2>{canvasData.title || 'Canvas'}</h2>
+        {#if loading}<button onclick={stopResponse}>Stop response</button>{/if}
+        <button onclick={() => canvasDialog.close()} data-canvas-back>Back to conversation</button>
+    </div>
+    <p class="canvas-caption">Agent canvas</p>
+    <div class="canvas-body aac-md">{@html renderMarkdown(canvasData.content)}</div>
+</dialog>
 {/if}
 </div>
 
 <style>
+    .canvas-preview { display: flex; justify-content: space-between; gap: 12px; width: 100%; padding: 14px; border: 1px solid #b3cce5; border-radius: 10px; background: #edf5fd; color: #173f64; text-align: left; }
+    .canvas-preview span { flex-shrink: 0; }
+    .canvas-dialog { position: fixed; inset: 0; margin: auto; width: min(960px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid #bcccdc; border-radius: 12px; background: white; color: #172b40; }
+    .canvas-dialog::backdrop { background: #0c213b88; }
+    .canvas-heading { display: flex; align-items: center; gap: 16px; padding: 16px; border-bottom: 1px solid #d6e0ea; position: sticky; top: 0; background: white; }
+    .canvas-heading h2 { flex: 1; font-weight: 600; overflow-wrap: anywhere; }
+    .canvas-heading button { border: 1px solid #94aec7; padding: 8px; border-radius: 6px; }
+    .canvas-caption { padding: 8px 20px 0; font-size: 12px; color: #62758a; }
+    .canvas-body { overflow: auto; padding: 20px; }
+    @media (max-width: 919px) { .canvas-dialog { width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; } }
+
 	/* Markdown rendering inside the terminal */
 	:global(.aac-md table) {
 		border-collapse: collapse;

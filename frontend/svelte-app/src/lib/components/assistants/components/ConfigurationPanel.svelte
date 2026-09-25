@@ -110,6 +110,9 @@
 			<select id="connector" name="connector" bind:value={selectedConnector}
 				onchange={() => { onchange?.(); handleConnectorChange(); }}
 				class="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900">
+				{#if selectedConnector && !connectorsList.includes(selectedConnector)}
+					<option value={selectedConnector}>{selectedConnector} (saved preference)</option>
+				{/if}
 				{#each connectorsList as connectorName (connectorName)}
 					<option value={connectorName}>{connectorName}</option>
 				{/each}
@@ -125,6 +128,9 @@
 		<select id="llm" name="llm" bind:value={selectedLlm} onchange={onchange}
 			disabled={availableModels.length === 0}
 			class="mt-1 block w-full pl-3 pr-10 py-2 text-base text-gray-900 border border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md bg-white">
+			{#if selectedLlm && !availableModels.includes(selectedLlm)}
+				<option value={selectedLlm}>{selectedLlm} (saved preference)</option>
+			{/if}
 			{#if availableModels.length > 0}
 				{#each availableModels as model (model)}
 					<option value={model}>{model}</option>

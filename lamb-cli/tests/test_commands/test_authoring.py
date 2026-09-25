@@ -1,0 +1,92 @@
+import json
+from urllib.parse import parse_qs
+import pytest
+from typer.testing import CliRunner
+from lamb_cli.main import app
+runner=CliRunner()
+
+def test_rubric_create_json(httpx_mock,mock_token):
+    httpx_mock.add_response(json={'success':True,'rubric':{'rubric_id':'r1'}})
+    result=runner.invoke(app,['rubric','create','Clarity','--criteria','[{"name":"Clarity"}]','-o','json'])
+    assert result.exit_code==0,result.output
+    assert json.loads(result.stdout)['rubric_id']=='r1'
+    body=parse_qs(httpx_mock.get_request().content.decode());assert body['title']==['Clarity']
+
+
+def test_rubric_edit_preserves(httpx_mock,mock_token):
+    old={'title':'Old','description':'Keep','criteria':[{'name':'C'}],'metadata':{'subject':'Math'},'maxScore':10}
+    httpx_mock.add_response(method='GET',json={'rubric_data':old})
+    httpx_mock.add_response(method='PUT',json={'success':True})
+    result=runner.invoke(app,['rubric','update','r1','--title','New','-o','json'])
+    assert result.exit_code==0,result.output
+    body=parse_qs(httpx_mock.get_requests()[-1].content.decode());assert body['description']==['Keep'];assert json.loads(body['criteria'][0])==old['criteria']
+
+@pytest.mark.parametrize('criteria',['null','{}','[]','broken'])
+def test_bad_rubric_input(criteria,mock_token):
+    assert runner.invoke(app,['rubric','create','x','--criteria',criteria]).exit_code!=0
+
+
+def test_file_and_rubric_binding(httpx_mock,mock_token):
+    httpx_mock.add_response(method='GET',json={'valid':True})
+    httpx_mock.add_response(method='GET',json={'rubric_id':'r1'})
+    httpx_mock.add_response(method='POST',json={'assistant_id':1})
+    result=runner.invoke(app,['assistant','create','x','--connector','openai','--llm','fake','--file-path','7/doc.md','--rubric-id','r1','--rubric-format','json','-o','json'])
+    assert result.exit_code==0,result.output
+    md=json.loads(json.loads(httpx_mock.get_requests()[-1].content)['metadata']);assert md['file_path']=='7/doc.md';assert md['rubric_id']=='r1';assert md['rubric_format']=='json'
+
+
+def test_kb_upload_plugin_returns_evidence(httpx_mock,mock_token,tmp_path):
+    file=tmp_path/'source.pdf';file.write_bytes(b'%PDF-example')
+    httpx_mock.add_response(json={'job_id':'j1'})
+    result=runner.invoke(app,['kb','upload','3',str(file),'--plugin','markitdown_ingest','-o','json'])
+    assert result.exit_code==0,result.output
+    data=json.loads(result.stdout);assert data['verification_required'];assert data['ingestion_response']==[{'job_id':'j1'}]
+    assert b'%PDF-example' in httpx_mock.get_request().content
+
+
+def test_attach_json(httpx_mock,mock_token,tmp_path):
+    file=tmp_path/'source.md';file.write_text('fact')
+    httpx_mock.add_response(json={'path':'7/abc.md','name':'source.md','size':4})
+    result=runner.invoke(app,['aac','attach',str(file),'-o','json']);assert result.exit_code==0;assert json.loads(result.stdout)['path']=='7/abc.md'
+
+
+def test_scenario_update_sends_only_requested_fields(httpx_mock,mock_token):
+    httpx_mock.add_response(method='PUT',json={'success':True})
+    result=runner.invoke(app,['test','update','1','s','--expected','','-o','json'])
+    assert result.exit_code==0,result.output
+    request=httpx_mock.get_request()
+    assert request.url.path=='/creator/assistant/1/tests/scenarios/s'
+    assert json.loads(request.content)=={'expected_behavior':''}
+
+
+def test_scenario_update_requires_a_field(mock_token):
+    assert runner.invoke(app,['test','update','1','s']).exit_code!=0
+
+
+def test_inline_multiturn_messages_match_saved_scenario(httpx_mock,mock_token):
+    messages=[{'role':'user','content':'First'},{'role':'user','content':'Follow up'}]
+    httpx_mock.add_response(json={'id':'scenario'})
+    result=runner.invoke(app,['test','add','30','Multi','--messages',json.dumps(messages),'--type','multi_turn','-o','json'])
+    assert result.exit_code==0,result.output
+    assert json.loads(httpx_mock.get_request().content)['messages']==messages
+
+
+def test_conflicting_scenario_inputs_fail_before_request(mock_token):
+    result=runner.invoke(app,['test','add','30','Multi','--messages','[]','--message','hello'])
+    assert result.exit_code==1
+    assert 'exactly one' in result.output
+
+@pytest.mark.parametrize('command',['cases','scenarios'])
+def test_case_list_alias_preserves_endpoint(command,httpx_mock,mock_token):
+    httpx_mock.add_response(json=[{'id':'existing','title':'Existing case'}])
+    result=runner.invoke(app,['test',command,'42','-o','json'])
+    assert result.exit_code==0,result.output
+    assert json.loads(result.stdout)[0]['id']=='existing'
+    assert httpx_mock.get_request().url.path.endswith('/assistant/42/tests/scenarios')
+
+@pytest.mark.parametrize('flag',['--case','--scenario','-s'])
+def test_case_run_alias_preserves_payload(flag,httpx_mock,mock_token):
+    httpx_mock.add_response(json=[])
+    result=runner.invoke(app,['test','run','42',flag,'existing','-o','json'])
+    assert result.exit_code==0,result.output
+    assert json.loads(httpx_mock.get_request().content)['scenario_id']=='existing'

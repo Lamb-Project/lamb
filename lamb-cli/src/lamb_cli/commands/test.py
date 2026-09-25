@@ -1,4 +1,4 @@
-"""Test scenario and evaluation commands — lamb test *."""
+"""Test case and evaluation commands — lamb test *."""
 
 from __future__ import annotations
 
@@ -7,15 +7,17 @@ import sys
 from typing import Optional
 
 import typer
+import httpx
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 
 from lamb_cli.client import get_client
 from lamb_cli.config import get_output_format
+from lamb_cli.errors import NetworkError
 from lamb_cli.output import format_output, print_error, print_json, print_success
 
-app = typer.Typer(help="Test scenarios, run tests, and evaluate assistants.")
+app = typer.Typer(help="Test cases, run tests, and evaluate assistants.")
 
 console = Console()
 err_console = Console(stderr=True)
@@ -31,7 +33,7 @@ SCENARIO_COLUMNS = [
 
 RUN_COLUMNS = [
     ("id", "Run ID"),
-    ("scenario_id", "Scenario"),
+    ("scenario_id", "Test case"),
     ("model_used", "Model"),
     ("_response_preview", "Response"),
     ("_tokens", "Tokens"),
@@ -66,12 +68,13 @@ def _enrich_run(r: dict) -> dict:
 # Scenarios
 # ------------------------------------------------------------------
 
-@app.command("scenarios")
+@app.command("scenarios", hidden=True)
+@app.command("cases")
 def list_scenarios(
     assistant_id: int = typer.Argument(..., help="Assistant ID."),
     output: str = typer.Option(None, "-o", "--output", help="Output format."),
 ) -> None:
-    """List test scenarios for an assistant."""
+    """List test cases for an assistant."""
     fmt = output or get_output_format()
     with get_client() as client:
         data = client.get(f"/creator/assistant/{assistant_id}/tests/scenarios")
@@ -85,18 +88,24 @@ def list_scenarios(
 @app.command("add")
 def add_scenario(
     assistant_id: int = typer.Argument(..., help="Assistant ID."),
-    title: str = typer.Argument(..., help="Scenario title."),
+    title: str = typer.Argument(..., help="Test case title."),
     message: Optional[str] = typer.Option(None, "--message", "-m", help="Single user message (for single-turn)."),
+    messages_json: Optional[str] = typer.Option(None, "--messages", help="Inline JSON array of role/content messages."),
     messages_file: Optional[str] = typer.Option(None, "--messages-file", "-f", help="JSON file with messages array."),
     description: Optional[str] = typer.Option(None, "--description", "-d", help="Description."),
     expected: Optional[str] = typer.Option(None, "--expected", "-e", help="Expected behavior."),
     scenario_type: str = typer.Option("single_turn", "--type", "-t", help="Type: single_turn, multi_turn, adversarial."),
     output: str = typer.Option(None, "-o", "--output", help="Output format."),
 ) -> None:
-    """Add a test scenario."""
+    """Add a test case."""
     fmt = output or get_output_format()
 
-    if messages_file:
+    if sum(bool(v) for v in [message, messages_file, messages_json]) != 1:
+        print_error('Provide exactly one of --message, --messages, or --messages-file.')
+        raise typer.Exit(1)
+    if messages_json:
+        messages = json.loads(messages_json)
+    elif messages_file:
         import pathlib
         raw = pathlib.Path(messages_file).read_text()
         messages = json.loads(raw)
@@ -118,18 +127,45 @@ def add_scenario(
 
     with get_client() as client:
         data = client.post(f"/creator/assistant/{assistant_id}/tests/scenarios", json=body)
-    print_success(f"Scenario created: {data.get('id', '')}")
+    print_success(f"Test case created: {data.get('id', '')}")
     if fmt == "json":
         print_json(data)
 
 
-@app.command("scenario-detail")
+@app.command("update")
+def update_scenario(
+    assistant_id: int = typer.Argument(..., help="Assistant ID."),
+    scenario_id: str = typer.Argument(..., help="Existing test case ID."),
+    title: Optional[str] = typer.Option(None, "--title", help="New title."),
+    message: Optional[str] = typer.Option(None, "--message", "-m", help="Replace messages with one user message."),
+    description: Optional[str] = typer.Option(None, "--description", "-d", help="New description; empty clears it."),
+    expected: Optional[str] = typer.Option(None, "--expected", "-e", help="New expected behavior; empty clears it."),
+    scenario_type: Optional[str] = typer.Option(None, "--type", "-t", help="New test case type."),
+    output: str = typer.Option(None, "-o", "--output", help="Output format."),
+) -> None:
+    """Edit a saved test case, preserving fields omitted from the command."""
+    body = {k:v for k,v in {"title":title,"description":description,
+        "expected_behavior":expected,"scenario_type":scenario_type}.items() if v is not None}
+    if message is not None:
+        body["messages"] = [{"role":"user","content":message}]
+    if not body:
+        print_error("Provide at least one field to update.")
+        raise typer.Exit(1)
+    with get_client() as client:
+        data = client.put(f"/creator/assistant/{assistant_id}/tests/scenarios/{scenario_id}", json=body)
+    print_success(f"Test case updated: {scenario_id}")
+    if (output or get_output_format()) == "json":
+        print_json(data)
+
+
+@app.command("scenario-detail", hidden=True)
+@app.command("case-detail")
 def get_scenario(
-    scenario_id: str = typer.Argument(..., help="Scenario ID."),
+    scenario_id: str = typer.Argument(..., help="Test case ID."),
     assistant_id: int = typer.Argument(..., help="Assistant ID."),
     output: str = typer.Option(None, "-o", "--output", help="Output format."),
 ) -> None:
-    """Get scenario details."""
+    """Get test case details."""
     fmt = output or get_output_format()
     with get_client() as client:
         data = client.get(f"/creator/assistant/{assistant_id}/tests/scenarios/{scenario_id}")
@@ -147,18 +183,19 @@ def get_scenario(
             console.print(f"  [{role}] {msg.get('content', '')}")
 
 
-@app.command("delete-scenario")
+@app.command("delete-scenario", hidden=True)
+@app.command("delete-case")
 def delete_scenario(
-    scenario_id: str = typer.Argument(..., help="Scenario ID."),
+    scenario_id: str = typer.Argument(..., help="Test case ID."),
     assistant_id: int = typer.Argument(..., help="Assistant ID."),
     confirm: bool = typer.Option(False, "--confirm", "-y", help="Skip confirmation."),
 ) -> None:
-    """Delete a test scenario."""
+    """Delete a test case."""
     if not confirm:
-        typer.confirm(f"Delete scenario {scenario_id}?", abort=True)
+        typer.confirm(f"Delete test case {scenario_id}?", abort=True)
     with get_client() as client:
         client.delete(f"/creator/assistant/{assistant_id}/tests/scenarios/{scenario_id}")
-    print_success(f"Scenario {scenario_id} deleted.")
+    print_success(f"Test case {scenario_id} deleted.")
 
 
 # ------------------------------------------------------------------
@@ -168,11 +205,12 @@ def delete_scenario(
 @app.command("run")
 def run_tests(
     assistant_id: int = typer.Argument(..., help="Assistant ID."),
-    scenario_id: Optional[str] = typer.Option(None, "--scenario", "-s", help="Run a specific scenario."),
+    scenario_id: Optional[str] = typer.Option(None, "--case", "--scenario", "-s", help="Run a specific test case."),
     bypass: bool = typer.Option(False, "--bypass", "-b", help="Debug bypass: show what the LLM sees instead of calling it."),
+    timeout: float = typer.Option(900.0, "--timeout", min=1.0, help="Seconds to wait for the batch. A timeout does not cancel server work."),
     output: str = typer.Option(None, "-o", "--output", help="Output format."),
 ) -> None:
-    """Run test scenarios against an assistant.
+    """Run test cases against an assistant.
 
     Use --bypass to see the full context (system prompt + RAG + processed messages)
     without calling the LLM. Zero tokens consumed.
@@ -185,8 +223,16 @@ def run_tests(
         body["debug_bypass"] = True
 
     err_console.print("[dim]Running tests...[/dim]")
-    with get_client() as client:
-        data = client.post(f"/creator/assistant/{assistant_id}/tests/run", json=body)
+    try:
+        with get_client(timeout=timeout) as client:
+            data = client.post(f"/creator/assistant/{assistant_id}/tests/run", json=body)
+    except NetworkError as exc:
+        if isinstance(exc.__cause__, httpx.TimeoutException):
+            raise NetworkError(
+                f"Test batch timed out after {timeout:g} seconds. The server may still be processing. "
+                f"Inspect 'lamb test runs {assistant_id} -o json' before retrying."
+            ) from exc
+        raise
 
     if fmt == "json":
         print_json(data)

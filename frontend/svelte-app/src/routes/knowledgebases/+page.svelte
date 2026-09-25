@@ -103,7 +103,7 @@
         {#if view === 'detail' && kbId}
             <!-- Debug info -->
             <!-- <div class="mb-4 p-2 bg-gray-100 text-xs">Debug: view={view}, kbId={kbId}</div> -->
-            <KnowledgeBaseDetail kbId={kbId} />
+            {#key kbId + ':' + $page.url.searchParams.get('aacRequest')}<KnowledgeBaseDetail kbId={kbId} />{/key}
         {:else}
             <KnowledgeBasesList on:view={handleView} />
         {/if}

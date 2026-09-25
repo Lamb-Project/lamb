@@ -16,130 +16,26 @@ The loop:
 from __future__ import annotations
 
 import json
+import anyio
+from contextlib import aclosing
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, AsyncIterator
 
 from openai import AsyncOpenAI
 
-from lamb.aac.authorization import ActionAuthorizer, classify_user_confirmation
-from lamb.aac.liteshell.shell import LiteShell, CommandContext
+from lamb.aac.authorization import ActionAuthorizer, DEFAULT_POLICY, classify_user_confirmation
+from lamb.aac.liteshell.shell import LiteShell, CommandContext, ShellResult, prepare_command
 from lamb.aac.session_logger import SessionLogger
+from lamb.aac.skill_routing import SkillRouting, catalogue_prompt
 from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="AAC")
 
-DEFAULT_SYSTEM_PROMPT = """\
-You are an AI assistant designer for the LAMB platform. Help educators \
-create, configure, test, and refine AI learning assistants.
-
-## Commands
-
-READ: lamb assistant list | list-shared | list-published | get <id_or_name> | config | debug <id> --message "text"
-READ: lamb rubric list | get <uuid> | export <uuid> [--format md]
-READ: lamb kb list | get <id>
-READ: lamb template list | get <id>
-
-To see available LLM models (gpt-4o, gpt-4o-mini, etc.), use: lamb assistant config
-It returns connectors, their models, and organization defaults. ALWAYS use this for model selection.
-DOCS: lamb docs index | read <topic> [--section "heading"]
-SKILLS: lamb skill list | load <skill-id> [--assistant <id>]
-SESSION: lamb session rename "New title"  (update the current session's title — do this when you learn the user's intent or target assistant name, so the session is findable later)
-CHAT: lamb assistant chat <id> --message "text"  (send a message, get a real response — use this for quick tests)
-TEST: lamb test scenarios <id> | add <id> <title> --message "text" | run <id> [--bypass] | runs <id> | evaluate <run_id> <good|bad|mixed>
-WRITE: lamb assistant create <name> [--system-prompt "..." --llm model ...] | update <id> [...] | delete <id>
-
-debug and --bypass = inspect mode. It runs the full prompt assembly (system prompt + RAG context + template)
-WITHOUT calling the LLM. It returns the constructed messages array — this IS the expected output.
-An empty or minimal response from debug is NORMAL for non-RAG assistants (no KB content to inject).
-For RAG assistants, debug shows what context was retrieved — useful for verifying KB content.
-run without --bypass = real LLM completion (uses tokens, gets an actual response).
-When running a full test suite on a RAG assistant, suggest checking with debug first.
-For casual single questions or non-RAG assistants, just run directly.
-
-## CRITICAL: Prompt Template Rules
-
-The prompt_template controls how the final prompt is assembled before sending to the LLM.
-It uses two placeholders:
-
-- `{user_input}` — where the student's message is inserted. REQUIRED in ALL assistants.
-- `{context}` — where RAG-retrieved KB content is inserted. REQUIRED when RAG is enabled.
-
-EVERY assistant MUST have a prompt_template containing at least `{user_input}`.
-If RAG is enabled (rag_processor is NOT no_rag), it MUST also contain `{context}`.
-
-When CREATING or UPDATING an assistant, ALWAYS set --prompt-template. Examples:
-
-Non-RAG: --prompt-template "{user_input}"
-RAG:     --prompt-template "Context:\n{context}\n\nStudent question: {user_input}\n\nAnswer using the provided context."
-
-If you see an assistant with an empty prompt_template, WARN the user — the pipeline will fail.
-If you see a RAG assistant without {context} in the template, WARN — KB content will be silently discarded.
-
-## Style rules
-
-BE CONCISE. Maximum 5-6 lines per response unless the user asks for detail.
-Short sentences. No filler. No repeating what the user already knows.
-Use bullet points, not paragraphs.
-
-SPEAK LIKE A HELPFUL COLLEAGUE, NOT A DEVELOPER.
-The user is an educator, not an engineer. Do NOT mention:
-- "pipeline", "debug", "bypass" — say "test" or "check" instead
-- "prompt processor", "simple_augment" — just skip these internal details
-- "RAG_collections", "api_callback" — say "knowledge base" or "connected documents"
-- "prompt_template" — say "how the question is assembled" if they need to know
-Only use technical terms if the user used them first or explicitly asks for internals.
-
-When showing assistant details, HIDE these internal fields (never show to user):
-- group_id, group_name, owi_group_id — internal OWI integration
-- organization_id, organization — internal tenant ID
-- api_callback — same as metadata (internal field name)
-- access_level, is_owner — internal permission data
-- Unix timestamps — convert to readable dates or skip
-- owner email — skip unless user asks "who owns this?"
-Show only: name, description, model, RAG status, connected KB, system prompt, prompt template, published status.
-
-NEVER switch language mid-conversation. If the user speaks Spanish, respond in Spanish. Always.
-NEVER refuse a user's explicit request. If they want to run a real test, run it. You may suggest bypass first, but if the user insists, do what they ask.
-
-When the user asks to do something covered by a specific skill (create, improve, explain, test an assistant),
-use `lamb skill load <skill-id>` to switch. Available skills: about-lamb, create-assistant, improve-assistant,
-explain-assistant, test-and-evaluate. Use `lamb skill list` if unsure.
-
-End EVERY response with numbered options. EXACTLY this format, no variations:
-
-**Next?**
-1. Option text
-2. Option text
-3. Other — tell me
-
-RULES for numbering:
-- Always start at 1
-- Always sequential (1, 2, 3)
-- Last option is always "Other — tell me"
-- No text before "**Next?**" on that line
-- No text after the last option
-- 2-4 options total, keep each under 8 words
-
-For test results: compact markdown table, offer details on request.
-
-## Canvas (side panel)
-
-When presenting tables, comparisons, rubrics, or structured data that benefits from a wider view,
-wrap it in canvas markers in your response:
-
-<<<CANVAS title="Your Title">>>
-(markdown content — tables, lists, code blocks)
-<<<END_CANVAS>>>
-
-The content appears in a side panel next to the terminal. The user sees both simultaneously.
-Keep your terminal text brief — just reference what's in the canvas.
-Use <<<CANVAS_CLEAR>>> to dismiss the panel.
-Only use canvas for content that genuinely needs space (tables with 3+ columns, comparisons).
-Do NOT use canvas for simple bullet points or short text.
-
-Write commands: briefly state what changes. One sentence max.
-"""
+from lamb.aac.pack_loader import load_pack
+DEFAULT_SYSTEM_PROMPT = load_pack(version='1.0.0').text('persona.md')
 
 TOOL_DEFINITIONS = [
     {
@@ -149,7 +45,7 @@ TOOL_DEFINITIONS = [
             "description": (
                 "Execute a LAMB CLI command. Returns structured JSON data. "
                 "Examples: 'lamb assistant list', 'lamb rubric get <uuid>', "
-                "'lamb assistant create \"My Tutor\" --system-prompt \"You are...\" --llm gpt-4o-mini'."
+                "'lamb assistant create \"My Tutor\" --system-prompt \"You are...\" --llm MODEL_FROM_CONFIG'."
             ),
             "parameters": {
                 "type": "object",
@@ -167,6 +63,10 @@ TOOL_DEFINITIONS = [
 
 # Human-readable descriptions for tool calls shown during streaming
 _TOOL_LABELS = {
+    "analytics.chats": "Reading assistant chats",
+    "analytics.chat-detail": "Reading assistant chat-detail",
+    "analytics.stats": "Reading assistant stats",
+    "analytics.timeline": "Reading assistant timeline",
     "assistant.list": "Loading assistants",
     "assistant.list-shared": "Loading shared assistants",
     "assistant.get": "Reading assistant config",
@@ -174,6 +74,8 @@ _TOOL_LABELS = {
     "assistant.debug": "Running pipeline debug",
     "assistant.create": "Creating assistant",
     "assistant.update": "Updating assistant",
+    "assistant.publish": "Publishing assistant",
+    "assistant.unpublish": "Unpublishing assistant",
     "assistant.delete": "Deleting assistant",
     "rubric.list": "Loading rubrics",
     "rubric.get": "Reading rubric",
@@ -182,8 +84,12 @@ _TOOL_LABELS = {
     "assistant.list-published": "Loading published assistants",
     "template.list": "Loading templates",
     "assistant.chat": "Chatting with assistant",
-    "test.scenarios": "Loading test scenarios",
-    "test.add": "Creating test scenario",
+    "test.cases": "Loading test cases",
+    "test.case-detail": "Reading test case",
+    "test.delete-case": "Deleting test case",
+    "test.scenarios": "Loading test cases",
+    "test.add": "Creating test case",
+    "test.update": "Updating test case",
     "test.run": "Running tests",
     "test.runs": "Loading test results",
     "test.evaluate": "Recording evaluation",
@@ -244,6 +150,8 @@ def _summarize_result(action_key: str, result: Any) -> str:
             return f"created id={d.get('assistant_id','?')}, name={d.get('name','?')}"
         elif action_key == "assistant.update":
             return f"updated {', '.join(d.get('updated_fields', []))}" if 'updated_fields' in d else "updated"
+        elif action_key in {"assistant.publish", "assistant.unpublish"}:
+            return f"assistant {d.get('id', '?')}: published={d.get('published')}"
         elif action_key == "assistant.delete":
             return d.get("message", "deleted")
         elif action_key == "assistant.config":
@@ -263,8 +171,8 @@ def _summarize_result(action_key: str, result: Any) -> str:
                 return f"{len(d)} runs"
             tok = d.get("token_usage", {}).get("total_tokens", 0)
             return f"tokens={tok}, {d.get('elapsed_ms',0):.0f}ms" if tok else f"{d.get('elapsed_ms',0):.0f}ms"
-        elif action_key == "test.scenarios":
-            return f"{len(d)} scenarios" if isinstance(d, list) else ""
+        elif action_key in {"test.scenarios", "test.cases"}:
+            return f"{len(d)} test cases" if isinstance(d, list) else ""
         elif action_key == "test.add":
             return f"title={d.get('title', '?')}"
         elif action_key == "test.evaluate":
@@ -302,6 +210,7 @@ def _extract_artifacts(cmd: str, result: Any) -> list[dict]:
         "get": "read", "list": "read", "list-public": "read",
         "config": "read", "debug": "debug", "export": "read",
         "create": "create", "update": "update", "delete": "delete",
+        "publish": "publish", "unpublish": "unpublish",
         "run": "test", "runs": "read", "run-detail": "read",
         "add": "create", "evaluate": "evaluate",
         "scenarios": "read",
@@ -334,7 +243,7 @@ def _extract_artifacts(cmd: str, result: Any) -> list[dict]:
 
 
 @dataclass
-class AgentLoop:
+class AgentLoop(SkillRouting):
     """The AAC agent loop.
 
     Attributes:
@@ -358,18 +267,13 @@ class AgentLoop:
     session_logger: SessionLogger | None = None
     pending_action: dict | None = None
     tool_audit: list[dict] = field(default_factory=list)
+    skill_state: dict | None = None
+    pack: Any = None
     session_id: str = ""  # current AAC session ID (for self-referencing commands like session.rename)
 
     def load_skills(self, skills_dir: Path | str) -> None:
-        """Append skill files (.md) to the system prompt."""
-        skills_dir = Path(skills_dir)
-        if not skills_dir.is_dir():
-            return
-        skill_texts = []
-        for md_file in sorted(skills_dir.glob("*.md")):
-            skill_texts.append(f"\n--- Skill: {md_file.stem} ---\n{md_file.read_text()}")
-        if skill_texts:
-            self.system_prompt += "\n\n# Skills\n" + "\n".join(skill_texts)
+        """Load the compact catalogue only; workflow bodies are activated on demand."""
+        self.system_prompt += catalogue_prompt()
 
     async def chat(self, user_message: str) -> str:
         """Send a user message and return the assistant's text response.
@@ -384,6 +288,8 @@ class AgentLoop:
                 # Now run the agent loop so the LLM can react to the result.
                 return await self._run_agent_loop()
 
+        if self.skill_state is not None:
+            self.skill_state['last_user_input'] = user_message
         # Step 2: Normal flow — add user message and run loop
         if self.session_logger:
             self.session_logger.log_user_message(user_message)
@@ -391,82 +297,11 @@ class AgentLoop:
         return await self._run_agent_loop()
 
     async def _run_agent_loop(self) -> str:
-        """Run the LLM tool-calling loop until a text response is produced."""
-        tool_rounds = 0
-
-        while True:
-            messages = [{"role": "system", "content": self.system_prompt}] + self.conversation
-
-            response = await self.llm_client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=TOOL_DEFINITIONS,
-                tool_choice="auto",
-            )
-
-            choice = response.choices[0]
-            message = choice.message
-
-            if message.tool_calls:
-                tool_rounds += 1
-                self.conversation.append({
-                    "role": "assistant",
-                    "content": message.content,
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments,
-                            },
-                        }
-                        for tc in message.tool_calls
-                    ],
-                })
-
-                # Process each tool call
-                should_stop = False
-                for tc in message.tool_calls:
-                    result = await self._execute_tool(tc)
-                    logger.info(f"Tool: {tc.function.arguments} → {result.get('success', '?')}")
-                    self.conversation.append({
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": json.dumps(result, default=str, ensure_ascii=False),
-                    })
-                    # If we queued a pending action, stop after LLM responds
-                    if result.get("awaiting_user_confirmation"):
-                        should_stop = True
-
-                if tool_rounds >= self.max_tool_rounds:
-                    self.conversation.append({
-                        "role": "user",
-                        "content": "[System: Maximum tool rounds reached. Please respond.]",
-                    })
-
-                if should_stop:
-                    # Let LLM produce one more response explaining the pending action,
-                    # then stop the loop
-                    messages = [{"role": "system", "content": self.system_prompt}] + self.conversation
-                    final = await self.llm_client.chat.completions.create(
-                        model=self.model,
-                        messages=messages,
-                    )
-                    text = final.choices[0].message.content or ""
-                    self.conversation.append({"role": "assistant", "content": text})
-                    if self.session_logger:
-                        self.session_logger.log_agent_response(text)
-                    return text
-
-                continue
-
-            # No tool calls — text response
-            text = message.content or ""
-            self.conversation.append({"role": "assistant", "content": text})
-            if self.session_logger:
-                self.session_logger.log_agent_response(text)
-            return text
+        parts = []
+        async for event in self._run_agent_events(streaming=False):
+            if isinstance(event, str):
+                parts.append(event)
+        return "".join(parts)
 
     async def chat_stream(self, user_message: str) -> AsyncIterator[dict | str]:
         """Like chat() but streams events.
@@ -478,121 +313,254 @@ class AgentLoop:
         if self.pending_action:
             result_text = await self._resolve_pending_action(user_message)
             if result_text is not None:
-                async for event in self._run_agent_loop_stream():
-                    yield event
+                async with aclosing(self._run_agent_loop_stream()) as events:
+                    async for event in events:
+                        yield event
                 return
 
+        if self.skill_state is not None:
+            self.skill_state['last_user_input'] = user_message
         if self.session_logger:
             self.session_logger.log_user_message(user_message)
         self.conversation.append({"role": "user", "content": user_message})
-        async for event in self._run_agent_loop_stream():
-            yield event
+        async with aclosing(self._run_agent_loop_stream()) as events:
+            async for event in events:
+                yield event
 
     async def _run_agent_loop_stream(self) -> AsyncIterator[dict | str]:
-        """Run tool-calling loop with status events, then stream final response."""
+        async with aclosing(self._run_agent_events(streaming=True)) as events:
+            async for event in events:
+                yield event
+
+    async def _request_message(self, messages: list[dict], tools_enabled: bool,
+                               streaming: bool) -> AsyncIterator[dict | str]:
+        """One provider request, with the same message result for both consumers."""
+        self.record_request_prefix(messages, TOOL_DEFINITIONS if tools_enabled else None)
+        kwargs = {"model": self.model, "messages": messages}
+        if tools_enabled:
+            kwargs.update(tools=TOOL_DEFINITIONS, tool_choice="auto")
+        started = time.monotonic()
+        if not streaming:
+            response = await self.llm_client.chat.completions.create(**kwargs)
+            if self.session_logger:
+                usage = getattr(response, "usage", None)
+                self.session_logger.log("provider_response", {"elapsed_ms": round((time.monotonic()-started)*1000,1),
+                    "usage": usage.model_dump() if hasattr(usage, "model_dump") else None})
+            message = response.choices[0].message
+            yield {"_message": {
+                "role": "assistant", "content": message.content or "",
+                "tool_calls": [{"id": tc.id, "type": "function", "function": {
+                    "name": tc.function.name, "arguments": tc.function.arguments}}
+                    for tc in (message.tool_calls or [])],
+            }}
+            return
+
+        stream = await self.llm_client.chat.completions.create(**kwargs, stream=True)
+        text = ""
+        calls = {}
+        try:
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    text += delta.content
+                    # A tool-bearing message can claim success before its command
+                    # is even authorized. Hold prose until we know whether this
+                    # message is an answer or a tool proposal.
+                    if not tools_enabled:
+                        yield delta.content
+                for part in (getattr(delta, "tool_calls", None) or []):
+                    index = getattr(part, "index", None)
+                    if index is not None:
+                        key = ("index", index)
+                    elif getattr(part, "id", None):
+                        key = next((k for k,v in calls.items() if v["id"] == part.id), ("id", part.id))
+                    elif len(calls) == 1:
+                        key = next(iter(calls))
+                    else:
+                        raise ValueError("Ambiguous streaming tool call: provider omitted both index and id")
+                    call = calls.setdefault(key, {
+                        "id": "", "type": "function", "function": {"name": "", "arguments": ""}})
+                    if part.id:
+                        call["id"] = part.id
+                    if part.function:
+                        if part.function.name:
+                            call["function"]["name"] += part.function.name
+                        if part.function.arguments:
+                            call["function"]["arguments"] += part.function.arguments
+        finally:
+            with anyio.CancelScope(shield=True):
+                await stream.close()
+        yield {"_message": {"role": "assistant", "content": text,
+                             "tool_calls": list(calls.values())}}
+
+    async def _run_agent_events(self, streaming: bool) -> AsyncIterator[dict | str]:
+        """Preserve interrupted output and keep tool-call history resumable."""
+        from lamb.aac.language import append_turn_language
+        self.announce_linked_context()
+        append_turn_language(self)
+        partial = ''
+        completed = False
+        start = len(self.conversation)
+        events = self._generate_agent_events(streaming)
+        try:
+            async for event in events:
+                if isinstance(event, str):
+                    partial += event
+                elif event.get('status') in ('thinking', 'tool', 'tool_done'):
+                    partial = ''
+                yield event
+            completed = True
+        finally:
+            try:
+                with anyio.CancelScope(shield=True):
+                    await events.aclose()
+            finally:
+                if not completed:
+                    messages = self.conversation[start:]
+                    answered = {m.get('tool_call_id') for m in messages if m.get('role') == 'tool'}
+                    for message in messages:
+                        for call in message.get('tool_calls', []):
+                            if call['id'] not in answered:
+                                self.conversation.append({'role': 'tool', 'tool_call_id': call['id'], 'content': json.dumps({
+                                    'success': False, 'interrupted': True,
+                                    'error': 'Turn interrupted. Execution outcome may be unknown. Read back state before retrying a write.'})})
+                                answered.add(call['id'])
+                    last = self.conversation[-1] if self.conversation else {}
+                    if partial and not (last.get('role') == 'assistant' and last.get('content') == partial):
+                        self.conversation.append({'role': 'assistant', 'content': partial})
+
+    async def _generate_agent_events(self, streaming: bool) -> AsyncIterator[dict | str]:
+        """Shared legacy turn control; transport does not change tool semantics."""
         tool_rounds = 0
-
         while True:
+            if self.pending_action:
+                from lamb.aac.language import confirmation_fallback, translation_confirmation, documentation_fallback_notice
+                text = confirmation_fallback(self) + documentation_fallback_notice(self) + translation_confirmation(self)
+                self.conversation.append({"role": "assistant", "content": text})
+                if self.session_logger:
+                    self.session_logger.log_agent_response(text)
+                yield text
+                return
             yield {"status": "thinking"}
-
-            messages = [{"role": "system", "content": self.system_prompt}] + self.conversation
-            response = await self.llm_client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=TOOL_DEFINITIONS,
-                tool_choice="auto",
-            )
-
-            choice = response.choices[0]
-            message = choice.message
-
-            if message.tool_calls:
+            tools_enabled = tool_rounds < self.max_tool_rounds and not self.pending_action
+            conversation = self.conversation
+            if self.pack and self.skill_state.get('brief'):
+                from lamb.aac.glossary import model_messages
+                conversation = model_messages(conversation, self.skill_state['brief']['glossary'])
+            messages = [{"role": "system", "content": self.system_prompt}] + conversation
+            message = None
+            async with aclosing(self._request_message(messages, tools_enabled, streaming)) as events:
+                async for event in events:
+                    if isinstance(event, dict) and "_message" in event:
+                        message = event["_message"]
+                    else:
+                        yield event
+            if message is None:
+                raise ValueError("Provider returned no assistant message")
+            calls = message.pop("tool_calls", [])
+            if calls and tools_enabled:
                 tool_rounds += 1
-                self.conversation.append({
-                    "role": "assistant",
-                    "content": message.content,
-                    "tool_calls": [
-                        {"id": tc.id, "type": "function",
-                         "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
-                        for tc in message.tool_calls
-                    ],
-                })
-
-                should_stop = False
-                for tc in message.tool_calls:
-                    # Emit status before executing
-                    cmd = _describe_tool_call(tc)
-                    yield {"status": "tool", "command": cmd}
-
-                    result = await self._execute_tool(tc)
-                    ok = result.get("success", False)
-                    logger.info(f"Tool: {tc.function.arguments} → {ok}")
-
-                    yield {"status": "tool_done", "command": cmd, "success": ok}
-
-                    self.conversation.append({
-                        "role": "tool", "tool_call_id": tc.id,
-                        "content": json.dumps(result, default=str, ensure_ascii=False),
-                    })
-                    if result.get("awaiting_user_confirmation"):
-                        should_stop = True
-
+                # Retain calls/results for the provider, without retaining an
+                # unverified tool preamble as if it were a completed action.
+                self.conversation.append({**message, "content": "", "tool_calls": calls})
+                waiting = False
+                for call in calls:
+                    tc = SimpleNamespace(id=call["id"], function=SimpleNamespace(**call["function"]))
+                    command = _describe_tool_call(tc)
+                    yield {"status": "tool", "command": command}
+                    if waiting:
+                        result = {"success": False, "error": "Not executed: confirmation or a newly loaded workflow requires a new decision."}
+                    else:
+                        result = await self._execute_tool(tc)
+                    waiting = waiting or bool(result.get("awaiting_user_confirmation") or result.get("skill_loaded"))
+                    self.conversation.append({"role": "tool", "tool_call_id": tc.id,
+                        "content": json.dumps(result, default=str, ensure_ascii=False)})
+                    yield {"status": "tool_done", "command": command, "success": result.get("success", False),
+                           "awaiting_user_confirmation": bool(result.get("awaiting_user_confirmation"))}
                 if tool_rounds >= self.max_tool_rounds:
-                    self.conversation.append({
-                        "role": "user",
-                        "content": "[System: Maximum tool rounds reached. Please respond.]",
-                    })
-
-                if should_stop:
-                    yield {"status": "responding"}
-                    messages = [{"role": "system", "content": self.system_prompt}] + self.conversation
-                    full_text = ""
-                    stream = await self.llm_client.chat.completions.create(
-                        model=self.model, messages=messages, stream=True,
-                    )
-                    async for chunk in stream:
-                        delta = chunk.choices[0].delta if chunk.choices else None
-                        if delta and delta.content:
-                            full_text += delta.content
-                            yield delta.content
-                    self.conversation.append({"role": "assistant", "content": full_text})
-                    if self.session_logger:
-                        self.session_logger.log_agent_response(full_text)
-                    return
-
+                    self.conversation.append({"role": "user", "content":
+                        "[System: Maximum tool rounds reached. Respond using the results already available. No further tools are allowed this turn.]"})
                 continue
 
-            # No tool calls — stream the final text response
-            yield {"status": "responding"}
-            messages = [{"role": "system", "content": self.system_prompt}] + self.conversation
-            full_text = ""
-            stream = await self.llm_client.chat.completions.create(
-                model=self.model, messages=messages, stream=True,
-            )
-            async for chunk in stream:
-                delta = chunk.choices[0].delta if chunk.choices else None
-                if delta and delta.content:
-                    full_text += delta.content
-                    yield delta.content
-            self.conversation.append({"role": "assistant", "content": full_text})
+            # A provider that ignores the no-tools request must not execute more work.
+            text = message["content"]
+            if calls:
+                if self.pending_action:
+                    from lamb.aac.language import confirmation_fallback
+                    text = confirmation_fallback(self)
+                else:
+                    text = "This turn reached its tool limit. No additional action was executed. Ask me to continue from the saved results."
+                yield text
+            elif not streaming or tools_enabled:
+                yield text
+            from lamb.aac.language import translation_confirmation, documentation_fallback_notice
+            interpretation_notice = documentation_fallback_notice(self) + translation_confirmation(self)
+            if interpretation_notice:
+                yield interpretation_notice
+                text += interpretation_notice
+            self.conversation.append({"role": "assistant", "content": text})
             if self.session_logger:
-                self.session_logger.log_agent_response(full_text)
+                self.session_logger.log_agent_response(text)
             return
 
     async def _execute_tool(self, tool_call: Any) -> dict:
         """Execute a tool call, checking authorization policy."""
+        if tool_call.function.name != "execute_command":
+            return {"success": False, "error": "Unknown tool function"}
         try:
             fn_args = json.loads(tool_call.function.arguments)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError):
             return {"success": False, "error": "Invalid JSON in tool arguments"}
 
+        if not isinstance(fn_args, dict):
+            return {"success": False, "error": "Tool arguments must be a JSON object"}
         command = fn_args.get("command", "")
-        if not command:
+        if not isinstance(command, str) or not command.strip():
             return {"success": False, "error": "No command provided"}
 
-        # Check authorization
-        action_key = self.authorizer.resolve_action_key(command)
-        policy = self.authorizer.check(action_key) if action_key else "auto"
+        # Reject unsupported/malformed commands before they can become pending writes.
+        try:
+            action_key, parsed_args, parsed_kwargs, help_requested = prepare_command(command, getattr(self.shell, "allowlist", None))
+        except ValueError as error:
+            result = ShellResult(False, error=str(error), command=command)
+            self._record_audit(command, None, False, 0, result)
+            if self.session_logger:
+                self.session_logger.log_tool_call(command=command, success=False, elapsed_ms=0, error=result.error)
+            return result.to_dict()
+        allowed = getattr(self.shell, 'allowed_commands', None)
+        if allowed is not None and action_key not in allowed:
+            return {'success':False, 'error':'This command is outside your role; ask the appropriate administrator'}
+        policy = "auto" if help_requested else self.authorizer.check(action_key)
+        interpretations = (self.skill_state or {}).get('translation_interpretations', [])
+        # Even otherwise automatic resource writes require a reviewed interpretation.
+        translated_writes = {key for key, value in DEFAULT_POLICY.items() if value == 'ask'} | {
+            'test.add', 'test.run', 'test.evaluate', 'assistant.chat', 'session.rename'}
+        if interpretations and policy == 'auto' and not help_requested and action_key in translated_writes:
+            policy = 'ask'
+
+        if self.skill_state is not None and not help_requested:
+            if self.pending_action and action_key == "skill.load":
+                return {"success": False, "error": "Resolve the pending confirmation before switching workflows."}
+            try:
+                if action_key == "skill.load":
+                    context = dict(self.skill_state.get("context", {}))
+                    if "assistant" in parsed_kwargs or "a" in parsed_kwargs:
+                        context["assistant_id"] = parsed_kwargs.get("assistant", parsed_kwargs.get("a"))
+                    if "language" in parsed_kwargs:
+                        context["language"] = parsed_kwargs["language"]
+                    text = self.activate_skill(parsed_args[0], context)
+                    self._record_audit(command, action_key, True, 0, ShellResult(True, data={"skill_id": self.skill_state["skill_id"]}))
+                    return {"success": True, "data": text, "action_executed": False, "skill_loaded": self.skill_state["skill_id"]}
+                if policy != "never" and not self.pending_action:
+                    instructions = self.required_skill(action_key, parsed_args, parsed_kwargs)
+                    if instructions:
+                        self._record_audit(command, action_key, False, 0, ShellResult(False, error="Required workflow loaded; command not executed."))
+                        return {"success": False, "error": "Required workflow loaded. The requested command was NOT executed. Read the recipe and reconsider the command before retrying.",
+                                "skill_loaded": self.skill_state["skill_id"], "instructions": instructions}
+            except ValueError as error:
+                return {"success": False, "error": str(error)}
 
         # Self-referencing commands: inject current session_id
         if action_key == "session.rename" and self.session_id and "--session" not in command:
@@ -601,11 +569,15 @@ class AgentLoop:
         if policy == "never":
             return {"success": False, "error": f"Action '{action_key}' is not allowed"}
 
+        if policy == "ask" and self.pending_action:
+            return {"success": False, "awaiting_user_confirmation": True,
+                    "error": "An action is already awaiting confirmation"}
         if policy == "ask":
             # Queue the command, don't execute
             self.pending_action = {
                 "command": command,
                 "action_key": action_key,
+                "machine_translation_interpretations": [dict(item) for item in interpretations],
                 "tool_call_id": tool_call.id,
             }
             self._record_audit(command, action_key, True, 0, None, queued=True)
@@ -619,6 +591,7 @@ class AgentLoop:
                 "awaiting_user_confirmation": True,
                 "action": action_key,
                 "command": command,
+                "machine_translation_interpretations": interpretations,
                 "message": (
                     "This action needs user approval. Briefly describe what will change (1-2 lines). "
                     "Then ask for confirmation IN THE USER'S LANGUAGE using a yes/no format. "
@@ -632,7 +605,11 @@ class AgentLoop:
             }
 
         # policy == "auto" — execute directly
-        result = await self.shell.execute(command)
+        try:
+            result = await self.shell.execute(command)
+        except BaseException:
+            self._record_interrupted(command, action_key)
+            raise
         self._record_audit(command, action_key, result.success, result.elapsed_ms, result)
         if self.session_logger:
             self.session_logger.log_tool_call(
@@ -643,7 +620,7 @@ class AgentLoop:
                 error=result.error,
             )
 
-        # Special handling for skill.load — build a rich result with skill prompt + startup data
+        # Special handling for skill.load — return the skill prompt to legacy direct callers
         # The actual injection happens through the normal tool result flow (no direct conversation manipulation)
         if action_key == "skill.load" and result.success and isinstance(result.data, dict):
             skill_data = result.data
@@ -658,14 +635,6 @@ class AgentLoop:
             )
             parts.append(f"\n--- SKILL INSTRUCTIONS ---\n{skill_data.get('prompt', '')}")
 
-            # Run startup actions and collect results
-            for action in skill_data.get("startup_actions", []):
-                startup_result = await self.shell.execute(action)
-                startup_key = _parse_action_key(action)
-                self._record_audit(action, startup_key, startup_result.success, startup_result.elapsed_ms, startup_result)
-                if startup_result.success:
-                    parts.append(f"\n[Startup: {action}]\n{json.dumps(startup_result.data, default=str, ensure_ascii=False)[:3000]}")
-
             return {"success": True, "data": "\n".join(parts)}
 
         return result.to_dict()
@@ -677,12 +646,30 @@ class AgentLoop:
         None if the message is unrelated to the pending action.
         """
         action = self.pending_action
+        # Older sessions may already contain an unsupported proposal. Recover on
+        # the next message without executing it or requiring meaningless approval.
+        try:
+            prepare_command(action["command"], getattr(self.shell, "allowlist", None))
+        except ValueError as error:
+            self.pending_action = None
+            result = ShellResult(False, error=str(error), command=action["command"])
+            self._record_audit(action["command"], action.get("action_key"), False, 0, result)
+            self.conversation.append({"role": "user", "content": f"[System: Removed invalid pending action; nothing executed. {error}]"})
+            return None
         classification = classify_user_confirmation(user_message)
 
         if classification == "approve":
             # Execute the queued command
             self.pending_action = None
-            result = await self.shell.execute(action["command"])
+            try:
+                result = await self.shell.execute(action["command"])
+            except BaseException:
+                self._record_interrupted(action["command"], action.get("action_key"))
+                self.conversation.append({"role": "user", "content": user_message})
+                self.conversation.append({"role": "user", "content":
+                    "[System: Approved action interrupted. Outcome may be unknown. Read back state before retrying: " + action['command'] + "]"})
+                raise
+            self._record_audit(action["command"], action.get("action_key"), result.success, result.elapsed_ms, result)
 
             if self.session_logger:
                 self.session_logger.log_user_message(user_message)
@@ -722,6 +709,12 @@ class AgentLoop:
             # The agent will respond to whatever the user said, and the
             # pending action remains for the next turn
             return None
+
+    def _record_interrupted(self, command, action_key):
+        result = ShellResult(False, error='Interrupted; outcome unknown. Read back state before retrying.', command=command)
+        self._record_audit(command, action_key, False, 0, result)
+        self.tool_audit[-1]['outcome'] = 'unknown'
+        self.tool_audit[-1]['interrupted'] = True
 
     def _record_audit(
         self, command: str, action_key: str | None,

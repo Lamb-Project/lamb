@@ -44,8 +44,7 @@
     "admin": "Administració",
     "orgAdmin": "Admin Org",
     "sources": "Fonts de Coneixement",
-    "rubrics": "Rúbriques",
-    "agent": "Agent"
+    "rubrics": "Rúbriques"
   },
   "assistants": {
     "title": "Assistents d'Aprenentatge",
@@ -1059,5 +1058,45 @@
     "feedbackUnavailable": "No s'han pogut generar els comentaris.",
     "teacherDecides": "Això és una orientació formativa, no una nota. El teu professor decideix la puntuació final.",
     "noRubric": "No hi ha cap rúbrica configurada per a aquesta activitat, així que no s'han generat comentaris."
+  },
+  "aacSettings": {
+    "settingsTitle": "Configuració de LAMB AGENT",
+    "settingsIntro": "Tria el model de l’agent independentment dels valors per defecte dels assistents. L’organització defineix les llengües admeses. Els canvis de model i de llengua alternativa s’apliquen al torn següent. Cada sessió conserva la llengua de la interfície amb què va començar.",
+    "loadingSettings": "S’està carregant la configuració…",
+    "provider": "Proveïdor de l’agent",
+    "model": "Model de l’agent",
+    "useDefault": "Utilitza el predeterminat de l’organització",
+    "notEnabled": "no habilitat actualment",
+    "selectModel": "Selecciona un model",
+    "orgDefault": "predeterminat de l’organització",
+    "savedSelection": "selecció desada",
+    "knowledgePack": "Paquet de coneixement",
+    "channel": "Canal de versions",
+    "version": "Versió fixada",
+    "stable": "Estable",
+    "rc": "Hautagaia",
+    "beta": "Beta",
+    "followChannel": "Segueix el canal",
+    "utilityTitle": "Model auxiliar de traducció (opcional)",
+    "utilityIntro": "Només per a termes absents del glossari que impedeixin triar una ordre o seccions de documentació no disponibles en la llengua de la sessió. Sense model, la traducció automàtica queda desactivada.",
+    "utilityProvider": "Proveïdor auxiliar",
+    "utilityModel": "Model auxiliar",
+    "disabled": "Desactivat",
+    "languageSupport": "Llengües de la interfície admeses",
+    "languageIntro": "«Admès» utilitza la llengua de la interfície a l’inici de la sessió. Si no és admesa, tria una alternativa, per exemple Euskara → Español. No es pressuposen limitacions del model.",
+    "fallback": "Alternativa per a {name}",
+    "supported": "Admès: respon en {name}",
+    "unsupported": "No admès: utilitza {name}",
+    "saving": "S’està desant…",
+    "saveSettings": "Desa la configuració de l’agent",
+    "settingsSaved": "Configuració de l’agent desada.",
+    "policyLabel": "Política lingüística de l’organització"
+  },
+  "assistantTestCases": {
+    "title": "Casos de prova",
+    "add": "Afegir cas de prova",
+    "empty": "Encara no hi ha casos de prova. Afegeix-ne un o demana a l’agent que els generi.",
+    "delete": "Eliminar cas de prova",
+    "confirmDelete": "Vols eliminar aquest cas de prova? Aquesta acció no es pot desfer."
   }
 }

@@ -19,6 +19,7 @@ itself does not call external APIs unless explicitly configured.
 """
 
 import os
+from static_urls import static_url_prefix
 import re
 import json
 import uuid
@@ -53,7 +54,7 @@ except ImportError:
     logger.warning("[markitdown_plus] pymupdf not available - PDF images will not be extracted")
 
 # URL prefix for static files
-STATIC_URL_PREFIX = os.getenv("HOME_URL", "http://localhost:9090") + "/static"
+STATIC_URL_PREFIX = static_url_prefix(os.getenv("HOME_URL", "http://localhost:9090"))
 
 
 class ProcessingStatsTracker:

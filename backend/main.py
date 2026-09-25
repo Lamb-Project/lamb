@@ -65,6 +65,8 @@ async def lifespan(app: FastAPI):
         from lamb.migrations import MigrationRunner
         db = LambDatabaseManager()
         MigrationRunner(db).apply_all()
+        from lamb.aac.frontend import get_mailbox
+        get_mailbox()
         logger.info("Database migrations checked/applied successfully")
     except Exception as e:
         logger.error(f"Failed to run database migrations: {e}")
@@ -215,7 +217,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+from lamb.document_static import DocumentAwareStaticFiles
+app.mount("/static", DocumentAwareStaticFiles(directory="static"), name="static")
+from lamb.aac.pack_loader import docs_root
+app.mount("/agent-docs", StaticFiles(directory=str(docs_root())), name="agent_docs")
 
 app.mount("/lamb", lamb_app)
 app.include_router(creator_router, prefix="/creator", tags=["Creator"])
