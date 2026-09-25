@@ -9,6 +9,7 @@ import shlex
 
 import click
 from moodle_cli.cli.readonly import READONLY_COMMANDS, _full_groups
+from moodle_cli.glossary import help_for_command
 
 # Local keyring/profile inspection has no meaning inside a Creator session.
 EXCLUDED_GROUPS = frozenset({'auth'})
@@ -63,6 +64,9 @@ def command_specs():
                                    help='List pages in a wiki activity (WIKI_ID from course contents).', add_help_option=False)
         if key == 'assign.grade':
             parser.params.append(click.Option(['--rationale'], required=True, help='Reason for the proposed grade, recorded with the approved action.'))
+        # Same canonical field guidance as upstream --help; model results carry it too.
+        notes = help_for_command(key)
+        parser.epilog = 'Field meanings and limitations:\n\n' + notes if notes else None
         result[key] = CommandSpec(key, parser.help or '', 'ask' if key in CURATED_WRITES else 'auto', parser)
     return result
 

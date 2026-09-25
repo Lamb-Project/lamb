@@ -1,5 +1,5 @@
 """Current authenticated authority for saved result readback, shared by CLI/LiteShell."""
-from lamb.aac.result_store import ResultStore, page
+from lamb.aac.result_store import ResultStore, encode, page
 from lamb.aac.result_authority import require_current_authority
 
 
@@ -26,7 +26,15 @@ def read_result(auth, identity, path='', offset=0):
         runtime.validate_result_binding(binding,key)
     else:
         require_current_authority(auth, stored['origin'])
-    result = page(stored,path,offset)
+    notes = {}
+    if binding:
+        # Rebuilt from the harness-written origin selector and the canonical
+        # glossary; stored payload fields never become definitions.
+        from lamb.moodle.glossary import field_notes
+        notes = field_notes(stored['origin'].get('glossary'))
+    reserve = len(encode({'field_notes': notes})) if notes else 0
+    result = page(stored,path,offset,reserve)
     if binding: runtime.validate_result_binding(binding,key)
     else: require_current_authority(auth, stored['origin'])
+    if notes: result['field_notes'] = notes
     return result
