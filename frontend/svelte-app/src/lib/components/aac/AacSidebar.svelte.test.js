@@ -83,7 +83,7 @@ describe('persistent AAC sidebar', () => {
         expect(screen.getByText('Partial answer')).not.toBeNull();
         expect(screen.getByRole('status').textContent).toContain('Stopped receiving the response');
     });
-    it('shows real tool activity, retains its result during thinking and clears it for the next turn', async () => {
+    it('shows advanced tool activity, retains its result during thinking and clears it for the next turn', async () => {
         let progress, finish;
         sendMessageStream.mockImplementationOnce((id,text,chunk,done,error,status) => {
             progress=status;
@@ -95,6 +95,7 @@ describe('persistent AAC sidebar', () => {
         await fireEvent.keyDown(input,{key:'Enter'});
         await waitFor(()=>expect(progress).toBeTypeOf('function'));
         expect(screen.getByRole('status').textContent).toContain('Preparing a response');
+        progress({status:'preferences',advanced_mode:true});
         progress({status:'tool',command:'Reading assistant config'});
         await waitFor(()=>expect(screen.getByRole('status').textContent).toBe('Reading assistant config'));
         await waitFor(()=>expect(Number.parseInt(screen.getByText(/^\d+s$/).textContent)).toBeGreaterThan(0),{timeout:3500});

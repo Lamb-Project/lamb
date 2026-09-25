@@ -1,6 +1,6 @@
 {
   "name": "lamb-default",
-  "version": "1.11.3",
+  "version": "1.11.2",
   "requires": "lamb >= 0.7.11",
   "compatibility": "knowledge-brief",
   "layers": {
@@ -50,7 +50,7 @@
     "skills/moodle_assessment_draft.md": "f12e8c2418b2e39a1a473a031b5aa9f9b3d203dbf0beed64df1abce5e843c429",
     "skills/moodle_course_documents.md": "7793094f5b9a6501090528dd90f4291fc4e782028f390a0dd8403e0b54015b78",
     "skills/moodle_forums.md": "3a33173bfc33ffec43bcd3450644b969d576bcadb3ac647dcad7a0185f21046d",
-    "skills/moodle_triage.md": "5b034d28dfd63cc9a1be538da1c7117ff98ca88a5e02d6d1b06147bd4b1ce267",
+    "skills/moodle_triage.md": "85cc6993fdacd3040ffacc133b5bfa5aadf58f9404d8c141dcbaf472e846a4dc",
     "skills/publish_assistant.md": "2f49e67253d91765c867b393bdcd059d40768cd71584f3aac1032bf7358c011b",
     "skills/test_and_evaluate.md": "b8e56309ee9615999d9c961ed2304e568f39117a15f9419923044833e6243794",
     "skills/test_lti_tools.md": "14528d8e0b4988bb2044a17adb73fdf8d2a8878d8d13cb0a8ce8d791a7b9f7cf"

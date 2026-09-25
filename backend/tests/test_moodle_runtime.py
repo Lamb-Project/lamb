@@ -1,5 +1,4 @@
 import asyncio
-import pytest
 from unittest.mock import patch
 from urllib.parse import parse_qs
 import respx
@@ -13,16 +12,9 @@ from lamb.aac.authorization import ActionAuthorizer
 
 
 def runtime(stores):
-    from lamb.moodle.discovery import requirements
-    from lamb.moodle.analytics.recipes import RECIPES
-    from moodle_cli.services.content import CONTENT_FUNCTIONS
-    functions = sorted(set().union(*requirements().values(),
-        *(set(recipe['functions']) for recipe in RECIPES.values()),
-        {item[0] for item in CONTENT_FUNCTIONS.values()}))
     _,store=stores;cipher=TokenCipher(Fernet.generate_key());snap=store.snapshot()
     encrypted=cipher.encrypt('fixture',organization_id=1,owner_id=7,base_url='https://moodle.test')
-    store.save({'base_url':'https://moodle.test','moodle_user_id':70,'username':'demo','token_encrypted':encrypted,
-                'functions':functions},expected_generation=snap['generation'],expected_policy=snap['policy'])
+    store.save({'base_url':'https://moodle.test','moodle_user_id':70,'username':'demo','token_encrypted':encrypted},expected_generation=snap['generation'],expected_policy=snap['policy'])
     return MoodleRuntime(store,cipher=cipher)
 
 
@@ -85,45 +77,3 @@ def test_dynamic_capability_is_appended_only_when_changed(stores):
     rt.store.disconnect();attach_to_agent(agent,rt.store)
     assert agent.shell.allowed_commands=={'assistant.get'}
     assert len(agent.conversation)==2 and 'unavailable' in agent.conversation[-1]['content']
-
-
-@pytest.mark.parametrize('response',[
-    {'run_id':'recoverable-run','processed_students':25,'continue_command':'next step'},
-    {'chart_id':'finished-chart','collection_run_id':'recoverable-run'},
-])
-def test_completion_run_always_uses_durable_first_step(stores,response):
-    rt=runtime(stores)
-    params={'recipe':'activity-completion','course_id':7,'language':'es','tz':'Europe/Madrid'}
-    with patch('lamb.moodle.analytics.completion_tasks.execute',
-               side_effect=[{'run_id':'recoverable-run'},response]) as execute, \
-         patch('lamb.moodle.analytics.recipes.run_recipe') as legacy:
-        assert rt.task('analytics.run',params)==response
-    legacy.assert_not_called()
-    assert execute.call_count==2
-    first,second=[call.args for call in execute.call_args_list]
-    assert first[0] is rt and first[3:]==(70,'analytics.start',params)
-    assert second[:4]==first[:4]
-    assert second[4:]==('analytics.continue',{'run_id':'recoverable-run','step':0})
-
-
-def test_other_analytics_recipes_keep_their_collector(stores):
-    rt=runtime(stores)
-    params={'recipe':'course-access','course_id':7,'since':'2026-09-01','language':'en','tz':'UTC'}
-    with patch('lamb.moodle.analytics.completion_tasks.execute') as execute, \
-         patch('lamb.moodle.analytics.recipes.run_recipe',return_value={'chart_id':'access'}) as collect:
-        assert rt.task('analytics.run',params)=={'chart_id':'access'}
-    execute.assert_not_called()
-    assert collect.call_args.args[2:]==(70,params)
-
-
-@pytest.mark.parametrize('recipe',['forum-participation','forum-discussions','forum-network'])
-def test_forum_run_routes_to_recoverable_first_step(stores,recipe):
-    rt=runtime(stores)
-    params={'recipe':recipe,'course_id':7,'forum_id':8,'since':100,'until':150,'language':'es','tz':'UTC'}
-    response={'run_id':'forum-run','continue_command':'next forum step'}
-    with patch('lamb.moodle.analytics.forum_tasks.execute',side_effect=[{'run_id':'forum-run'},response]) as execute, \
-         patch('lamb.moodle.analytics.recipes.run_recipe') as legacy:
-        assert rt.task('analytics.run',params)==response
-    legacy.assert_not_called()
-    assert [call.args[4:] for call in execute.call_args_list]==[
-        ('analytics.start',params),('analytics.continue',{'run_id':'forum-run','step':0})]

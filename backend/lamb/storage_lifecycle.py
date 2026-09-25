@@ -35,6 +35,8 @@ def run_references(runs, now):
     """All idempotent retries as well as the latest continuation remain usable."""
     protected = set()
     for run in runs:
+        from lamb.moodle.recovery_integrity import validate_retention
+        validate_retention(run)
         if run['expires_at'] > now:
             protected.update(filter(None, (run.get('last_result'), run.get('working'))))
             protected.update(run.get('next_results', {}))
@@ -55,17 +57,11 @@ class OwnerStorage:
         return ImportStore(self.org, self.owner, self.moodle)
 
     def inspect(self):
-        from lamb.moodle.charts import MAX_CHARTS,MAX_CALENDAR_BYTES
         stores = {
             'aac_results': (self.root / 'aac_results' / str(self.org) / str(self.owner), 32 * 1024 * 1024, '24h; oldest unpinned result may be evicted at quota'),
             'evidence': (self.tasks / 'results', 16 * 4 * 1024 * 1024, '24h; live run references protected from quota eviction'),
             'runs': (self.tasks / 'runs', 4 * 8 * 1024 * 1024, '24h; live runs not evicted'),
-            'completion_runs': (self.tasks / 'completion-runs', 4 * 1024 * 1024, '24h; private learner cursors; live runs not evicted'),
-            'quiz_runs': (self.tasks / 'quiz-runs', 16 * 1024 * 1024, '24h; private quiz attempts; live runs not evicted'),
-            'gradebook_runs': (self.tasks / 'gradebook-runs', 32 * 1024 * 1024, '24h; private gradebook evidence; live runs not evicted'),
-            'forum_analytics_runs': (self.tasks / 'forum-analytics-runs', 16 * 1024 * 1024, '24h; private forum metadata; live runs not evicted'),
-            'charts': (self.moodle / 'charts' / str(self.org) / str(self.owner), MAX_CHARTS * MAX_CALENDAR_BYTES,
-                       'durable; no automatic expiry; 100 records; 128 KiB per chart, 512 KiB per deadline calendar or forum table'),
+            'charts': (self.moodle / 'charts' / str(self.org) / str(self.owner), 100 * 128 * 1024, 'durable; no automatic expiry'),
             'course_cache': (self.tasks / 'course-cache', None, 'rebuildable; retained until explicit source refresh'),
         }
         inventory = {}
@@ -114,44 +110,23 @@ class OwnerStorage:
         from lamb.moodle.results import MAX_RESULT_BYTES
         with file_lock(self.tasks / 'runs', blocking=False):
             run_files = files(self.tasks / 'runs')
-            runs = [read_json(path, MAX_RUN_BYTES) for path in run_files]
-            protected = run_references(runs, now)
+            from lamb.moodle.recovery_integrity import retention_record
+            runs = [retention_record(path, MAX_RUN_BYTES) for path in run_files]
+            unknown = sum(run is None for run in runs)
+            result['unreadable_runs_preserved'] = unknown
+            protected = run_references([run for run in runs if run is not None], now)
             with file_lock(self.tasks / 'results', blocking=False):
                 for path in files(self.tasks / 'results'):
+                    if unknown:
+                        continue
                     envelope = read_json(path, MAX_RESULT_BYTES)
                     if envelope['expires_at'] <= now and path.stem not in protected:
                         remove(path)
                 temporaries(self.tasks / 'results')
             for path, run in zip(run_files, runs):
-                if run['expires_at'] <= now:
+                if not unknown and run is not None and run['expires_at'] <= now:
                     remove(path)
             temporaries(self.tasks / 'runs')
-
-        # Chart snapshots are durable, but interrupted atomic writes are not.
-        # Never apply an expiry policy to the published JSON files here.
-        chart_folder = self.moodle / 'charts' / str(self.org) / str(self.owner)
-        with file_lock(chart_folder, blocking=False):
-            temporaries(chart_folder)
-
-        from lamb.moodle.analytics.checkpoints import MAX_CHECKPOINT_BYTES
-        from lamb.moodle.analytics.quiz_run import MAX_QUIZ_CHECKPOINT_BYTES
-        from lamb.moodle.analytics.forum_checkpoints import MAX_FORUM_CHECKPOINT_BYTES
-        from lamb.moodle.analytics.gradebook_run import MAX_GRADEBOOK_CHECKPOINT_BYTES
-        import math
-        for namespace, bound in (('completion-runs', MAX_CHECKPOINT_BYTES), ('quiz-runs', MAX_QUIZ_CHECKPOINT_BYTES),
-                                 ('forum-analytics-runs', MAX_FORUM_CHECKPOINT_BYTES),
-                                 ('gradebook-runs', MAX_GRADEBOOK_CHECKPOINT_BYTES)):
-            folder = self.tasks / namespace
-            with file_lock(folder, blocking=False):
-                records = [(path, read_json(path, bound)) for path in files(folder)]
-                for _, record in records:
-                    expiry = record.get('expires_at')
-                    if type(expiry) not in (int, float) or not math.isfinite(expiry):
-                        raise ValueError('Cannot verify analytics checkpoint expiry')
-                for path, record in records:
-                    if record['expires_at'] <= now:
-                        remove(path)
-                temporaries(folder)
 
         store = self.imports()
         with store.lock():

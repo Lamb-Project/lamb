@@ -7458,6 +7458,40 @@
           "is_flag": false
         }
       ]
+    },
+    "moodle.chart.list": {
+      "params": [
+        {
+          "name": "offset",
+          "kind": "TyperOption",
+          "opts": [
+            "--offset"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "0",
+          "type": "<IntRange x>=0>",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "moodle.chart.read": {
+      "params": [
+        {
+          "name": "chart_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "chart_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
     }
   },
   "shell_contracts": {
@@ -8047,7 +8081,9 @@
     "moodle.folder.finish": "supported: shared Moodle folder/document contract; --session and --confirm are CLI transport fields",
     "moodle.course.contents": "supported: shared Moodle folder/document contract; --session and --confirm are CLI transport fields",
     "moodle.import.folder": "supported: shared Moodle folder/document contract; --session and --confirm are CLI transport fields",
-    "moodle.chart.submissions": "supported: shared read-only assignment chart recipe, current instructor access, owner-bound aggregate snapshot and authenticated SVG"
+    "moodle.chart.submissions": "supported: shared read-only assignment chart recipe, current instructor access, owner-bound aggregate snapshot and authenticated SVG",
+    "moodle.chart.list": "supported: shared owner-bound saved-chart task, current course authorization, immutable evidence; no implicit source refresh",
+    "moodle.chart.read": "supported: shared owner-bound saved-chart task, current course authorization, immutable evidence; no implicit source refresh"
   },
   "shell_only": [
     "assistant.chat",
@@ -8088,7 +8124,9 @@
     "moodle.folder.status": "moodle.folder.status",
     "moodle.folder.finish": "moodle.folder.finish",
     "moodle.course.contents": "moodle.course.contents",
-    "moodle.import.folder": "moodle.import.folder"
+    "moodle.import.folder": "moodle.import.folder",
+    "moodle.chart.list": "moodle.chart.list",
+    "moodle.chart.read": "moodle.chart.read"
   },
   "cli_only_transport": {
     "moodle.documents.start": "AAC already supplies a conversation-owned document scope"

@@ -111,6 +111,28 @@ def test_saved_chart_is_immutable_private_and_owner_bound(tmp_path):
     with pytest.raises(PermissionError):store.read(id)
 
 
+@pytest.mark.parametrize('recipe,command', [
+    ('grade-distribution-v1', 'moodle.analytics.grade-distribution'),
+    ('completion-evidence-v1', 'moodle.analytics.completion-evidence'),
+    ('unknown-future-recipe', None),
+    ('assignment-submissions-v1', 'moodle.analytics.other'),
+])
+def test_restoration_withholds_unsupported_charts_without_deleting_them(tmp_path, recipe, command):
+    store = ChartStore(runtime(tmp_path))
+    data = dict(snapshot(), recipe=recipe)
+    identity = store.save(data, {'course_id': 2})
+    path = store.root / (identity + '.json')
+    if command:
+        envelope = json.loads(path.read_text())
+        envelope['command'] = command
+        path.write_text(json.dumps(envelope))
+    before = path.read_bytes()
+    with pytest.raises(PermissionError, match='unavailable'):
+        store.read(identity)
+    assert store.listing()['items'] == []
+    assert path.read_bytes() == before
+
+
 def test_saved_chart_listing_is_bounded_and_never_leaks_denied_titles(tmp_path):
     store = ChartStore(runtime(tmp_path))
     for i in range(23):

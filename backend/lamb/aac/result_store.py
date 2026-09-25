@@ -53,13 +53,7 @@ def resolve(value, path):
     return value
 
 
-PRIORITY = ('id','name','title','snapshot_date_label','as_of_local','timezone',
-            'grade_count_basis','grade_score_basis',
-            'forum_exclusion_basis','forum_reply_basis','network_layout_basis',
-            'window_start_local','window_end_local','window_label',
-            'attempt_policy','score_basis','preview_basis','retry_basis',
-            'basis','deadline_basis','deadline_provenance_caption',
-            'status','success','error','code','count','total','total_count',
+PRIORITY = ('id','name','title','status','success','error','code','count','total','total_count',
             'assistant_id','chat_id','run_id','result_id','revision','evidence','coverage','budget',
             'continue_command','evidence_command','source','summary','model','connector','llm',
             'rag_processor','RAG_collections','description')

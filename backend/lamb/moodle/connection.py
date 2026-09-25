@@ -6,6 +6,7 @@ from moodle_cli.client.qrlogin import parse_moodlemobile_uri, exchange_qr_login
 from moodle_cli.services.site import SiteService
 
 from .policy import canonical_base_url
+from .client import function_names
 
 
 class MoodleConnectionError(ValueError):
@@ -40,12 +41,10 @@ def establish_connection(policy, cipher, *, organization_id, owner_id, token=Non
             raise ValueError()
         if qr_user is not None and info.userid != int(qr_user):
             raise ValueError()
-        from .discovery import validated_functions
-        functions = validated_functions(info.functions)
         ciphertext = cipher.encrypt(token, organization_id=organization_id, owner_id=owner_id, base_url=policy.base_url)
     except Exception:
         raise MoodleConnectionError('Moodle identity verification failed. Reconnect with a valid token from the allowed site') from None
-    return {'schema_version': 2, 'functions': functions, 'base_url': policy.base_url, 'moodle_user_id': info.userid,
+    return {'schema_version': 1, 'functions': function_names(info.functions), 'base_url': policy.base_url, 'moodle_user_id': info.userid,
             'username': info.username, 'token_encrypted': ciphertext,
             'connected_at': datetime.now(timezone.utc).isoformat()}
 

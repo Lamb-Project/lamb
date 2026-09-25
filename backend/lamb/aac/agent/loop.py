@@ -208,13 +208,8 @@ def _extract_artifacts(cmd: str, result: Any) -> list[dict]:
     if len(tokens) < 2:
         return []
 
-    if tokens[:3] in (['moodle', 'chart', 'submissions'], ['moodle','analytics','run'],
-                     ['moodle','analytics','continue']) and getattr(result, 'success', False):
-        data = getattr(result, 'data', None)
-        if isinstance(data, dict) and data.get('chart_id') and data.get('title'):
-            return [{'type': 'chart', 'id': data['chart_id'], 'title': data['title']}]
-        # A successful collection step need not have published a chart yet.
-        return []
+    if tokens[:3] == ['moodle', 'chart', 'submissions'] and getattr(result, 'success', False):
+        return [{'type': 'chart', 'id': result.data['chart_id'], 'title': result.data['title']}]
     if tokens[0] == 'moodle':
         from lamb.moodle.audit import command_artifacts
         return command_artifacts(cmd, result)
@@ -483,7 +478,6 @@ class AgentLoop(SkillRouting):
         from lamb.aac.language import append_turn_language
         self._turn_id = str(uuid.uuid4())
         self._tool_rounds = 0
-        self._moodle_help_used = False
         self.announce_linked_context()
         append_turn_language(self)
         partial = ''
@@ -529,8 +523,6 @@ class AgentLoop(SkillRouting):
     async def _generate_agent_events(self, streaming: bool) -> AsyncIterator[dict | str]:
         """Shared legacy turn control; transport does not change tool semantics."""
         tool_rounds = 0
-        analytics_evidence = None
-        analytics_repair = None
         while True:
             if self.pending_action:
                 from lamb.aac.approvals import explain_pending_action
@@ -546,22 +538,15 @@ class AgentLoop(SkillRouting):
                 yield {"status": "approval", "approval": card(self.pending_action, self.skill_state)}
                 return
             yield {"status": "thinking"}
-            tools_enabled = tool_rounds < self.max_tool_rounds and not self.pending_action and analytics_repair is None
+            tools_enabled = tool_rounds < self.max_tool_rounds and not self.pending_action
             from lamb.aac.result_store import provider_messages
             conversation = provider_messages(self.conversation)
             if self.pack and self.skill_state.get('brief'):
                 from lamb.aac.glossary import model_messages
                 conversation = model_messages(conversation, self.skill_state['brief']['glossary'])
             messages = [{"role": "system", "content": self.system_prompt}] + conversation
-            if analytics_evidence:
-                from lamb.aac.analytics_response import evidence_instruction
-                messages.append({'role':'user', 'content':evidence_instruction(analytics_evidence, self.skill_state)})
-            if analytics_repair:
-                messages += analytics_repair
             message = None
-            # Guarded prose must not reach either SSE or saved history before
-            # validation, including when the ordinary tool budget is exhausted.
-            async with aclosing(self._request_message(messages, tools_enabled, streaming and analytics_evidence is None)) as events:
+            async with aclosing(self._request_message(messages, tools_enabled, streaming)) as events:
                 async for event in events:
                     if isinstance(event, dict) and "_message" in event:
                         message = event["_message"]
@@ -585,12 +570,6 @@ class AgentLoop(SkillRouting):
                         result = {"success": False, "error": "Not executed: confirmation or a newly loaded workflow requires a new decision."}
                     else:
                         result = await self._execute_tool(tc)
-                    from lamb.aac.analytics_response import contract
-                    new_contract = contract(result)
-                    if new_contract:
-                        new_contract['publication_unknown'] = (new_contract['publication_unknown'] or
-                            bool(analytics_evidence and analytics_evidence['publication_unknown']))
-                        analytics_evidence = new_contract
                     waiting = waiting or bool(result.get("awaiting_user_confirmation") or result.get("skill_loaded"))
                     try:
                         model_command = json.loads(tc.function.arguments).get('command', '')
@@ -607,21 +586,6 @@ class AgentLoop(SkillRouting):
 
             # A provider that ignores the no-tools request must not execute more work.
             text = message["content"]
-            if analytics_evidence and not calls:
-                from lamb.aac.analytics_response import violations, repair_instruction, failure_notice
-                errors = violations(text, analytics_evidence)
-                if errors:
-                    if self.session_logger:
-                        self.session_logger.log('analytics_response_rejected', {'reasons':errors, 'repair':analytics_repair is not None})
-                    if analytics_repair is None:
-                        analytics_repair = [{'role':'assistant','content':text},
-                                            # A normal correction turn works with providers whose
-                                            # chat templates only support an initial system message.
-                                            # This application-authored request is local, not saved
-                                            # as a user message, and cannot enable additional tools.
-                                            {'role':'user','content':repair_instruction(errors)}]
-                        continue
-                    text = failure_notice((self.skill_state or {}).get('ui_language','en'))
             if calls:
                 if self.pending_action:
                     from lamb.aac.language import confirmation_fallback
@@ -629,7 +593,7 @@ class AgentLoop(SkillRouting):
                 else:
                     text = "This turn reached its tool limit. No additional action was executed. Ask me to continue from the saved results."
                 yield text
-            elif not streaming or tools_enabled or analytics_evidence:
+            elif not streaming or tools_enabled:
                 yield text
             from lamb.aac.language import translation_confirmation, documentation_fallback_notice
             interpretation_notice = documentation_fallback_notice(self) + translation_confirmation(self)
@@ -689,17 +653,7 @@ class AgentLoop(SkillRouting):
             return result.to_dict()
         allowed = getattr(self.shell, 'allowed_commands', None)
         if allowed is not None and action_key not in allowed:
-            if action_key.startswith('moodle.'):
-                return {'success':False, 'error':'Command unavailable under LAMB policy or validated token capabilities. '
-                        'This does not establish a course permission denial. Use one local help lookup if needed.'}
             return {'success':False, 'error':'This command is outside your role; ask the appropriate administrator'}
-        if action_key == 'moodle.help':
-            if getattr(self, '_moodle_help_used', False):
-                result = ShellResult(False, error='Moodle help lookup budget exhausted for this turn. '
-                    'Use the returned documentation; if unresolved, explain the gap and stop.', command=command)
-                self._record_audit(command, action_key, False, 0, result)
-                return result.to_dict()
-            self._moodle_help_used = True
         policy = "auto" if help_requested else self.authorizer.check(action_key)
         interpretations = (self.skill_state or {}).get('translation_interpretations', [])
         # Even otherwise automatic resource writes require a reviewed interpretation.

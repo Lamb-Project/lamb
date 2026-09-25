@@ -341,8 +341,6 @@ class LiteShell:
         if key.startswith('moodle.'):
             if self.moodle is None:
                 raise ValueError('Moodle connector is unavailable in this conversation')
-            if key == 'moodle.help':
-                return ShellResult(success=True, data=self.moodle.execute('help', kwargs))
             import asyncio
             import threading
             cancel = threading.Event()
@@ -387,53 +385,14 @@ class LiteShell:
                     binding['course_ids'] = sorted(set(map(int, course)))
                 elif course:
                     binding['course_id'] = int(course)
-            if key in {'moodle.chart.read','moodle.analytics.result','moodle.analytics.capabilities','moodle.analytics.start','moodle.analytics.continue','moodle.analytics.assessments'}:
+            if key == 'moodle.chart.read':
                 binding['course_id'] = data['course_id']
-            if key in {'moodle.chart.list','moodle.analytics.runs'}:
+            if key == 'moodle.chart.list':
                 binding['course_ids'] = sorted({item['course_id'] for item in data['items']})
-                scopes = [scope for item in data['items'] for scope in item.get('resource_scopes', [])]
-                if scopes: binding['resource_scopes'] = scopes
-            elif isinstance(data,dict) and data.get('resource_scopes'):
-                binding['resource_scopes'] = data['resource_scopes']
-            if key in {'moodle.chart.list','moodle.analytics.runs'}:
-                grade_scopes = [scope for item in data['items'] for scope in item.get('grade_scopes', [])]
-                if grade_scopes: binding['grade_scopes'] = grade_scopes
-            elif isinstance(data,dict) and data.get('grade_scopes'):
-                binding['grade_scopes'] = data['grade_scopes']
-            if key in {'moodle.chart.list','moodle.analytics.runs'}:
-                completion_scopes = [scope for item in data['items'] for scope in item.get('completion_scopes', [])]
-                if completion_scopes: binding['completion_scopes'] = completion_scopes
-            elif isinstance(data,dict) and data.get('completion_scopes'):
-                binding['completion_scopes'] = data['completion_scopes']
-            if key in {'moodle.chart.list','moodle.analytics.runs'}:
-                date_scopes=[scope for item in data['items'] for scope in item.get('date_scopes',[])]
-                if date_scopes:binding['date_scopes']=date_scopes
-            elif isinstance(data,dict) and data.get('date_scopes'):
-                binding['date_scopes']=data['date_scopes']
-            if key in {'moodle.chart.list','moodle.analytics.runs'}:
-                quiz_scopes = [scope for item in data['items'] for scope in item.get('quiz_scopes', [])]
-                if quiz_scopes: binding['quiz_scopes'] = quiz_scopes
-            elif isinstance(data, dict) and data.get('quiz_scopes'):
-                binding['quiz_scopes'] = data['quiz_scopes']
-            if isinstance(data, dict) and isinstance(data.get('items'), list):
-                forum_scopes = [scope for item in data['items'] for scope in item.get('forum_scopes', [])]
-                if forum_scopes: binding['forum_scopes'] = forum_scopes
-            elif isinstance(data, dict) and data.get('forum_scopes'):
-                binding['forum_scopes'] = data['forum_scopes']
-            if isinstance(data, dict) and data.get('gradebook_scopes'):
-                binding['gradebook_scopes'] = data['gradebook_scopes']
-            elif isinstance(data, dict) and isinstance(data.get('items'), list):
-                gradebook_scopes = [scope for item in data['items'] for scope in item.get('gradebook_scopes', [])]
-                # Multiple saved comparisons can refer to the same exact item.
-                unique_scopes = []
-                for scope in gradebook_scopes:
-                    if scope not in unique_scopes:
-                        unique_scopes.append(scope)
-                if unique_scopes: binding['gradebook_scopes'] = unique_scopes
-            if key in {'moodle.chart.submissions','moodle.analytics.run','moodle.analytics.start','moodle.analytics.continue'}:
-                binding['course_id'] = data['course_id']
+            if key == 'moodle.chart.submissions':
+                binding['course_id'] = kwargs['course_id']
                 emit = getattr(bridge, 'emit', None)
-                if emit and data.get('chart_id'):
+                if emit:
                     await emit({'status': 'chart', 'chart_id': data['chart_id'], 'title': data['title']})
             return ShellResult(success=True,data=data,result_binding=binding)
         handler = COMMAND_REGISTRY[key]

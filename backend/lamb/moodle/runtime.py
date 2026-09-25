@@ -1,5 +1,5 @@
 """Per-command connection revalidation and scoped Moodle execution."""
-from .analytics.client import AnalyticsHTTPClient as MoodleHTTPClient
+from .client import MoodleHTTPClient
 from .secrets import TokenCipher
 from .cache import CourseCache
 from .scope import MoodleScope
@@ -42,85 +42,19 @@ class MoodleRuntime:
                           'write_groups':sorted(policy.write_groups), 'allow_grade_write':policy.allow_grade_write}}
 
     def validate_result_binding(self, binding, key):
-        expected = {k:v for k,v in binding.items() if k not in {'course_id', 'course_ids', 'resource_scopes', 'grade_scopes', 'completion_scopes', 'date_scopes', 'quiz_scopes', 'forum_scopes', 'gradebook_scopes'}}
+        expected = {k:v for k,v in binding.items() if k not in {'course_id', 'course_ids'}}
         if self.result_binding() != expected or key not in self.available():
             raise PermissionError('Moodle snapshot is no longer accessible; run a fresh read')
         courses = binding.get('course_ids', binding.get('course_id'))
-        if any(binding.get(field) for field in ('resource_scopes','grade_scopes','completion_scopes','date_scopes','quiz_scopes','forum_scopes','gradebook_scopes')) and not courses:
-            raise PermissionError('Resource evidence requires a bound course')
-        # A saved listing contains up to 20 charts, each with 20 selected items.
-        gradebook_scope_limit = 400 if key == 'moodle.chart.list' else 80 if key == 'moodle.analytics.runs' else 20
-        if key == 'moodle.analytics.assessments': gradebook_scope_limit = 100
-        if 'gradebook_scopes' in binding and (not isinstance(binding['gradebook_scopes'],list)
-                or not 1 <= len(binding['gradebook_scopes']) <= gradebook_scope_limit):
-            raise PermissionError('Invalid gradebook evidence scopes')
         if courses:
             snap = self.snapshot(); record = snap['record']
             token = (self._cipher or TokenCipher()).decrypt(record['token_encrypted'],
                 organization_id=self.store.organization_id, owner_id=self.store.owner_id, base_url=record['base_url'])
             try:
-                with MoodleHTTPClient(record['base_url'], token, readonly=True) as client:
+                with MoodleHTTPClient(record['base_url'], token, functions=record.get('functions'), readonly=True) as client:
                     scope = MoodleScope(client, record['moodle_user_id'])
                     for course in courses if isinstance(courses, (tuple, list)) else [courses]:
                         scope.require_teacher(course)
-                    from .analytics.authorization import validate_resource_scope
-                    resource_scopes = binding.get('resource_scopes', [])
-                    if not isinstance(resource_scopes,list) or len(resource_scopes)>20:
-                        raise PermissionError('Invalid resource evidence scopes')
-                    for resource_scope in resource_scopes:
-                        if not isinstance(resource_scope,dict) or resource_scope.get('course_id') not in (courses if isinstance(courses,(tuple,list)) else [courses]):
-                            raise PermissionError('Resource scope is outside the bound courses')
-                        validate_resource_scope(client, resource_scope)
-                    from .analytics.authorization import validate_grade_scope
-                    grade_scopes = binding.get('grade_scopes', [])
-                    if not isinstance(grade_scopes,list) or len(grade_scopes)>20:
-                        raise PermissionError('Invalid grade evidence scopes')
-                    for grade_scope in grade_scopes:
-                        if not isinstance(grade_scope,dict) or grade_scope.get('course_id') not in (courses if isinstance(courses,(tuple,list)) else [courses]):
-                            raise PermissionError('Grade scope is outside the bound courses')
-                        validate_grade_scope(client, grade_scope)
-                    from .analytics.authorization import validate_completion_scope
-                    completion_scopes = binding.get('completion_scopes', [])
-                    if not isinstance(completion_scopes,list) or len(completion_scopes)>20:
-                        raise PermissionError('Invalid completion evidence scopes')
-                    for completion_scope in completion_scopes:
-                        if not isinstance(completion_scope,dict) or completion_scope.get('course_id') not in (courses if isinstance(courses,(tuple,list)) else [courses]):
-                            raise PermissionError('Completion scope is outside the bound courses')
-                        validate_completion_scope(client, completion_scope)
-                    from .analytics.authorization import validate_date_scope
-                    date_scopes=binding.get('date_scopes',[])
-                    if not isinstance(date_scopes,list) or len(date_scopes)>20:
-                        raise PermissionError('Invalid date evidence scopes')
-                    for date_scope in date_scopes:
-                        if not isinstance(date_scope,dict) or date_scope.get('course_id') not in (courses if isinstance(courses,(tuple,list)) else [courses]):
-                            raise PermissionError('Date scope is outside the bound courses')
-                        validate_date_scope(client,date_scope)
-                    from .analytics.quiz_authorization import validate_quiz_scope
-                    from .analytics.gradebook_authorization import validate_gradebook_scope
-                    seen_gradebook_scopes = set()
-                    for gradebook_scope in binding.get('gradebook_scopes', []):
-                        if not isinstance(gradebook_scope,dict) or gradebook_scope.get('course_id') not in (courses if isinstance(courses,(tuple,list)) else [courses]):
-                            raise PermissionError('Gradebook scope is outside the bound courses')
-                        validate_gradebook_scope(client,gradebook_scope)
-                        identity = tuple(gradebook_scope[key] for key in ('course_id','grade_item_id','group_id'))
-                        if identity in seen_gradebook_scopes:
-                            raise PermissionError('Duplicate gradebook evidence scope')
-                        seen_gradebook_scopes.add(identity)
-                    quiz_scopes = binding.get('quiz_scopes', [])
-                    if not isinstance(quiz_scopes, list) or len(quiz_scopes) > 20:
-                        raise PermissionError('Invalid quiz evidence scopes')
-                    for quiz_scope in quiz_scopes:
-                        if not isinstance(quiz_scope, dict) or quiz_scope.get('course_id') not in (courses if isinstance(courses, (tuple, list)) else [courses]):
-                            raise PermissionError('Quiz scope is outside the bound courses')
-                        validate_quiz_scope(client, quiz_scope)
-                    from .analytics.forum_evidence_authorization import validate_forum_evidence_scope
-                    forum_scopes = binding.get('forum_scopes', [])
-                    if not isinstance(forum_scopes,list) or len(forum_scopes)>20:
-                        raise PermissionError('Invalid forum evidence scopes')
-                    for forum_scope in forum_scopes:
-                        if not isinstance(forum_scope,dict) or forum_scope.get('course_id') not in (courses if isinstance(courses,(tuple,list)) else [courses]):
-                            raise PermissionError('Forum scope is outside the bound courses')
-                        validate_forum_evidence_scope(client,forum_scope)
             except Exception as error:
                 from .forum_activity import transient_failure
                 if transient_failure(error):
@@ -145,24 +79,10 @@ class MoodleRuntime:
             keys=keys | {'assign.grade'}
         except PermissionError:
             pass
-        from .discovery import filter_keys
-        keys = keys | task_specs().keys() | document_specs().keys() | {'sync','cache.show'}
-        return {'moodle.' + key for key in filter_keys(keys, snap['record'])} | {'moodle.help'}
-
-    def require_available(self, key, params):
-        from .discovery import check_parameters, function_snapshot
-        record = self.snapshot()['record']
-        if function_snapshot(record) is None:
-            raise PermissionError('Reconnect on the Moodle page to validate token capabilities')
-        check_parameters(key, params, record)
-        if 'moodle.' + key not in self.available():
-            raise PermissionError('Command unavailable under LAMB policy and validated token capabilities')
+        return {'moodle.'+key for key in keys | task_specs().keys() | document_specs().keys()} | {'moodle.sync','moodle.cache.show','moodle.import.file'}
 
     def task(self, key, params, *, cancel=None, progress=None, full=False):
-        if key == 'analytics.window':
-            from .analytics.window import plan_window
-            return plan_window(**params)
-        if key in {'chart.list', 'chart.read', 'analytics.result'}:
+        if key in {'chart.list', 'chart.read'}:
             from .charts import ChartStore
             binding = self.result_binding()
             charts = ChartStore(self)
@@ -170,9 +90,6 @@ class MoodleRuntime:
                 data = charts.listing(params.get('offset', 0))
             else:
                 data = dict(charts.read(params['chart_id']), evidence_kind='saved_snapshot', refreshed=False)
-                if key == 'analytics.result':
-                    from .analytics.recipes import result_page
-                    data = result_page(params['chart_id'], data, params.get('offset',0))
             if self.result_binding() != binding:
                 raise PermissionError('Moodle connection changed; snapshot withheld')
             return data
@@ -189,35 +106,8 @@ class MoodleRuntime:
             organization_id=self.store.organization_id, owner_id=self.store.owner_id, base_url=record['base_url'])
         results = ResultStore(self.store.organization_id, self.store.owner_id, base_url=record['base_url'],
             moodle_user_id=record['moodle_user_id'], generation=snap['generation'], root=self.cache_root)
-        with MoodleHTTPClient(record['base_url'], token, readonly=True, timeout=15) as raw:
+        with MoodleHTTPClient(record['base_url'], token, functions=record.get('functions'), readonly=True, timeout=15) as raw:
             client = GuardedClient(raw, revalidate=revalidate, cancel=cancel)
-            if key == 'analytics.assessments':
-                from .analytics.gradebook_inventory import inventory_page
-                client.max_calls = 120  # At most 100 exact item rechecks plus course identity.
-                data = inventory_page(client,record['moodle_user_id'],**params)
-                client.checkpoint()
-                return data
-            if key in {'analytics.start','analytics.continue','analytics.runs'}:
-                from .analytics.recovery_tasks import execute
-                return execute(self,results,client,record['moodle_user_id'],key,params)
-            if key == 'analytics.capabilities':
-                from .analytics.recipes import capabilities
-                return capabilities(client, record['moodle_user_id'], params['course_id'])
-            if key == 'analytics.run':
-                if params['recipe'] in {'activity-completion', 'quiz-overview','forum-participation','forum-discussions','forum-network','assessment-comparison'}:
-                    if params['recipe']=='assessment-comparison':
-                        from .analytics.gradebook_tasks import execute
-                    elif params['recipe'] in {'forum-participation','forum-discussions','forum-network'}:
-                        from .analytics.forum_tasks import execute
-                    elif params['recipe'] == 'quiz-overview':
-                        from .analytics.quiz_tasks import execute
-                    else:
-                        from .analytics.completion_tasks import execute
-                    initial=execute(self,results,client,record['moodle_user_id'],'analytics.start',params)
-                    return execute(self,results,client,record['moodle_user_id'],'analytics.continue',
-                        {'run_id':initial['run_id'],'step':0})
-                from .analytics.recipes import run_recipe
-                return run_recipe(self, client, record['moodle_user_id'], params, progress=progress)
             if key == 'chart.submissions':
                 from .charts import chart_task
                 return chart_task(self, client, record['moodle_user_id'], params, progress=progress)
@@ -252,7 +142,6 @@ class MoodleRuntime:
         raise ValueError('Unknown Moodle task')
 
     def prepare_grade(self, params):
-        self.require_available('assign.grade', params)
         from .assessment import grade_review
         snap=self.snapshot()
         snap['policy'].require_write('grade')
@@ -261,7 +150,7 @@ class MoodleRuntime:
             raise PermissionError('Select the instructor course again after reconnecting')
         token=(self._cipher or TokenCipher()).decrypt(record['token_encrypted'],organization_id=self.store.organization_id,
             owner_id=self.store.owner_id,base_url=record['base_url'])
-        with MoodleHTTPClient(record['base_url'],token,readonly=True) as client:
+        with MoodleHTTPClient(record['base_url'],token,functions=record.get('functions'), readonly=True) as client:
             review=grade_review(client,params,owner_moodle_id=record['moodle_user_id'],context=self.context)
         current=self.snapshot()
         if current['generation']!=snap['generation'] or current['policy']!=snap['policy']:
@@ -269,14 +158,13 @@ class MoodleRuntime:
         return dict(review, connection_generation=snap['generation'])
 
     def prepare_import(self, key, params):
-        self.require_available(key, params)
         from .imports import prepare
         snap = self.snapshot(); record = snap['record']
         if self.context.get('generation') != snap['generation']:
             raise PermissionError('List sources again after reconnecting')
         token = (self._cipher or TokenCipher()).decrypt(record['token_encrypted'],
             organization_id=self.store.organization_id, owner_id=self.store.owner_id, base_url=record['base_url'])
-        with MoodleHTTPClient(record['base_url'], token, readonly=True) as client:
+        with MoodleHTTPClient(record['base_url'], token, functions=record.get('functions'), readonly=True) as client:
             review = prepare(self, client, record, token, key, params)
         current = self.snapshot()
         if current['generation'] != snap['generation'] or current['policy'] != snap['policy']:
@@ -284,14 +172,6 @@ class MoodleRuntime:
         return review
 
     def execute(self, key, params, *, confirmed=False, review=None, cancel=None, progress=None):
-        if key == 'help':
-            from .discovery import help_result
-            return help_result({k.removeprefix('moodle.') for k in self.available()},
-                               self.snapshot()['record'], params['path'])
-        self.require_available(key, params)
-        if key == 'content.types':
-            from .discovery import content_choices, function_snapshot
-            return content_choices(function_snapshot(self.snapshot()['record']) or set())
         if key in task_specs():
             return self.task(key, params, cancel=cancel, progress=progress)
         snap=self.snapshot()
@@ -304,7 +184,7 @@ class MoodleRuntime:
         if self.context.get('generation') != snap['generation']:
             self.context.clear();self.context['generation']=snap['generation']
         if key in document_specs():
-            with MoodleHTTPClient(record['base_url'], token, readonly=True) as client:
+            with MoodleHTTPClient(record['base_url'], token, functions=record.get('functions'), readonly=True) as client:
                 if key.startswith('folder.'):
                     from .folders import listing, inventory, load_batch, status, confirm_folder
                     if key == 'folder.list':
@@ -352,22 +232,22 @@ class MoodleRuntime:
             fresh=self.prepare_grade(params)
             if fresh!=review:
                 raise PermissionError('Submission or proposal changed; review the updated proposal before saving')
-            with MoodleHTTPClient(record['base_url'],token,readonly=False) as client:
+            with MoodleHTTPClient(record['base_url'],token,functions=record.get('functions'), readonly=False) as client:
                 return save_grade(client,params)
         if key in FORUM_WRITES:
             snap['policy'].require_write('forum')
             if confirmed is not True:
                 raise PermissionError('Moodle forum writes require explicit user confirmation')
-            with MoodleHTTPClient(record['base_url'],token,readonly=True) as client:
+            with MoodleHTTPClient(record['base_url'],token,functions=record.get('functions'), readonly=True) as client:
                 verify_forum_target(client,key,params,owner_moodle_id=record['moodle_user_id'],context=self.context)
             current=self.snapshot()
             if current['generation']!=snap['generation'] or current['policy']!=snap['policy']:
                 raise PermissionError('Moodle connection changed before write; nothing posted')
-            with MoodleHTTPClient(record['base_url'],token,readonly=False) as client:
+            with MoodleHTTPClient(record['base_url'],token,functions=record.get('functions'), readonly=False) as client:
                 return write_forum(client,key,params)
         cache=CourseCache(self.store.organization_id,self.store.owner_id,base_url=record['base_url'],
                           moodle_user_id=record['moodle_user_id'],root=self.cache_root)
-        with MoodleHTTPClient(record['base_url'],token,readonly=True) as client:
+        with MoodleHTTPClient(record['base_url'],token,functions=record.get('functions'), readonly=True) as client:
             if key=='sync':
                 result=sync_course(client,cache,params['course_id'],params.get('section'))
             elif key=='cache.show':
@@ -409,11 +289,9 @@ def attach_to_agent(agent, store):
     facts=None
     if snapshot:
         record=snapshot['record']
-        from .discovery import recipe_sources
         facts={'base_url':record['base_url'],'username':record['username'],
                'pack_version':getattr(getattr(agent,'pack',None),'version',None),
-               'generation':snapshot['generation'],'commands':sorted(keys),'analytics_sources':recipe_sources(record),
-               'model':agent.model,'provider':getattr(getattr(agent,'llm_client',None),'_lamb_aac_driver',{}).get('provider','unknown'),'forum_write': 'moodle.forum.post' in keys,'grade_write': 'moodle.assign.grade' in keys}
+               'generation':snapshot['generation'],'commands':sorted(keys),'model':agent.model,'provider':getattr(getattr(agent,'llm_client',None),'_lamb_aac_driver',{}).get('provider','unknown'),'forum_write': 'moodle.forum.post' in keys,'grade_write': 'moodle.assign.grade' in keys}
     state=agent.skill_state
     if state.get('moodle_capability')==facts: return
     state['moodle_capability']=facts
@@ -422,20 +300,13 @@ def attach_to_agent(agent, store):
         if facts["grade_write"]: access += "; grade writes require submission/proposal review and explicit approval"
         line=f"Moodle: {facts['base_url']} as {facts['username']}, {access}. AAC driver provider: {facts['provider']}; model: {agent.model}. Student names, posts and grades sent to this driver reach that provider. A hosted provider receives them off premises; a local deployment keeps them on premises."
         line += ' Read-only Moodle commands are automatically authorized: perform the relevant reads for the user request without asking approval. Clarify only genuinely missing or ambiguous scope. Imports are LAMB writes and still require the application approval, even with read-only Moodle access. Never add a preliminary approval menu.'
-        from .discovery import help_result
-        enabled = {key.removeprefix('moodle.') for key in keys}
-        references=[help_result(enabled, snapshot['record'], key)['help']
-                    for key in (*task_specs(), *document_specs()) if key in enabled]
-        references += ['Use the loaded recipe first. If syntax is missing, use ONE targeted local help call: '
-                       'moodle --help, moodle GROUP --help, or moodle GROUP COMMAND --help. '
-                       'Help lists only commands allowed by LAMB policy and validated token functions, without Moodle requests. '
-                       'Do not explore by repeated help calls or speculative execution. If unresolved, explain the gap and stop. '
-                       'Never infer a permission denial from missing instructions. Course/resource checks still apply at execution.']
-        if 'course.get' in enabled:
-            references += ['Select the course with moodle course get COURSE_ID before activity or learner queries. '
-                           'A course ID in a learning scenario is context, not permission.']
-        if enabled == {'help'}:
-            references += [help_result(enabled, snapshot['record'], '')['notice']]
+        references=[spec.reference() for spec in (*task_specs().values(), *document_specs().values())]
+        references += ['moodle course list: list your enrolled courses',
+                       'Raw Moodle operations are documented in the loaded workflow. Do not invent commands or discover a workflow by trial and error.']
+        references += ['Raw activity/individual commands need moodle course get COURSE_ID first. The news task resolves each course itself. A course ID in a learning scenario is a suggestion, not permission.',
+                       'moodle import file FILE_ID --to kb ID | --single-file (confirmation required; use file_id from moodle file list, not a local path)',
+                       'moodle sync COURSE_ID [--section course|forums|assignments|enrolment|calendar]',
+                       'moodle cache show COURSE_ID --section course|forums|assignments|enrolment|calendar']
         pack=getattr(agent,'pack',None)
         if pack:
             from lamb.aac.skill_loader import list_skills

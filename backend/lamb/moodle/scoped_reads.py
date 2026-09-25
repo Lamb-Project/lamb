@@ -78,7 +78,11 @@ def execute_scoped_read(client,key,params,*,owner_moodle_id,context):
     if key=='user.list':return scope.search_class(course,params['key'],params['value'])
     if key=='enrol.list-users':
         users=plain(list(scope.class_roster(course).values()))
-        return [u for u in users if not params['role'] or any(r.get('shortname')==params['role'] for r in u['roles'])]
+        # Minimize at the server boundary, before AAC receives or caches data.
+        # Explicit scoped user-detail commands remain separate from a roster.
+        return [{'id':u['id'], 'fullname':u['fullname'],
+                 'roles':[{'shortname':r['shortname']} for r in u['roles'] if r.get('shortname')]}
+                for u in users if not params['role'] or any(r.get('shortname')==params['role'] for r in u['roles'])]
     if key in RESOURCE_READS or key in {'assign.submissions','assign.grades','forum.posts','course.module','quiz.review','file.list','wiki.page'}:
         contents=CourseService(client).get_contents(course)
         modules=[module for section in contents for module in section.modules]

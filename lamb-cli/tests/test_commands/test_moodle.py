@@ -1,86 +1,10 @@
 import json
 import shlex
-import pytest
 from unittest.mock import patch
 from typer.testing import CliRunner
 from lamb_cli.main import app
 
 runner = CliRunner()
-
-
-def test_assessment_inventory_forwards_exact_cursor():
-    with patch('lamb_cli.commands.moodle.get_client') as client:
-        client.return_value.__enter__.return_value.post.return_value={'items':[]}
-        result=runner.invoke(app,['moodle','analytics','assessments','--course','7','--group','0',
-            '--after-id','3','--through-id','9','--limit','2'])
-        assert result.exit_code==0,result.output
-        tokens=shlex.split(client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'])
-        assert tokens==['moodle','analytics','assessments','--course','7','--group','0','--after-id','3','--through-id','9','--limit','2']
-
-
-@pytest.mark.parametrize('verb',['run','start'])
-def test_assessment_comparison_preserves_repeated_grade_item_ids(verb):
-    with patch('lamb_cli.commands.moodle.get_client') as client:
-        client.return_value.__enter__.return_value.post.return_value={'run_id':'saved'}
-        result=runner.invoke(app,['moodle','analytics',verb,'assessment-comparison','--course','7',
-            '--grade-item','2','--grade-item','3','--group','4'])
-        assert result.exit_code==0,result.output
-        tokens=shlex.split(client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'])
-        assert [tokens[i+1] for i,value in enumerate(tokens) if value=='--grade-item']==['2','3']
-        assert tokens[tokens.index('--group')+1]=='4'
-
-@pytest.mark.parametrize('recipe',['forum-participation','forum-discussions','forum-network'])
-def test_forum_run_start_forward_exact_scope_and_calendar_bounds(recipe):
-    for verb in ('run','start'):
-        with patch('lamb_cli.commands.moodle.get_client') as client:
-            client.return_value.__enter__.return_value.post.return_value={'run_id':'saved'}
-            result=runner.invoke(app,['moodle','analytics',verb,recipe,'--course','7',
-                '--forum','8','--since','2025-10-25','--through','2025-10-26','--tz','Europe/Madrid','--group','3'])
-            assert result.exit_code==0,result.output
-            tokens=shlex.split(client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'])
-            for flag,value in [('--forum','8'),('--since','2025-10-25'),('--through','2025-10-26'),('--group','3')]:
-                assert tokens[tokens.index(flag)+1]==value
-
-
-def test_quiz_run_and_start_forward_exact_policy_and_scope():
-    for verb in ('run', 'start'):
-        with patch('lamb_cli.commands.moodle.get_client') as client:
-            client.return_value.__enter__.return_value.post.return_value = {'run_id': 'saved'}
-            result = runner.invoke(app, ['moodle', 'analytics', verb, 'quiz-overview', '--course', '9',
-                '--quiz', '7', '--attempt-policy', 'all_finished', '--group', '3'])
-            assert result.exit_code == 0, result.output
-            tokens = shlex.split(client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'])
-            for flag, value in [('--quiz','7'), ('--attempt-policy','all_finished'), ('--group','3')]:
-                assert tokens[tokens.index(flag)+1] == value
-
-
-def test_inclusive_window_is_forwarded_without_cli_date_reinterpretation():
-    with patch('lamb_cli.commands.moodle.get_client') as client:
-        client.return_value.__enter__.return_value.post.return_value={'calendar_days':92,'collection_supported':False}
-        result=runner.invoke(app,['moodle','analytics','window','--since','2026-06-01',
-            '--through','2026-08-31','--tz','Europe/Madrid'])
-        assert result.exit_code==0,result.output
-        tokens=shlex.split(client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'])
-        assert tokens==['moodle','analytics','window','--since','2026-06-01','--tz','Europe/Madrid','--through','2026-08-31']
-        result=runner.invoke(app,['moodle','analytics','run','view-trends','--course','7',
-            '--since','2026-08-01','--through','2026-08-31','--tz','Europe/Madrid'])
-        assert result.exit_code==0,result.output
-        tokens=shlex.split(client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'])
-        assert tokens[tokens.index('--through')+1]=='2026-08-31'
-
-
-def test_view_trends_uses_authenticated_analytics_task_with_window_and_group():
-    with patch('lamb_cli.commands.moodle.get_client') as client:
-        client.return_value.__enter__.return_value.post.return_value={'chart_id':'saved'}
-        result=runner.invoke(app,['moodle','analytics','run','view-trends','--course','7',
-            '--since','2026-09-01','--until','2026-09-20','--group','2','--tz','Europe/Madrid'])
-        assert result.exit_code==0,result.output
-        call=client.return_value.__enter__.return_value.post.call_args
-        assert call.args==('/creator/moodle/tasks',)
-        tokens=shlex.split(call.kwargs['json']['command'])
-        assert tokens[:4]==['moodle','analytics','run','view-trends']
-        for flag,value in [('--course','7'),('--since','2026-09-01'),('--until','2026-09-20'),('--group','2')]:
-            assert tokens[tokens.index(flag)+1]==value
 
 
 def test_news_uses_lamb_connection_and_preserves_course_and_timezone_arguments():
@@ -208,55 +132,3 @@ def test_saved_chart_list_and_read_contracts():
             result = runner.invoke(app, ['moodle','chart',*args])
             assert result.exit_code == 0, result.output
             assert client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command'] == command
-
-
-def test_analytics_commands_share_authenticated_task_contract():
-    examples = [
-        (['run','deadlines','--course','7','--since','2026-10-01','--until','2026-11-01'],
-         'moodle analytics run deadlines --course 7 --tz UTC --language en --since 2026-10-01 --until 2026-11-01'),
-        (['start','activity-completion','--course','7','--language','es'],
-         'moodle analytics start activity-completion --course 7 --tz UTC --language es'),
-        (['continue','run-id','--step','2'],'moodle analytics continue run-id --step 2'),
-        (['runs'],'moodle analytics runs'),
-        (['run','activity-completion','--course','7'],
-         'moodle analytics run activity-completion --course 7 --tz UTC --language en'),
-        (['run','grade-distribution','--course','7','--assignment','42'],
-         'moodle analytics run grade-distribution --course 7 --tz UTC --language en --assignment 42'),
-        (['capabilities', '--course', '7'],
-         'moodle analytics capabilities --course 7'),
-        (['run', 'grading-queue', '--course', '7'],
-         'moodle analytics run grading-queue --course 7 --tz UTC --language en'),
-        (['run', 'course-access', '--course', '7', '--since', '2026-09-01',
-          '--tz', 'Europe/Madrid', '--language', 'es'],
-         'moodle analytics run course-access --course 7 --tz Europe/Madrid --language es --since 2026-09-01'),
-        (['result', 'saved-id', '--offset', '20'],
-         'moodle analytics result saved-id --offset 20'),
-    ]
-    for args, command in examples:
-        with patch('lamb_cli.commands.moodle.get_client') as client:
-            client.return_value.__enter__.return_value.post.return_value = {'refreshed': False}
-            result = runner.invoke(app, ['moodle', 'analytics', *args])
-            assert result.exit_code == 0, result.output
-            call = client.return_value.__enter__.return_value.post.call_args
-            assert call.args == ('/creator/moodle/tasks',)
-            assert call.kwargs['json']['command'] == command
-            assert json.loads(result.output)['refreshed'] is False
-
-
-def test_analytics_rejects_invalid_local_bounds_without_request():
-    for args in [['capabilities', '--course', '0'],
-                 ['run', 'course-access', '--course', '-1'],
-                 ['result', 'saved-id', '--offset', '-1']]:
-        with patch('lamb_cli.commands.moodle.get_client') as client:
-            assert runner.invoke(app, ['moodle', 'analytics', *args]).exit_code != 0
-            client.assert_not_called()
-
-
-def test_resource_reach_forwards_group_and_exclusive_date_boundary():
-    with patch('lamb_cli.commands.moodle.get_client') as client:
-        client.return_value.__enter__.return_value.post.return_value={}
-        result=runner.invoke(app,['moodle','analytics','run','resource-reach','--course','9',
-            '--since','2026-09-01','--until','2026-09-22','--group','2'])
-        assert result.exit_code == 0, result.output
-        command=client.return_value.__enter__.return_value.post.call_args.kwargs['json']['command']
-        assert shlex.split(command)[-6:] == ['--since','2026-09-01','--until','2026-09-22','--group','2']

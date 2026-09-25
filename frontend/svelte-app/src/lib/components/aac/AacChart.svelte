@@ -3,18 +3,12 @@
     import { apiFetch, apiJson } from '$lib/services/apiClient';
     import { chartText, chartReason } from '$lib/utils/aacChartText';
     import { workspaceText } from '$lib/utils/moodleChartWorkspaceText';
-    import DeadlineCalendar from './DeadlineCalendar.svelte';
-    import QuizEvidence from './QuizEvidence.svelte';
-    import ForumEvidence from './ForumEvidence.svelte';
-    import ForumNetwork from './ForumNetwork.svelte';
-    import AssessmentComparison from './AssessmentComparison.svelte';
     let { chartId } = $props();
     let data = $state(null), imageUrl = $state(''), error = $state(false), imageError = $state(false);
     let attempt = $state(0);
     const text = $derived(chartText(data?.language || $locale));
     const supported = $derived(data?.rows.filter(row => row.status === 'ok') || []);
     const maxParticipants = $derived(Math.max(1, ...supported.map(row => row.participants)));
-    const maxMetric = $derived(Math.max(1, ...supported.map(row => row.value || 0)));
     function dateLabel(value) { return new Intl.DateTimeFormat(data.language, {dateStyle:'medium', timeStyle:'short', timeZone:data.timezone}).format(new Date(value)); }
     const statusIndex = {open:6, deadline_passed:7, not_open:8, no_deadline:9};
     $effect(() => {
@@ -28,7 +22,6 @@
                 const snapshot = await apiJson(`/moodle/charts/${encodeURIComponent(id)}`, {signal:controller.signal});
                 if (!alive) return;
                 data = snapshot;
-                if (['forum-table-v1','forum-network-v1','assessment-comparison-v1'].includes(snapshot.view_kind)) return;
                 if (!snapshot.rows.some(row => row.status === 'ok')) return;
                 try {
                     const response = await apiFetch(`/moodle/charts/${encodeURIComponent(id)}/image.svg`, {signal:controller.signal});
@@ -49,93 +42,6 @@
 {:else if data}
     <h3>{data.course_name}</h3>
     <p class="snapshot">{dateLabel(data.as_of)} · {data.timezone}</p>
-    {#if data.view_kind === 'assessment-comparison-v1'}
-        <AssessmentComparison {data} />
-    {:else if data.view_kind === 'forum-network-v1'}
-        <ForumNetwork {data} />
-    {:else if data.view_kind === 'forum-table-v1'}
-        <ForumEvidence {data} />
-    {:else if data.view_kind === 'deadline-calendar-v1'}
-        <DeadlineCalendar {data} {imageUrl} />
-        {#if imageError}<p role="status">{text.imageError}</p><button onclick={() => attempt++}>{text.retry}</button>{/if}
-    {:else if ['metric-bars-v1','view-trend-v1','view-heatmap-v1'].includes(data.view_kind)}
-        <h3>{data.title}</h3>
-        {#if data.window_label}<p class="snapshot" data-analytics-window>{data.window_label}</p>{/if}
-        {#if data.population_label}<p class="snapshot" data-analytics-population>{data.population_label}</p>{/if}
-        {#if data.summary_statistics}
-            <dl class="summary-statistics" data-analytics-statistics>
-                {#each data.summary_statistics as statistic}
-                    <div>
-                    <dt>{statistic.label}</dt>
-                    <dd>{statistic.value === null ? text.analyticsUnavailable : new Intl.NumberFormat(data.language, {maximumFractionDigits: 4}).format(statistic.value)}</dd>
-                    </div>
-                {/each}
-            </dl>
-        {/if}
-        {#if data.coverage.history_complete === false && typeof data.coverage.collection_complete === 'boolean'}
-            <p class="partial" data-chart-coverage>{data.coverage.collection_complete === true ? text.historyUnknown : text.collectionIncomplete}</p>
-        {:else if !data.coverage.complete}<p class="partial" data-chart-coverage>{text.partial}</p>{/if}
-        {#if data.recipe?.id === 'quiz-overview'}
-            <QuizEvidence metrics={data.metrics} language={data.language} />
-        {/if}
-        {#if !data.rows.length}<p role="status">{text.analyticsEmpty}</p>
-        {:else if !supported.length}<p role="status">{text.analyticsUnavailable}</p>{/if}
-        {#if imageUrl && data.view_kind === 'view-heatmap-v1'}
-            <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-            <div class="heatmap-chart" role="region" tabindex="0" aria-label={data.title}><img src={imageUrl} alt={data.title} /></div>
-        {:else if imageUrl}<div class="desktop-chart"><img src={imageUrl} alt={data.title} /></div>{/if}
-        {#if data.view_kind !== 'view-heatmap-v1'}
-        <ul class="mobile-chart" aria-label={data.title}>
-            {#each supported as row}<li><strong>{row.name}</strong>
-                <div class="bar" aria-hidden="true"><span class="submitted" style:width={`${100 * row.value / maxMetric}%`}></span></div>
-                <p>{data.metric_label}: {row.value}</p>
-            </li>{/each}
-        </ul>
-        {/if}
-        {#if imageError}<p role="status">{text.imageError}</p><button onclick={() => attempt++}>{text.retry}</button>{/if}
-        <p class="caption">{data.caption}</p>
-        {#if data.rows.length}
-        <p class="table-hint">{text.table}</p>
-        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-        <div class="table-scroll" tabindex="0" role="region" aria-label={text.table}>
-            {#if data.heatmap_rows}
-            <table class="heatmap-table"><caption>{data.title}</caption>
-                <thead><tr><th scope="col">{data.heatmap_day_label}</th>{#each Array(24) as _,hour}<th scope="col">{hour}:00</th>{/each}</tr></thead>
-                <tbody>{#each data.heatmap_rows as row}<tr><th scope="row">{row.day}</th>
-                    {#each row.values as value}<td>{value}</td>{/each}
-                </tr>{/each}</tbody>
-            </table>
-            {:else if data.view_columns}
-            <table><caption>{data.title}</caption>
-                <thead><tr>{#each data.view_columns as column}<th scope="col">{column}</th>{/each}</tr></thead>
-                <tbody>{#each data.rows as row}<tr><th scope="row">{row.date}</th>
-                    {#each data.view_keys.slice(1) as key}<td>{row[key] ?? '–'}</td>{/each}
-                </tr>{/each}</tbody>
-            </table>
-            {:else if data.completion_columns}
-            <table class="completion-table"><caption>{data.title}</caption>
-                <thead><tr>{#each data.completion_columns as column}<th scope="col">{column}</th>{/each}</tr></thead>
-                <tbody>{#each data.rows as row}<tr><th scope="row">{row.name}</th>
-                    {#each data.completion_keys.slice(1) as key}<td>{row[key] ?? '–'}</td>{/each}
-                </tr>{/each}</tbody>
-            </table>
-            {:else if data.resource_columns}
-            <table><caption>{data.title}</caption>
-                <thead><tr>{#each data.resource_columns as column}<th scope="col">{column}</th>{/each}</tr></thead>
-                <tbody>{#each data.rows as row}<tr><th scope="row">{row.name}</th>
-                    <td>{row.unique_student_viewers}</td><td>{row.recorded_module_views}</td>
-                    <td>{row.recorded_chapter_views}</td><td>{row.population_students}</td>
-                </tr>{/each}</tbody>
-            </table>
-            {:else}
-            <table class="metric-table"><caption>{data.title}</caption>
-                <thead><tr><th scope="col">{data.title}</th><th scope="col">{data.metric_label}</th></tr></thead>
-                <tbody>{#each data.rows as row}<tr><th scope="row">{row.name}</th><td>{row.value ?? '–'}{#if row.reason}<br />{row.reason}{/if}</td></tr>{/each}</tbody>
-            </table>
-            {/if}
-        </div>
-        {/if}
-    {:else}
     <p class:partial={!data.coverage.complete} data-chart-coverage>
         {data.coverage.assignments_read} / {data.coverage.assignments_found} {text.read}.
         {#if !data.coverage.complete}<strong>{text.partial}.</strong>{/if}
@@ -176,24 +82,15 @@
     </table>
     </div>
     {/if}
-    {/if}
-    {#if imageUrl}<a href={imageUrl} download={`lamb-chart-${chartId}.svg`}>{text.download}</a>{/if}
+    {#if imageUrl}<a href={imageUrl} download={`lamb-submissions-${chartId}.svg`}>{text.download}</a>{/if}
 {:else}<p role="status">{text.loading}</p>{/if}
 </div>
 <style>
     .chart-content { padding:20px; color:#172b40; min-width:0; overflow-wrap:anywhere; }
     h3 { font-weight:600; font-size:1.15rem; }
     .snapshot { color:#53677b; font-size:.85rem; margin:6px 0; }
-    .summary-statistics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:16px 0; }
-    .summary-statistics dt { color:#53677b; font-size:.85rem; }
-    .summary-statistics dd { margin:0; font-weight:600; }
     .partial { background:#fff4d5; padding:8px; border-radius:6px; }
     .desktop-chart { margin:18px 0; }
-    .heatmap-chart { margin:18px 0; overflow:auto; max-width:100%; }
-    .heatmap-chart img { min-width:720px; }
-    .heatmap-table { min-width:1250px; }
-    .heatmap-table th, .heatmap-table td { white-space:nowrap; word-break:normal; }
-    .heatmap-table th:first-child { min-width:120px; }
     img { display:block; width:100%; height:auto; }
     .mobile-chart { display:none; list-style:none; padding:0; margin:16px 0; }
     .mobile-chart li { margin-bottom:18px; }
@@ -205,18 +102,12 @@
     .table-hint { font-size:.85rem; margin-bottom:6px; }
     .table-scroll { overflow:auto; max-width:100%; }
     table { width:100%; min-width:600px; border-collapse:collapse; font-size:.9rem; }
-    .metric-table { min-width:0; table-layout:fixed; }
-    .metric-table th:first-child { width:65%; }
-    .completion-table { min-width:1600px; }
-    .completion-table th, .completion-table td { min-width:100px; overflow-wrap:normal; }
-    .completion-table th:first-child { min-width:220px; max-width:300px; overflow-wrap:anywhere; }
     th, td { border-bottom:1px solid #d6e0ea; text-align:left; padding:10px 8px; }
     caption { text-align:left; font-weight:600; padding:8px; }
     a, button { display:inline-block; margin-top:16px; color:#2463a1; }
     button { border:1px solid #2463a1; padding:8px 16px; border-radius:6px; }
     :focus-visible { outline:3px solid #2463a1; outline-offset:3px; }
     @media(max-width:600px) {
-        .summary-statistics { grid-template-columns:repeat(2,minmax(0,1fr)); }
         .chart-content { padding:12px; }
         .desktop-chart { display:none; }
         .mobile-chart { display:block; }

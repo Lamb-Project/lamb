@@ -10,6 +10,7 @@ from .storage import ensure_private
 from .results import ResultStore, TTL_SECONDS, summary
 from .forum_activity import TaskLimit, TaskCancelled
 from .forum_traversal import initial_state, advance, project, MAX_RUN_CALLS, MAX_STEPS
+from .recovery_integrity import retention_record, validate_retention
 
 MAX_RUNS = 4
 MAX_RUN_BYTES = 8 * 1024 * 1024
@@ -59,7 +60,7 @@ class RunStore:
             with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as source:
                 payload = source.read(MAX_RUN_BYTES + 1)
             if len(payload) > MAX_RUN_BYTES: raise ValueError()
-            run = json.loads(payload)
+            run = validate_retention(json.loads(payload))
             if run['binding'] != self.binding or run['expires_at'] <= time.time(): raise ValueError()
             return run
         except (OSError, ValueError, KeyError, TypeError):
@@ -70,12 +71,15 @@ class RunStore:
         files = sorted(self.folder.glob('*.json'), key=lambda p: p.stat().st_mtime)
         for path in files:
             if path.is_symlink(): raise CheckpointError('Unsafe Moodle run storage')
-            from lamb.private_storage import read_json
-            saved = read_json(path, MAX_RUN_BYTES)
+            saved = retention_record(path, MAX_RUN_BYTES)
+            if saved is None:
+                # Preserve the corrupt handle in place and count its quota
+                # slot. Other work may proceed only within existing limits.
+                continue
             if saved['expires_at'] <= time.time():
                 path.unlink(); files = [p for p in files if p != path]
         if len(files) >= MAX_RUNS:
-            raise ValueError('Moodle run storage is full of live recovery handles; use an existing run or wait for expiry')
+            raise ValueError('Moodle run storage is full of live recovery handles or unreadable records; use an existing run, wait for expiry, or ask an administrator to inspect preserved unreadable records')
         run = {'id': str(uuid.uuid4()), 'binding': self.binding,
             'expires_at': time.time() + TTL_SECONDS, 'state': initial_state(params),
             'last_result': None, 'next_results': {}, 'working': None}

@@ -18,14 +18,6 @@ def storage(tmp_path, monkeypatch):
     return OwnerStorage(1, 7)
 
 
-def test_chart_inventory_reports_calendar_capacity_without_auto_expiry(storage):
-    from lamb.moodle.charts import MAX_CHARTS,MAX_CALENDAR_BYTES
-    charts=storage.inspect()['stores']['charts']
-    assert charts['quota_bytes']==MAX_CHARTS*MAX_CALENDAR_BYTES
-    assert '128 KiB per chart, 512 KiB per deadline calendar' in charts['policy']
-    assert 'no automatic expiry' in charts['policy']
-
-
 def ticket(store, **extra):
     data = {'review': {}, 'scope': 'session', 'binding': {'generation': 1},
             'content': 'PRIVATE_ENCODED_BYTES', 'originals': {'source': 'PRIVATE_ORIGINAL'}, **extra}
@@ -336,15 +328,14 @@ def test_atomic_replace_failure_preserves_previous_record(storage, monkeypatch):
     assert not list(path.parent.glob('.pending-*'))
 
 
-def test_corrupt_run_reference_cannot_trigger_evidence_eviction(storage):
+def test_corrupt_run_reference_protects_evidence_without_blocking_below_quota(storage):
     evidence = MoodleResults(1, 7, base_url='https://fixture', moodle_user_id=70, generation=1, root=storage.moodle)
     first = evidence.save({'n': 1})
     atomic_json(storage.tasks / 'runs' / (str(uuid.uuid4()) + '.json'), {'bad_schema': True})
-    with pytest.raises(ValueError, match='Cannot verify'):
-        evidence.save({'n': 2})
-    with pytest.raises(KeyError):
-        storage.clean()
+    second = evidence.save({'n': 2})
+    assert storage.clean()['unreadable_runs_preserved'] == 1
     assert evidence.read(first) == {'n': 1}
+    assert evidence.read(second) == {'n': 2}
 
 
 def test_cleanup_worker_does_not_block_event_loop_and_shutdown_waits_for_lock_release(storage, monkeypatch):

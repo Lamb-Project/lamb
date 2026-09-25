@@ -1,5 +1,6 @@
 <script>
     import { onMount, tick } from 'svelte';
+    let { hideFloatingLauncher = false } = $props();
     import { get } from 'svelte/store';
     import { user } from '$lib/stores/userStore';
     import { locale } from '$lib/i18n';
@@ -130,7 +131,7 @@
     }
 </script>
 
-{#if !$sidebarOpen}
+{#if !$sidebarOpen && !hideFloatingLauncher}
 <button class="aac-launch" onclick={() => sidebarOpen.set(true)} aria-label="Open LAMB AGENT">LAMB AGENT</button>
 {/if}
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions (Panel-level Escape and mobile focus containment) -->

@@ -112,7 +112,7 @@
 
 	<Footer />
 	</div>
-	{#if sessionReady && $user.token}<AacSidebar />{/if}
+	{#if sessionReady && $user.token}<AacSidebar hideFloatingLauncher={$page.url.pathname === `${base}/moodle` && ($page.url.searchParams.get('tab') === 'charts' || !!$page.url.searchParams.get('chart'))} />{/if}
 </div>
 
 <style>

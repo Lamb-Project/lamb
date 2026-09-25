@@ -40,17 +40,26 @@ class ResultStore:
             fcntl.flock(lock, fcntl.LOCK_EX)
             # Bounded derived data retention; authored user documents are separate.
             protected = set()
+            unknown_references = False
             ensure_private(self.folder.parent / 'runs')
             for run_path in (self.folder.parent / 'runs').glob('*.json'):
                 if run_path.is_symlink(): raise ValueError('Unsafe Moodle recovery storage')
                 try:
                     from .runs import MAX_RUN_BYTES
-                    run = read_json(run_path, MAX_RUN_BYTES)
+                    from .recovery_integrity import retention_record
+                    run = retention_record(run_path, MAX_RUN_BYTES)
+                    if run is None:
+                        unknown_references = True
+                        continue
                     from lamb.storage_lifecycle import run_references
                     protected.update(run_references([run], time.time()))
                 except (OSError, ValueError, KeyError, TypeError):
                     raise ValueError('Cannot verify Moodle recovery references; no evidence was evicted') from None
             files = sorted(self.folder.glob('*.json'), key=lambda p: p.stat().st_mtime)
+            if unknown_references:
+                # Unknown references protect every existing result. New
+                # results are still allowed below quota; never evict to fit.
+                protected.update(path.stem for path in files)
             for path in files:
                 if path.is_symlink():
                     raise ValueError('Unsafe Moodle evidence storage')
@@ -61,7 +70,7 @@ class ResultStore:
                 # Count remaining files without weakening the per-owner cap.
                 files = [p for p in files if p != path]
             if len(files) >= MAX_RESULTS:
-                raise ValueError('Moodle evidence storage is full of active recovery handles; wait for expiry before starting more work')
+                raise ValueError('Moodle evidence storage is full of active recovery handles or preserved unreadable references; wait for expiry or ask an administrator to inspect recovery storage')
             dest = self.folder / (identity + '.json')
             atomic_json(dest, envelope)
         return identity
