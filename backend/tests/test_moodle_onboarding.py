@@ -32,10 +32,14 @@ def test_initial_read_only_contacts_owners_enrolments(stores):
         with patch('lamb.moodle.onboarding.MoodleRuntime',return_value=rt):
             _,summary=course_summary(rt.store)
         assert 'Enrolled courses: 1' in summary
-        assert endpoint.call_count == 1
+        assert endpoint.call_count == 2
         body=parse_qs(endpoint.calls[0].request.content.decode())
         assert body['wsfunction']==['core_enrol_get_users_courses']
         assert body['userid']==['70']
+        profile=parse_qs(endpoint.calls[1].request.content.decode())
+        assert profile['wsfunction']==['core_user_get_course_user_profiles']
+        assert profile['userlist[0][userid]']==['70']
+        assert profile['userlist[0][courseid]']==['2']
 
 
 def test_admin_settings_targets_authorized_org_without_overwriting_other_config(stores):

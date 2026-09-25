@@ -117,7 +117,8 @@ def execute_read(client, key, params, *, owner_moodle_id):
         from moodle_cli.services.content import CONTENT_TYPES
         return list(CONTENT_TYPES)
     if key == 'enrol.my-courses':
-        return plain(service_class('enrol','EnrolService')(client).get_my_courses(userid=owner_moodle_id))
+        from .course_roles import with_my_roles
+        return with_my_roles(client, plain(service_class('enrol','EnrolService')(client).get_my_courses(userid=owner_moodle_id)), owner_moodle_id)
     if key.startswith('message.'):
         service = service_class('message','MessageService')(client)
         if key == 'message.list': return plain(service.get_messages(owner_moodle_id,user_id_from=params['from_user']))
@@ -127,6 +128,9 @@ def execute_read(client, key, params, *, owner_moodle_id):
     values = [list(params[arg]) if isinstance(params[arg],tuple) else params[arg] for arg in arguments.split()]
     if key in {'assign.list','calendar.events'} and not values[0]: values[0] = None
     result = plain(getattr(service_class(module,name)(client),method)(*values))
+    if key == 'course.timeline':
+        from .course_roles import with_my_roles
+        result = with_my_roles(client, result, owner_moodle_id)
     if key == 'forum.discussions':
         result = [discussion_result(item) for item in result]
     if key == 'site.functions':

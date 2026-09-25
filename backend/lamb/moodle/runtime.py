@@ -261,6 +261,8 @@ class MoodleRuntime:
                 if key=='course.search':
                     query=params['query'].casefold()
                     result=[c for c in result if query in c['fullname'].casefold() or query in c['shortname'].casefold()]
+                from .course_roles import with_my_roles
+                result=with_my_roles(client,result,record['moodle_user_id'])
             else:
                 result=execute_read(client,key,params,owner_moodle_id=record['moodle_user_id'])
         # Do not return data into a turn after credentials or policy were revoked

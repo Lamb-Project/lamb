@@ -87,4 +87,4 @@ def test_course_discovery_never_queries_site_wide_directory(stores):
             assert result.success,result.error
             assert [c['id'] for c in result.data]==[10]
     asyncio.run(run())
-    assert {fn for fn,_ in calls}=={'core_enrol_get_users_courses'}
+    assert {fn for fn,_ in calls}=={'core_enrol_get_users_courses','core_user_get_course_user_profiles'}
