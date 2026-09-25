@@ -277,3 +277,50 @@ class TestConsent:
         with pytest.raises(HTTPException) as exc:
             await routers.consent_page(request=self._request(), token="tok")
         assert exc.value.status_code == 401
+
+
+class TestSubmitPersistsBuildState:
+    """WS1: submit forwards the wizard's build_state to the DB layer.
+
+    Regression: the app used to persist only saved_chat + reflection, so the
+    formative transcript and teacher dashboard read an empty build_state.
+    """
+
+    @pytest.mark.asyncio
+    @patch("lamb.auth.decode_token")
+    @patch("lamb.modules.workshop.routers._db_manager")
+    async def test_submit_forwards_build_state(self, mock_db, mock_decode):
+        mock_decode.return_value = _token_payload(session_id="ws-1")
+
+        result = await routers.submit_workshop(
+            session_id="ws-1",
+            body={
+                "saved_chat": '[{"role":"user","content":"hi"}]',
+                "reflection": "I learned that grounding matters.",
+                "build_state": '{"selectedTools":["calculator"]}',
+            },
+            token="tok",
+        )
+
+        assert result["success"] is True
+        _, kwargs = mock_db.submit_workshop_session.call_args
+        assert kwargs["build_state"] == '{"selectedTools":["calculator"]}'
+        assert kwargs["reflection"] == "I learned that grounding matters."
+
+    @pytest.mark.asyncio
+    @patch("lamb.auth.decode_token")
+    @patch("lamb.modules.workshop.routers._db_manager")
+    async def test_submit_without_build_state_still_works(self, mock_db, mock_decode):
+        """Backward-compatible: older clients that omit build_state don't break."""
+        mock_decode.return_value = _token_payload(session_id="ws-1")
+
+        result = await routers.submit_workshop(
+            session_id="ws-1",
+            body={"saved_chat": "[]", "reflection": "ok"},
+            token="tok",
+        )
+
+        assert result["success"] is True
+        _, kwargs = mock_db.submit_workshop_session.call_args
+        assert kwargs["build_state"] is None
+

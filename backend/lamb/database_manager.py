@@ -8858,20 +8858,37 @@ class LambDatabaseManager:
         session_id: str,
         saved_chat: Optional[str] = None,
         reflection: Optional[str] = None,
+        build_state: Optional[Any] = None,
     ) -> bool:
-        """Mark a workshop session submitted with chat/reflection."""
+        """Mark a workshop session submitted with chat/reflection/build_state.
+
+        ``build_state`` is the wizard's per-step decision log (instructions,
+        document, KB, selected tools). It is persisted here so the formative
+        transcript and the teacher dashboard can read the student's build
+        decisions; accepting either a JSON string or a serializable object.
+        """
         connection = self.get_connection()
         if not connection:
             return False
         try:
             with connection:
                 cursor = connection.cursor()
-                cursor.execute(f"""
-                    UPDATE {self.table_prefix}lti_workshop_sessions
-                    SET saved_chat = ?, reflection = ?, status = 'submitted',
-                        updated_at = ?
-                    WHERE id = ?
-                """, (saved_chat, reflection, int(time.time()), session_id))
+                fields = ["saved_chat = ?", "reflection = ?",
+                          "status = 'submitted'", "updated_at = ?"]
+                params: List[Any] = [saved_chat, reflection, int(time.time())]
+                if build_state is not None:
+                    fields.insert(0, "build_state = ?")
+                    params.insert(
+                        0,
+                        build_state if isinstance(build_state, str)
+                        else json.dumps(build_state),
+                    )
+                params.append(session_id)
+                cursor.execute(
+                    f"UPDATE {self.table_prefix}lti_workshop_sessions "
+                    f"SET {', '.join(fields)} WHERE id = ?",
+                    tuple(params),
+                )
                 return cursor.rowcount > 0
         except sqlite3.Error as e:
             logger.error(f"Error submitting workshop session: {e}")

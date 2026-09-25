@@ -529,6 +529,7 @@ async def submit_workshop(
         session_id=session_id,
         saved_chat=body.get("saved_chat"),
         reflection=body.get("reflection"),
+        build_state=body.get("build_state"),
     )
     return {"success": True, "status": "submitted"}
 

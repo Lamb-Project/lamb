@@ -248,9 +248,10 @@
 	}
 
 	async function persistBuildState() {
-		// Best-effort: the submitted session record persists build_state on
-		// submit; here we keep the local store in sync for the UI. (A dedicated
-		// PATCH endpoint lands later.)
+		// Keep the local store in sync with the chat transcript. The full build
+		// state is persisted on submit (handleSubmit sends
+		// formStore.serialize()), which is what the formative evaluation and the
+		// teacher dashboard read back.
 		form.chatMessages = chatMessages;
 	}
 
@@ -525,9 +526,14 @@
 		submitting = true;
 		error = '';
 		try {
+			persistBuildState();
+			const buildState = formStore ? formStore.serialize() : {};
 			await wsPost(`/sessions/${sessionId}/submit`, {
 				saved_chat: JSON.stringify(chatMessages),
 				reflection: form.reflection || '',
+				// Persist the per-step decisions so the formative transcript and
+				// the teacher dashboard can show what the student actually built.
+				build_state: JSON.stringify(buildState),
 			});
 			form.stepValid = { ...form.stepValid, submitted: true };
 			// Submit persisted the work; now generate rubric-based feedback.

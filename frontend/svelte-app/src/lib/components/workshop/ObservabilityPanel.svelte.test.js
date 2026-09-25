@@ -73,7 +73,7 @@ describe('ObservabilityPanel — renders observability data', () => {
 					request_body: {
 						model: 'gpt-4o-mini',
 						tools: [
-							{ type: 'function', function: { name: 'calculator', description: '计算数学表达式' } },
+							{ type: 'function', function: { name: 'calculator', description: 'Evaluate a mathematical expression' } },
 						],
 						messages: [
 							{ role: 'system', content: 'You are a helpful assistant.' },
@@ -109,7 +109,7 @@ describe('ObservabilityPanel — renders observability data', () => {
 					request_body: {
 						model: 'gpt-4o-mini',
 						tools: [
-							{ type: 'function', function: { name: 'calculator', description: '计算数学表达式' } },
+							{ type: 'function', function: { name: 'calculator', description: 'Evaluate a mathematical expression' } },
 						],
 						messages: [
 							{
@@ -185,7 +185,7 @@ describe('ObservabilityPanel — renders observability data', () => {
 				toolEvents: [],
 			},
 		});
-		// The empty system prompt is called out so "system prompt 不见了" is explained,
+		// The empty system prompt is called out so a missing system prompt is explained,
 		// rather than silently showing a request with no role:system message.
 		expect(screen.getByText('System instructions (configured)')).toBeInTheDocument();
 		expect(screen.getByText(/None set on this assistant/)).toBeInTheDocument();
