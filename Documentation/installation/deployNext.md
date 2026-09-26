@@ -422,6 +422,31 @@ Once DNS resolves, visit:
 - `https://lamb.example.com` — should show the LAMB creator interface
 - `https://owi.lamb.example.com` — should show the OpenWebUI chat interface
 
+### 6.4 — Connect OpenWebUI to the LAMB backend
+
+**Do not skip this step on a fresh installation.** A healthy OpenWebUI container does not mean its model connection points to LAMB. OpenWebUI may initially show `https://api.openai.com/v1` under **Admin Panel → Settings → Connections**, and Ollama may be enabled even when no Ollama service was started.
+
+1. Sign in to LAMB as the bootstrap administrator (`OWI_ADMIN_EMAIL` / `OWI_ADMIN_PASSWORD` from `.env`) and use the link to open OWI as admin. Open **Admin Panel → Settings → Connections**.
+2. Under **OpenAI API**, leave the feature enabled. Replace the default `https://api.openai.com/v1` connection with **`http://lamb:9099/v1`**. The hostname `lamb` is the service name in `docker-compose.next.yaml`; use the actual backend service name if a custom Compose file changes it. This is an internal Docker URL, not `https://lamb.example.com`.
+3. Set its **API Key** to the exact value of `LAMB_BEARER_TOKEN` in `/opt/lamb/.env`, and save. This is the token accepted by LAMB's OpenAI-compatible `/v1/chat/completions` API. It is **not** the upstream `OPENAI_API_KEY` used by LAMB to call OpenAI, nor `OWI_ADMIN_PASSWORD`. Do not print the token in logs or copy it into documentation.
+4. If the deployment does not include Ollama, turn off **Ollama API** in the same Connections screen. If Ollama is intentionally enabled, configure its actual internal URL instead of leaving the default `http://host.docker.internal:11434` unverified.
+
+Verify the result from OWI, not just from the LAMB container:
+
+1. Reload **Connections** and confirm the saved OpenAI API URL is `http://lamb:9099/v1`, its API key is present, and Ollama is disabled when unused.
+2. Publish a test assistant in LAMB. Refresh OWI's model list; it should expose a model named `lamb_assistant.<id>`. If there are no published assistants, an empty model list does not by itself indicate a connection failure.
+3. Open the published assistant in OWI and send a short test prompt. A response confirms that OWI can call LAMB with the configured token. If model listing works but chat returns 401, check that the saved OWI key matches `LAMB_BEARER_TOKEN` in the running LAMB container.
+
+For a separate network check from the OWI container, run:
+
+```bash
+cd /opt/lamb
+docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml exec -T openwebui \
+  python -c 'import urllib.request; print(urllib.request.urlopen("http://lamb:9099/v1/models", timeout=10).status)'
+```
+
+`200` confirms that OWI can reach the LAMB API over the Compose network. It does **not** prove that OWI saved the correct API key; the chat test above checks that.
+
 ---
 
 ## Phase 7: Day-to-Day Operations (Cheatsheet)
@@ -520,7 +545,7 @@ WEBUI_SECRET_KEY=change-me
 **Caddy routing (from `Caddyfile.next`):**
 - `lamb.example.com/creator/*` → `lamb:9099`
 - `lamb.example.com/api/*` → `lamb:9099`
-- `lamb.example.com/lamb/*` → `lamb:9099` (strip prefix)
+- `lamb.example.com/lamb/*` → `lamb:9099` (preserve prefix)
 - `lamb.example.com/kb/*` → `kb:9090` (strip prefix)
 - `lamb.example.com/*` (everything else) → `lamb:9099` (SPA frontend)
 - `owi.lamb.example.com` → `openwebui:8080`
@@ -568,4 +593,5 @@ The agent should follow this sequence and check off each step:
 - [ ] **6.1** — Verify all containers are Up and healthy
 - [ ] **6.2** — Check logs for startup errors
 - [ ] **6.3** — Report access URLs to user
-- [ ] **6.4** — Verify `LAMB_KB_SERVER_TOKEN` == `LAMB_API_KEY` across containers
+- [ ] **6.4** — Configure OWI Connections for `http://lamb:9099/v1` with `LAMB_BEARER_TOKEN`; verify model listing and chat
+- [ ] **6.5** — Verify `LAMB_KB_SERVER_TOKEN` == `LAMB_API_KEY` across containers
