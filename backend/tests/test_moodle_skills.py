@@ -11,7 +11,7 @@ from lamb.moodle.runtime import attach_to_agent
 
 def test_moodle_recipes_and_generated_commands_validate():
     pack=load_pack()
-    assert pack.version=='1.11.4'
+    assert pack.version=='1.11.5'
     validate_routing(pack)
     assert validate_skill_contracts(pack)
     names={'moodle-triage','moodle-forums','moodle-course-documents','moodle-assessment-draft'}
@@ -30,6 +30,14 @@ def test_restoration_pack_corrects_ids_and_dates_without_changing_old_release():
     assert 'not verified course defaults or individual student deadlines' in pack.text('skills/moodle_triage.md')
     assert load_pack(version='1.11.1').version == '1.11.1'
     assert 'Use the returned discussion ID' in load_pack(version='1.11.1').text('skills/moodle_forums.md')
+
+
+def test_triage_coverage_discipline_is_in_the_current_pack_only():
+    """#518: unread courses are reported as not inspected, never as no data; 1.11.4 stays frozen."""
+    triage = load_pack().text('skills/moodle_triage.md')
+    for phrase in ['NOT INSPECTED, never "no data"', 'inspected N of M courses', 'Every count you give must come from a read']:
+        assert phrase in triage
+    assert 'NOT INSPECTED' not in load_pack(version='1.11.4').text('skills/moodle_triage.md')
 
 
 @pytest.mark.parametrize('version', ['1.12.0', '1.28.0', '1.34.0'])
