@@ -11,6 +11,7 @@ import re
 import time
 import secrets
 import hmac
+from lamb.lti_oauth import signing_key as oauth_signing_key
 import hashlib
 import base64
 import urllib.parse
@@ -94,7 +95,7 @@ class LtiActivityManager:
             urllib.parse.quote(encoded_params, safe='')
         ])
 
-        signing_key = f"{consumer_secret}&{token_secret}"
+        signing_key = oauth_signing_key(consumer_secret, token_secret)
         hashed = hmac.new(signing_key.encode(), base_string.encode(), hashlib.sha1)
         return base64.b64encode(hashed.digest()).decode()
 
