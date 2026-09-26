@@ -5,6 +5,7 @@ from typing import Dict, Any, List
 from lamb.lamb_classes import Assistant
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
 from lamb.logging_config import get_logger
+from lamb.completions.source_urls import kb_file_url
 
 logger = get_logger(__name__, component="RAG")
 
@@ -374,15 +375,15 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
 
                         # New metadata fields from markitdown_plus_ingest plugin
                         if "original_file_url" in metadata:
-                            original_url = f"{KB_SERVER_URL}{metadata['original_file_url']}"
+                            original_url = kb_file_url(KB_SERVER_URL, metadata['original_file_url'])
                         if "markdown_file_url" in metadata:
-                            markdown_url = f"{KB_SERVER_URL}{metadata['markdown_file_url']}"
+                            markdown_url = kb_file_url(KB_SERVER_URL, metadata['markdown_file_url'])
                         if "images_folder_url" in metadata:
-                            images_folder = f"{KB_SERVER_URL}{metadata['images_folder_url']}"
+                            images_folder = kb_file_url(KB_SERVER_URL, metadata['images_folder_url'])
 
                         # Legacy file_url field
                         if "file_url" in metadata:
-                            source_url = f"{KB_SERVER_URL}{metadata['file_url']}"
+                            source_url = kb_file_url(KB_SERVER_URL, metadata['file_url'])
 
                         # Priority: citation > original_file_url > file_url
                         main_url = citation_url or original_url or source_url
