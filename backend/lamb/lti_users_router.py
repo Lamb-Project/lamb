@@ -11,6 +11,7 @@ from urllib.parse import unquote
 import os
 import secrets
 import hmac
+from lamb.lti_oauth import signing_key as oauth_signing_key
 import hashlib
 import base64
 import urllib.parse
@@ -297,7 +298,7 @@ def generate_signature(params, http_method, base_url, consumer_secret, token_sec
     ])
 
     # Create signing key (consumer_secret&token_secret)
-    signing_key = f"{consumer_secret}&"
+    signing_key = oauth_signing_key(consumer_secret, token_secret)
 
     # logging.info(f"Base string: {base_string}")
     # logging.info(f"Signing key: {consumer_secret}&")
