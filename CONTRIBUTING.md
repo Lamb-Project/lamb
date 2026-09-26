@@ -40,7 +40,7 @@ Ready to contribute code? Here's how:
 
 ### Development Setup
 
-See the [Installation Guide](Documentation/installationguide.md) for setting up your development environment.
+See the [Local Docker Deployment Guide](Documentation/installation/deployLocal.md) — in particular the *Development Overlay (Hot Reload)* section — for setting up your development environment.
 
 ### Code Style
 

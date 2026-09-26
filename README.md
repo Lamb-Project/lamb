@@ -77,19 +77,11 @@ LAMB features a modular, extensible architecture:
 
 ## 🚀 Installation
 
-### Recommended: Docker Installation
-
 For the easiest setup experience, we recommend using Docker Compose to run all LAMB services:
 
-📘 **[Docker Installation Guide](Documentation/deployLocal.md)** - One-command deployment with all services configured
+📘 **[Docker Installation Guide](Documentation/installation/deployLocal.md)** - One-command deployment with all services configured
 
-Migrating from the old (pre-`next`) Docker stack? See the **[official 0.6 → 0.7 upgrade guide](Documentation/migrating-to-lamb-next.md)** and [0.7 deployment release notes](Documentation/release-notes-0.7.md).
-
-### Alternative: Manual Installation
-
-For development or custom deployments:
-
-📘 **[Complete Installation Guide](Documentation/installationguide.md)** - Step-by-step manual setup for all components
+Migrating from the old (pre-`next`) Docker stack? See the **[official 0.6 → 0.7 upgrade guide](Documentation/installation/migrating-to-lamb-next.md)** and [0.7 deployment release notes](Documentation/release-notes-0.7.md).
 
 ### Quick Overview
 
@@ -112,11 +104,10 @@ Visit our [official website](http://www.lamb-project.org) for:
 ### 📖 Developer Documentation
 Comprehensive documentation is available in the [`/Documentation`](Documentation/) directory:
 
-- [Documentation Index](Documentation/DOCUMENTATION_INDEX.md) — start here
-- [Architecture Reference](Documentation/lamb_architecture_v2.md)
-- [Installation Guide (manual, no Docker)](Documentation/installationguide.md)
-- [Local Docker Deployment](Documentation/deployLocal.md)
-- [Production Deployment (Hetzner)](Documentation/deployNext.md)
+- [Architecture Reference](Documentation/architecture/lamb_architecture_v2.md)
+- [Local Docker Deployment](Documentation/installation/deployLocal.md)
+- [Development Environment (Docker Compose dev overlay)](Documentation/installation/deployLocal.md#45--development-overlay-hot-reload)
+- [Production Deployment (Hetzner)](Documentation/installation/deployNext.md)
 
 ## 🗂️ Project Structure
 
