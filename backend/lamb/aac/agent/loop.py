@@ -528,8 +528,10 @@ class AgentLoop(SkillRouting):
                 from lamb.aac.approvals import explain_pending_action
                 yield {"status": "thinking"}
                 await explain_pending_action(self)
-                from lamb.aac.language import confirmation_fallback, translation_confirmation, documentation_fallback_notice
-                text = confirmation_fallback(self) + documentation_fallback_notice(self) + translation_confirmation(self)
+                from lamb.aac.language import confirmation_fallback, translation_confirmation, documentation_fallback_notice, pending_decision_notice
+                prefix = pending_decision_notice(self) if getattr(self, '_pending_undecided', False) else ''
+                self._pending_undecided = False
+                text = prefix + confirmation_fallback(self) + documentation_fallback_notice(self) + translation_confirmation(self)
                 self.conversation.append({"role": "assistant", "content": text})
                 if self.session_logger:
                     self.session_logger.log_agent_response(text)
@@ -616,8 +618,10 @@ class AgentLoop(SkillRouting):
                 yield text
             elif not streaming or tools_enabled:
                 yield text
-            from lamb.aac.language import translation_confirmation, documentation_fallback_notice
+            from lamb.aac.language import translation_confirmation, documentation_fallback_notice, unqueued_write_notice
             interpretation_notice = documentation_fallback_notice(self) + translation_confirmation(self)
+            if not self.pending_action and self._shows_unqueued_write(text):
+                interpretation_notice += unqueued_write_notice(self)
             if interpretation_notice:
                 yield interpretation_notice
                 text += interpretation_notice
@@ -625,6 +629,18 @@ class AgentLoop(SkillRouting):
             if self.session_logger:
                 self.session_logger.log_agent_response(text)
             return
+
+    def _shows_unqueued_write(self, text):
+        """True when the reply spells out a command that this session would queue for approval (#495)."""
+        import re
+        for candidate in re.findall(r'(?m)(?:^|`)[ \t]*((?:lamb|moodle)[ \t][^`\n]+)', text or ''):
+            try:
+                action_key, _, _, help_requested = prepare_command(candidate.strip(), getattr(self.shell, "allowlist", None))
+            except (ValueError, TypeError):
+                continue
+            if not help_requested and self.authorizer.check(action_key) == 'ask':
+                return True
+        return False
 
     def _result_message(self, payload, command, *, role, tool_call_id=None, prefix='', suffix=''):
         from lamb.aac.result_store import encode
@@ -892,6 +908,7 @@ class AgentLoop(SkillRouting):
             # Ambiguous message — treat as a new message, keep pending action
             # The agent will respond to whatever the user said, and the
             # pending action remains for the next turn
+            self._pending_undecided = True
             return None
 
     def _record_interrupted(self, command, action_key):

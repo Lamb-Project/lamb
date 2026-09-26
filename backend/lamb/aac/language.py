@@ -92,6 +92,33 @@ def confirmation_fallback(agent):
     return f'{intro}\n\n{details}\n\n{question}'
 
 
+def _code(agent):
+    state = agent.skill_state or {}
+    return state.get('response_language_policy', {}).get('effective_language', state.get('ui_language', 'en'))
+
+
+def pending_decision_notice(agent):
+    """#495: a message that is not a decision never replaces or silently drops the pending proposal."""
+    messages = {
+        'en': 'A proposal is still waiting for your decision, so nothing else was done in this turn. Approve, reject or edit it; then ask again.',
+        'es': 'Hay una propuesta esperando tu decisión, así que en este turno no se ha hecho nada más. Apruébala, recházala o edítala, y luego vuelve a pedirlo.',
+        'ca': 'Hi ha una proposta esperant la teva decisió, així que en aquest torn no s’ha fet res més. Aprova-la, rebutja-la o edita-la, i després torna-ho a demanar.',
+        'eu': 'Proposamen bat zure erabakiaren zain dago; beraz, txanda honetan ez da beste ezer egin. Onartu, baztertu edo editatu, eta gero eskatu berriro.',
+    }
+    return messages.get(_code(agent), messages['en']) + '\n\n'
+
+
+def unqueued_write_notice(agent):
+    """#495: a write shown only as text is not awaiting approval; say so instead of implying a button."""
+    messages = {
+        'en': 'Note: the change above has not been prepared for approval, so no confirmation button is shown and nothing will run. Ask me to prepare it if you want it applied.',
+        'es': 'Nota: el cambio anterior no se ha preparado para aprobación; no hay botón de confirmación y no se ejecutará nada. Pídeme que lo prepare si quieres aplicarlo.',
+        'ca': 'Nota: el canvi anterior no s’ha preparat per aprovar-lo; no hi ha botó de confirmació i no s’executarà res. Demana’m que el prepari si vols aplicar-lo.',
+        'eu': 'Oharra: goiko aldaketa ez da onartzeko prestatu; ez dago berrespen-botoirik eta ez da ezer exekutatuko. Eskatu prestatzeko aplikatu nahi baduzu.',
+    }
+    return '\n\n' + messages.get(_code(agent), messages['en'])
+
+
 def translation_confirmation(agent):
     """Render the interpretation independently of provider compliance.
 
