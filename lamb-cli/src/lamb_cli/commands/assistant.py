@@ -229,7 +229,7 @@ def create_assistant(
     image_generation: bool = typer.Option(False, "--image-generation/--no-image-generation", help="Enable image generation."),
     rag_top_k: Optional[int] = typer.Option(None, "--rag-top-k", help="Number of RAG chunks."),
     rag_collections: Optional[str] = typer.Option(
-        None, "--rag-collections", help="Comma-separated RAG collection names."
+        None, "--rag-collections", help="Comma-separated knowledge base IDs (see 'lamb kb list'); an exact, unambiguous name is resolved to its ID."
     ),
     prompt_template: Optional[str] = typer.Option(None, "--prompt-template", help="Prompt template text."),
     interactive: bool = typer.Option(False, "--interactive", "-i", help="Run interactive configuration wizard."),
@@ -311,7 +311,7 @@ def update_assistant(
     image_generation: Optional[bool] = typer.Option(None, "--image-generation/--no-image-generation", help="Enable/disable image generation."),
     rag_top_k: Optional[int] = typer.Option(None, "--rag-top-k", help="Number of RAG chunks."),
     rag_collections: Optional[str] = typer.Option(
-        None, "--rag-collections", help="Comma-separated RAG collection names."
+        None, "--rag-collections", help="Comma-separated knowledge base IDs (see 'lamb kb list'); an exact, unambiguous name is resolved to its ID."
     ),
     prompt_template: Optional[str] = typer.Option(None, "--prompt-template", help="Prompt template text."),
     interactive: bool = typer.Option(False, "--interactive", "-i", help="Run interactive configuration wizard."),

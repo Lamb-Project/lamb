@@ -12,6 +12,7 @@ from creator_interface.openai_connect import OpenAIConnector
 from lamb.database_manager import LambDatabaseManager
 # Replaced HTTP endpoint imports with service layer
 from lamb.services.assistant_service import AssistantService
+from lamb.services.rag_collections import RagCollectionsError, resolve_for_user
 from lamb.services.organization_service import OrganizationService
 from lamb.auth_context import AuthContext, get_auth_context
 from typing import Optional, List, Dict, Any, Tuple, Union
@@ -606,7 +607,14 @@ async def create_assistant_directly(request: Request, auth: AuthContext = Depend
         
         assistant_name = sanitized_prefixed_name
 
-        # 5. Prepare assistant data with sanitized name
+        # 5. Resolve RAG collections to knowledge-base IDs the creator can use (#517)
+        try:
+            original_body["RAG_collections"] = resolve_for_user(
+                original_body.get("RAG_collections", ""), creator_user.get('id'), creator_user.get('organization_id'))
+        except RagCollectionsError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+        # 6. Prepare assistant data with sanitized name
         new_body, error = prepare_assistant_body(
             original_body, 
             creator_user, 
@@ -1272,6 +1280,16 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         for key, default_val in merge_defaults.items():
             if key not in original_body:
                 original_body[key] = default_val
+
+        # A changed RAG_collections must resolve against the assistant owner's knowledge bases (#517).
+        # An unchanged value is kept, so unrelated edits never fail on a KB that was later unshared.
+        if (original_body.get("RAG_collections") or "") != (current.RAG_collections or ""):
+            owner = LambDatabaseManager().get_creator_user_by_email(current.owner) or {}
+            try:
+                original_body["RAG_collections"] = resolve_for_user(
+                    original_body.get("RAG_collections", ""), owner.get('id'), owner.get('organization_id'))
+            except RagCollectionsError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
 
         # Ensure defaults before validation (fills missing prompt_processor, connector)
         original_body["metadata"] = _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", "")))
