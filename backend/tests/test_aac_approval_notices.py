@@ -48,3 +48,13 @@ class ApprovalNotices(unittest.IsolatedAsyncioTestCase):
         a, p, s = agent([message(f'```\n{COMMAND}\n```')])
         a.skill_state = {'ui_language': 'ca'}
         self.assertIn('no s’ha preparat per aprovar-lo', await turn(a, False, 'Canvia la descripció'))
+
+
+def test_improve_skill_queues_requested_changes_instead_of_prose_proposals():
+    """#495: the skill no longer contradicts the persona's queue-directly rule; 1.11.5 stays frozen."""
+    from lamb.aac.pack_loader import load_pack
+    skill = load_pack().text('skills/improve_assistant.md')
+    assert 'show the proposed changes and wait for approval' not in skill
+    assert 'queue the complete update command in the same turn' in skill
+    assert 'Copy user-supplied text exactly' in skill
+    assert 'wait for approval' in load_pack(version='1.11.5').text('skills/improve_assistant.md')
