@@ -68,6 +68,10 @@ async def create_key(body: CreateKeyBody,
                      auth: AuthContext = Depends(get_auth_context)):
     """Mint a new API key for the current creator user."""
     _require_api_access(auth)
+    if auth.token_payload.get("takeover"):
+        # A key would outlive the audited takeover session (#523).
+        raise HTTPException(status_code=403,
+                            detail="API keys cannot be created while an administrator is acting as this user.")
 
     raw = KEY_PREFIX + secrets.token_urlsafe(32)
     key_hash = hashlib.sha256(raw.encode()).hexdigest()

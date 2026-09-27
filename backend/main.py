@@ -346,6 +346,10 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
+# Administrators acting as a creator (#523): mark the request, audit its writes.
+from lamb.services.takeover import TakeoverMiddleware
+app.add_middleware(TakeoverMiddleware)
+
 # Minimal CORS: allow everything (no credentials). Keep it tiny.
 app.add_middleware(
     CORSMiddleware,

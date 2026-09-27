@@ -21,9 +21,9 @@ logger = get_logger(__name__, component="MIGRATIONS")
 
 # Increment this when adding a new migration method below.
 # Migration numbers are shared with the lamb-1.0-alpha line (#465). 1-25 are common, 26 is
-# api_keys (this line; alpha keeps 26 free for it), and 27-31 are taken on alpha. The next
-# migration here is 32. tests/test_migration_runner.py enforces this.
-LATEST_VERSION = 26
+# api_keys (this line; alpha keeps 26 free for it), 27-31 are taken on alpha, and 32 is
+# account_takeovers (this line, #523). The next migration here is 33. tests/test_migration_runner.py enforces this.
+LATEST_VERSION = 32
 
 # Numbers another line has applied to real databases; this line must never define them.
 RESERVED_ON_OTHER_LINES = {
@@ -1213,3 +1213,27 @@ class MigrationRunner:
         cursor.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{tp}api_keys_user "
             f"ON {tp}api_keys(creator_user_id)")
+
+    def _migration_32(self, cursor):
+        """Create account_takeovers table (administrators acting as a creator, #523)."""
+        if self._table_exists(cursor, 'account_takeovers'):
+            return
+        tp = self.db.table_prefix
+        cursor.execute(f"""
+            CREATE TABLE {tp}account_takeovers (
+                id TEXT PRIMARY KEY,
+                organization_id INTEGER NOT NULL,
+                actor_user_id INTEGER NOT NULL,
+                target_user_id INTEGER NOT NULL,
+                started_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                ended_at INTEGER,
+                end_reason TEXT,
+                acknowledged_at INTEGER,
+                FOREIGN KEY (actor_user_id) REFERENCES {tp}Creator_users(id) ON DELETE CASCADE,
+                FOREIGN KEY (target_user_id) REFERENCES {tp}Creator_users(id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{tp}account_takeovers_target "
+            f"ON {tp}account_takeovers(target_user_id, acknowledged_at)")

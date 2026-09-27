@@ -38,6 +38,8 @@ class MoodlePolicy:
     mode: str = 'readonly'
     write_groups: frozenset = frozenset()
     allow_grade_write: bool = False
+    # Set when writes are withheld for this request rather than by the organization (#523).
+    readonly_reason: str = ''
 
     @classmethod
     def from_config(cls, config):
@@ -64,6 +66,8 @@ class MoodlePolicy:
             raise PermissionError('Connect only to the Moodle instance allowed by your organization')
 
     def require_write(self, group):
+        if self.readonly_reason:
+            raise PermissionError(self.readonly_reason)
         if not self.enabled or self.mode != 'full':
             raise PermissionError('Moodle writes are disabled for this organization')
         allowed = self.allow_grade_write if group == 'grade' else group in self.write_groups

@@ -16,6 +16,9 @@
 	import { user } from '$lib/stores/userStore';
 	import { goto } from '$app/navigation';
 	import { needsLogin } from '$lib/utils/authGuard';
+	import TakeoverBar from '$lib/components/TakeoverBar.svelte';
+	import TakeoverNotices from '$lib/components/TakeoverNotices.svelte';
+	import { takeoverReturn, returnFromTakeover } from '$lib/session/takeover';
 
 	let { children } = $props();
 	let sessionReady = $state(!$page.url.searchParams.get('token'));
@@ -26,6 +29,12 @@
 	let loginRequired = $derived(needsLogin($page.url.pathname, !!$user.isLoggedIn, base));
 	$effect(() => {
 		if (browser && sessionReady && loginRequired) goto(`${base}/`, { replaceState: true });
+	});
+	// An administrator acting as a creator (#523); the page reloads on start and on return.
+	const acting = browser && !!takeoverReturn();
+	$effect(() => {
+		// The creator session ended or expired: restore the administrator's own session.
+		if (acting && sessionReady && !$user.isLoggedIn) returnFromTakeover(false);
 	});
 
 	/** @param {URL} url */
@@ -100,7 +109,9 @@
 
 <div class="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
 	<div class="lamb-workspace" class:agent-open={$sidebarOpen && !!$user.token} style:--aac-width={$sidebarWidth + "px"} inert={$sidebarOpen && $sidebarMobile && !!$user.token}>
+	{#if acting && sessionReady && $user.token}<TakeoverBar />{/if}
 	<Nav />
+	{#if !acting && sessionReady && $user.token}<TakeoverNotices />{/if}
 
 
 	<main oninputcapture={markWorkspaceDirty} onchangecapture={markWorkspaceDirty} class="w-full mx-auto py-6 sm:px-6 lg:px-8 flex-grow" class:aac-workspace={$sidebarOpen && !!$user.token}>
