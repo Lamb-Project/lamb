@@ -66,7 +66,8 @@ def rag_processor(
         error_message = "No RAG collections specified in the assistant configuration"
         logger.error(f"RAG processing failed: {error_message}")
         return {
-            "context": error_message,
+            "context": "",
+            "error": error_message,
             "sources": [],
             "assistant_data": assistant_dict
         }
@@ -75,7 +76,8 @@ def rag_processor(
         error_message = "No user message found to use for the query"
         logger.error(f"RAG processing failed: {error_message}")
         return {
-            "context": error_message,
+            "context": "",
+            "error": error_message,
             "sources": [],
             "assistant_data": assistant_dict
         }
@@ -86,7 +88,8 @@ def rag_processor(
         error_message = "RAG_collections is empty or improperly formatted"
         logger.error(f"RAG processing failed: {error_message}")
         return {
-            "context": error_message,
+            "context": "",
+            "error": error_message,
             "sources": [],
             "assistant_data": assistant_dict
         }
@@ -317,7 +320,8 @@ def rag_processor(
         logger.error(error_message)
         print(f"Error: {error_message}")
         return {
-            "context": error_message,
+            "context": "",
+            "error": error_message,
             "sources": [],
             "assistant_data": assistant_dict,
             "raw_responses": all_responses if all_responses else None

@@ -192,6 +192,13 @@ async def get_library(
     try:
         lm_data = await _client.get_library(library_id, creator_user=auth.user)
         entry["item_count"] = lm_data.get("item_count", 0)
+    except HTTPException as e:
+        if e.status_code == 503:
+            # Library Manager unreachable: say so, instead of 200 with degraded data (#350).
+            logger.error(f"Library Manager unreachable while reading library {library_id}")
+            raise HTTPException(status_code=503, detail=e.detail, headers={"Retry-After": "30"})
+        logger.warning(f"Could not fetch item_count from Library Manager for {library_id}: {e.detail}")
+        entry["item_count"] = None
     except Exception as e:
         logger.warning(f"Could not fetch item_count from Library Manager for {library_id}: {e}")
         entry["item_count"] = None

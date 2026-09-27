@@ -205,7 +205,8 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
         error_message = "No RAG collections specified in the assistant configuration"
         logger.error(f"RAG processing failed: {error_message}")
         return {
-            "context": error_message,
+            "context": "",
+            "error": error_message,
             "sources": [],
             "assistant_data": assistant_dict
         }
@@ -214,7 +215,8 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
         error_message = "No query could be generated from the conversation"
         logger.error(f"RAG processing failed: {error_message}")
         return {
-            "context": error_message,
+            "context": "",
+            "error": error_message,
             "sources": [],
             "assistant_data": assistant_dict
         }
@@ -225,7 +227,8 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
         error_message = "RAG_collections is empty or improperly formatted"
         logger.error(f"RAG processing failed: {error_message}")
         return {
-            "context": error_message,
+            "context": "",
+            "error": error_message,
             "sources": [],
             "assistant_data": assistant_dict
         }
@@ -434,7 +437,8 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
         logger.error(error_message)
         print(f"Error: {error_message}")
         return {
-            "context": error_message,
+            "context": "",
+            "error": error_message,
             "sources": [],
             "assistant_data": assistant_dict,
             "raw_responses": all_responses if all_responses else None
