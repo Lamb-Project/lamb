@@ -1267,7 +1267,9 @@
                 'Content-Type': 'application/json'
             };
             
-            const response = await axios.get(`${API_BASE}/org-admin/assistants`, { headers });
+            // Scope to the organization a system admin opened, like the other tabs (#97).
+            const params = targetOrgSlug ? `?org=${encodeURIComponent(targetOrgSlug)}` : '';
+            const response = await axios.get(`${API_BASE}/org-admin/assistants${params}`, { headers });
             if (!isMounted) return;
             orgAssistants = response.data.assistants || [];
             assistantsLoaded = true; // Mark as loaded even if empty

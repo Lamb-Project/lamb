@@ -8,7 +8,7 @@ import { isKbBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProces
 
 /**
  * Validates form data before submission.
- * @param {{ name: string, selectedRagProcessor: string, selectedRubricId: string }} form
+ * @param {Record<string, any>} form
  * @returns {string | null} Error message or null if valid
  */
 export function validateSubmission(form) {
@@ -45,6 +45,7 @@ function ragConfigChanged(form) {
 		ruleInputs(stored.metadata ?? stored.api_callback, stored.prompt_template, stored.RAG_collections);
 }
 
+/** @type {Record<string, string>} */
 const RAG_NAMES = {
 	simple_rag: 'Simple RAG',
 	context_aware_rag: 'Context-aware RAG',
