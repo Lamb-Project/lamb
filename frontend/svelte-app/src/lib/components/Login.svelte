@@ -90,7 +90,7 @@
 
 <div class="max-w-md mx-auto bg-white shadow-md rounded-lg overflow-hidden">
   <div class="p-6">
-    <h2 class="text-2xl font-bold mb-6">{localeLoaded ? $_('auth.loginTitle') : 'Login'}</h2>
+    <h1 class="text-2xl font-bold mb-6">{localeLoaded ? $_('auth.loginTitle') : 'Login'}</h1>
     <form onsubmit={submitLogin} class="space-y-4">
       <div class="space-y-2">
         <label for="email" class="block text-sm font-medium">{localeLoaded ? $_('auth.email') : 'Email'}</label>

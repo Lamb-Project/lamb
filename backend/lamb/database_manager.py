@@ -33,6 +33,10 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="DB")
 
 
+class LibraryStoreError(Exception):
+    """A library row could not be written for a reason other than a name conflict."""
+
+
 class LambDatabaseManager:
     # Class-level flag: initialize_system_organization (which calls sync_system_org_with_env)
     # must only run once per process lifetime. Many parts of the codebase instantiate
@@ -6491,11 +6495,14 @@ class LambDatabaseManager:
             status: Initial status ('active' or 'provisional').
 
         Returns:
-            The library_id if successful, None on failure.
+            The library_id if successful, None when the name is already used in the organization.
+
+        Raises:
+            LibraryStoreError: any other database failure.
         """
         connection = self.get_connection()
         if not connection:
-            return None
+            raise LibraryStoreError("no database connection")
         try:
             with connection:
                 cursor = connection.cursor()
@@ -6510,11 +6517,15 @@ class LambDatabaseManager:
                 logger.info(f"Created library '{name}' (ID: {library_id}) for user {owner_user_id}")
                 return library_id
         except sqlite3.IntegrityError as e:
-            logger.error(f"Integrity error creating library: {e}")
+            if "UNIQUE" not in str(e).upper():
+                logger.error(f"Integrity error creating library: {e}")
+                raise LibraryStoreError(str(e)) from e
+            logger.info(f"Library name '{name}' already used in organization {organization_id}")
             return None
         except sqlite3.Error as e:
+            # A missing table or a locked database is not a name conflict (#466).
             logger.error(f"Database error creating library: {e}")
-            return None
+            raise LibraryStoreError(str(e)) from e
         finally:
             connection.close()
 
