@@ -13,6 +13,7 @@
     axios.isAxiosError = isAxiosError;
     import { user } from '$lib/stores/userStore';
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
+    import OrgApiAccessSettings from '$lib/components/admin/OrgApiAccessSettings.svelte';
     import Pagination from '$lib/components/common/Pagination.svelte';
     import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
     // BulkUserImport component not yet implemented
@@ -3442,6 +3443,7 @@
                                 </div>
                             </div>
                         </div>
+                        <OrgApiAccessSettings orgSlug={targetOrgSlug} />
                         {/if}
 
                         <!-- API Configuration Tab -->

@@ -2732,6 +2732,59 @@ async def update_signup_settings(request: Request, settings: OrgAdminSignupSetti
         logger.error(f"Error updating signup settings: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+class OrgAdminApiAccessSettings(BaseModel):
+    api_access: bool = Field(..., description="Allow creators of this organization to create personal API keys (#519)")
+
+
+@router.get(
+    "/org-admin/settings/api-access",
+    tags=["Organization Admin - Settings"],
+    summary="Get Creator API Access",
+    description="Whether creators of the organization may create personal API keys for the OpenAI-compatible API.",
+    dependencies=[Depends(security)]
+)
+async def get_api_access_settings(request: Request, org: Optional[str] = None):
+    target_org_id = None
+    if org:
+        target_organization = db_manager.get_organization_by_slug(org)
+        if not target_organization:
+            raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+        target_org_id = target_organization['id']
+    admin_info = await verify_organization_admin_access(request, target_org_id)
+    features = admin_info['organization'].get('config', {}).get('features', {})
+    return {"api_access": bool(features.get('api_access', False))}
+
+
+@router.put(
+    "/org-admin/settings/api-access",
+    tags=["Organization Admin - Settings"],
+    summary="Update Creator API Access",
+    description="""Enable or disable personal API keys for the organization's creators. Disabling stops every existing key of the organization at once; keys are not deleted.
+
+Example Request:
+```bash
+curl -X PUT 'http://localhost:8000/creator/admin/org-admin/settings/api-access' \\
+-H 'Authorization: Bearer <org_admin_token>' -H 'Content-Type: application/json' \\
+-d '{"api_access": true}'
+```
+""",
+    dependencies=[Depends(security)]
+)
+async def update_api_access_settings(request: Request, settings: OrgAdminApiAccessSettings, org: Optional[str] = None):
+    target_org_id = None
+    if org:
+        target_organization = db_manager.get_organization_by_slug(org)
+        if not target_organization:
+            raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+        target_org_id = target_organization['id']
+    admin_info = await verify_organization_admin_access(request, target_org_id)
+    config = admin_info['organization'].get('config', {})
+    config.setdefault('features', {})['api_access'] = settings.api_access
+    if not db_manager.update_organization_config(admin_info['organization_id'], config):
+        raise HTTPException(status_code=500, detail="Failed to update API access")
+    return {"api_access": settings.api_access}
+
+
 @router.get(
     "/org-admin/settings/api",
     tags=["Organization Admin - Settings"], 
