@@ -2,6 +2,8 @@
 	/** Shown while an administrator acts as a creator (#523). */
 	import { onMount } from 'svelte';
 	import { locale } from 'svelte-i18n';
+	import { get } from 'svelte/store';
+	import { user } from '$lib/stores/userStore';
 	import { currentTakeover } from '$lib/services/takeoverService';
 	import { returnFromTakeover } from '$lib/session/takeover';
 	import { takeoverText, fill, when } from '$lib/utils/takeoverText';
@@ -13,7 +15,7 @@
 
 	onMount(async () => {
 		try {
-			info = await currentTakeover();
+			info = await currentTakeover(get(user).token || '');
 			// Ended in another tab or expired: go back to the administrator's own account.
 			if (!info?.active) await returnFromTakeover(false);
 		} catch {

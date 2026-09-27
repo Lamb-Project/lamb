@@ -38,8 +38,13 @@ export async function beginTakeover(userId) {
 	window.location.assign(`${base}/assistants`);
 }
 
+let returning = false;
+
 /** End the takeover (unless it already ended) and restore the administrator's session. */
 export async function returnFromTakeover(end = true) {
+	// The bar and the layout can both notice an ended takeover; restore once.
+	if (returning) return;
+	returning = true;
 	const saved = takeoverReturn();
 	if (end) {
 		try { await endTakeover(); } catch { /* already ended or expired */ }

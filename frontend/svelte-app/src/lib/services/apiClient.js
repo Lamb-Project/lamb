@@ -40,6 +40,18 @@ async function handleUnauthorized() {
 	_redirecting = true;
 
 	try {
+		// An administrator acting as a creator (#523): the creator token ended or expired, so
+		// return to the administrator's own session instead of logging out.
+		const { takeoverReturn, returnFromTakeover } = await import('$lib/session/takeover');
+		if (takeoverReturn()) {
+			await returnFromTakeover(false);
+			return;
+		}
+	} catch (e) {
+		console.error('Failed to return from takeover during 401 handling:', e);
+	}
+
+	try {
 		// Dynamic import to avoid circular dep with stores at module load.
 		const { clearCurrentSession } = await import('$lib/session/sessionManager');
 		clearCurrentSession();
