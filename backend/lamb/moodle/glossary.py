@@ -33,6 +33,7 @@ LAMB_TERMS = {
     'book.list': ('module_identity', 'resource_listing'),
     'folder.list': ('module_identity', 'resource_listing', 'file'),
     'folder.inspect': ('resource_listing', 'file'),
+    'course.inventory': ('module_identity', 'resource_listing', 'file'),
 }
 
 # Deliberately uncovered: recovery handles and LAMB ingestion state describe

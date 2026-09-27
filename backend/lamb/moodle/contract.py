@@ -38,6 +38,10 @@ class CommandSpec:
             return self.parser.get_help(ctx) + '\nPolicy: ' + self.policy
 
 
+# LAMB reads built on reviewed standard web services, beyond the installed moodle-cli catalogue.
+LAMB_READS = frozenset({'course.inventory'})
+
+
 @lru_cache(maxsize=1)
 def command_specs():
     groups = _full_groups()
@@ -68,6 +72,13 @@ def command_specs():
         notes = help_for_command(key)
         parser.epilog = 'Field meanings and limitations:\n\n' + notes if notes else None
         result[key] = CommandSpec(key, parser.help or '', 'ask' if key in CURATED_WRITES else 'auto', parser)
+    # LAMB read over the same core_course_get_contents: one row per module with section,
+    # parent section and files, for tasks over many activities and resources (#521).
+    inventory = click.Command('inventory', params=[click.Argument(['course_id'], type=click.IntRange(min=1)),
+        click.Option(['--modname'], default=None, help='Only modules of this type, e.g. resource, assign, forum, page.'),
+        click.Option(['--mimetype'], default=None, help='Only modules with a file of this MIME type, e.g. application/pdf.')],
+        help='List every course module with its section, parent section and files.', add_help_option=False)
+    result['course.inventory'] = CommandSpec('course.inventory', inventory.help, 'auto', inventory)
     return result
 
 

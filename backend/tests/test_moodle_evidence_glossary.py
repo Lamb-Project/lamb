@@ -10,7 +10,7 @@ from moodle_cli.glossary import TERMS, terms_for_command
 from lamb.aac import result_store as rs
 from lamb.aac.liteshell.shell import LiteShell
 from lamb.moodle import glossary
-from lamb.moodle.contract import command_specs
+from lamb.moodle.contract import command_specs, LAMB_READS
 from lamb.moodle.document_contract import document_specs
 from lamb.moodle.task_contract import task_specs
 
@@ -64,8 +64,10 @@ def test_every_lamb_moodle_command_is_mapped_or_deliberately_uncovered():
 
 
 def test_notes_are_upstream_text_selected_by_upstream_mapping():
-    for key in command_specs():
+    for key in set(command_specs()) - LAMB_READS:
         assert list(glossary.field_notes(key)) == list(terms_for_command(key))
+    # LAMB reads take their notes from LAMB_TERMS, still upstream definitions.
+    assert list(glossary.field_notes('course.inventory')) == ['response_scope', 'missing_value', 'module_identity', 'resource_listing', 'file']
     for term, text in glossary.field_notes('cache.show:assignments').items():
         assert text == canonical(term)
 
@@ -87,7 +89,7 @@ def test_semantic_fixtures_use_actual_mappings():
 def test_command_reference_carries_canonical_help_without_changing_vocabulary():
     specs = command_specs()
     expected = {f'{g}.{n}' for g, names in READONLY_COMMANDS.items() if g != 'auth' for n in names}
-    assert set(specs) == expected | {'forum.post', 'forum.reply', 'assign.grade'}
+    assert set(specs) == expected | {'forum.post', 'forum.reply', 'assign.grade'} | LAMB_READS
     assert 'terms' not in READONLY_COMMANDS and not any(k.startswith('terms') for k in specs)
     assert 'glossary.entries' in specs  # The Moodle activity, not the evidence glossary.
     text = ' '.join(specs['assign.submissions'].reference().split())

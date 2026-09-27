@@ -4,7 +4,7 @@ from moodle_cli.services.forum import ForumService
 from .scope import MoodleScope
 from .reads import execute_read, plain
 
-COURSE_READS=frozenset({'course.get','course.contents','calendar.course','forum.list','assign.list',
+COURSE_READS=frozenset({'course.get','course.contents','course.inventory','calendar.course','forum.list','assign.list',
     'enrol.list-users','enrol.methods','choice.list','completion.course','completion.status',
     'content.list','feedback.list','grade.get','grade.report','grade.table','group.list',
     'group.groupings','group.user-groups','note.course','quiz.list','user.profiles'})

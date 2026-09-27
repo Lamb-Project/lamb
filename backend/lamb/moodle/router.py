@@ -227,7 +227,7 @@ async def document_command(body: DocumentCommandBody, request: Request,
     try:
         if len(body.command) > 4096: raise ValueError('Moodle command is too long')
         spec, params = prepare_moodle(body.command)
-        if spec.key not in document_specs() and spec.key not in {'course.get', 'course.contents', 'file.list'}:
+        if spec.key not in document_specs() and spec.key not in {'course.get', 'course.contents', 'course.inventory', 'file.list'}:
             raise ValueError('Use document listing/import commands in this endpoint')
         runtime = MoodleRuntime(store)
         storage = store_for_runtime(runtime)

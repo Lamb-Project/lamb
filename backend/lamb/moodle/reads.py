@@ -64,7 +64,7 @@ BINDINGS = {
     'workshop.grades': ('activity_content','WorkshopService','grades_report','workshop_id'),
     'workshop.submissions': ('activity_content','WorkshopService','submissions','workshop_id'),
 }
-SPECIAL_READS = {'file.list','wiki.pages','content.types','enrol.my-courses','message.list','message.conversations','message.unread'}
+SPECIAL_READS = {'course.inventory','file.list','wiki.pages','content.types','enrol.my-courses','message.list','message.conversations','message.unread'}
 
 
 def service_class(module, name):
@@ -107,6 +107,10 @@ def execute_read(client, key, params, *, owner_moodle_id):
     # Never let an omitted user select a server-dependent class-wide default.
     if 'user_id' in params and params['user_id'] is None:
         params['user_id'] = owner_moodle_id
+    if key == 'course.inventory':
+        from .course_structure import inventory
+        contents = plain(service_class('course','CourseService')(client).get_contents(params['course_id']))
+        return inventory(contents, params.get('modname'), params.get('mimetype'))
     if key == 'file.list':
         from .documents import FileInventoryService
         return FileInventoryService(client).files(params)

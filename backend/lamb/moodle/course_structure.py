@@ -29,3 +29,28 @@ def with_subsection_links(sections):
             child['subsection_of'] = {'section_id': parent.get('id'), 'section_name': parent.get('name'),
                                       'module_id': module.get('id')}
     return sections
+
+
+def inventory(sections, modname=None, mimetype=None):
+    """One row per course module, in course order, with its section, parent section and files.
+
+    A flat, compact view of course contents for tasks over many activities or resources
+    (#521). Filters keep the totals honest: `total_modules` counts every module read.
+    """
+    sections = with_subsection_links(sections if isinstance(sections, list) else [])
+    rows, total = [], 0
+    for section in sections:
+        parent = section.get('subsection_of') or {}
+        for module in section.get('modules') or []:
+            total += 1
+            if modname and module.get('modname') != modname: continue
+            files = [{'filename': f.get('filename'), 'mimetype': f.get('mimetype'), 'filesize': f.get('filesize')}
+                     for f in module.get('contents') or [] if isinstance(f, dict) and f.get('type', 'file') == 'file']
+            if mimetype and not any((f.get('mimetype') or '') == mimetype for f in files): continue
+            rows.append({'id': module.get('id'), 'name': module.get('name'), 'modname': module.get('modname'),
+                         'section_id': section.get('id'), 'section_name': section.get('name'),
+                         'parent_section_id': parent.get('section_id'), 'parent_section_name': parent.get('section_name'),
+                         'subsection_section_id': module.get('subsection_section_id'),
+                         'visible': module.get('visible'), 'uservisible': module.get('uservisible'), 'files': files})
+    return {'sections': len(sections), 'total_modules': total, 'matched': len(rows),
+            'filters': {'modname': modname, 'mimetype': mimetype}, 'modules': rows}
