@@ -14,12 +14,19 @@
 	import { replaceSessionWithToken } from '$lib/session/sessionManager';
 	import { get } from 'svelte/store';
 	import { user } from '$lib/stores/userStore';
+	import { goto } from '$app/navigation';
+	import { needsLogin } from '$lib/utils/authGuard';
 
 	let { children } = $props();
 	let sessionReady = $state(!$page.url.searchParams.get('token'));
 	let processingToken = $state(false);
 	let processedToken = $state(/** @type {string | null} */ (null));
 	let sessionError = $state(/** @type {string | null} */ (null));
+	// Protected pages never render without a session; the landing page shows the login (#260, #218).
+	let loginRequired = $derived(needsLogin($page.url.pathname, !!$user.isLoggedIn, base));
+	$effect(() => {
+		if (browser && sessionReady && loginRequired) goto(`${base}/`, { replaceState: true });
+	});
 
 	/** @param {URL} url */
 	async function handleTokenLogin(url) {
@@ -105,7 +112,7 @@
 					Return to login
 				</a>
 			</div>
-		{:else if sessionReady}
+		{:else if sessionReady && !loginRequired}
 			{@render children()}
 		{/if}
 	</main>

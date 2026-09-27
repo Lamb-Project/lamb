@@ -13,6 +13,7 @@ from lamb.database_manager import LambDatabaseManager
 # Replaced HTTP endpoint imports with service layer
 from lamb.services.assistant_service import AssistantService
 from lamb.services.rag_collections import RagCollectionsError, resolve_for_user
+from lamb.completions.org_config_resolver import OrganizationConfigResolver
 from lamb.services.organization_service import OrganizationService
 from lamb.auth_context import AuthContext, get_auth_context
 from typing import Optional, List, Dict, Any, Tuple, Union
@@ -393,31 +394,66 @@ def validate_update_plugin_metadata(
     return normalized_metadata, None
 
 
-def _ensure_metadata_defaults(metadata_raw) -> str:
+def _ensure_metadata_defaults(metadata_raw, owner_email: Optional[str] = None):
     """Ensure essential fields have defaults in assistant metadata.
 
-    The completion pipeline requires a valid prompt_processor. If not set,
-    the pipeline fails with 'Prompt processor default not found'.
+    The completion pipeline requires a valid prompt_processor, and updates require
+    prompt_processor, connector, llm and rag_processor. An assistant created with
+    minimal metadata (CLI, AAC, API) gets all four, so its first partial edit does not
+    fail (#335). connector and llm come from the owner's organization, as completions do.
     """
-    if not metadata_raw:
-        return json.dumps({"prompt_processor": "simple_augment"})
-
-    if isinstance(metadata_raw, str):
-        try:
-            meta = json.loads(metadata_raw)
-        except (json.JSONDecodeError, TypeError):
-            return json.dumps({"prompt_processor": "simple_augment"})
-    elif isinstance(metadata_raw, dict):
+    as_string = not isinstance(metadata_raw, dict)
+    meta = {}
+    if isinstance(metadata_raw, dict):
         meta = metadata_raw
-    else:
-        return json.dumps({"prompt_processor": "simple_augment"})
+    elif isinstance(metadata_raw, str) and metadata_raw.strip():
+        try:
+            parsed = json.loads(metadata_raw)
+            meta = parsed if isinstance(parsed, dict) else {}
+        except (json.JSONDecodeError, TypeError):
+            meta = {}
 
     if not meta.get("prompt_processor"):
         meta["prompt_processor"] = "simple_augment"
+    if not meta.get("rag_processor"):
+        meta["rag_processor"] = "no_rag"
+    if owner_email and (not meta.get("connector") or not meta.get("llm")):
+        try:
+            resolved = OrganizationConfigResolver(owner_email).resolve_model_for_completion(
+                meta.get("llm") or None, meta.get("connector") or None)
+            if not meta.get("connector"):
+                meta["connector"] = resolved["provider"]
+            if not meta.get("llm") and meta["connector"] == resolved["provider"]:
+                meta["llm"] = resolved["model"]
+        except Exception as e:
+            logger.warning(f"Could not resolve the organization model for {owner_email}: {e}")
     if not meta.get("connector"):
         meta["connector"] = "openai"
 
-    return json.dumps(meta) if isinstance(metadata_raw, str) else meta
+    return json.dumps(meta) if as_string else meta
+
+
+def _merge_partial_metadata(stored_raw, incoming_raw):
+    """A metadata update missing required fields is a partial edit over the stored metadata (#335).
+
+    Complete metadata (what the assistant form sends) replaces the stored value, as before.
+    """
+    def as_dict(raw):
+        if isinstance(raw, dict):
+            return dict(raw)
+        try:
+            parsed = json.loads(raw) if isinstance(raw, str) and raw.strip() else {}
+        except (json.JSONDecodeError, TypeError):
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    incoming = as_dict(incoming_raw)
+    if incoming is None or all(isinstance(incoming.get(k), str) and incoming[k].strip()
+                               for k in REQUIRED_PLUGIN_METADATA_KEYS):
+        return incoming_raw
+    merged = as_dict(stored_raw) or {}
+    merged.update(incoming)
+    return json.dumps(merged) if isinstance(incoming_raw, str) else merged
 
 
 def prepare_assistant_body(
@@ -449,7 +485,8 @@ def prepare_assistant_body(
             # Fallback: create prefixed name (for backward compatibility)
             prefixed_name = f"{creator_user['id']}_{original_name}"
 
-        metadata = _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", "")))
+        metadata = _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", "")),
+                                             creator_user.get('email'))
         parsed_metadata = json.loads(metadata) if isinstance(metadata, str) else metadata
         prompt_template = original_body.get("prompt_template", "")
         # Only default new, omitted templates for the built-in augmentation path.
@@ -1286,6 +1323,9 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         for key, default_val in merge_defaults.items():
             if key not in original_body:
                 original_body[key] = default_val
+        for key in ("metadata", "api_callback"):
+            if original_body.get(key) is not current_metadata_str:
+                original_body[key] = _merge_partial_metadata(current_metadata_str, original_body[key])
 
         # A changed RAG_collections must resolve against the assistant owner's knowledge bases (#517).
         # An unchanged value is kept, so unrelated edits never fail on a KB that was later unshared.
@@ -1298,7 +1338,8 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
                 raise HTTPException(status_code=400, detail=str(exc))
 
         # Ensure defaults before validation (fills missing prompt_processor, connector)
-        original_body["metadata"] = _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", "")))
+        original_body["metadata"] = _ensure_metadata_defaults(
+            original_body.get("metadata", original_body.get("api_callback", "")), current.owner)
         original_body["api_callback"] = original_body["metadata"]
 
         normalized_metadata, metadata_error = validate_update_plugin_metadata(original_body)

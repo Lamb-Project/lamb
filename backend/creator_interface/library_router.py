@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from lamb.auth_context import AuthContext, get_auth_context
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
-from lamb.database_manager import LambDatabaseManager
+from lamb.database_manager import LambDatabaseManager, LibraryStoreError
 
 from .library_manager_client import LibraryManagerClient
 
@@ -134,14 +134,18 @@ async def create_library(
     library_id = str(uuid.uuid4())
     org_id = auth.organization.get("id")
 
-    result = _db.create_library(
-        library_id=library_id,
-        name=body.name,
-        owner_user_id=auth.user.get("id"),
-        organization_id=org_id,
-        description=body.description,
-        status="provisional",
-    )
+    try:
+        result = _db.create_library(
+            library_id=library_id,
+            name=body.name,
+            owner_user_id=auth.user.get("id"),
+            organization_id=org_id,
+            description=body.description,
+            status="provisional",
+        )
+    except LibraryStoreError:
+        # Details are in the server log; the client must not look for a name conflict (#466).
+        raise HTTPException(status_code=500, detail="The library could not be saved in the LAMB database. The error is in the server log.")
     if not result:
         raise HTTPException(status_code=409, detail="Library name already taken in this organization.")
 
