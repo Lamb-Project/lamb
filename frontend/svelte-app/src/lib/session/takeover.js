@@ -40,6 +40,9 @@ export async function beginTakeover(userId) {
 
 let returning = false;
 
+/** True once this page has started restoring the administrator's session. */
+export const returningFromTakeover = () => returning;
+
 /** End the takeover (unless it already ended) and restore the administrator's session. */
 export async function returnFromTakeover(end = true) {
 	// The bar and the layout can both notice an ended takeover; restore once.

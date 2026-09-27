@@ -42,8 +42,10 @@ async function handleUnauthorized() {
 	try {
 		// An administrator acting as a creator (#523): the creator token ended or expired, so
 		// return to the administrator's own session instead of logging out.
-		const { takeoverReturn, returnFromTakeover } = await import('$lib/session/takeover');
-		if (takeoverReturn()) {
+		const { takeoverReturn, returnFromTakeover, returningFromTakeover } = await import('$lib/session/takeover');
+		// Also when the return already started: its saved session is gone, but the restored
+		// administrator session must not be cleared by a late 401 from the creator's page.
+		if (takeoverReturn() || returningFromTakeover()) {
 			await returnFromTakeover(false);
 			return;
 		}
