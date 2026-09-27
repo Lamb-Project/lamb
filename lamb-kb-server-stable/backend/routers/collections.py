@@ -11,7 +11,7 @@ import json # Needed for ingest-file params
 from typing import List, Dict, Any # Needed for background tasks and helper
 
 # Database imports
-from database.connection import get_db, get_chroma_client, SessionLocal
+from database.connection import get_db, get_chroma_client, SessionLocal, effective_apikey
 from database.service import CollectionService # Assuming this is the correct location
 from database.models import Collection # Import Collection model
 from database.models import FileRegistry, FileStatus # Needed for ingest background tasks
@@ -225,7 +225,7 @@ def process_file_in_background_enhanced(file_path: str, plugin_name: str, params
             # Pass OpenAI API key to plugin for LLM-powered image descriptions
             # ONLY if the collection uses OpenAI for embeddings (respects user's privacy choice)
             if embeddings_config.get("vendor") == "openai":
-                openai_key = embeddings_config.get("apikey")
+                openai_key = effective_apikey(embeddings_config.get("apikey"))
                 if openai_key:
                     params['openai_api_key'] = openai_key
                     print(f"INFO: [background_task] Collection uses OpenAI - API key available for LLM image descriptions")
@@ -416,7 +416,7 @@ def process_urls_in_background_enhanced(urls: List[str], plugin_name: str, param
             # Pass OpenAI API key to plugin for LLM-powered image descriptions
             # ONLY if the collection uses OpenAI for embeddings (respects user's privacy choice)
             if embeddings_config.get("vendor") == "openai":
-                openai_key = embeddings_config.get("apikey")
+                openai_key = effective_apikey(embeddings_config.get("apikey"))
                 if openai_key:
                     params['openai_api_key'] = openai_key
                     print(f"INFO: [background_task] Collection uses OpenAI - API key available for LLM image descriptions")
@@ -662,12 +662,16 @@ async def create_collection(
         
         # Resolve API key (optional)
         api_key = model_info.get("apikey")
+        # "default" is stored as no key and resolved at use time, so key rotation
+        # in EMBEDDINGS_APIKEY reaches existing collections (#195).
         if api_key == "default":
-            api_key = os.getenv("EMBEDDINGS_APIKEY", "")
+            api_key = ""
+            if vendor == "openai" and not effective_apikey(""):
+                print("WARNING: [router.create_collection] no global embeddings API key is configured")
         
         # Only log whether we have a key or not, never log the key itself or its contents
         if vendor == "openai":
-            print(f"INFO: [router.create_collection] Using OpenAI API key: {'[PROVIDED]' if api_key else '[MISSING]'}")
+            print(f"INFO: [router.create_collection] Using OpenAI API key: {'[PER-COLLECTION]' if api_key else '[ENVIRONMENT]'}")
             
         resolved_config["apikey"] = api_key
         
