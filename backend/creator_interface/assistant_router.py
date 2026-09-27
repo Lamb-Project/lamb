@@ -14,6 +14,7 @@ from lamb.database_manager import LambDatabaseManager
 from lamb.services.assistant_service import AssistantService
 from lamb.services.rag_collections import RagCollectionsError, resolve_for_user
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
+from lamb.services.assistant_config_rules import config_errors, rule_inputs
 from lamb.services.organization_service import OrganizationService
 from lamb.auth_context import AuthContext, get_auth_context
 from typing import Optional, List, Dict, Any, Tuple, Union
@@ -665,6 +666,11 @@ async def create_assistant_directly(request: Request, auth: AuthContext = Depend
         )
         if error:
             raise HTTPException(status_code=400, detail=error)
+
+        # What this RAG configuration needs to work (#335)
+        problems = config_errors(new_body["api_callback"], new_body.get("prompt_template"), new_body.get("RAG_collections"))
+        if problems:
+            raise HTTPException(status_code=400, detail=" ".join(problems))
 
         from lamb.uploaded_files import validate_file_binding
         validate_file_binding(new_body["api_callback"], creator_user["email"])
@@ -1368,6 +1374,14 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         new_body["owner"] = current.owner
         from lamb.uploaded_files import validate_file_binding
         validate_file_binding(new_body["api_callback"], current.owner)
+
+        # Checked only when the configuration changes, so an unrelated edit never fails
+        # on settings saved before these rules existed (#335).
+        if rule_inputs(new_body["api_callback"], new_body.get("prompt_template"), new_body.get("RAG_collections")) != \
+                rule_inputs(current.api_callback, current.prompt_template, current.RAG_collections):
+            problems = config_errors(new_body["api_callback"], new_body.get("prompt_template"), new_body.get("RAG_collections"))
+            if problems:
+                raise HTTPException(status_code=400, detail=" ".join(problems))
 
         logger.info(f"Prepared body for update (Assistant ID {assistant_id}): {new_body}")
 

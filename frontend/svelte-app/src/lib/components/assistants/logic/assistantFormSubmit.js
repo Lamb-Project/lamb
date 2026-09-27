@@ -16,7 +16,66 @@ export function validateSubmission(form) {
 	if (isRubricRag(form.selectedRagProcessor) && !form.selectedRubricId) {
 		return 'Please select a rubric when using Rubric RAG.';
 	}
-	return null;
+	// An edit that leaves the configuration as stored is not blocked by rules newer than it (#335).
+	if (form.formState === 'edit' && form.initialAssistantData && !ragConfigChanged(form)) return null;
+	const problems = ragConfigErrors(form);
+	return problems.length ? problems.join(' ') : null;
+}
+
+/**
+ * @param {any} metadata
+ * @param {string} template
+ * @param {string} collections
+ */
+function ruleInputs(metadata, template, collections) {
+	let meta = metadata;
+	if (typeof meta === 'string') {
+		try { meta = meta.trim() ? JSON.parse(meta) : {}; } catch { meta = {}; }
+	}
+	meta = meta && typeof meta === 'object' ? meta : {};
+	return JSON.stringify([meta.prompt_processor || 'simple_augment', meta.rag_processor || 'no_rag', template || '',
+		(collections || '').trim(), meta.file_path || '', String(meta.rubric_id || '')]);
+}
+
+/** @param {Record<string, any>} form */
+function ragConfigChanged(form) {
+	const stored = form.initialAssistantData;
+	const payload = buildAssistantPayload(form);
+	return ruleInputs(payload.metadata, payload.prompt_template, payload.RAG_collections) !==
+		ruleInputs(stored.metadata ?? stored.api_callback, stored.prompt_template, stored.RAG_collections);
+}
+
+const RAG_NAMES = {
+	simple_rag: 'Simple RAG',
+	context_aware_rag: 'Context-aware RAG',
+	hierarchical_rag: 'Hierarchical RAG',
+	single_file_rag: 'Single file RAG',
+	rubric_rag: 'Rubric RAG'
+};
+
+/**
+ * What the selected RAG configuration needs to work; same rules as the server
+ * (backend/lamb/services/assistant_config_rules.py, #335). Custom prompt processors are not checked.
+ * @param {Record<string, any>} form
+ * @returns {string[]}
+ */
+export function ragConfigErrors(form) {
+	if ((form.selectedPromptProcessor || 'simple_augment') !== 'simple_augment') return [];
+	const rag = form.selectedRagProcessor || 'no_rag';
+	const template = form.prompt_template || '';
+	if (rag === 'no_rag') {
+		return template.trim() && !template.includes('{user_input}')
+			? ["The prompt template needs {user_input}, where the student's message goes (or leave the template empty)."]
+			: [];
+	}
+	const name = RAG_NAMES[rag];
+	if (!name) return [];
+	const errors = [];
+	if (!template.includes('{user_input}')) errors.push(`${name} needs {user_input} in the prompt template, where the student's message goes.`);
+	if (!template.includes('{context}')) errors.push(`${name} needs {context} in the prompt template, where the retrieved content goes.`);
+	if (isKbBasedRag(rag) && !(form.selectedKnowledgeBases || []).length) errors.push(`${name} needs at least one knowledge base.`);
+	if (isSingleFileRag(rag) && !form.selectedFilePath) errors.push('Single file RAG needs a file.');
+	return errors;
 }
 
 /**
