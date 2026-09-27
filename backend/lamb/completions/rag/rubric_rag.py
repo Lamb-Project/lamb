@@ -100,7 +100,8 @@ def rag_processor(
         if not rubric:
             logger.error(f"Rubric {rubric_id} not found or not accessible")
             return {
-                "context": "ERROR: Rubric not found or not accessible",
+                "context": "",
+                "error": "Rubric not found or not accessible",
                 "sources": []
             }
 
@@ -136,7 +137,8 @@ def rag_processor(
     except Exception as e:
         logger.error(f"Error in rubric_rag processor: {e}", exc_info=True)
         return {
-            "context": f"ERROR: Failed to load rubric - {str(e)}",
+            "context": "",
+            "error": f"Failed to load rubric - {str(e)}",
             "sources": []
         }
 

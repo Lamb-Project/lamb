@@ -57,7 +57,8 @@ def rag_processor(
         if not os.path.exists(full_path):
             logger.error(f"File not found: {full_path}")
             return {
-                "context": f"Error: File not found: {file_path}",
+                "context": "",
+                "error": f"File not found: {file_path}",
                 "sources": []
             }
 
@@ -88,13 +89,15 @@ def rag_processor(
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse metadata JSON: {e}")
         return {
-            "context": f"Error processing file: Invalid metadata format",
+            "context": "",
+            "error": "Invalid metadata format",
             "sources": []
         }
     except Exception as e:
         logger.error(f"Error processing file: {str(e)}", exc_info=True)
         return {
-            "context": f"Error processing file: {str(e)}",
+            "context": "",
+            "error": f"Error processing file: {str(e)}",
             "sources": []
         }
 
