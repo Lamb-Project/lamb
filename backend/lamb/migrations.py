@@ -20,7 +20,23 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="MIGRATIONS")
 
 # Increment this when adding a new migration method below.
+# Migration numbers are shared with the lamb-1.0-alpha line (#465). 1-25 are common, 26 is
+# api_keys (this line; alpha keeps 26 free for it), and 27-31 are taken on alpha. The next
+# migration here is 32. tests/test_migration_runner.py enforces this.
 LATEST_VERSION = 26
+
+# Numbers another line has applied to real databases; this line must never define them.
+RESERVED_ON_OTHER_LINES = {
+    27: 'Create knowledge_stores and kb_content_links tables. (1.0-alpha)',
+    28: 'LTI activity_type, setup_config, lis_outcome_service_url (1.0-alpha)',
+    29: 'Cache-aware pricing columns (1.0-alpha)',
+    30: 'Cache write and immutable cost columns (1.0-alpha)',
+    31: 'LTI activity-user role flag, #468 (1.0-alpha)',
+}
+
+# Versions that collided across branches before names were recorded, with the table this
+# line's migration creates. Checked on databases whose record has no name (#465).
+COLLIDED_VERSIONS = {26: 'api_keys'}
 
 
 class MigrationRunner:
@@ -51,25 +67,23 @@ class MigrationRunner:
                 cursor = connection.cursor()
 
                 self._ensure_schema_version_table(cursor)
-                current_version = self._get_current_version(cursor)
+                self._verify_applied_identities(cursor)
+                self._repair_unnamed_collisions(cursor)
+                applied = self._get_applied_versions(cursor)
+                pending = [v for v in self._defined_versions()
+                           if v not in applied and v <= LATEST_VERSION]
 
-                if current_version >= LATEST_VERSION:
+                if not pending:
                     logger.debug(
-                        f"Schema up to date (v{current_version}), no migrations needed")
+                        f"Schema up to date (v{self._get_current_version(cursor)}), "
+                        f"no migrations needed")
                     return
 
                 logger.info(
-                    f"Running migrations: current=v{current_version}, "
-                    f"latest=v{LATEST_VERSION}")
+                    f"Running migrations: pending={pending}, latest=v{LATEST_VERSION}")
 
-                for version in range(current_version + 1, LATEST_VERSION + 1):
-                    method = getattr(self, f'_migration_{version}', None)
-                    if method is None:
-                        logger.error(
-                            f"Migration {version} method not found — "
-                            f"skipping. Did you forget to implement _migration_{version}?")
-                        continue
-
+                for version in pending:
+                    method = getattr(self, f'_migration_{version}')
                     logger.info(f"Applying migration {version}...")
                     method(cursor)
                     self._record_version(cursor, version)
@@ -104,6 +118,116 @@ class MigrationRunner:
                 applied_at INTEGER NOT NULL
             )
         """)
+        # Record *which* migration claimed each number, not just that something
+        # did. Without this a number can be silently reused by a different
+        # migration from another branch (#465). Added in place so existing
+        # databases gain it without their own migration.
+        if not self._column_exists(cursor, 'schema_version', 'name'):
+            cursor.execute(
+                f"ALTER TABLE {self.db.table_prefix}schema_version "
+                f"ADD COLUMN name TEXT")
+
+    def _verify_applied_identities(self, cursor):
+        """Refuse to run if a number already applied now names a different
+        migration.
+
+        The applied-set logic means a version already recorded is simply not
+        re-run. That is right when it is the same migration, and catastrophic
+        when it is not: two branches each numbered a migration 26, one merged,
+        and the other became unreachable — its tables never created, no error,
+        the schema reporting itself current (#465).
+
+        Databases predating identity tracking have no recorded name; those rows
+        are skipped rather than guessed at.
+        """
+        cursor.execute(
+            f"SELECT version, name FROM {self.db.table_prefix}schema_version "
+            f"WHERE name IS NOT NULL")
+        conflicts = []
+        for version, recorded in cursor.fetchall():
+            if not hasattr(self, f"_migration_{version}"):
+                continue
+            current = self._migration_identity(version)
+            if recorded != current:
+                conflicts.append((version, recorded, current))
+
+        if conflicts:
+            lines = [
+                "Migration identity conflict — refusing to run.",
+                "",
+                "A migration number recorded on this database now names different",
+                "work in the code. Applying nothing is safe; applying the wrong",
+                "thing is not. This is what happens when two branches assign the",
+                "same number and only one survives the merge.",
+                "",
+            ]
+            for version, recorded, current in conflicts:
+                lines += [
+                    f"  version {version}:",
+                    f"    this database ran: {recorded}",
+                    f"    the code now has:  {current}",
+                ]
+            lines += [
+                "",
+                "Fix: give the new migration an unused number, so both can run.",
+                "Do not renumber the one this database already applied.",
+            ]
+            raise RuntimeError("\n".join(lines))
+
+    def _repair_unnamed_collisions(self, cursor):
+        """A collided number recorded before names existed may belong to another branch's
+        migration (#465: the shared dev database recorded 26 for knowledge_stores or api_keys,
+        whichever ran first). If this line's table is missing, the number was not ours: run
+        our migration now (it is idempotent). Either way, record our name so the identity
+        check protects this database from here on."""
+        for version, table in COLLIDED_VERSIONS.items():
+            cursor.execute(
+                f"SELECT 1 FROM {self.db.table_prefix}schema_version "
+                f"WHERE version = ? AND name IS NULL", (version,))
+            if not cursor.fetchone():
+                continue
+            if not self._table_exists(cursor, table):
+                logger.warning(
+                    f"Migration {version} is recorded but {self.db.table_prefix}{table} is missing: "
+                    f"the number was applied by another branch's migration. Applying ours now.")
+                getattr(self, f"_migration_{version}")(cursor)
+            cursor.execute(
+                f"UPDATE {self.db.table_prefix}schema_version SET name = ? WHERE version = ?",
+                (self._migration_identity(version), version))
+
+    def _migration_identity(self, version: int) -> str:
+        """A stable, human-meaningful name for a migration: the first line of
+        its docstring. Two different migrations sharing a number will not share
+        this, which is what makes the collision detectable."""
+        method = getattr(self, f"_migration_{version}", None)
+        doc = (method.__doc__ or "").strip() if method else ""
+        return " ".join(doc.splitlines()[0].split())[:120] if doc else f"migration {version}"
+
+    def _defined_versions(self) -> list:
+        """Every migration this code defines, ascending.
+
+        Discovered from the methods themselves rather than assumed to be a
+        contiguous range: branches developed in parallel leave gaps, and a gap
+        must not stop later migrations from running.
+        """
+        import re as _re
+        return sorted(
+            int(_re.fullmatch(r"_migration_(\d+)", name).group(1))
+            for name in dir(self)
+            if _re.fullmatch(r"_migration_\d+", name)
+        )
+
+    def _get_applied_versions(self, cursor) -> set:
+        """The set of migrations already applied to this database.
+
+        The set — not the maximum. A high-water mark cannot express "26 never
+        ran but 27 did", which is exactly what happens when two branches each
+        add a migration and merge in either order. Tracking the set lets a
+        migration that arrives late still run.
+        """
+        cursor.execute(
+            f"SELECT version FROM {self.db.table_prefix}schema_version")
+        return {row[0] for row in cursor.fetchall()}
 
     def _get_current_version(self, cursor) -> int:
         """Return the highest applied migration version, or 0 if none."""
@@ -117,8 +241,8 @@ class MigrationRunner:
         """Record that a migration version has been applied."""
         cursor.execute(
             f"INSERT OR IGNORE INTO {self.db.table_prefix}schema_version "
-            f"(version, applied_at) VALUES (?, ?)",
-            (version, int(time.time()))
+            f"(version, applied_at, name) VALUES (?, ?, ?)",
+            (version, int(time.time()), self._migration_identity(version))
         )
 
     # ── Helper ──────────────────────────────────────────────────────────
