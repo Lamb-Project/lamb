@@ -59,6 +59,19 @@ chroma_client = chromadb.PersistentClient(
 )
 
 
+def effective_apikey(stored: str = "") -> str:
+    """Key to use now: an explicit per-collection key, or the current global embeddings key (#195).
+
+    Collections created with apikey "default" store no key, so rotating the global
+    key (environment or runtime config) reaches every such collection.
+    """
+    if stored and stored != "default":
+        return stored
+    # The runtime config file (PUT /system/embeddings-config) overrides the environment.
+    from config import get_embeddings_config
+    return get_embeddings_config().get("apikey") or ""
+
+
 def get_embedding_function_by_params(vendor: str, model_name: str, api_key: str = "", api_endpoint: str = ""):
     """Get an embedding function based on vendor and model parameters."""
     vendor = vendor.lower()
@@ -70,11 +83,7 @@ def get_embedding_function_by_params(vendor: str, model_name: str, api_key: str 
         )
 
     elif vendor == "openai":
-        # Fall back to EMBEDDINGS_APIKEY from .env if api_key is not provided
-        if not api_key:
-            from dotenv import load_dotenv
-            load_dotenv()
-            api_key = os.getenv("EMBEDDINGS_APIKEY", "")
+        api_key = effective_apikey(api_key)
 
         kwargs = {"api_key": api_key, "model_name": model_name}
         if api_endpoint:
