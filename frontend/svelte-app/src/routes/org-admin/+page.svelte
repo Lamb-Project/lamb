@@ -26,6 +26,9 @@
     import UserForm from '$lib/components/admin/shared/UserForm.svelte';
     import ChangePasswordModal from '$lib/components/admin/shared/ChangePasswordModal.svelte';
     import UserActionModal from '$lib/components/admin/shared/UserActionModal.svelte';
+    import { beginTakeover } from '$lib/session/takeover';
+    import { takeoverText, fill } from '$lib/utils/takeoverText';
+    import { locale as takeoverLocale } from 'svelte-i18n';
 
     // Get user data
     /** @type {any} */
@@ -2234,6 +2237,22 @@
             fetchSettings();
         }
     });
+    // The row variable shadows the user store inside the users table.
+    const ownEmail = $derived($user.email);
+
+    /**
+     * Act as a creator to give support (#523). The server decides who may act as whom.
+     * @param {any} target
+     */
+    async function actAs(target) {
+        const t = takeoverText($takeoverLocale);
+        if (!window.confirm(fill(t.confirm, { name: target.name || target.email }))) return;
+        try {
+            await beginTakeover(target.id);
+        } catch (err) {
+            window.alert(fill(t.failed, { reason: err instanceof Error ? err.message : String(err) }));
+        }
+    }
 </script>
 
 <svelte:head>
@@ -2869,6 +2888,20 @@
                                                             </button>
                                                         {/if}
 
+                                                        <!-- Act as this creator (#523) -->
+                                                        {#if user.email !== ownEmail}
+                                                            <button
+                                                                class="inline-flex items-center gap-1 text-orange-700 hover:text-orange-900"
+                                                                title={takeoverText($takeoverLocale).actAsTitle}
+                                                                aria-label={`${takeoverText($takeoverLocale).actAs} ${user.name || user.email}`}
+                                                                onclick={() => actAs(user)}
+                                                            >
+                                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4" aria-hidden="true">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+                                                                </svg>
+                                                                {takeoverText($takeoverLocale).actAs}
+                                                            </button>
+                                                        {/if}
                                                         <!-- Enable/Disable Toggle -->
                                                         {#if !(userData && userData.email === user.email)}
                                                             {#if user.enabled}

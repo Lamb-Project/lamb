@@ -326,6 +326,13 @@ def _build_auth_context(token: str) -> Optional[AuthContext]:
             return None
         logger.debug(f"LAMB JWT authenticated: {user_email}")
     else:
+        # An ended or expired takeover token (#523) must not fall through to OWI.
+        try:
+            import jwt as _jwt
+            if "takeover" in _jwt.decode(token, options={"verify_signature": False}):
+                return None
+        except Exception:
+            pass
         # OWI fallback
         try:
             from lamb.owi_bridge.owi_users import OwiUserManager

@@ -48,7 +48,14 @@ class ConnectionStore:
     def snapshot(self):
         with self.transaction() as connection:
             user, org = self._read(connection)
-        return {'policy': MoodlePolicy.from_config(org), 'record': user.get('moodle_connection'),
+        policy = MoodlePolicy.from_config(org)
+        from lamb.services.takeover import active_takeover
+        if active_takeover():
+            # An administrator acting as this creator reads Moodle only (#523).
+            from dataclasses import replace
+            policy = replace(policy, mode='readonly', write_groups=frozenset(), allow_grade_write=False,
+                             readonly_reason='Moodle is read-only while an administrator is acting as this user')
+        return {'policy': policy, 'record': user.get('moodle_connection'),
                 'generation': user.get('moodle_connection_generation', 0)}
 
     def _write_user(self, connection, user):
@@ -72,6 +79,7 @@ class ConnectionStore:
         return {'advanced_mode': advanced_mode}
 
     def save(self, record, *, expected_generation, expected_policy):
+        _refuse_during_takeover()
         with self.transaction(write=True) as connection:
             user, org = self._read(connection)
             policy = MoodlePolicy.from_config(org)
@@ -84,6 +92,7 @@ class ConnectionStore:
         return public_connection(record)
 
     def disconnect(self):
+        _refuse_during_takeover()
         with self.transaction(write=True) as connection:
             user, _ = self._read(connection)
             user.pop('moodle_connection', None)
@@ -92,6 +101,7 @@ class ConnectionStore:
 
     def configure(self, settings):
         """Caller must enforce admin permission; patch only this connector section."""
+        _refuse_during_takeover()
         policy = MoodlePolicy.from_config({'moodle': settings})
         settings = {'enabled': policy.enabled, 'base_url': policy.base_url, 'mode': policy.mode,
                     'write_groups': sorted(policy.write_groups), 'allow_grade_write': policy.allow_grade_write}
@@ -101,3 +111,10 @@ class ConnectionStore:
             connection.execute(f'''UPDATE {self.db.table_prefix}organizations
                 SET config=?, updated_at=? WHERE id=?''', (json.dumps(org), int(time.time()), self.organization_id))
         return settings
+
+
+def _refuse_during_takeover():
+    """The creator's Moodle connection and settings stay unchanged while an administrator acts as them (#523)."""
+    from lamb.services.takeover import active_takeover
+    if active_takeover():
+        raise PermissionError('Moodle is read-only while an administrator is acting as this user')
