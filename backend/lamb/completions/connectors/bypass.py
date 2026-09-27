@@ -22,7 +22,7 @@ def format_conversation_response(messages: list) -> str:
     """Format all messages as a conversation"""
     return "\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
 
-async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None):
+async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None, tools: Optional[list] = None, tool_choice: Optional[Any] = None):
     """
     Bypass connector that returns OpenAI-compatible responses
 

@@ -105,17 +105,36 @@ async def get_available_llms(assistant_owner: Optional[str] = None): # Make asyn
         return []
 
 def format_messages_for_ollama(messages: list) -> list:
-    """Convert OpenAI message format to Ollama format"""
-    return [
-        {
-            "role": msg["role"],
-            "content": msg["content"]
-        }
-        for msg in messages
-    ]
+    """Convert OpenAI message format to Ollama format, preserving tool_calls."""
+    result = []
+    for msg in messages:
+        entry = {"role": msg["role"], "content": msg.get("content", "")}
+        # Preserve tool_calls on assistant messages
+        if msg.get("role") == "assistant" and msg.get("tool_calls"):
+            entry["tool_calls"] = [
+                {
+                    "function": {
+                        "name": tc.get("function", {}).get("name", ""),
+                        # Ollama API expects arguments as a dict, not a JSON string
+                        "arguments": json.loads(tc.get("function", {}).get("arguments", "{}"))
+                        if isinstance(tc.get("function", {}).get("arguments"), str)
+                        else tc.get("function", {}).get("arguments", {}),
+                    }
+                }
+                for tc in msg["tool_calls"]
+            ]
+        # Preserve tool_call_id for tool response messages so the assistant
+        # tool_calls / tool result pairing survives round-tripping.
+        if msg.get("role") == "tool":
+            if msg.get("tool_call_id"):
+                entry["tool_call_id"] = msg["tool_call_id"]
+            if msg.get("content"):
+                entry["content"] = msg.get("content", "")
+        result.append(entry)
+    return result
 
 @traceable_llm_call(name="ollama_completion", run_type="llm", tags=["ollama", "lamb"])
-async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None, use_small_fast_model: bool = False): # Make async
+async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None, use_small_fast_model: bool = False, tools: Optional[list] = None, tool_choice: Optional[Any] = None): # Make async
     """
     Ollama connector that returns OpenAI-compatible responses
 
@@ -126,7 +145,11 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
         llm: Specific model to use
         assistant_owner: Email of assistant owner for org config
         use_small_fast_model: If True, use organization's small-fast-model
+        tools: Tool definitions for function-calling support
+        tool_choice: Tool choice strategy (ignored — Ollama uses its own tool selection)
     """
+    if tools:
+        logger.debug("ollama: forwarding tools to Ollama API")
     # Get organization-specific configuration
     base_url = None
     model = None
@@ -325,6 +348,8 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
                     "messages": format_messages_for_ollama(messages),
                     "stream": True # Explicitly set stream to True for Ollama
                 }
+                if tools:
+                    ollama_params["tools"] = tools
                 # Add any additional parameters from body
                 if body:
                     for key in ["temperature", "top_p", "top_k"]:
@@ -456,6 +481,8 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
                 "messages": format_messages_for_ollama(messages),
                 "stream": False  # Explicitly set stream to False for non-streaming
             }
+            if tools:
+                ollama_params["tools"] = tools
             # Add any additional parameters from body
             if body:
                 for key in ["temperature", "top_p", "top_k"]:
@@ -467,26 +494,59 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
                 async with session.post(f"{base_url}/api/chat", json=ollama_params) as response:
                     response.raise_for_status()
                     ollama_response = await response.json()
-                    content = ollama_response.get("message", {}).get("content", "")
-                    if not content:
-                         logger.warning("Empty response from Ollama, falling back to bypass")
-                         content = f"[Ollama Error] No response from model: {resolved_model}"
+                    message = ollama_response.get("message", {})
+                    content = message.get("content", "")
+                    tool_calls_raw = message.get("tool_calls", [])
+
+                    if not content and not tool_calls_raw:
+                        logger.warning("Empty response from Ollama, falling back to bypass")
+                        content = f"[Ollama Error] No response from model: {resolved_model}"
 
             except asyncio.TimeoutError:
                 logger.error(f"Timeout calling Ollama API after 120 seconds")
                 # Raise or return error response? Returning error for now.
                 content = f"[Ollama Error] Timeout after 120s for model {resolved_model}"
+                tool_calls_raw = []
             except aiohttp.ClientResponseError as e:
                  logger.error(f"Error in Ollama API call ({e.status}): {e.message}")
                  content = f"[Ollama Error] API Error ({e.status}) for model {resolved_model}: {e.message}"
+                 tool_calls_raw = []
             except aiohttp.ClientError as e:
                 logger.error(f"Connection error calling Ollama API: {str(e)}")
                 content = f"[Ollama Error] Connection error for model {resolved_model}: {str(e)}"
+                tool_calls_raw = []
             except Exception as e:
                 logger.error(f"Unexpected error during Ollama non-stream call: {str(e)}", exc_info=True)
                 content = f"[Ollama Error] Unexpected error for model {resolved_model}: {str(e)}"
+                tool_calls_raw = []
+
+            # Convert Ollama tool_calls to OpenAI format
+            openai_tool_calls = []
+            for i, tc in enumerate(tool_calls_raw):
+                fn = tc.get("function", {})
+                args = fn.get("arguments", {})
+                # Ollama returns arguments as a dict; OpenAI expects a JSON string
+                if isinstance(args, dict):
+                    args_json = json.dumps(args, ensure_ascii=False)
+                else:
+                    args_json = str(args)
+                openai_tool_calls.append({
+                    "id": tc.get("id") or f"call_{resolved_model}_{int(time.time())}_{i}",
+                    "type": "function",
+                    "function": {
+                        "name": fn.get("name", ""),
+                        "arguments": args_json,
+                    },
+                })
 
             # Create OpenAI-compatible response
+            msg_out = {
+                "role": "assistant",
+                "content": content,
+            }
+            if openai_tool_calls:
+                msg_out["tool_calls"] = openai_tool_calls
+
             return {
                 "id": f"ollama-{int(time.time())}",
                 "object": "chat.completion",
@@ -494,11 +554,8 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
                 "model": resolved_model,
                 "choices": [{
                     "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": content
-                    },
-                    "finish_reason": "stop"
+                    "message": msg_out,
+                    "finish_reason": "tool_calls" if openai_tool_calls else "stop"
                 }],
                 "usage": {
                     "prompt_tokens": -1, # Ollama response doesn't provide these

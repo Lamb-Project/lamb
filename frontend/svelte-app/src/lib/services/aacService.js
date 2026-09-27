@@ -95,8 +95,9 @@ export async function sendMessage(sessionId, message) {
  * @param {(error: string) => void} [onError] - called on error
  * @param {(status: Object) => void} [onStatus] - called for tool/status events
  * @param {AbortSignal} [signal] - abort signal to cancel the stream
+ * @param {(obsPayload: Object) => void} [onObservability] - called for observability frames
  */
-export async function sendMessageStream(sessionId, message, onChunk, onDone, onError, onStatus, signal) {
+export async function sendMessageStream(sessionId, message, onChunk, onDone, onError, onStatus, signal, onObservability) {
     const frontendChannel = crypto.randomUUID();
     const frontendAbort = new AbortController();
     const abortFrontend = () => frontendAbort.abort();
@@ -138,6 +139,8 @@ export async function sendMessageStream(sessionId, message, onChunk, onDone, onE
 		if (payload === '[DONE]') { completed = true; return; }
 		let data;
 		try { data = JSON.parse(payload); } catch (_) { return; }
+		// Observability frames get their own callback
+		if (data.type === 'observability') { onObservability?.(data.data); return; }
         if (data.frontend_action && !seenActions.has(data.frontend_action.action_id)) {
             seenActions.add(data.frontend_action.action_id);
             await serveFrontendAction(sessionId, frontendChannel, data.frontend_action, frontendAbort.signal);

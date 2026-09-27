@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAMB — {{ activity.activity_name or 'Workshop Dashboard' }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        .status-not_started { background: #F3F4F6; color: #6B7280; }
+        .status-in_progress { background: #FEF3C7; color: #92400E; }
+        .status-submitted { background: #DBEAFE; color: #1E40AF; }
+        .status-evaluated { background: #DCFCE7; color: #166534; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-6xl mx-auto px-4 py-6">
+
+        <!-- Header -->
+        <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+            <div class="flex items-start justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center text-xl">&#x1F6E0;</div>
+                    <div>
+                        <h1 class="text-xl font-bold text-gray-900">{{ activity.activity_name or 'Workshop Activity' }}</h1>
+                        <p class="text-sm text-gray-500">
+                            {% if activity.context_title %}{{ activity.context_title }} · {% endif %}
+                            {{ org_name }}
+                        </p>
+                        <p class="text-xs text-gray-400 mt-0.5">
+                            Owner: {{ activity.owner_name or activity.owner_email }}
+                            · Created {{ created_date }}
+                        </p>
+                    </div>
+                </div>
+                {% if is_owner %}
+                <a href="/lamb/v1/lti/setup?token={{ token }}&reconfigure=true"
+                   class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                    Manage activity
+                </a>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if stats.teacher_pilot_required %}
+        <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-4 mb-6 text-sm">
+            Teacher pilot mode is enabled for this organization: complete the workshop
+            yourself once before opening it to students.
+        </div>
+        {% endif %}
+
+        {% if not activity.rubric_id %}
+        <div class="bg-gray-100 border border-gray-200 text-gray-600 rounded-xl p-4 mb-6 text-sm">
+            No rubric is configured for this activity, so formative evaluation is disabled.
+        </div>
+        {% endif %}
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                <div class="text-2xl font-bold text-gray-900" id="stat-students">{{ stats.total_students }}</div>
+                <div class="text-xs text-gray-500 mt-1">Students</div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                <div class="text-2xl font-bold text-amber-600" id="stat-in-progress">{{ stats.in_progress }}</div>
+                <div class="text-xs text-gray-500 mt-1">In progress</div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                <div class="text-2xl font-bold text-blue-600" id="stat-submitted">{{ stats.submitted }}</div>
+                <div class="text-xs text-gray-500 mt-1">Submitted</div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                <div class="text-2xl font-bold text-green-600" id="stat-evaluated">{{ stats.evaluated }}</div>
+                <div class="text-xs text-gray-500 mt-1">Evaluated</div>
+            </div>
+        </div>
+
+        <!-- Tool usage -->
+        <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-3">Tool usage</h2>
+            <div class="flex flex-wrap gap-2">
+                {% for name, count in stats.tool_calls.items() %}
+                <span class="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full text-sm">
+                    <span class="font-medium">{{ name }}</span>
+                    <span class="text-indigo-400">×{{ count }}</span>
+                </span>
+                {% endfor %}
+                {% if not stats.tool_calls %}
+                <p class="text-sm text-gray-400 italic">No tool calls recorded yet.</p>
+                {% endif %}
+            </div>
+            <p class="text-xs text-gray-400 mt-3">
+                {{ stats.tool_calls_total }} tool calls · avg reflection length {{ stats.avg_reflection_length }} chars
+            </p>
+        </div>
+
+        <!-- Student progress -->
+        <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Student progress</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b text-left text-gray-500 text-xs uppercase tracking-wider">
+                            <th class="pb-3 pr-4">Student</th>
+                            <th class="pb-3 pr-4">Status</th>
+                            <th class="pb-3 pr-4">Tools used</th>
+                            <th class="pb-3 pr-4">Feedback</th>
+                            <th class="pb-3 pr-4">Last access</th>
+                            <th class="pb-3 pr-2 text-right">Detail</th>
+                        </tr>
+                    </thead>
+                    <tbody id="studentBody">
+                        {% for s in students %}
+                        <tr class="border-b border-gray-100 align-top" data-session="{{ s.session_id or '' }}">
+                            <td class="py-3 pr-4">
+                                <div class="font-medium text-gray-900">{{ s.name }}</div>
+                                <div class="text-xs text-gray-400">{{ s.username }}</div>
+                            </td>
+                            <td class="py-3 pr-4">
+                                <span class="inline-block px-2 py-0.5 rounded-full text-xs status-{{ s.session_status }}">
+                                    {{ s.session_status.replace('_', ' ') }}
+                                </span>
+                            </td>
+                            <td class="py-3 pr-4 text-gray-600">
+                                {% if s.tools_used %}{{ s.tools_used|join(', ') }}{% else %}<span class="text-gray-300">—</span>{% endif %}
+                            </td>
+                            <td class="py-3 pr-4 text-gray-600">
+                                {% if s.evaluation_status == 'completed' %}
+                                <span class="text-green-600 font-medium">Ready</span>
+                                {% elif s.evaluation_status == 'failed' %}
+                                <span class="text-red-500">Failed</span>
+                                {% else %}
+                                <span class="text-gray-300">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3 pr-4 text-gray-600">{{ format_ts(s.last_access) }}</td>
+                            <td class="py-3 pr-2 text-right">
+                                {% if s.session_id %}
+                                <button onclick="toggleDetail('{{ s.session_id }}')"
+                                        class="text-blue-600 hover:text-blue-800 text-xs font-medium">View</button>
+                                {% else %}
+                                <span class="text-gray-300 text-xs">—</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr class="hidden" id="detail-{{ s.session_id }}">
+                            <td colspan="6" class="bg-gray-50 px-4 py-4" id="detail-body-{{ s.session_id }}">
+                                <div class="text-sm text-gray-400">Loading…</div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% if not students %}
+                        <tr><td colspan="6" class="py-6 text-center text-gray-400 italic">No students have accessed this activity yet.</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const TOKEN = '{{ token }}';
+        const RESOURCE_LINK_ID = '{{ activity.resource_link_id }}';
+        const HAS_RUBRIC = {{ 'true' if activity.rubric_id else 'false' }};
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text == null ? '' : text;
+            return div.innerHTML;
+        }
+
+        function statusBadge(status) {
+            const cls = 'status-' + (status || 'not_started');
+            return `<span class="inline-block px-2 py-0.5 rounded-full text-xs ${cls}">${escapeHtml((status || 'not started').replace(/_/g, ' '))}</span>`;
+        }
+
+        function renderEvaluation(ev) {
+            if (!ev) {
+                return '<p class="text-sm text-gray-400 italic">No feedback generated yet.</p>';
+            }
+            if (ev.status !== 'completed') {
+                return `<p class="text-sm text-red-500">Evaluation ${escapeHtml(ev.status)}: ${escapeHtml(ev.error_message || '')}</p>`;
+            }
+            let html = '';
+            for (const c of ev.criteria || []) {
+                html += `
+                    <div class="border-l-2 border-green-400 pl-3 mb-2">
+                        <div class="text-sm font-medium text-gray-800">
+                            ${escapeHtml(c.criterion || 'Criterion')}
+                            ${c.score != null ? `<span class="text-xs text-gray-500">· ${escapeHtml(String(c.score))}</span>` : ''}
+                        </div>
+                        <div class="text-sm text-gray-600 whitespace-pre-wrap">${escapeHtml(c.feedback || '')}</div>
+                    </div>`;
+            }
+            if (ev.overall_feedback) {
+                html += `<p class="text-sm text-gray-700 mt-2 whitespace-pre-wrap"><strong>Overall:</strong> ${escapeHtml(ev.overall_feedback)}</p>`;
+            }
+            if (ev.total_score != null) {
+                html += `<p class="text-xs text-gray-500 mt-1">Suggested score: ${escapeHtml(String(ev.total_score))}${ev.max_score != null ? ' / ' + escapeHtml(String(ev.max_score)) : ''} — the final grade is yours to decide.</p>`;
+            }
+            return html;
+        }
+
+        async function toggleDetail(sessionId) {
+            const row = document.getElementById('detail-' + sessionId);
+            if (!row) return;
+            if (!row.classList.contains('hidden')) {
+                row.classList.add('hidden');
+                return;
+            }
+            row.classList.remove('hidden');
+            await loadDetail(sessionId);
+        }
+
+        async function loadDetail(sessionId) {
+            const body = document.getElementById('detail-body-' + sessionId);
+            body.innerHTML = '<div class="text-sm text-gray-400">Loading…</div>';
+            try {
+                const resp = await fetch(
+                    `/lamb/v1/lti/workshop/dashboard/sessions/${encodeURIComponent(sessionId)}?token=${encodeURIComponent(TOKEN)}&resource_link_id=${encodeURIComponent(RESOURCE_LINK_ID)}`
+                );
+                if (!resp.ok) throw new Error('Failed to load session');
+                const data = await resp.json();
+                body.innerHTML = renderDetail(sessionId, data);
+            } catch (e) {
+                body.innerHTML = '<p class="text-sm text-red-500">Failed to load session detail.</p>';
+            }
+        }
+
+        function renderDetail(sessionId, data) {
+            const bs = data.build_state || {};
+            const tools = (data.tool_usage && Object.keys(data.tool_usage).length)
+                ? Object.entries(data.tool_usage).map(([n, c]) => `${escapeHtml(n)} ×${c}`).join(', ')
+                : 'none';
+
+            let html = `
+                <div class="grid md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <h3 class="text-xs font-semibold text-gray-500 uppercase mb-1">Build decisions</h3>
+                        <p class="text-sm text-gray-700 whitespace-pre-wrap">${escapeHtml(bs.instructions || '(no instructions)')}</p>
+                        <p class="text-xs text-gray-500 mt-2">Document: ${escapeHtml((bs.attachedFileMeta && bs.attachedFileMeta.name) || bs.documentName || '—')}</p>
+                        <p class="text-xs text-gray-500">KB: ${escapeHtml(bs.kbCollection || bs.selectedKbId || '—')}</p>
+                        <p class="text-xs text-gray-500">Tools: ${tools}</p>
+                    </div>
+                    <div>
+                        <h3 class="text-xs font-semibold text-gray-500 uppercase mb-1">Reflection</h3>
+                        <p class="text-sm text-gray-700 whitespace-pre-wrap">${escapeHtml(data.reflection || '(none)')}</p>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <h3 class="text-xs font-semibold text-gray-500 uppercase mb-1">Formative feedback</h3>
+                    <div id="eval-${sessionId}">${renderEvaluation(data.evaluation)}</div>
+                    ${HAS_RUBRIC ? `<button onclick="runEvaluation('${sessionId}')" class="mt-2 text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700">${data.evaluation ? 'Re-evaluate' : 'Evaluate'}</button>` : ''}
+                </div>
+                <div>
+                    <h3 class="text-xs font-semibold text-gray-500 uppercase mb-1">Transcript</h3>
+                    <pre class="text-xs text-gray-700 bg-white border rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">${escapeHtml(data.transcript || '')}</pre>
+                </div>`;
+            return html;
+        }
+
+        async function runEvaluation(sessionId) {
+            const target = document.getElementById('eval-' + sessionId);
+            if (target) target.innerHTML = '<div class="text-sm text-gray-400">Evaluating…</div>';
+            try {
+                const resp = await fetch(
+                    `/lamb/v1/lti/workshop/dashboard/sessions/${encodeURIComponent(sessionId)}/evaluate?token=${encodeURIComponent(TOKEN)}&resource_link_id=${encodeURIComponent(RESOURCE_LINK_ID)}`,
+                    { method: 'POST' }
+                );
+                if (!resp.ok) throw new Error('Failed');
+                const result = await resp.json();
+                if (target) {
+                    target.innerHTML = result.configured === false
+                        ? '<p class="text-sm text-gray-400 italic">No rubric configured.</p>'
+                        : renderEvaluation(result);
+                }
+            } catch (e) {
+                if (target) target.innerHTML = '<p class="text-sm text-red-500">Evaluation failed.</p>';
+            }
+        }
+    </script>
+</body>
+</html>

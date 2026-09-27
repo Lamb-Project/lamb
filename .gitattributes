@@ -1,0 +1,6 @@
+# Hash-verified, immutable AAC content packs and agent docs must keep their
+# exact committed bytes. Without this, Git's autocrlf rewrites LF to CRLF on
+# Windows checkouts and the sha256 manifest checks in lamb/aac/pack_loader.py
+# fail ("Pack content changed without a release").
+backend/aac-packs/** -text
+backend/agent-docs/** -text

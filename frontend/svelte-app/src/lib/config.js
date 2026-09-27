@@ -63,3 +63,27 @@ export function getLambApiUrl(endpoint) {
 
 // You might export other config values if needed
 // export const API_CONFIG = getConfig().api;
+
+// Built-in fallback for the AI Workshop wizard (used only when the deployment
+// has not set LAMB_CONFIG.workshop in static/config.js).
+const WORKSHOP_DEFAULTS = {
+	connector: 'ollama',
+	llm: 'qwen3.5:9b'
+};
+
+/**
+ * Gets the connector + LLM the AI Workshop wizard should use to build the
+ * student's assistant. Reads from runtime config (static/config.js →
+ * window.LAMB_CONFIG.workshop) so each deployment can set its own model
+ * without rebuilding the frontend. Falls back to WORKSHOP_DEFAULTS when not
+ * configured.
+ *
+ * @returns {{ connector: string, llm: string }}
+ */
+export function getWorkshopLlmConfig() {
+	const cfg = getConfig()?.workshop || {};
+	return {
+		connector: cfg.connector || WORKSHOP_DEFAULTS.connector,
+		llm: cfg.llm || WORKSHOP_DEFAULTS.llm
+	};
+}

@@ -284,7 +284,7 @@ def validate_image_urls(messages: List[Dict[str, Any]]) -> List[str]:
     return errors
 
 @traceable_llm_call(name="openai_completion", run_type="llm", tags=["openai", "lamb"])
-async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None, use_small_fast_model: bool = False):
+async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None, use_small_fast_model: bool = False, tools: Optional[list] = None, tool_choice: Optional[Any] = None):
     """
 Connects to the specified Large Language Model (LLM) using the OpenAI API.
 
@@ -573,6 +573,13 @@ Returns:
     params["model"] = resolved_model
     params["messages"] = messages
     params["stream"] = stream
+
+    # Pass tools/tool_choice for function-calling (skip vision path for now)
+    if not has_images:
+        if tools:
+            params["tools"] = tools
+        if tool_choice:
+            params["tool_choice"] = tool_choice
 
     # Get shared client from pool
     client = _get_openai_client(api_key, base_url)

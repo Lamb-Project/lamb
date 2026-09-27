@@ -7870,12 +7870,37 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
+    def get_lti_activity_by_id(self, activity_id: int) -> Optional[Dict[str, Any]]:
+        """Get an LTI activity by its numeric id."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_activities
+                    WHERE id = ?
+                """, (activity_id,))
+                row = cursor.fetchone()
+                if row:
+                    columns = [col[0] for col in cursor.description]
+                    return dict(zip(columns, row))
+                return None
+        except sqlite3.Error as e:
+            logger.error(f"Error getting LTI activity by id: {e}")
+            return None
+        finally:
+            connection.close()
+
     def create_lti_activity(self, resource_link_id: str, organization_id: int,
                             owi_group_id: str, owi_group_name: str,
                             configured_by_email: str, configured_by_name: str = None,
                             context_id: str = None, context_title: str = None,
                             activity_name: str = None,
-                            chat_visibility_enabled: bool = False) -> Optional[int]:
+                            chat_visibility_enabled: bool = False,
+                            activity_type: str = 'chat',
+                            rubric_id: str = None) -> Optional[int]:
         """Create a new LTI activity. Returns the activity id."""
         connection = self.get_connection()
         if not connection:
@@ -7889,13 +7914,14 @@ class LambDatabaseManager:
                     (resource_link_id, organization_id, context_id, context_title, activity_name,
                      owi_group_id, owi_group_name, owner_email, owner_name,
                      configured_by_email, configured_by_name,
-                     chat_visibility_enabled, status, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                     chat_visibility_enabled, activity_type, rubric_id, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
                 """, (resource_link_id, organization_id, context_id, context_title,
                       activity_name, owi_group_id, owi_group_name,
                       configured_by_email, configured_by_name,
                       configured_by_email, configured_by_name,
-                      1 if chat_visibility_enabled else 0, now, now))
+                      1 if chat_visibility_enabled else 0, activity_type or 'chat',
+                      rubric_id, now, now))
                 return cursor.lastrowid
         except sqlite3.Error as e:
             logger.error(f"Error creating LTI activity: {e}")
@@ -7926,7 +7952,7 @@ class LambDatabaseManager:
 
     def update_lti_activity(self, activity_id: int, **kwargs) -> bool:
         """Update an LTI activity. Pass fields to update as keyword arguments."""
-        allowed_fields = {'activity_name', 'status', 'context_title', 'chat_visibility_enabled', 'owner_email', 'owner_name'}
+        allowed_fields = {'activity_name', 'status', 'context_title', 'chat_visibility_enabled', 'owner_email', 'owner_name', 'rubric_id'}
         updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
         if not updates:
             return False
@@ -8139,6 +8165,67 @@ class LambDatabaseManager:
         except sqlite3.Error as e:
             logger.error(f"Error getting activity students: {e}")
             return {"students": [], "total": 0}
+        finally:
+            connection.close()
+
+    def get_workshop_sessions_by_activity(
+        self, activity_id: int
+    ) -> List[Dict[str, Any]]:
+        """List every workshop session belonging to an activity."""
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_workshop_sessions
+                    WHERE activity_id = ?
+                    ORDER BY created_at ASC
+                """, (activity_id,))
+                columns = [col[0] for col in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error(f"Error listing workshop sessions: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def get_activity_students_with_sessions(
+        self, activity_id: int
+    ) -> List[Dict[str, Any]]:
+        """Join activity students (LEFT) with their workshop session.
+
+        Students who launched but never started a session are still returned,
+        with ``session_id``/``session_status`` as None — the dashboard needs the
+        full roster, not only those who built something.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT u.*,
+                           s.id AS session_id,
+                           s.status AS session_status,
+                           s.assistant_id AS session_assistant_id,
+                           s.saved_chat AS session_saved_chat,
+                           s.reflection AS session_reflection,
+                           s.updated_at AS session_updated_at
+                    FROM {self.table_prefix}lti_activity_users u
+                    LEFT JOIN {self.table_prefix}lti_workshop_sessions s
+                        ON s.activity_user_id = u.id
+                       AND s.activity_id = u.activity_id
+                    WHERE u.activity_id = ?
+                    ORDER BY u.created_at ASC
+                """, (activity_id,))
+                columns = [col[0] for col in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error(f"Error joining activity students with sessions: {e}")
+            return []
         finally:
             connection.close()
 
@@ -8587,3 +8674,370 @@ class LambDatabaseManager:
             return None
         finally:
             connection.close()
+
+    # =========================================================================
+    # Workshop session accessors (lti_workshop_sessions)
+    # =========================================================================
+
+    def find_assistant_by_owner_name_org(
+        self,
+        owner: str,
+        name: str,
+        org_id: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Look up an existing assistant by (owner, name, org) — for idempotent create.
+
+        Workshop students create one assistant per session; if a create retries
+        after a UNIQUE(org, name, owner) collision we reuse the existing row.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                query = (
+                    f"SELECT * FROM {self.table_prefix}assistants "
+                    f"WHERE owner = ? AND name = ? AND organization_id = ? "
+                    f"LIMIT 1"
+                )
+                cursor.execute(query, (owner, name, org_id))
+                row = cursor.fetchone()
+                if row:
+                    columns = [col[0] for col in cursor.description]
+                    return dict(zip(columns, row))
+                return None
+        except sqlite3.Error as e:
+            logger.error(f"Error finding assistant by owner/name/org: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_workshop_session_by_id(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a workshop session record by id, or None."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_workshop_sessions
+                    WHERE id = ?
+                """, (session_id,))
+                row = cursor.fetchone()
+                if row:
+                    columns = [col[0] for col in cursor.description]
+                    return dict(zip(columns, row))
+                return None
+        except sqlite3.Error as e:
+            logger.error(f"Error getting workshop session: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_or_create_workshop_session(
+        self,
+        activity_id: int,
+        activity_user_id: int,
+        owi_user_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Get the workshop session for an activity_user, creating it if absent."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                # Try existing (one session per activity_user — Lean MVP)
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_workshop_sessions
+                    WHERE activity_id = ? AND activity_user_id = ?
+                """, (activity_id, activity_user_id))
+                row = cursor.fetchone()
+                if row:
+                    columns = [col[0] for col in cursor.description]
+                    return dict(zip(columns, row))
+
+                session_id = f"ws-{activity_id}-{activity_user_id}-{now}"
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}lti_workshop_sessions
+                    (id, activity_id, activity_user_id, owi_user_id,
+                     build_state, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, '{{}}', 'in_progress', ?, ?)
+                """, (session_id, activity_id, activity_user_id, owi_user_id, now, now))
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_workshop_sessions
+                    WHERE id = ?
+                """, (session_id,))
+                row = cursor.fetchone()
+                if row:
+                    columns = [col[0] for col in cursor.description]
+                    return dict(zip(columns, row))
+                return None
+        except sqlite3.Error as e:
+            logger.error(f"Error creating workshop session: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def update_workshop_session_assistant(
+        self, session_id: str, assistant_id: int
+    ) -> bool:
+        """Attach an assistant id to a workshop session."""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}lti_workshop_sessions
+                    SET assistant_id = ?, updated_at = ?
+                    WHERE id = ?
+                """, (assistant_id, int(time.time()), session_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error updating workshop session assistant: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def get_workshop_session_kb(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Read the KB/document binding columns for a workshop session."""
+        session = self.get_workshop_session_by_id(session_id)
+        if not session:
+            return None
+        return {
+            "kb_id": session.get("kb_id"),
+            "document_file_id": session.get("document_file_id"),
+            "document_name": session.get("document_name"),
+            "document_status": session.get("document_status"),
+        }
+
+    def update_workshop_session_kb(
+        self,
+        session_id: str,
+        *,
+        kb_id: Optional[str] = None,
+        document_file_id: Optional[str] = None,
+        document_name: Optional[str] = None,
+        document_status: Optional[str] = None,
+    ) -> bool:
+        """Update the session's KB/document binding (only provided fields)."""
+        fields = {
+            "kb_id": kb_id,
+            "document_file_id": document_file_id,
+            "document_name": document_name,
+            "document_status": document_status,
+        }
+        fields = {k: v for k, v in fields.items() if v is not None}
+        if not fields:
+            return True
+
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                set_clause = ", ".join(f"{k} = ?" for k in fields)
+                values = list(fields.values())
+                values.extend([int(time.time()), session_id])
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}lti_workshop_sessions
+                    SET {set_clause}, updated_at = ?
+                    WHERE id = ?
+                """, values)
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error updating workshop session KB: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def submit_workshop_session(
+        self,
+        session_id: str,
+        saved_chat: Optional[str] = None,
+        reflection: Optional[str] = None,
+        build_state: Optional[Any] = None,
+    ) -> bool:
+        """Mark a workshop session submitted with chat/reflection/build_state.
+
+        ``build_state`` is the wizard's per-step decision log (instructions,
+        document, KB, selected tools). It is persisted here so the formative
+        transcript and the teacher dashboard can read the student's build
+        decisions; accepting either a JSON string or a serializable object.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                fields = ["saved_chat = ?", "reflection = ?",
+                          "status = 'submitted'", "updated_at = ?"]
+                params: List[Any] = [saved_chat, reflection, int(time.time())]
+                if build_state is not None:
+                    fields.insert(0, "build_state = ?")
+                    params.insert(
+                        0,
+                        build_state if isinstance(build_state, str)
+                        else json.dumps(build_state),
+                    )
+                params.append(session_id)
+                cursor.execute(
+                    f"UPDATE {self.table_prefix}lti_workshop_sessions "
+                    f"SET {', '.join(fields)} WHERE id = ?",
+                    tuple(params),
+                )
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error submitting workshop session: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def get_workshop_evaluation(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch the stored formative evaluation for a workshop session, or None.
+
+        `criteria` is decoded from its JSON text column so callers get a list.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}workshop_evaluations
+                    WHERE session_id = ?
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """, (session_id,))
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                columns = [col[0] for col in cursor.description]
+                result = dict(zip(columns, row))
+                result["criteria"] = decode_evaluation_criteria(
+                    result.get("criteria"))
+                return result
+        except sqlite3.Error as e:
+            logger.error(f"Error getting workshop evaluation: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_workshop_evaluations_by_activity(
+        self, activity_id: int
+    ) -> List[Dict[str, Any]]:
+        """List all evaluations for an activity (teacher dashboard)."""
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}workshop_evaluations
+                    WHERE activity_id = ?
+                    ORDER BY updated_at DESC
+                """, (activity_id,))
+                columns = [col[0] for col in cursor.description]
+                results = []
+                for row in cursor.fetchall():
+                    record = dict(zip(columns, row))
+                    record["criteria"] = decode_evaluation_criteria(
+                        record.get("criteria"))
+                    results.append(record)
+                return results
+        except sqlite3.Error as e:
+            logger.error(f"Error listing workshop evaluations: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def upsert_workshop_evaluation(
+        self,
+        session_id: str,
+        activity_id: int,
+        rubric_id: Optional[str] = None,
+        criteria: Optional[List[Dict[str, Any]]] = None,
+        overall_feedback: Optional[str] = None,
+        total_score: Optional[float] = None,
+        max_score: Optional[float] = None,
+        model_used: Optional[str] = None,
+        status: str = "completed",
+        raw_response: Optional[str] = None,
+        error_message: Optional[str] = None,
+        evaluator: str = "llm",
+    ) -> Optional[str]:
+        """Insert or overwrite the (single) evaluation for a workshop session.
+
+        Resubmitting/regrading overwrites the previous row — one evaluation
+        per session (Lean MVP). Returns the evaluation id, or None on failure.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        evaluation_id = f"eval-{session_id}"
+        now = int(time.time())
+        criteria_json = json.dumps(criteria or [], ensure_ascii=False)
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT id FROM {self.table_prefix}workshop_evaluations
+                    WHERE session_id = ?
+                """, (session_id,))
+                existing = cursor.fetchone()
+                if existing:
+                    cursor.execute(f"""
+                        UPDATE {self.table_prefix}workshop_evaluations
+                        SET activity_id = ?, rubric_id = ?, evaluator = ?,
+                            model_used = ?, status = ?, total_score = ?,
+                            max_score = ?, criteria = ?, overall_feedback = ?,
+                            raw_response = ?, error_message = ?, updated_at = ?
+                        WHERE session_id = ?
+                    """, (activity_id, rubric_id, evaluator, model_used, status,
+                          total_score, max_score, criteria_json,
+                          overall_feedback, raw_response, error_message, now,
+                          session_id))
+                else:
+                    cursor.execute(f"""
+                        INSERT INTO {self.table_prefix}workshop_evaluations
+                        (id, session_id, activity_id, rubric_id, evaluator,
+                         model_used, status, total_score, max_score, criteria,
+                         overall_feedback, raw_response, error_message,
+                         created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (evaluation_id, session_id, activity_id, rubric_id,
+                          evaluator, model_used, status, total_score, max_score,
+                          criteria_json, overall_feedback, raw_response,
+                          error_message, now, now))
+                return evaluation_id
+        except sqlite3.Error as e:
+            logger.error(f"Error upserting workshop evaluation: {e}")
+            return None
+        finally:
+            connection.close()
+
+
+def decode_evaluation_criteria(criteria: Any) -> List[Dict[str, Any]]:
+    """Decode stored criteria JSON text into a list of dicts (best effort).
+
+    Module-level so it can be used by the DB methods even when they are invoked
+    against a lightweight test double (unbound-method test pattern).
+    """
+    if isinstance(criteria, list):
+        return criteria
+    if not criteria:
+        return []
+    try:
+        parsed = json.loads(criteria)
+        return parsed if isinstance(parsed, list) else []
+    except (json.JSONDecodeError, TypeError):
+        return []
