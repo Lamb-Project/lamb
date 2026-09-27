@@ -74,6 +74,35 @@ def budget_notice(agent):
     return messages.get(code, messages['en']).format(limit=agent.max_tool_rounds) + '\n\n'
 
 
+# What the model reads in place of a stored budget notice. The displayed notice says "no more
+# tools will run this turn"; left verbatim in history, models read it as a standing rule and
+# refuse later turns ("continue") that have a fresh budget.
+BUDGET_MODEL_NOTE = ('[Application note: the tool-round limit ({limit}) was reached at this point. The limit '
+                     'counts tool rounds within one user turn and resets with every new user message: any later '
+                     'turn, including a request to continue, has tools available again.]')
+
+_BUDGET_NOTICE_PATTERNS = None
+
+
+def is_budget_notice(text):
+    """True for a stored budget notice in any supported language (sessions saved before the model note)."""
+    global _BUDGET_NOTICE_PATTERNS
+    if _BUDGET_NOTICE_PATTERNS is None:
+        import re
+        fake = type('A', (), {'max_tool_rounds': 0})
+        patterns = []
+        for code in ('en', 'es', 'ca', 'eu'):
+            fake.skill_state = {'ui_language': code}
+            template = budget_notice(fake).strip().replace('(0)', '({limit})')
+            patterns.append(re.compile('^' + re.escape(template).replace(re.escape('{limit}'), r'\d+') + '$'))
+        _BUDGET_NOTICE_PATTERNS = patterns
+    return isinstance(text, str) and any(p.match(text.strip()) for p in _BUDGET_NOTICE_PATTERNS)
+
+
+def budget_model_note(limit):
+    return BUDGET_MODEL_NOTE.format(limit=limit)
+
+
 def confirmation_fallback(agent):
     """A provider ignoring disabled tools must still expose the saved approval."""
     state = agent.skill_state or {}

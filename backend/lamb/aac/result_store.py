@@ -264,5 +264,12 @@ def provider_messages(messages):
     for message in messages:
         copied={k:v for k,v in message.items() if k not in {'_aac_model_content', '_aac_result_command', '_aac_result_kind'}}
         if '_aac_model_content' in message: copied['content']=message['_aac_model_content']
+        elif message.get('role')=='assistant' and not message.get('tool_calls'):
+            # Budget notices saved before the model note: same neutral note for the model.
+            from lamb.aac.language import is_budget_notice, budget_model_note
+            if is_budget_notice(message.get('content')):
+                import re
+                found=re.search(r'\((\d+)\)', message['content'])
+                copied['content']=budget_model_note(found.group(1) if found else 10)
         result.append(copied)
     return result

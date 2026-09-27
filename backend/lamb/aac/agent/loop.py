@@ -542,11 +542,14 @@ class AgentLoop(SkillRouting):
             yield {"status": "thinking"}
             tools_enabled = tool_rounds < self.max_tool_rounds and not self.pending_action
             if not tools_enabled:
-                from lamb.aac.language import budget_notice
+                from lamb.aac.language import budget_notice, budget_model_note
                 notice = budget_notice(self)
                 # Persist before yielding: even a failed final request leaves the
                 # execution boundary visible and the evidence available to resume.
-                self.conversation.append({"role": "assistant", "content": notice})
+                # The model reads a neutral note instead: the displayed wording made
+                # models refuse later turns, which have a fresh budget.
+                self.conversation.append({"role": "assistant", "content": notice,
+                                          "_aac_model_content": budget_model_note(self.max_tool_rounds)})
                 if self.session_logger:
                     self.session_logger.log_agent_response(notice)
                 yield notice
