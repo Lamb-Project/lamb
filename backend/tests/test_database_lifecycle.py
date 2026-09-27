@@ -12,10 +12,11 @@ class Lifecycle(unittest.TestCase):
         for broken in (False, True):
             conn=sqlite3.connect(':memory:')
             conn.execute('CREATE TABLE schema_version(version INTEGER PRIMARY KEY, applied_at INTEGER)')
-            conn.execute('INSERT INTO schema_version VALUES (?,0)', (LATEST_VERSION,))
             runner=MigrationRunner(SimpleNamespace(table_prefix='',get_connection=lambda:conn))
+            # Up to date means every defined migration is applied, not only the highest (#465).
+            conn.executemany('INSERT INTO schema_version VALUES (?,0)', [(v,) for v in runner._defined_versions()])
             if broken:
-                with patch.object(runner, '_get_current_version', side_effect=RuntimeError('test')):
+                with patch.object(runner, '_get_applied_versions', side_effect=RuntimeError('test')):
                     with self.assertRaises(RuntimeError):runner.apply_all()
             else:
                 runner.apply_all()
