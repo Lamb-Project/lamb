@@ -198,7 +198,7 @@ The Vite dev server (port **5173**) is provided by `docker-compose.next.dev.yaml
 #### Starting the Development Environment
 
 ```bash
-# From repository root (requires a .env — see Documentation/deployLocal.md)
+# From repository root (requires a .env — see Documentation/installation/deployLocal.md)
 docker compose \
   -f docker-compose.next.yaml \
   -f docker-compose.next.dev.yaml \

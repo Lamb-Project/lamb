@@ -10,7 +10,7 @@ LAMB (Learning Assistants Manager and Builder) is an open-source platform for ed
 
 ### Starting the full stack (Docker Compose)
 ```bash
-# Requires a .env in the repo root — see Documentation/deployLocal.md
+# Requires a .env in the repo root — see Documentation/installation/deployLocal.md
 docker compose -f docker-compose.next.yaml up -d                   # all services
 docker compose -f docker-compose.next.yaml --profile ollama up -d  # include Ollama
 docker compose -f docker-compose.next.yaml up -d --build lamb      # rebuild the backend
@@ -152,7 +152,7 @@ Svelte 5 + SvelteKit + Vite + TailwindCSS 4. JavaScript with JSDoc (not TypeScri
 - Library Manager env: `library-manager/backend/.env` (copy from `.env.example`) — requires `LAMB_API_TOKEN`
 - Playwright env: `testing/playwright/.env` (copy from `.env.sample`)
 - Frontend runtime config: `frontend/svelte-app/static/config.js` (copy from `config.js.sample`)
-- Docker orchestration: `docker-compose.next.yaml` (+ `.gpu` / `.prod` overrides; requires a root `.env` — see `Documentation/deployLocal.md`)
+- Docker orchestration: `docker-compose.next.yaml` (+ `.gpu` / `.prod` overrides; requires a root `.env` — see `Documentation/installation/deployLocal.md`)
 - Reverse proxy: `Caddyfile.next` (used by `docker-compose.next.prod.yaml`)
 
 ## Vendored Dependencies — Do Not Modify

@@ -4,7 +4,7 @@
 **Last Updated:** March 31, 2026
 **Reading Time:** ~40 minutes
 
-> This is the canonical architecture guide. For quick navigation, see [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md). A longer, more detailed architecture document lives in the private enterprise repository.
+> This is the canonical architecture guide. A longer, more detailed architecture document lives in the private enterprise repository.
 
 ---
 
@@ -1914,14 +1914,13 @@ API_LOG_LEVEL=DEBUG
 
 | Document | Purpose |
 |----------|---------|
-| [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md) | Quick navigation guide |
-| [.env.next.example](../.env.next.example) | All environment variables |
-| [deployLocal.md](./deployLocal.md) | Local Docker deployment |
-| [deployNext.md](./deployNext.md) | Production deployment (Hetzner) |
-| [migrating-to-lamb-next.md](./migrating-to-lamb-next.md) | Migrate from the legacy Docker stack |
-| [deployment.apache.md](./deployment.apache.md) | Apache deployment |
-| [deployment.nginx.md](./deployment.nginx.md) | Nginx deployment |
-| [svelte-refactoring.md](./svelte-refactoring.md) | Frontend refactoring guide |
+| [.env.next.example](../../.env.next.example) | All environment variables |
+| [deployLocal.md](../installation/deployLocal.md) | Local Docker deployment |
+| [deployNext.md](../installation/deployNext.md) | Production deployment (Hetzner) |
+| [migrating-to-lamb-next.md](../installation/migrating-to-lamb-next.md) | Migrate from the legacy Docker stack |
+| [deployment.apache.md](../installation/deployment.apache.md) | Apache deployment |
+| [deployment.nginx.md](../installation/deployment.nginx.md) | Nginx deployment |
+| [svelte-refactoring.md](../svelte-refactoring.md) | Frontend refactoring guide |
 
 > Design docs, product requirements and detailed feature documentation
 > (`lamb_architecture.md`, `prd.md`, `lti_landscape.md`, `chat_analytics_project.md`,
