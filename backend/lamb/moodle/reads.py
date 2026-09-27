@@ -133,6 +133,9 @@ def execute_read(client, key, params, *, owner_moodle_id):
         result = with_my_roles(client, result, owner_moodle_id)
     if key == 'forum.discussions':
         result = [discussion_result(item) for item in result]
+    if key == 'course.contents':
+        from .course_structure import with_subsection_links
+        result = with_subsection_links(result)
     if key == 'site.functions':
         if params['search']: result = [f for f in result if params['search'].lower() in f['name'].lower()]
         if params['component']: result = [f for f in result if f['name'].startswith(params['component'])]

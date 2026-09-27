@@ -56,16 +56,56 @@ def resolve(value, path):
 PRIORITY = ('id','name','title','status','success','error','code','count','total','total_count',
             'assistant_id','chat_id','run_id','result_id','revision','evidence','coverage','budget',
             'continue_command','evidence_command','source','summary','model','connector','llm',
-            'rag_processor','RAG_collections','description')
+            'rag_processor','RAG_collections','description',
+            'modname','subsection_of','subsection_section_id','customdata','section','sectionid','component','itemid',
+            'filename','mimetype','filesize','type','visible','uservisible','timemodified','userid','fullname')
+# Short fields that identify a record and its place in a structure; kept when a list is compacted.
+IDENTITY = PRIORITY[:12] + ('modname','subsection_of','subsection_section_id','customdata','section','sectionid',
+            'component','itemid','filename','mimetype','filesize','type','userid','fullname','timemodified')
+LIST_BUDGET = (5000, 1800, 900)
+
+
+def _compact(value):
+    """One record in a compacted list: identity scalars, nested lists as counts, files by name."""
+    if isinstance(value, str): return excerpt(value, 120)
+    if not isinstance(value, dict): return value if not isinstance(value, list) else {'items': len(value)}
+    out = {}
+    for key in IDENTITY:
+        if key not in value: continue
+        item = value[key]
+        if isinstance(item, str): out[key] = excerpt(item, 160)
+        elif isinstance(item, dict): out[key] = {k: (excerpt(v, 80) if isinstance(v, str) else v) for k, v in list(item.items())[:6]
+                                                  if not isinstance(v, (dict, list))}
+        elif not isinstance(item, list): out[key] = item
+    for key, item in value.items():
+        if isinstance(item, list) and key not in out:
+            files = [f.get('filename') for f in item if isinstance(f, dict) and f.get('filename')]
+            out[key] = {'items': len(item), 'filenames': [excerpt(f, 80) for f in files[:6]]} if files else {'items': len(item)}
+    return out
 
 
 def preview(value, depth=0):
+    """Bounded, truthful preview: never a silently shorter list or object (#521)."""
     if isinstance(value, str): return excerpt(value)
-    if isinstance(value, list): return [preview(v, depth+1) for v in value[:3]] if depth < 3 else {'items':len(value)}
+    if isinstance(value, list):
+        if depth >= 3: return {'total': len(value), 'shown': 0, 'omitted': len(value)}
+        budget = LIST_BUDGET[min(depth, 2)]
+        whole = [preview(v, depth+1) for v in value]
+        if len(encode(whole)) <= budget: return whole
+        shown, used = [], 2
+        for item in value:
+            item = _compact(item)
+            size = len(encode(item)) + 1
+            if used + size > budget: break
+            shown.append(item); used += size
+        return {'total': len(value), 'shown': len(shown), 'omitted': len(value) - len(shown), 'compacted': True,
+                'items': shown}
     if isinstance(value, dict):
         if depth >= 3: return {'keys': [excerpt(str(k), 60) for k in list(value)[:8]], 'key_count':len(value)}
         keys = [k for k in PRIORITY if k in value] + [k for k in value if k not in PRIORITY]
-        return {excerpt(str(k), 100):preview(value[k], depth+1) for k in keys[:12]}
+        out = {excerpt(str(k), 100):preview(value[k], depth+1) for k in keys[:12]}
+        if len(keys) > 12: out['_omitted_keys'] = len(keys) - 12
+        return out
     return value
 
 
