@@ -609,6 +609,11 @@ class AgentLoop(SkillRouting):
 
             # A provider that ignores the no-tools request must not execute more work.
             text = message["content"]
+            if not tools_enabled and not calls and not (text or '').strip():
+                # Never end a budget-limited turn with only the notice (#521).
+                from lamb.aac.language import budget_empty_answer
+                reads = [t['command'] for t in self.tool_audit[-self.max_tool_rounds * 4:] if t.get('success') and t.get('phase') == 'completed']
+                text = budget_empty_answer(self, reads)
             if calls:
                 if self.pending_action:
                     from lamb.aac.language import confirmation_fallback

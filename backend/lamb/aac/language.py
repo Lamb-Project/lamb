@@ -119,6 +119,18 @@ def unqueued_write_notice(agent):
     return '\n\n' + messages.get(_code(agent), messages['en'])
 
 
+def budget_empty_answer(agent, reads):
+    """#521: the model returned no text after the tool budget; state what was read and how to continue."""
+    messages = {
+        'en': ('I could not write the answer within this turn. Reads completed: {n}{items}. Say “continue” to finish from this evidence.'),
+        'es': ('No he podido redactar la respuesta en este turno. Lecturas completadas: {n}{items}. Di «continúa» para terminar a partir de estos datos.'),
+        'ca': ('No he pogut redactar la resposta en aquest torn. Lectures completades: {n}{items}. Digues «continua» per acabar a partir d’aquestes dades.'),
+        'eu': ('Ezin izan dut erantzuna idatzi txanda honetan. Amaitutako irakurketak: {n}{items}. Esan «jarraitu» datu hauetatik amaitzeko.'),
+    }
+    items = (' (' + '; '.join(reads[-6:]) + ')') if reads else ''
+    return messages.get(_code(agent), messages['en']).format(n=len(reads), items=items)
+
+
 def translation_confirmation(agent):
     """Render the interpretation independently of provider compliance.
 

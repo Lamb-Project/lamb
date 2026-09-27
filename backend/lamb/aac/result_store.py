@@ -60,7 +60,7 @@ PRIORITY = ('id','name','title','status','success','error','code','count','total
             'modname','subsection_of','subsection_section_id','customdata','section','sectionid','component','itemid',
             'filename','mimetype','filesize','type','visible','uservisible','timemodified','userid','fullname')
 # Short fields that identify a record and its place in a structure; kept when a list is compacted.
-IDENTITY = PRIORITY[:12] + ('modname','subsection_of','subsection_section_id','customdata','section','sectionid',
+IDENTITY = PRIORITY[:12] + ('section_id','section_name','parent_section_id','parent_section_name','modname','subsection_of','subsection_section_id','customdata','section','sectionid',
             'component','itemid','filename','mimetype','filesize','type','userid','fullname','timemodified')
 LIST_BUDGET = (5000, 1800, 900)
 

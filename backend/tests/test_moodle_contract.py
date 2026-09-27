@@ -1,13 +1,13 @@
 import pytest
 from moodle_cli.cli.readonly import READONLY_COMMANDS
-from lamb.moodle.contract import command_specs, prepare_moodle, command_reference, CURATED_WRITES
+from lamb.moodle.contract import command_specs, prepare_moodle, command_reference, CURATED_WRITES, LAMB_READS
 
 
 def test_generated_contract_exactly_covers_installed_remote_reads_and_curated_writes():
     expected = {f'{g}.{c}' for g,names in READONLY_COMMANDS.items() if g != 'auth' for c in names}
     specs = command_specs()
-    assert set(specs) == expected | CURATED_WRITES
-    assert all(specs[k].policy == 'auto' for k in expected)
+    assert set(specs) == expected | CURATED_WRITES | LAMB_READS
+    assert all(specs[k].policy == 'auto' for k in expected | LAMB_READS)
     assert all(specs[k].policy == 'ask' for k in CURATED_WRITES)
 
 

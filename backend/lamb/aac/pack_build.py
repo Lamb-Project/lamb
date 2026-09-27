@@ -49,7 +49,9 @@ def validate_routing(pack):
         from lamb.moodle.task_contract import task_specs
         from lamb.moodle.document_contract import document_specs
         commands |= {'moodle.' + key for key in document_specs() if 'moodle.' + key in routing['DEFAULT_SKILL']}
-        commands |= {'moodle.'+key for key in command_specs()} | {'moodle.sync','moodle.cache.show','moodle.import.file'}
+        # Packs before 1.11.8 predate the LAMB course inventory read (#521).
+        commands |= {'moodle.'+key for key in command_specs()
+                     if key != 'course.inventory' or 'moodle.course.inventory' in routing['DEFAULT_SKILL']} | {'moodle.sync','moodle.cache.show','moodle.import.file'}
         # Historical immutable packs predate the task vocabulary.
         if 'moodle.news' in routing['DEFAULT_SKILL']:
             commands |= {'moodle.'+key for key in task_specs() if 'moodle.'+key in routing['DEFAULT_SKILL']}
