@@ -48,4 +48,5 @@ class BudgetFallback(unittest.IsolatedAsyncioTestCase):
         a.required_skill = lambda *args: None
         answer = await turn(a, False, 'Inspect assistant 42')
         assert 'continue' in answer and 'Reads completed' in answer
+        assert answer.rstrip().endswith('2. Other — tell me') and '**Next?**' in answer
         assert a.conversation[-1]['content'].endswith(answer.split('\n\n')[-1])

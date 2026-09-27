@@ -157,7 +157,15 @@ def budget_empty_answer(agent, reads):
         'eu': ('Ezin izan dut erantzuna idatzi txanda honetan. Amaitutako irakurketak: {n}{items}. Esan «jarraitu» datu hauetatik amaitzeko.'),
     }
     items = (' (' + '; '.join(reads[-6:]) + ')') if reads else ''
-    return messages.get(_code(agent), messages['en']).format(n=len(reads), items=items)
+    # Every reply ends with the options list (pack 1.11.9), this application text included.
+    options = {
+        'en': '**Next?**\n1. Continue\n2. Other — tell me',
+        'es': '**¿Qué hacemos ahora?**\n1. Continúa\n2. Otra cosa: dime',
+        'ca': '**Què fem ara?**\n1. Continua\n2. Una altra cosa: digues-m’ho',
+        'eu': '**Zer egingo dugu orain?**\n1. Jarraitu\n2. Beste zerbait: esan iezadazu',
+    }
+    code = _code(agent) if _code(agent) in messages else 'en'
+    return messages[code].format(n=len(reads), items=items) + '\n\n' + options[code]
 
 
 def translation_confirmation(agent):
