@@ -196,8 +196,11 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
                 logger.error(f"No creator user found for email: {user_email}")
                 return None
 
-            # Use role from JWT payload (authoritative)
-            creator_user['role'] = payload.get('role', creator_user.get('role', 'user'))
+            # Stored account state wins over the token's copy (#256)
+            from lamb.auth_context import apply_account_state
+            creator_user = apply_account_state(creator_user, payload.get('role'))
+            if not creator_user:
+                return None
         else:
             # --- OWI fallback for pre-migration tokens ---
             logger.debug("LAMB JWT decode failed, trying OWI fallback")
@@ -216,8 +219,11 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
                 logger.error(f"No creator user found for email: {user_email}")
                 return None
 
-            # Use OWI role during fallback
-            creator_user['role'] = user_auth.get('role', 'user')
+            # Stored account state wins over the OWI token's role (#256)
+            from lamb.auth_context import apply_account_state
+            creator_user = apply_account_state(creator_user, user_auth.get('role'))
+            if not creator_user:
+                return None
 
         # Fetch full organization data for access control
         organization_id = creator_user.get('organization_id')
