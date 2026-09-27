@@ -289,6 +289,20 @@ class AuthContext:
 # Internal builder
 # ---------------------------------------------------------------------------
 
+def apply_account_state(creator_user: Optional[Dict[str, Any]], token_role: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Apply the stored account state on every request (#256).
+
+    A token carries the role and account state from its issue time. A disabled
+    account is rejected immediately, and the stored role wins over the token's
+    copy, so disabling or demoting a user takes effect without waiting for logout
+    or token expiry. The token role is used only when the account has none stored.
+    """
+    if not creator_user or creator_user.get("enabled") is False:
+        return None
+    creator_user["role"] = creator_user.get("role") or token_role or "user"
+    return creator_user
+
+
 def _build_auth_context(token: str) -> Optional[AuthContext]:
     """Authenticate user from a Bearer token and build a full AuthContext.
 
@@ -333,14 +347,11 @@ def _build_auth_context(token: str) -> Optional[AuthContext]:
             return None
 
     # --- 2. Load creator user from DB ---
-    creator_user = _db.get_creator_user_by_email(user_email)
+    creator_user = apply_account_state(_db.get_creator_user_by_email(user_email), jwt_role)
     if not creator_user:
-        logger.error(f"No creator user found for email: {user_email}")
+        logger.warning(f"Rejected token for missing or disabled creator user: {user_email}")
         return None
-
-    # Use JWT role as authoritative; fall back to DB role
-    effective_role = jwt_role or creator_user.get("role", "user")
-    creator_user["role"] = effective_role
+    effective_role = creator_user["role"]
 
     is_system_admin = effective_role == "admin"
 
