@@ -229,7 +229,7 @@ async def document_command(body: DocumentCommandBody, request: Request,
         spec, params = prepare_moodle(body.command)
         if spec.key not in document_specs() and spec.key not in {'course.get', 'course.contents', 'course.inventory', 'file.list'}:
             raise ValueError('Use document listing/import commands in this endpoint')
-        runtime = MoodleRuntime(store)
+        runtime = MoodleRuntime(store, owner_email=auth.user['email'])
         storage = store_for_runtime(runtime)
         session_path = storage.path('sessions', body.session)
         storage.get('sessions', body.session)  # Reject nonexistent handles before making a lock file.

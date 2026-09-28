@@ -7492,6 +7492,303 @@
           "is_flag": false
         }
       ]
+    },
+    "moodle.file.read": {
+      "params": [
+        {
+          "name": "source_ref",
+          "kind": "TyperArgument",
+          "opts": [
+            "source_ref"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "session",
+          "kind": "TyperOption",
+          "opts": [
+            "--session"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "moodle.page.read": {
+      "params": [
+        {
+          "name": "source_ref",
+          "kind": "TyperArgument",
+          "opts": [
+            "source_ref"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "session",
+          "kind": "TyperOption",
+          "opts": [
+            "--session"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "moodle.book.read": {
+      "params": [
+        {
+          "name": "source_ref",
+          "kind": "TyperArgument",
+          "opts": [
+            "source_ref"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "session",
+          "kind": "TyperOption",
+          "opts": [
+            "--session"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "moodle.read.summary": {
+      "params": [
+        {
+          "name": "read_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "read_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "session",
+          "kind": "TyperOption",
+          "opts": [
+            "--session"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "passages",
+          "kind": "TyperOption",
+          "opts": [
+            "--passages"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "pages",
+          "kind": "TyperOption",
+          "opts": [
+            "--pages"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "section",
+          "kind": "TyperOption",
+          "opts": [
+            "--section"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "focus",
+          "kind": "TyperOption",
+          "opts": [
+            "--focus"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "moodle.read.ask": {
+      "params": [
+        {
+          "name": "read_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "read_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "question",
+          "kind": "TyperArgument",
+          "opts": [
+            "question"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "session",
+          "kind": "TyperOption",
+          "opts": [
+            "--session"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
+    },
+    "moodle.read.verbatim": {
+      "params": [
+        {
+          "name": "read_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "read_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "session",
+          "kind": "TyperOption",
+          "opts": [
+            "--session"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "passages",
+          "kind": "TyperOption",
+          "opts": [
+            "--passages"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "pages",
+          "kind": "TyperOption",
+          "opts": [
+            "--pages"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "find",
+          "kind": "TyperOption",
+          "opts": [
+            "--find"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "offset",
+          "kind": "TyperOption",
+          "opts": [
+            "--offset"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "0",
+          "type": "<IntRange x>=0>",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
     }
   },
   "shell_contracts": {
@@ -8083,7 +8380,13 @@
     "moodle.import.folder": "supported: shared Moodle folder/document contract; --session and --confirm are CLI transport fields",
     "moodle.chart.submissions": "supported: shared read-only assignment chart recipe, current instructor access, owner-bound aggregate snapshot and authenticated SVG",
     "moodle.chart.list": "supported: shared owner-bound saved-chart task, current course authorization, immutable evidence; no implicit source refresh",
-    "moodle.chart.read": "supported: shared owner-bound saved-chart task, current course authorization, immutable evidence; no implicit source refresh"
+    "moodle.chart.read": "supported: shared owner-bound saved-chart task, current course authorization, immutable evidence; no implicit source refresh",
+    "moodle.file.read": "supported: shared Moodle document read contract and runtime (#525); read-only, no approval; CLI --session is a transport field; AAC provides conversation scope",
+    "moodle.page.read": "supported: shared Moodle document read contract and runtime (#525); read-only, no approval; CLI --session is a transport field; AAC provides conversation scope",
+    "moodle.book.read": "supported: shared Moodle document read contract and runtime (#525); read-only, no approval; CLI --session is a transport field; AAC provides conversation scope",
+    "moodle.read.summary": "supported: shared Moodle document read contract and runtime (#525); read-only, no approval; CLI --session is a transport field; AAC provides conversation scope",
+    "moodle.read.ask": "supported: shared Moodle document read contract and runtime (#525); read-only, no approval; CLI --session is a transport field; AAC provides conversation scope",
+    "moodle.read.verbatim": "supported: shared Moodle document read contract and runtime (#525); read-only, no approval; CLI --session is a transport field; AAC provides conversation scope"
   },
   "shell_only": [
     "assistant.chat",
@@ -8126,7 +8429,13 @@
     "moodle.course.contents": "moodle.course.contents",
     "moodle.import.folder": "moodle.import.folder",
     "moodle.chart.list": "moodle.chart.list",
-    "moodle.chart.read": "moodle.chart.read"
+    "moodle.chart.read": "moodle.chart.read",
+    "moodle.file.read": "moodle.file.read",
+    "moodle.page.read": "moodle.page.read",
+    "moodle.book.read": "moodle.book.read",
+    "moodle.read.summary": "moodle.read.summary",
+    "moodle.read.ask": "moodle.read.ask",
+    "moodle.read.verbatim": "moodle.read.verbatim"
   },
   "cli_only_transport": {
     "moodle.documents.start": "AAC already supplies a conversation-owned document scope"

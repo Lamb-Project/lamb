@@ -59,8 +59,11 @@ def runs():
     run(['runs'])
 
 
-def document_run(tokens, session, confirm=None):
-    with get_client(timeout=httpx.Timeout(180, connect=5, pool=5, write=10)) as client:
+READ_TIMEOUT = 900  # a long document is read by the helper model in several calls
+
+
+def document_run(tokens, session, confirm=None, read_timeout=180):
+    with get_client(timeout=httpx.Timeout(read_timeout, connect=5, pool=5, write=10)) as client:
         result = client.post('/creator/moodle/documents/commands', json={
             'session': session, 'command': shlex.join(['moodle', *tokens]), 'confirm': confirm})
     typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
@@ -217,6 +220,59 @@ def import_refresh(import_id: str, session: str = typer.Option(..., '--session')
 def import_finish(import_id: str, session: str = typer.Option(..., '--session'),
                   confirm: Optional[str] = typer.Option(None, '--confirm')):
     document_run(['import', 'finish', import_id], session, confirm)
+
+
+@file_app.command('read')
+def file_read(source_ref: str, session: str = typer.Option(..., '--session')):
+    """Read a listed file without importing it: helper-model overview and a READ_ID."""
+    document_run(['file', 'read', source_ref], session, read_timeout=READ_TIMEOUT)
+
+
+for _kind in ('page', 'book'):
+    def make_read(kind):
+        def read_document(source_ref: str, session: str = typer.Option(..., '--session')):
+            document_run([kind, 'read', source_ref], session, read_timeout=READ_TIMEOUT)
+        read_document.__doc__ = f'Read a listed Moodle {kind} without importing it.'
+        return read_document
+    document_groups[_kind].command('read')(make_read(_kind))
+
+
+read_app = typer.Typer(help='Follow-ups on a document read with file/page/book read', no_args_is_help=True)
+app.add_typer(read_app, name='read')
+
+
+def selection_tokens(passages, pages):
+    tokens = []
+    if passages: tokens += ['--passages', passages]
+    if pages: tokens += ['--pages', pages]
+    return tokens
+
+
+@read_app.command('summary')
+def read_summary(read_id: str, session: str = typer.Option(..., '--session'),
+                 passages: Optional[str] = typer.Option(None, '--passages'), pages: Optional[str] = typer.Option(None, '--pages'),
+                 section: Optional[str] = typer.Option(None, '--section'), focus: Optional[str] = typer.Option(None, '--focus')):
+    """Extended summary of part of the document by the helper model."""
+    tokens = ['read', 'summary', read_id] + selection_tokens(passages, pages)
+    if section: tokens += ['--section', section]
+    if focus: tokens += ['--focus', focus]
+    document_run(tokens, session, read_timeout=READ_TIMEOUT)
+
+
+@read_app.command('ask')
+def read_ask(read_id: str, question: str, session: str = typer.Option(..., '--session')):
+    """Ask the helper model one question about the document."""
+    document_run(['read', 'ask', read_id, question], session, read_timeout=READ_TIMEOUT)
+
+
+@read_app.command('verbatim')
+def read_verbatim(read_id: str, session: str = typer.Option(..., '--session'),
+                  passages: Optional[str] = typer.Option(None, '--passages'), pages: Optional[str] = typer.Option(None, '--pages'),
+                  find: Optional[str] = typer.Option(None, '--find'), offset: int = typer.Option(0, '--offset', min=0)):
+    """Exact passages, paged."""
+    tokens = ['read', 'verbatim', read_id] + selection_tokens(passages, pages)
+    if find: tokens += ['--find', find]
+    document_run(tokens + ['--offset', str(offset)], session)
 
 
 chart_app = typer.Typer(help='Read-only chart pilot', no_args_is_help=True)

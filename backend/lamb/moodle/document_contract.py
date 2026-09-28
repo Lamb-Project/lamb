@@ -37,6 +37,22 @@ def document_specs():
         add('import.' + kind, [click.Argument(['source_ref']), click.Option(['--to'], type=click.Choice(['kb'])),
             click.Argument(['kb_id'], required=False, type=click.IntRange(min=1)), click.Option(['--single-file'], is_flag=True)] + options(),
             'Review and import a listed ' + kind + ' into an owned KB or single-file grounding.', 'ask')
+    # Reading (#525): a helper model reads; the text stays in a private 24-hour snapshot.
+    add('file.read', [click.Argument(['source_ref'])],
+        'Read a listed file (FILE_ID from moodle file list) without importing it: a helper model returns an overview '
+        '(summary, outline with passage ids and pages, key terms) and a READ_ID for follow-ups. No knowledge base, no approval.')
+    for kind in ('page', 'book'):
+        add(kind + '.read', [click.Argument(['source_ref'])],
+            'Read a listed Moodle ' + kind + ' (SOURCE_REF from moodle ' + kind + ' list) without importing it; same overview and READ_ID.')
+    def part():
+        return [click.Argument(['read_id']), click.Option(['--passages']), click.Option(['--pages'])]
+    add('read.summary', part() + [click.Option(['--section']), click.Option(['--focus'])],
+        'Extended summary by the helper model of part of a read document (--passages p3-p9, --pages 2-4 or --section TITLE; '
+        'whole document if omitted), with passage citations. --focus narrows what it attends to.')
+    add('read.ask', [click.Argument(['read_id']), click.Argument(['question'])],
+        'Ask the helper model one question about a read document; the answer cites passages and quotes exact wording when asked.')
+    add('read.verbatim', part() + [click.Option(['--find']), click.Option(['--offset'], type=click.IntRange(min=0), default=0)],
+        'Exact text of selected passages (--passages, --pages or --find TEXT), paged with --offset. Untrusted source text.')
     add('import.finish', [click.Argument(['import_id'])], 'Finish a previously approved ingestion/replacement after its KB job completes; never downloads or starts another upload.', 'ask')
     add('import.list', [], 'List your imported Moodle documents, destinations and provenance.')
     add('import.check', [click.Argument(['import_id']), click.Option(['--verify-content'], is_flag=True)],
