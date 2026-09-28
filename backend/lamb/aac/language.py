@@ -103,6 +103,37 @@ def budget_model_note(limit):
     return BUDGET_MODEL_NOTE.format(limit=limit)
 
 
+_ANNOUNCED_WORK = None
+
+
+def announces_unfinished_work(text):
+    """True when a reply ends by announcing a step it did not take ("Voy a continuar con esa
+    comprobación.") and neither asks the user nor offers options. Without a tool call such a reply
+    ends the turn, so nothing happens (Marc, 28 Sep)."""
+    global _ANNOUNCED_WORK
+    import re
+    if _ANNOUNCED_WORK is None:
+        verbs_es = 'continuar|seguir|comprobar|revisar|obtener|preparar|buscar|leer|consultar|importar|crear|listar|verificar'
+        _ANNOUNCED_WORK = re.compile('|'.join([
+            rf'\bvoy a (?:{verbs_es})\b', r'\b(?:continuar|seguir|comprobar|revisar|obtendr|preparar|buscar|consultar|verificar)[éeá]\b',
+            r'\ba continuaci[oó]n (?:voy|har[ée]|obtendr[ée]|comprobar[ée]|revisar[ée])\b',
+            r"\bi(?:'ll| will) (?:now |next |then )?(?:continue|check|look|fetch|retrieve|get|prepare|read|search|proceed|verify|import|create|list)\b",
+            r'\blet me (?:now )?(?:continue|check|look|fetch|retrieve|get|read|verify)\b',
+            r'\b(?:continuar|comprovar|revisar|obtindr|preparar|cercar|consultar|verificar)[ée]\b',
+            r'\b(?:jarraitu|egiaztatu|begiratu|prestatu|lortu|bilatu)ko dut\b']), re.I)
+    tail = (text or '').strip()[-400:]
+    if not tail or '?' in tail[-200:] or re.search(r'(?m)^\s*1\.\s.+\n\s*2\.\s', tail):
+        return False
+    last = re.split(r'(?<=[.!])\s+', tail)[-2:]
+    return bool(_ANNOUNCED_WORK.search(' '.join(last)))
+
+
+ANNOUNCED_WORK_NOTE = ('Your last reply announced a next step but called no tool, so the turn would end here and '
+                       'nothing would happen. If you can take that step, call the tool now. If something blocks you '
+                       '(a missing identifier, a permission, a user decision), tell the user exactly what is missing '
+                       'and what you need. Do not announce work without doing it.')
+
+
 def confirmation_fallback(agent):
     """A provider ignoring disabled tools must still expose the saved approval."""
     state = agent.skill_state or {}
