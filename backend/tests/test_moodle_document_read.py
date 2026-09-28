@@ -43,6 +43,12 @@ def test_pdf_passages_carry_pages_and_losses():
     assert 'weighted sum' in passages[0]['text']
 
 
+def test_a_broken_pdf_gets_a_plain_message_not_parser_internals():
+    with pytest.raises(ValueError) as error:
+        reading.convert(Download('l11-notes.pdf', b'placeholder bytes, not a PDF', 'application/pdf'))
+    assert str(error.value) == reading.UNPARSEABLE
+
+
 def test_markdown_passages_merge_small_blocks_split_long_ones_and_keep_headings():
     text = '# Intro\n\nShort one.\n\nShort two.\n\n## Attention\n\n' + ('Long sentence about attention. ' * 120)
     passages = reading.passages_from(reading.markdown_blocks(text))

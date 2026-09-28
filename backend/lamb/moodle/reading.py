@@ -27,6 +27,7 @@ PASSAGE_MAX = 1600              # characters: split longer blocks
 HELPER_CHUNK_CHARS = 90_000     # one helper call reads at most this much text
 HELPER_TIMEOUT = 180
 PDF_NOTICE = 'Text layer only: images, figures and formulas drawn as images are not read; no OCR.'
+UNPARSEABLE = 'This file could not be read as a PDF: it is damaged, empty or not really a PDF. Nothing was imported.'
 
 
 class Passage(dict):
@@ -70,7 +71,14 @@ def convert(download):
     """Return (blocks, losses, pages). Blocks are (page, heading, text) in reading order."""
     suffix = PurePosixPath(download.filename).suffix.lower()
     if suffix == '.pdf':
-        blocks, pages, empty = pdf_blocks(download.content)
+        try:
+            blocks, pages, empty = pdf_blocks(download.content)
+        except ValueError as exc:
+            if 'Reading is limited' in str(exc): raise
+            raise ValueError(UNPARSEABLE) from None
+        except Exception:
+            # Parser internals are not a teacher-facing message.
+            raise ValueError(UNPARSEABLE) from None
         losses = {'notice': PDF_NOTICE}
         if empty:
             losses['pages_without_text'] = empty
