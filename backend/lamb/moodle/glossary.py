@@ -40,7 +40,8 @@ LAMB_TERMS = {
 # LAMB's own operations, not Moodle evidence.
 UNCOVERED = frozenset({'runs', 'folder.status', 'folder.finish', 'import.folder', 'import.course', 'import.file',
                        'import.page', 'import.book', 'import.finish', 'import.list', 'import.check',
-                       'import.refresh'})
+                       'import.refresh', 'file.read', 'page.read', 'book.read', 'read.summary', 'read.ask',
+                       'read.verbatim'})
 
 
 def glossary_key(command_key, kwargs=None):

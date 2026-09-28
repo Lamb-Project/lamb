@@ -1,0 +1,132 @@
+{
+  "language": "es",
+  "ui": {
+    "nav.assistants": "Asistentes",
+    "nav.rubrics": "Rúbricas",
+    "assistants.title": "Asistentes de Aprendizaje",
+    "assistants.myAssistantsTab": "Mis Asistentes",
+    "assistants.sharedWithMeTab": "Compartidos Conmigo",
+    "assistants.createAssistantTab": "Crear Asistente",
+    "assistants.edit": "Editar",
+    "assistants.configuration": "Configuración",
+    "assistants.promptProcessor": "Procesador de Prompt",
+    "assistants.connector": "Conector",
+    "assistants.llm": "LLM",
+    "assistants.ragProcessor": "Procesador RAG",
+    "assistants.systemPrompt": "Prompt del Sistema",
+    "assistants.publish": "Publicar",
+    "assistants.unpublish": "Despublicar",
+    "assistants.detail.propertiesTab": "Propiedades",
+    "assistants.detail.editTab": "Editar",
+    "assistants.detail.shareTab": "Compartir",
+    "assistants.detail.chatTab": "Chat",
+    "assistants.detail.activityTab": "Actividad",
+    "home.dashboard.knowledgeBases": "Bases de Conocimiento",
+    "home.dashboard.createKnowledgeBase": "Crear Base de Conocimiento",
+    "home.dashboard.createRubric": "Crear Rúbrica",
+    "rubrics.form.criteria": "Criterios de Evaluación",
+    "rubrics.form.weight": "Peso (%)",
+    "rubrics.form.performanceLevels": "Niveles de Desempeño",
+    "rubrics.form.addCriterion": "Añadir Criterio"
+  },
+  "terms": [
+    {
+      "english": "assistant",
+      "forms": [
+        "asistente",
+        "asistentes"
+      ],
+      "stems": [
+        {
+          "stem": "asistente",
+          "suffixes": [
+            "",
+            "s"
+          ]
+        }
+      ]
+    },
+    {
+      "english": "knowledge base",
+      "forms": [
+        "base de conocimiento",
+        "bases de conocimiento",
+        "base de conocimientos",
+        "bases de conocimientos"
+      ]
+    },
+    {
+      "english": "rubric",
+      "forms": [
+        "rúbrica",
+        "rúbricas"
+      ]
+    },
+    {
+      "english": "grounding",
+      "forms": [
+        "fundamentación"
+      ]
+    },
+    {
+      "english": "retrieval",
+      "forms": [
+        "recuperación"
+      ]
+    },
+    {
+      "english": "system prompt",
+      "forms": [
+        "instrucciones de sistema",
+        "prompt de sistema"
+      ]
+    },
+    {
+      "english": "prompt template",
+      "forms": [
+        "plantilla de prompt",
+        "plantillas de prompt"
+      ]
+    },
+    {
+      "english": "test case",
+      "forms": [
+        "caso de prueba",
+        "casos de prueba"
+      ]
+    },
+    {
+      "english": "evaluation",
+      "forms": [
+        "evaluación",
+        "evaluaciones"
+      ]
+    },
+    {
+      "english": "publish",
+      "forms": [
+        "publicar",
+        "publicación"
+      ]
+    },
+    {
+      "english": "context",
+      "forms": [
+        "contexto"
+      ]
+    },
+    {
+      "english": "language model",
+      "forms": [
+        "modelo de lenguaje",
+        "modelos de lenguaje"
+      ]
+    }
+  ],
+  "negative_forms": [
+    "assistència",
+    "asistencia",
+    "publication_date",
+    "assistant_id"
+  ]
+}

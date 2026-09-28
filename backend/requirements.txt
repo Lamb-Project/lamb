@@ -87,5 +87,8 @@ cryptography==50.0.1
 # In-memory Moodle login QR image decoding (#489).
 zxing-cpp==3.0.0
 
+# Reading a Moodle document without importing it (#525); same converter as the KB server.
+markitdown[pdf,docx,pptx,xlsx]==0.1.5
+
 # Bounded server-side chart pilot (no browser/runtime in frontend)
 vl-convert-python==1.9.0

@@ -18,11 +18,13 @@ SELF_READS = frozenset({'site.info','site.functions','user.me','enrol.my-courses
 
 
 class MoodleRuntime:
-    def __init__(self, store, *, cipher=None, cache_root=None, context=None):
+    def __init__(self, store, *, cipher=None, cache_root=None, context=None, owner_email=None):
         self.store=store
         self._cipher=cipher
         self.cache_root=cache_root
         self.context=context if context is not None else {}
+        # The helper model that reads documents is resolved from the LAMB user's organization.
+        self.owner_email=owner_email
 
     def snapshot(self):
         snap=self.store.snapshot()
@@ -122,6 +124,8 @@ class MoodleRuntime:
             if key == 'evidence':
                 identity = params['result_id']
                 snapshot = results.read(identity)
+                if snapshot.get('kind') == 'document_read':
+                    raise ValueError('That is a document read; use moodle read summary, ask or verbatim')
                 # Fresh instructor verification before releasing previously stored
                 # content, including after roles change without reconnecting.
                 scope = MoodleScope(client, record['moodle_user_id'])
@@ -207,6 +211,16 @@ class MoodleRuntime:
                     from .document_sources import list_activities
                     result = list_activities(client, key.split('.')[0], params['course_id'],
                         record['moodle_user_id'], record['base_url'], self.context)
+                elif key.startswith('read.') or key.endswith('.read'):
+                    from .reading import read_source, followup
+                    from .results import ResultStore
+                    if not self.owner_email: raise PermissionError('Reading needs the signed-in LAMB user')
+                    results = ResultStore(self.store.organization_id, self.store.owner_id, base_url=record['base_url'],
+                        moodle_user_id=record['moodle_user_id'], generation=snap['generation'], root=self.cache_root)
+                    if key.endswith('.read'):
+                        result = read_source(self, client, record, token, key, params, results, self.owner_email)
+                    else:
+                        result = followup(self, client, record, key, params, results, self.owner_email)
                 elif key == 'import.list':
                     from .imports import store_for_runtime, public_receipt, same_import_account
                     result = [public_receipt(r) for r in store_for_runtime(self).list('receipts')
@@ -280,7 +294,8 @@ class MoodleRuntime:
 def attach_to_agent(agent, store):
     """Refresh only appended dynamic facts; leave the pinned prefix intact."""
     from .policy import MoodleConfigurationError
-    runtime=MoodleRuntime(store,context=agent.skill_state.setdefault('moodle_context',{}))
+    runtime=MoodleRuntime(store,context=agent.skill_state.setdefault('moodle_context',{}),
+                          owner_email=getattr(agent,'approval_owner',None))
     try:
         keys=runtime.available()
         snapshot=runtime.snapshot() if keys else None
