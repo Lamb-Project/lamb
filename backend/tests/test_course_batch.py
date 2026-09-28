@@ -56,3 +56,16 @@ def test_pack_routes_and_teaches_the_course_batch():
     pack = load_pack()
     assert pack.data('routing.yaml')['DEFAULT_SKILL']['moodle.import.course'] == 'moodle-course-documents'
     assert 'moodle import course COURSE_ID --module MODULE_ID' in pack.text('skills/moodle_course_documents.md')
+
+
+def test_approval_details_list_every_document_and_skip():
+    from lamb.moodle.import_review import render_review
+    review = {'kind': 'course', 'source': {'kind': 'course', 'course_id': 50, 'modules': [1, 5]},
+              'destination': {'single_file': False, 'kb_id': None, 'new_kb': 'apuntes', 'description': ''},
+              'file_count': 1, 'bytes': 1000,
+              'files': [{'path': 'Lecture 1 notes/l1.pdf', 'bytes': 1000, 'conversion_losses': {},
+                         'ingestion': {'chunk_size': 3000, 'chunk_overlap': 200, 'units': 'characters', 'splitter_type': 'x'}}],
+              'skipped': [{'module_id': 5, 'name': 'Forum', 'reason': 'not_a_document'}]}
+    text = render_review(review, 'es')
+    assert 'Lecture 1 notes/l1.pdf' in text and 'Forum: no es un documento' in text
+    assert 'apuntes' in text and 'Tamaño de fragmento: 3000' in text and 'Una aprobación cubre exactamente' in text

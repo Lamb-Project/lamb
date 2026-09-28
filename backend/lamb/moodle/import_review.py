@@ -27,8 +27,64 @@ LABELS = {
 }
 
 
+COURSE_WORDS = {
+    'en': ('Documents to import from course', 'Skipped', 'One approval covers exactly these documents. Skipped items are not imported.',
+           {'not_a_document': 'not a document', 'hidden': 'hidden in Moodle', 'not_in_course': 'not in this course',
+            'unsupported_format': 'unsupported format', 'over_10_MiB': 'over 10 MiB', 'external_repository_file': 'external repository link',
+            'no_files': 'no files', 'not_importable': 'not importable'}),
+    'es': ('Documentos para importar del curso', 'Omitidos', 'Una aprobación cubre exactamente estos documentos. Los omitidos no se importan.',
+           {'not_a_document': 'no es un documento', 'hidden': 'oculto en Moodle', 'not_in_course': 'no está en este curso',
+            'unsupported_format': 'formato no compatible', 'over_10_MiB': 'supera 10 MiB', 'external_repository_file': 'enlace a repositorio externo',
+            'no_files': 'sin archivos', 'not_importable': 'no importable'}),
+    'ca': ('Documents per importar del curs', 'Omesos', 'Una aprovació cobreix exactament aquests documents. Els omesos no s’importen.',
+           {'not_a_document': 'no és un document', 'hidden': 'ocult a Moodle', 'not_in_course': 'no és en aquest curs',
+            'unsupported_format': 'format no compatible', 'over_10_MiB': 'supera 10 MiB', 'external_repository_file': 'enllaç a un repositori extern',
+            'no_files': 'sense fitxers', 'not_importable': 'no importable'}),
+    'eu': ('Ikastarotik inportatzeko dokumentuak', 'Baztertuak', 'Onarpen bakarrak dokumentu hauek hartzen ditu. Baztertuak ez dira inportatzen.',
+           {'not_a_document': 'ez da dokumentua', 'hidden': 'Moodlen ezkutatua', 'not_in_course': 'ez dago ikastaro honetan',
+            'unsupported_format': 'formatu onartugabea', 'over_10_MiB': '10 MiB baino gehiago', 'external_repository_file': 'kanpoko biltegirako esteka',
+            'no_files': 'fitxategirik ez', 'not_importable': 'ezin da inportatu'}),
+}
+
+
+def render_course_batch(review, language, advanced, chunking):
+    """Documents chosen across a course (#524): every document and every skip, before approval."""
+    l = LABELS.get(language, LABELS['en'])
+    w = COURSE_WORDS.get(language, COURSE_WORDS['en'])
+    dest = review['destination']
+    lines = [f"{w[0]} {review['source']['course_id']}: {review['file_count']} ({review['bytes']} bytes)",
+             f"{l[2]}: {l[4]} {dest.get('new_kb') or dest['kb_id']}"]
+    if dest.get('new_kb'):
+        lines.append({'en': 'A new knowledge base will be created before importing these files.',
+                      'es': 'Se creará una base de conocimiento nueva antes de importar estos archivos.',
+                      'ca': 'Es crearà una base de coneixement nova abans d’importar aquests fitxers.',
+                      'eu': 'Ezagutza-base berria sortuko da fitxategiak inportatu aurretik.'}.get(language, 'A new knowledge base will be created before importing these files.'))
+    if review.get('files') and chunking(review['files'][0]):
+        lines.append(chunking(review['files'][0]))
+    for file in review['files']:
+        losses = file.get('conversion_losses', {})
+        lines.append(f"- {file['path']} ({file['bytes']} bytes; {l[8]}: {losses.get('images', 0) + losses.get('media', 0)})")
+    if review.get('skipped'):
+        lines.append(f"{w[1]}: {len(review['skipped'])}")
+        for item in review['skipped']:
+            label = item.get('path') or item.get('name') or f"#{item.get('module_id')}"
+            lines.append(f"- {label}: {w[3].get(item['reason'], item['reason'])}")
+    return '\n'.join(lines + [l[12], w[2]])
+
+
 def render_review(review, language, advanced=True):
     l = LABELS.get(language, LABELS['en'])
+    if review.get('kind') == 'course':
+        def chunking(item):
+            config = item.get('ingestion')
+            if not config: return ''
+            words = {'en': ('Chunk size', 'overlap', 'characters', 'tokens'),
+                     'es': ('Tamaño de fragmento', 'solapamiento', 'caracteres', 'tokens'),
+                     'ca': ('Mida del fragment', 'solapament', 'caràcters', 'tokens'),
+                     'eu': ('Zatiaren tamaina', 'gainjartzea', 'karaktere', 'token')}.get(language) or ('Chunk size', 'overlap', 'characters', 'tokens')
+            units = words[3] if config['units'] == 'tokens' else words[2]
+            return f"{words[0]}: {config['chunk_size']} {units}; {words[1]}: {config['chunk_overlap']} {units}."
+        return render_course_batch(review, language, advanced, chunking)
     source, dest = review['source'], review['destination']
     loss = review.get('conversion_losses', {})
     lines = [f"{l[0]}: {source['title']}", source['source_url'],
