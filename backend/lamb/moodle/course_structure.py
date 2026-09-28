@@ -51,6 +51,8 @@ def inventory(sections, modname=None, mimetype=None):
                          'section_id': section.get('id'), 'section_name': section.get('name'),
                          'parent_section_id': parent.get('section_id'), 'parent_section_name': parent.get('section_name'),
                          'subsection_section_id': module.get('subsection_section_id'),
-                         'visible': module.get('visible'), 'uservisible': module.get('uservisible'), 'files': files})
+                         'visible': module.get('visible'), 'uservisible': module.get('uservisible'),
+                         # What moodle file list needs to return importable file references.
+                         'contextid': module.get('contextid'), 'files': files})
     return {'sections': len(sections), 'total_modules': total, 'matched': len(rows),
             'filters': {'modname': modname, 'mimetype': mimetype}, 'modules': rows}

@@ -523,6 +523,7 @@ class AgentLoop(SkillRouting):
     async def _generate_agent_events(self, streaming: bool) -> AsyncIterator[dict | str]:
         """Shared legacy turn control; transport does not change tool semantics."""
         tool_rounds = 0
+        announced_nudge = False  # at most one 'act or say what blocks you' follow-up per turn
         while True:
             if self.pending_action:
                 from lamb.aac.approvals import explain_pending_action
@@ -562,6 +563,9 @@ class AgentLoop(SkillRouting):
                 from lamb.aac.glossary import model_messages
                 conversation = model_messages(conversation, self.skill_state['brief']['glossary'])
             messages = [{"role": "system", "content": self.system_prompt}] + conversation
+            if getattr(self, '_followup_note', None):
+                messages.append({"role": "system", "content": self._followup_note})
+                self._followup_note = None
             if not tools_enabled:
                 # Request-local, never stored as an instruction that could disable
                 # tools again when this conversation is resumed on a later turn.
@@ -617,6 +621,17 @@ class AgentLoop(SkillRouting):
                 from lamb.aac.language import budget_empty_answer
                 reads = [t['command'] for t in self.tool_audit[-self.max_tool_rounds * 4:] if t.get('success') and t.get('phase') == 'completed']
                 text = budget_empty_answer(self, reads)
+            if tools_enabled and not calls and not self.pending_action and not announced_nudge:
+                from lamb.aac.language import announces_unfinished_work, ANNOUNCED_WORK_NOTE
+                if announces_unfinished_work(text):
+                    # The reply promised a step without taking it; ask once to act or say what blocks.
+                    announced_nudge = True
+                    # With tools enabled the reply is held back even when streaming; show it as usual.
+                    yield text
+                    yield "\n\n"
+                    self.conversation.append({"role": "assistant", "content": text})
+                    self._followup_note = ANNOUNCED_WORK_NOTE
+                    continue
             if calls:
                 if self.pending_action:
                     from lamb.aac.language import confirmation_fallback
