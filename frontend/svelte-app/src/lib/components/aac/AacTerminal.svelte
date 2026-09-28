@@ -98,6 +98,11 @@
             return;
         }
         if (event.status === 'approval') { approval = event.approval; editingApproval = null; return; }
+        if (event.status === 'tests_changed') {
+            // Saved test cases or runs changed: an open test tab for that assistant reloads.
+            window.dispatchEvent(new CustomEvent('lamb-tests-changed', { detail: { assistantId: event.assistant_id } }));
+            return;
+        }
         if (event.status === 'preferences') { advancedMode = event.advanced_mode === true; return; }
         if (event.status === 'policy') { responsePolicy = event.policy; return; }
         if (stopped) return;

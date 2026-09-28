@@ -612,6 +612,12 @@ class AgentLoop(SkillRouting):
                     self.conversation.append(self._result_message(result, model_command, role="tool", tool_call_id=tc.id))
                     yield {"status": "tool_done", "command": command, "success": result.get("success", False),
                            "awaiting_user_confirmation": bool(result.get("awaiting_user_confirmation"))}
+                    if result.get("success") and not result.get("awaiting_user_confirmation"):
+                        from lamb.aac.language import changed_test_assistant
+                        changed = changed_test_assistant(model_command)
+                        if changed is not None:
+                            # An open test tab for this assistant reloads its cases and runs.
+                            yield {"status": "tests_changed", "assistant_id": changed}
                 continue
 
             # A provider that ignores the no-tools request must not execute more work.

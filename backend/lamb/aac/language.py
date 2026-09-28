@@ -134,6 +134,27 @@ ANNOUNCED_WORK_NOTE = ('Your last reply announced a next step but called no tool
                        'and what you need. Do not announce work without doing it.')
 
 
+_TEST_CHANGING = {'add', 'update', 'delete-case', 'delete-scenario', 'run', 'evaluate'}
+
+
+def changed_test_assistant(command):
+    """Assistant whose saved test cases or runs a successful `lamb test` command changed, or None.
+    The frontend reloads that assistant's open test tab (Marc, 28 Sep)."""
+    import shlex
+    try:
+        words = shlex.split(command or '')
+    except ValueError:
+        words = (command or '').split()
+    if words[:2] != ['lamb', 'test'] or len(words) < 3 or words[2] not in _TEST_CHANGING:
+        return None
+    if '--assistant' in words:
+        i = words.index('--assistant')
+        value = words[i + 1] if i + 1 < len(words) else ''
+    else:
+        value = next((w for w in words[3:] if w.isdigit()), '')
+    return int(value) if value.isdigit() else None
+
+
 def confirmation_fallback(agent):
     """A provider ignoring disabled tools must still expose the saved approval."""
     state = agent.skill_state or {}
