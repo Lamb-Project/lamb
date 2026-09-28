@@ -164,7 +164,7 @@ async def create_session(
     try:
         state = await _initialize_session_knowledge(auth, state, request.app.routes, validate_selection=True)
     except ValueError as exc:
-        raise HTTPException(503, f'LAMB AGENT knowledge configuration is unavailable: {exc}')
+        raise HTTPException(503, f'LAMB LEGATUS knowledge configuration is unavailable: {exc}')
 
     conversation = []
     if body.get('chart_id') is not None:
@@ -580,7 +580,7 @@ async def _apply_language_policy(agent, auth, requested):
     except ValueError as exc:
         await agent.shell.close()
         await agent.llm_client.close()
-        raise HTTPException(503, f'Invalid LAMB AGENT settings; ask the organization administrator: {exc}')
+        raise HTTPException(503, f'Invalid LAMB LEGATUS settings; ask the organization administrator: {exc}')
 
 
 async def _finish_turn(mgr, agent, session_id, user_email, skill_info):
@@ -628,11 +628,11 @@ async def _prepare_agent_and_message(
         try:
             session = dict(session, skill_info=await _initialize_session_knowledge(auth, state))
         except ValueError as exc:
-            raise HTTPException(503, f'LAMB AGENT knowledge configuration is unavailable: {exc}')
+            raise HTTPException(503, f'LAMB LEGATUS knowledge configuration is unavailable: {exc}')
     try:
         agent = _build_agent(auth, session, token=token)
     except ValueError as exc:
-        raise HTTPException(503, f'LAMB AGENT knowledge configuration is unavailable: {exc}') from exc
+        raise HTTPException(503, f'LAMB LEGATUS knowledge configuration is unavailable: {exc}') from exc
     await _apply_language_policy(agent, auth, ui_language)
     state = agent.skill_state
     try:

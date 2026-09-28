@@ -73,7 +73,7 @@
     function hide() {
         sidebarOpen.set(false);
         void tick().then(() => {
-            const target = opener?.isConnected && opener !== document.body && !panel?.contains(opener) ? opener : document.querySelector('[aria-label="Open LAMB AGENT"]');
+            const target = opener?.isConnected && opener !== document.body && !panel?.contains(opener) ? opener : document.querySelector('[aria-label="Open LAMB LEGATUS"]');
             target?.focus();
         });
     }
@@ -115,7 +115,7 @@
         try {
             const language = { en: 'English', es: 'Spanish', ca: 'Catalan', eu: 'Basque' }[$locale] || 'English';
             const s = await createSession({ context: { language }, learningScenarioId });
-            showSession(s.id, s.title || 'LAMB AGENT', null, null, false);
+            showSession(s.id, s.title || 'LAMB LEGATUS', null, null, false);
             history = false; scenarioPicker=false;
         } catch (e) { error = e.message; }
         finally { creating = false; }
@@ -132,20 +132,20 @@
 </script>
 
 {#if !$sidebarOpen && !hideFloatingLauncher}
-<button class="aac-launch" onclick={() => sidebarOpen.set(true)} aria-label="Open LAMB AGENT">LAMB AGENT</button>
+<button class="aac-launch" onclick={() => sidebarOpen.set(true)} aria-label="Open LAMB LEGATUS">LAMB LEGATUS</button>
 {/if}
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions (Panel-level Escape and mobile focus containment) -->
-<aside bind:this={panel} class="aac-sidebar" class:hidden={!$sidebarOpen} style:width={$sidebarWidth + 'px'} aria-label="LAMB AGENT" onkeydown={panelKeys}>
+<aside bind:this={panel} class="aac-sidebar" class:hidden={!$sidebarOpen} style:width={$sidebarWidth + 'px'} aria-label="LAMB LEGATUS" onkeydown={panelKeys}>
     {#if !$sidebarMobile}
     <!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions (An adjustable ARIA separator is keyboard operable) -->
-    <div class="divider" class:dragging role="separator" aria-label="Resize LAMB AGENT" aria-orientation="vertical" aria-valuemin={Math.round(limits.min)} aria-valuemax={Math.round(limits.max)} aria-valuenow={Math.round($sidebarWidth)} tabindex="0" onpointerdown={startDrag} onpointermove={moveDrag} onpointerup={endDrag} onlostpointercapture={endDrag} onkeydown={resizeKeys}></div>
+    <div class="divider" class:dragging role="separator" aria-label="Resize LAMB LEGATUS" aria-orientation="vertical" aria-valuemin={Math.round(limits.min)} aria-valuemax={Math.round(limits.max)} aria-valuenow={Math.round($sidebarWidth)} tabindex="0" onpointerdown={startDrag} onpointermove={moveDrag} onpointerup={endDrag} onlostpointercapture={endDrag} onkeydown={resizeKeys}></div>
     {/if}
     <header>
-        <strong>LAMB AGENT</strong>
+        <strong>LAMB LEGATUS</strong>
         <button onclick={chooseConversation} disabled={$sidebarBusy || creating}>New conversation</button>
         <button onclick={showHistory} disabled={$sidebarBusy || creating}>History</button>
         <button onclick={()=>openScenarios()} disabled={creating}>{scenarioLabels.plural}</button>
-        <button bind:this={backButton} onclick={hide} aria-label={$sidebarMobile ? "Back to LAMB" : "Hide LAMB AGENT"}>{$sidebarMobile ? "Back to LAMB" : "✕"}</button>
+        <button bind:this={backButton} onclick={hide} aria-label={$sidebarMobile ? "Back to LAMB" : "Hide LAMB LEGATUS"}>{$sidebarMobile ? "Back to LAMB" : "✕"}</button>
     </header>
     {#if $sidebarMobile && $frontendDestination}
     <button class="destination" onclick={hide}>{#if $frontendDestination.resource === 'learning-scenario'}{scenarioLabels.singular}: {selection?.scenario?.title || ''}{:else}Open in LAMB: {$frontendDestination.resource} {$frontendDestination.id} {$frontendDestination.tab}{/if}</button>
@@ -178,7 +178,7 @@
                 <AacTerminal sessionId={$activeTabId} resumed={!$startupSessions.has($activeTabId)} skillStartup={$startupSessions.has($activeTabId)} />
             {/key}
         {:else}
-            <div class="welcome"><h2>Work with LAMB AGENT</h2><p>Create, inspect and test assistants alongside your workspace.</p><button onclick={chooseConversation} disabled={creating}>Start a conversation</button><button onclick={showHistory}>Open history</button></div>
+            <div class="welcome"><h2>Work with LAMB LEGATUS</h2><p>Create, inspect and test assistants alongside your workspace.</p><button onclick={chooseConversation} disabled={creating}>Start a conversation</button><button onclick={showHistory}>Open history</button></div>
         {/if}
     </div>
 </aside>

@@ -17,7 +17,7 @@ creators must reconnect. There is no plaintext or application-signing-key fallba
 In the Moodle page, an organization administrator enables the connector and sets
 one allowed Moodle base URL. Start with readonly mode. Forum posting requires
 full mode and the forum write group; saving grades additionally requires the
-separate grade flag. Both write paths require user approval in the LAMB Agent.
+separate grade flag. Both write paths require user approval in the LAMB LEGATUS.
 The administrator sees the disclosure that student names, posts and grades reach
 the configured AAC model provider.
 

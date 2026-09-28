@@ -908,7 +908,7 @@
         "member": "Kidea"
       },
       "agent": {
-        "title": "LAMB Agentea",
+        "title": "LAMB LEGATUS",
         "description": "Hitz egin IA laguntzailearekin laguntza lortzeko, laguntzaileak sortzeko, LAMB ezagutzeko edo arazoak konpontzeko.",
         "cta": "Elkarrizketa hasi",
         "starting": "Abiatzen...",
@@ -1017,11 +1017,11 @@
     }
   },
   "aacSettings": {
-    "settingsTitle": "LAMB AGENT ezarpenak",
-    "settingsIntro": "Aukeratu agentearen eredua laguntzaileen lehenetsietatik bereizita. Erakundeak zehazten ditu onartutako hizkuntzak. Ereduaren eta ordezko hizkuntzaren aldaketak hurrengo txandan aplikatzen dira. Saio bakoitzak hasierako interfazearen hizkuntza gordetzen du.",
+    "settingsTitle": "LAMB LEGATUS ezarpenak",
+    "settingsIntro": "Aukeratu LAMB LEGATUSen eredua laguntzaileen lehenetsietatik bereizita. Erakundeak zehazten ditu onartutako hizkuntzak. Ereduaren eta ordezko hizkuntzaren aldaketak hurrengo txandan aplikatzen dira. Saio bakoitzak hasierako interfazearen hizkuntza gordetzen du.",
     "loadingSettings": "Ezarpenak kargatzen…",
-    "provider": "Agentearen hornitzailea",
-    "model": "Agentearen eredua",
+    "provider": "LAMB LEGATUSen hornitzailea",
+    "model": "LAMB LEGATUSen eredua",
     "useDefault": "Erabili erakundearen lehenetsia",
     "notEnabled": "une honetan desgaituta",
     "selectModel": "Aukeratu eredua",
@@ -1045,14 +1045,14 @@
     "supported": "Onartua: erantzun {name} hizkuntzan",
     "unsupported": "Ez onartua: erabili {name}",
     "saving": "Gordetzen…",
-    "saveSettings": "Gorde agentearen ezarpenak",
-    "settingsSaved": "Agentearen ezarpenak gordeta.",
+    "saveSettings": "Gorde LAMB LEGATUSen ezarpenak",
+    "settingsSaved": "LAMB LEGATUSen ezarpenak gordeta.",
     "policyLabel": "Erakundearen hizkuntza-politika"
   },
   "assistantTestCases": {
     "title": "Proba-kasuak",
     "add": "Gehitu proba-kasua",
-    "empty": "Oraindik ez dago proba-kasurik. Gehitu bat edo eskatu agenteari sortzeko.",
+    "empty": "Oraindik ez dago proba-kasurik. Gehitu bat edo eskatu LAMB LEGATUSi sortzeko.",
     "delete": "Ezabatu proba-kasua",
     "confirmDelete": "Proba-kasu hau ezabatu nahi duzu? Ekintza hau ezin da desegin."
   }

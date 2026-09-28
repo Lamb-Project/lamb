@@ -362,7 +362,7 @@
 {#if responsePolicy?.fallback_applied}
     <div role="status" class="px-3 py-2 text-sm bg-amber-50 text-amber-900 border-b border-amber-200">
         {languageNames[responsePolicy.requested_language]} → {languageNames[responsePolicy.effective_language]}
-        <span> · LAMB AGENT · {$_('aacSettings.policyLabel')}</span>
+        <span> · LAMB LEGATUS · {$_('aacSettings.policyLabel')}</span>
     </div>
 {/if}
 <!-- Terminal panel -->
@@ -500,9 +500,9 @@
             onkeydown={handleKeydown}
             disabled={loading || historyLoading}
             rows="3"
-            aria-label="Message LAMB AGENT"
+            aria-label="Message LAMB LEGATUS"
             title="Enter to send; Shift+Enter for a new line"
-            placeholder={historyLoading ? 'Loading conversation...' : loading ? 'Waiting for agent...' : 'Type a message...'}
+            placeholder={historyLoading ? 'Loading conversation...' : loading ? 'Waiting for LAMB LEGATUS...' : 'Type a message...'}
             class="flex-1 min-w-0 resize-y min-h-[76px] max-h-[240px] bg-transparent outline-none placeholder:opacity-40"
         ></textarea>
         {#if loading}
