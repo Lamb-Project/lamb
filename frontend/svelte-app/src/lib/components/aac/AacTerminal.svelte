@@ -9,6 +9,7 @@
 	import { sendMessageStream, getSession, sendMessage } from '$lib/services/aacService';
 	import { renderMarkdownWithMath } from '$lib/utils/renderMarkdown.js';
     import { agentWelcome } from '$lib/utils/aacWelcome.js';
+    import { turnEndText } from '$lib/utils/aacTurnStatus.js';
 
 	// Abort any in-flight stream when the component unmounts so the fetch
 	// and getReader() loop stop running in the background (#352, H3).
@@ -44,7 +45,14 @@
     });
     function beginProgress() {
         lastActivity = '';
+        doneText = '';
         updateProgress({status: 'thinking'});
+    }
+    // After a turn: say the agent has stopped and what it waits for, in the session language.
+    let doneText = $state('');
+    function finishTurn() {
+        const last = messages[messages.length - 1];
+        doneText = !stopped && last?.role === 'assistant' ? turnEndText(/** @type {any} */ (responsePolicy)?.effective_language, !!approval) : '';
     }
     let responsePolicy = $state(null);
     let advancedMode = $state(false);
@@ -237,6 +245,7 @@
 			if (isMounted) loading = false;
 		}
 		if (!isMounted) return;
+		finishTurn();
 		await tick();
 		scrollToBottom();
 		inputEl?.focus();
@@ -308,6 +317,7 @@
 		}
 
 		if (!isMounted) return;
+		finishTurn();
 		await tick();
 		scrollToBottom();
 		inputEl?.focus();
@@ -468,6 +478,10 @@
 		{:else if loading}
 			<div class="pl-2 opacity-60 animate-pulse">
 				▌
+			</div>
+		{:else if doneText}
+			<div class="pl-2 text-xs" class:text-yellow-300={darkMode} class:text-gray-600={!darkMode}>
+				<span role="status" aria-live="polite" data-turn-status>{doneText}</span>
 			</div>
 		{/if}
 	</div>
