@@ -162,8 +162,8 @@ def confirm_folder(runtime, client, record, token, params, review, resume=False)
 
 def load_batch(runtime, batch_id):
     ticket = store_for_runtime(runtime).get('reviews', batch_id)
-    if ticket.get('key') != 'import.folder' or not ticket.get('approved'):
-        raise PermissionError('Unknown approved folder batch')
+    if ticket.get('key') not in {'import.folder', 'import.course'} or not ticket.get('approved'):
+        raise PermissionError('Unknown approved folder or course batch')
     if ticket['binding'] != runtime.result_binding() or ticket['scope'] != session_scope(runtime.context):
         raise PermissionError('Folder batch belongs to another session or connection')
     return ticket

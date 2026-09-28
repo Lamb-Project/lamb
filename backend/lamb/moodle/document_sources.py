@@ -100,6 +100,15 @@ def resolve_source(client, base_url, owner_moodle_id, context, kind, ref=None, s
     if proof.get('kind', 'file') != kind:
         raise PermissionError('Source reference has a different document type; list the requested source')
     course = MoodleScope(client, owner_moodle_id).require_teacher(proof['course_id'])
+    if kind == 'course_file':
+        from .course_batch import resource_files
+        module = next((m for m in modules(client, course) if int(m['id']) == proof['module_id']
+                       and m.get('modname') == 'resource'), None)
+        found = next((f for f in resource_files(module, course, base_url)
+                      if f['source_path'] == proof['source_path']), None) if module else None
+        if not found or module.get('uservisible') is False or module.get('visible') == 0:
+            raise PermissionError('Moodle resource file disappeared or is no longer accessible')
+        return found, None
     if kind == 'folder_file':
         from .folders import folder_files
         _, files = folder_files(client, base_url, owner_moodle_id, proof)
@@ -131,13 +140,13 @@ def materialize(proof, raw, base_url, token, single_file):
     """Return a download, private originals and losses; never return these to AAC."""
     kind = proof['kind']
     originals, losses = {}, {}
-    if kind in {'file', 'folder_file'}:
+    if kind in {'file', 'folder_file', 'course_file'}:
         download = download_file(base_url, token, proof['file'], single_file=single_file)
         originals[download.filename] = download.content
         if PurePosixPath(download.filename).suffix.lower() == '.html':
             text, losses = convert_html(download.content.decode('utf-8'), proof['source_url'])
             download = Download(PurePosixPath(download.filename).stem + '.md', text.encode(), 'text/markdown')
-        if kind == 'folder_file':
+        if kind in {'folder_file', 'course_file'}:
             # Preserve stable, distinct destination names for duplicate basenames.
             path = PurePosixPath(download.filename)
             name = path.stem[:120] + '-' + digest([proof['module_id'], proof['source_path']])[:12] + path.suffix

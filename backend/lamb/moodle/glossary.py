@@ -38,7 +38,7 @@ LAMB_TERMS = {
 
 # Deliberately uncovered: recovery handles and LAMB ingestion state describe
 # LAMB's own operations, not Moodle evidence.
-UNCOVERED = frozenset({'runs', 'folder.status', 'folder.finish', 'import.folder', 'import.file',
+UNCOVERED = frozenset({'runs', 'folder.status', 'folder.finish', 'import.folder', 'import.course', 'import.file',
                        'import.page', 'import.book', 'import.finish', 'import.list', 'import.check',
                        'import.refresh'})
 

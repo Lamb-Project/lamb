@@ -3,7 +3,7 @@ from functools import lru_cache
 import click
 from .ingestion import options, configuration
 
-IMPORT_KEYS = frozenset({'import.file', 'import.page', 'import.book', 'import.refresh', 'import.folder'})
+IMPORT_KEYS = frozenset({'import.file', 'import.page', 'import.book', 'import.refresh', 'import.folder', 'import.course'})
 
 
 @lru_cache(maxsize=1)
@@ -24,8 +24,15 @@ def document_specs():
         click.Argument(['kb_id'], required=False, type=click.IntRange(min=1)),
         click.Option(['--new-kb']), click.Option(['--description'])] + options(),
         'Review a bounded recursive folder import into an owned KB; one approval covers the exact file set.', 'ask')
-    add('folder.status', [click.Argument(['batch_id'])], 'Report each file in your approved folder batch; status inspection never starts uploads.')
-    add('folder.finish', [click.Argument(['batch_id'])], 'Resume the exact approved folder batch after rechecking scope and sources; never duplicate completed uploads.', 'ask')
+    add('import.course', [click.Argument(['course_id'], type=click.IntRange(min=1)),
+        click.Option(['--module'], multiple=True, required=True, type=click.IntRange(min=1)),
+        click.Option(['--to'], type=click.Choice(['kb'])), click.Argument(['kb_id'], required=False, type=click.IntRange(min=1)),
+        click.Option(['--new-kb']), click.Option(['--description'])] + options(),
+        'Review one batch import of documents chosen across a course (course-module ids from the course inventory: '
+        'Resource files, Folder files, Pages, Books) into an owned or new KB; one approval covers the exact set.', 'ask')
+    add('folder.status', [click.Argument(['batch_id'])], 'Report each file in your approved folder or course batch; status inspection never starts uploads.')
+
+    add('folder.finish', [click.Argument(['batch_id'])], 'Resume the exact approved folder or course batch after rechecking scope and sources; never duplicate completed uploads.', 'ask')
     for kind in ('file', 'page', 'book'):
         add('import.' + kind, [click.Argument(['source_ref']), click.Option(['--to'], type=click.Choice(['kb'])),
             click.Argument(['kb_id'], required=False, type=click.IntRange(min=1)), click.Option(['--single-file'], is_flag=True)] + options(),
@@ -45,7 +52,7 @@ def parse_document(tokens):
     spec = document_specs().get(key)
     if not spec: return None
     params = spec.parse(tokens[3:])
-    if key == 'import.folder':
+    if key in {'import.folder', 'import.course'}:
         new = params.get('new_kb')
         existing = params.get('to') == 'kb' and params.get('kb_id') is not None
         if not ((new and new.strip() and len(new) <= 200 and params.get('to') is None and params.get('kb_id') is None)
@@ -53,7 +60,7 @@ def parse_document(tokens):
             raise ValueError('Choose --to kb ID or --new-kb NAME [--description TEXT]')
         if params.get('description') and len(params['description']) > 4000:
             raise ValueError('Knowledge base description is limited to 4000 characters')
-    if key in IMPORT_KEYS - {'import.refresh', 'import.folder'}:
+    if key in IMPORT_KEYS - {'import.refresh', 'import.folder', 'import.course'}:
         if not ((params['single_file'] and params['to'] is None and params['kb_id'] is None) or
                 (not params['single_file'] and params['to'] == 'kb' and params['kb_id'] is not None)):
             raise ValueError('Choose --single-file or --to kb ID')

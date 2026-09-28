@@ -9,7 +9,7 @@ def command_artifacts(command, result):
         return []
     data = getattr(result, 'data', None)
     data = data if isinstance(data, dict) else {}
-    if key in {'moodle.import.folder', 'moodle.folder.finish'}:
+    if key in {'moodle.import.folder', 'moodle.import.course', 'moodle.folder.finish'}:
         return [{'type': 'moodle_folder_batch', 'id': data.get('batch_id') or params.get('batch_id'),
                  'action': 'import', 'status': data.get('status'), 'counts': data.get('counts', {})}]
     if key == 'moodle.forum.reply':

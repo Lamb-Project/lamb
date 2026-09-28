@@ -114,6 +114,9 @@ def prepare(runtime, client, record, token, key, params):
     if key == 'import.folder':
         from .folders import prepare_folder
         return prepare_folder(runtime, client, record, token, params)
+    if key == 'import.course':
+        from .course_batch import prepare_course
+        return prepare_course(runtime, client, record, token, params)
     data = prepared(runtime, client, record, token, key, params)
     return store_for_runtime(runtime).review(data)
 
@@ -122,6 +125,9 @@ def confirm(runtime, client, record, token, key, params, review):
     if key == 'import.folder':
         from .folders import confirm_folder
         return confirm_folder(runtime, client, record, token, params, review)
+    if key == 'import.course':
+        from .course_batch import confirm_course
+        return confirm_course(runtime, client, record, token, params, review)
     if not review: raise PermissionError('Review the document, conversion and size before confirming an import')
     store = store_for_runtime(runtime)
     approved = store.consume(review, session_scope(runtime.context), runtime.result_binding())

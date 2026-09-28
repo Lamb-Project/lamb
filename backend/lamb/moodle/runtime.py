@@ -198,7 +198,11 @@ class MoodleRuntime:
                         if key == 'folder.status' or current_status['status'] == 'completed': result = current_status
                         else:
                             if confirmed is not True: raise PermissionError('Continuing a folder batch requires approval')
-                            result = confirm_folder(self, client, record, token, ticket['params'], ticket['review'], resume=True)
+                            if ticket['key'] == 'import.course':
+                                from .course_batch import confirm_course
+                                result = confirm_course(self, client, record, token, ticket['params'], ticket['review'], resume=True)
+                            else:
+                                result = confirm_folder(self, client, record, token, ticket['params'], ticket['review'], resume=True)
                 elif key in {'page.list', 'book.list'}:
                     from .document_sources import list_activities
                     result = list_activities(client, key.split('.')[0], params['course_id'],
