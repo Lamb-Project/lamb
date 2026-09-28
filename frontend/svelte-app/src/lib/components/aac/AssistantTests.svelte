@@ -41,8 +41,16 @@
 	/** @type {number | null} */
 	let scenarioToDelete = $state(null);
 
-	onMount(async () => {
-		await loadData();
+	onMount(() => {
+		void loadData();
+		// LAMB LEGATUS added, ran or evaluated this assistant's tests: show them.
+		/** @param {Event} event */
+		const reload = (event) => {
+			const changed = /** @type {CustomEvent} */ (event).detail?.assistantId;
+			if (changed === undefined || Number(changed) === Number(assistantId)) void loadData();
+		};
+		window.addEventListener('lamb-tests-changed', reload);
+		return () => window.removeEventListener('lamb-tests-changed', reload);
 	});
 
 	async function loadData() {
