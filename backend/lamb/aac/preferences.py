@@ -32,7 +32,7 @@ def agent_settings(config):
 def validate_settings(settings, providers):
     allowed = {'provider', 'model', 'language_fallbacks', 'pack_channel', 'pack_version', 'utility_provider', 'utility_model'}
     if not isinstance(settings, dict) or set(settings) - allowed:
-        raise ValueError('Unknown LAMB AGENT setting')
+        raise ValueError('Unknown LAMB LEGATUS setting')
     result = {}
     for prefix in ('', 'utility_'):
         provider, model = settings.get(prefix+'provider', ''), settings.get(prefix+'model', '')
@@ -43,7 +43,7 @@ def validate_settings(settings, providers):
             raise ValueError('Choose both provider and model, or leave both empty')
         if provider:
             if provider not in {'openai', 'ollama'}:
-                raise ValueError('LAMB AGENT supports OpenAI-compatible and Ollama providers')
+                raise ValueError('LAMB LEGATUS supports OpenAI-compatible and Ollama providers')
             config = providers.get(provider, {})
             if not config or config.get('enabled') is False:
                 raise ValueError('The selected provider is not enabled in this organization')

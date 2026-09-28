@@ -29,7 +29,7 @@
     }
 </script>
 <section class="my-6 rounded-lg border border-blue-200 bg-blue-50 p-6" aria-label={$_('aacSettings.settingsTitle')}>
-    <h3 class="text-lg font-semibold">LAMB AGENT</h3>
+    <h3 class="text-lg font-semibold">LAMB LEGATUS</h3>
     <p class="text-sm my-3">{$_('aacSettings.settingsIntro')}</p>
     {#if error}<p role="alert" class="text-red-700">{error}</p>{/if}
     {#each warnings as warning}<p role="alert" class="text-amber-800">{warning}</p>{/each}

@@ -111,10 +111,10 @@
 <div class="max-w-6xl mx-auto px-4 py-6">
     <div class="flex items-center justify-between mb-6">
         <h1 class="text-3xl font-bold text-brand">
-            {$_('agent.history.title', { default: 'Agent Sessions' })}
+            {$_('agent.history.title', { default: 'LAMB LEGATUS sessions' })}
         </h1>
         <a href="/agent" class="text-sm text-blue-600 hover:text-blue-800">
-            &larr; {$_('agent.history.backToAgent', { default: 'Back to Agent' })}
+            &larr; {$_('agent.history.backToAgent', { default: 'Back to LAMB LEGATUS' })}
         </a>
     </div>
 

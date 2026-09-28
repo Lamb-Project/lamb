@@ -209,7 +209,7 @@
       <!-- User info and Language selector section -->
       <div class="flex items-center gap-3">
         {#if $user.isLoggedIn}
-          <button class="rounded bg-[#173f64] text-white px-3 py-2 text-xs font-semibold whitespace-nowrap" onclick={() => sidebarOpen.set(true)} aria-label="Open LAMB AGENT">LAMB AGENT</button>
+          <button class="rounded bg-[#173f64] text-white px-3 py-2 text-xs font-semibold whitespace-nowrap" onclick={() => sidebarOpen.set(true)} aria-label="Open LAMB LEGATUS">LAMB LEGATUS</button>
           <!-- Username -->
           <span class="text-sm font-medium text-gray-600 hidden sm:block">{$user.name || $user.email || ''}</span>
         {/if}

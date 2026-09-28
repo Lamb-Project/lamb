@@ -13,17 +13,17 @@ describe('persistent AAC sidebar', () => {
     it('hides without removing the terminal or losing the session', async () => {
         showSession('existing');
         render(Sidebar);
-        await fireEvent.click(screen.getByRole('button', { name: 'Hide LAMB AGENT' }));
+        await fireEvent.click(screen.getByRole('button', { name: 'Hide LAMB LEGATUS' }));
         expect(get(activeTabId)).toBe('existing');
         expect(document.querySelector('.terminal')).not.toBeNull();
-        await fireEvent.click(screen.getByRole('button', { name: 'Open LAMB AGENT' }));
+        await fireEvent.click(screen.getByRole('button', { name: 'Open LAMB LEGATUS' }));
         expect(get(sidebarOpen)).toBe(true);
     });
     it('waits for resumed history before sending so it cannot overwrite streamed output', async () => {
         let resolveHistory;
         getSession.mockImplementationOnce(() => new Promise(resolve => { resolveHistory=resolve; }));
         showSession('history-race');render(Sidebar);
-        const input=screen.getByRole('textbox',{name:'Message LAMB AGENT'});
+        const input=screen.getByRole('textbox',{name:'Message LAMB LEGATUS'});
         expect(input.disabled).toBe(true);
         await fireEvent.input(input,{target:{value:'New question'}});
         await fireEvent.keyDown(input,{key:'Enter'});
@@ -45,7 +45,7 @@ describe('persistent AAC sidebar', () => {
         await waitFor(() => expect(get(activeTabId)).toBe('new-session'));
         expect(createSession).toHaveBeenCalledOnce();
         expect(createSession.mock.calls[0][0].skill).toBeUndefined();
-        await waitFor(() => expect(screen.getByText(/I’m LAMB AGENT/)).not.toBeNull());
+        await waitFor(() => expect(screen.getByText(/I’m LAMB LEGATUS/)).not.toBeNull());
         expect(sendMessageStream).not.toHaveBeenCalled();
     });
     it('opens and resumes history inside the sidebar', async () => {
@@ -57,7 +57,7 @@ describe('persistent AAC sidebar', () => {
     });
     it('keeps multiline drafts on Shift+Enter and sends on Enter', async () => {
         showSession('draft-session');render(Sidebar);
-        const input = screen.getByRole('textbox', {name: 'Message LAMB AGENT'});
+        const input = screen.getByRole('textbox', {name: 'Message LAMB LEGATUS'});
         expect(input.tagName).toBe('TEXTAREA');
         await fireEvent.input(input, {target: {value: 'First line\nSecond line'}});
         await fireEvent.keyDown(input, {key: 'Enter', shiftKey: true});
@@ -75,7 +75,7 @@ describe('persistent AAC sidebar', () => {
             return new Promise(resolve => signal.addEventListener('abort', resolve, {once:true}));
         });
         showSession('stop-session');render(Sidebar);
-        const input=screen.getByRole('textbox',{name:'Message LAMB AGENT'});
+        const input=screen.getByRole('textbox',{name:'Message LAMB LEGATUS'});
         await fireEvent.input(input,{target:{value:'Explain this'}});
         await fireEvent.keyDown(input,{key:'Enter'});
         await fireEvent.click(await screen.findByRole('button',{name:'Stop response'}));
@@ -90,7 +90,7 @@ describe('persistent AAC sidebar', () => {
             return new Promise(resolve => { finish=resolve; });
         });
         showSession('progress-session');render(Sidebar);
-        const input=screen.getByRole('textbox',{name:'Message LAMB AGENT'});
+        const input=screen.getByRole('textbox',{name:'Message LAMB LEGATUS'});
         await fireEvent.input(input,{target:{value:'Check my assistant'}});
         await fireEvent.keyDown(input,{key:'Enter'});
         await waitFor(()=>expect(progress).toBeTypeOf('function'));
@@ -118,7 +118,7 @@ describe('persistent AAC sidebar', () => {
     });
     it('does not send while composing text with an IME', async () => {
         showSession('ime-session');render(Sidebar);
-        const input=screen.getByRole('textbox',{name:'Message LAMB AGENT'});
+        const input=screen.getByRole('textbox',{name:'Message LAMB LEGATUS'});
         await fireEvent.input(input,{target:{value:'test'}});
         await fireEvent.keyDown(input,{key:'Enter',isComposing:true});
         expect(sendMessageStream).not.toHaveBeenCalled();

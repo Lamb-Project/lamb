@@ -54,7 +54,7 @@ it('uploads QR as an image and clears it after success', async () => {
     const image=new File(['synthetic'], 'qr.png', {type:'image/png'});
     await fireEvent.change(input,{target:{files:[image]}});
     await fireEvent.submit(input.closest('form'));
-    await screen.findByText('Moodle course summary opened in LAMB AGENT.');
+    await screen.findByText('Moodle course summary opened in LAMB LEGATUS.');
     expect(createSession).toHaveBeenCalledWith({moodleOnboarding:true});
     expect(showSession).toHaveBeenCalledWith('onboarding','Moodle');
     expect(connectMoodleQrImage).toHaveBeenCalledWith(image);
@@ -81,7 +81,7 @@ it('onboarding failure preserves connection and retries without reusing QR', asy
     await fireEvent.submit(input.closest('form'));
     expect(await screen.findByRole('alert')).toHaveTextContent('Connected, but');
     expect(showSession).not.toHaveBeenCalled();
-    await fireEvent.click(screen.getByRole('button',{name:'Open Moodle summary in LAMB AGENT'}));
-    await screen.findByText('Moodle course summary opened in LAMB AGENT.');
+    await fireEvent.click(screen.getByRole('button',{name:'Open Moodle summary in LAMB LEGATUS'}));
+    await screen.findByText('Moodle course summary opened in LAMB LEGATUS.');
     expect(connectMoodleQrImage).toHaveBeenCalledTimes(1);
 });

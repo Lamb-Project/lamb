@@ -901,7 +901,7 @@
         "member": "Membre"
       },
       "agent": {
-        "title": "Agent LAMB",
+        "title": "LAMB LEGATUS",
         "description": "Parla amb l'assistent d'IA per obtenir ajuda, crear assistents, coneixer LAMB o resoldre problemes.",
         "cta": "Iniciar conversa",
         "starting": "Iniciant...",
@@ -1010,11 +1010,11 @@
     }
   },
   "aacSettings": {
-    "settingsTitle": "Configuració de LAMB AGENT",
-    "settingsIntro": "Tria el model de l’agent independentment dels valors per defecte dels assistents. L’organització defineix les llengües admeses. Els canvis de model i de llengua alternativa s’apliquen al torn següent. Cada sessió conserva la llengua de la interfície amb què va començar.",
+    "settingsTitle": "Configuració de LAMB LEGATUS",
+    "settingsIntro": "Tria el model de LAMB LEGATUS independentment dels valors per defecte dels assistents. L’organització defineix les llengües admeses. Els canvis de model i de llengua alternativa s’apliquen al torn següent. Cada sessió conserva la llengua de la interfície amb què va començar.",
     "loadingSettings": "S’està carregant la configuració…",
-    "provider": "Proveïdor de l’agent",
-    "model": "Model de l’agent",
+    "provider": "Proveïdor de LAMB LEGATUS",
+    "model": "Model de LAMB LEGATUS",
     "useDefault": "Utilitza el predeterminat de l’organització",
     "notEnabled": "no habilitat actualment",
     "selectModel": "Selecciona un model",
@@ -1038,14 +1038,14 @@
     "supported": "Admès: respon en {name}",
     "unsupported": "No admès: utilitza {name}",
     "saving": "S’està desant…",
-    "saveSettings": "Desa la configuració de l’agent",
-    "settingsSaved": "Configuració de l’agent desada.",
+    "saveSettings": "Desa la configuració de LAMB LEGATUS",
+    "settingsSaved": "Configuració de LAMB LEGATUS desada.",
     "policyLabel": "Política lingüística de l’organització"
   },
   "assistantTestCases": {
     "title": "Casos de prova",
     "add": "Afegir cas de prova",
-    "empty": "Encara no hi ha casos de prova. Afegeix-ne un o demana a l’agent que els generi.",
+    "empty": "Encara no hi ha casos de prova. Afegeix-ne un o demana a LAMB LEGATUS que els generi.",
     "delete": "Eliminar cas de prova",
     "confirmDelete": "Vols eliminar aquest cas de prova? Aquesta acció no es pot desfer."
   }

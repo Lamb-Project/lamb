@@ -11,7 +11,7 @@ def resolve_driver(resolver):
     explicit = bool(settings.get('provider') or settings.get('model'))
     default = settings if explicit else resolver.get_global_default_model_config()
     if explicit and (not settings.get('model') or settings.get('provider') not in {'openai', 'ollama'}):
-        raise HTTPException(503, 'Invalid LAMB AGENT model configuration; ask the organization administrator to correct it')
+        raise HTTPException(503, 'Invalid LAMB LEGATUS model configuration; ask the organization administrator to correct it')
     provider = default.get("provider") or "openai"
     if provider not in {"openai", "ollama"}:
         try:

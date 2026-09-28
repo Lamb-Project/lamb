@@ -912,7 +912,7 @@
         "member": "Miembro"
       },
       "agent": {
-        "title": "Agente LAMB",
+        "title": "LAMB LEGATUS",
         "description": "Habla con el asistente de IA para obtener ayuda, crear asistentes, conocer LAMB o resolver problemas.",
         "cta": "Iniciar conversacion",
         "starting": "Iniciando...",
@@ -1021,11 +1021,11 @@
     }
   },
   "aacSettings": {
-    "settingsTitle": "Configuración de LAMB AGENT",
-    "settingsIntro": "Elige el modelo del agente independientemente de los valores predeterminados de los asistentes. La organización define los idiomas admitidos. Los cambios de modelo y de idioma alternativo se aplican en el siguiente turno. Cada sesión conserva el idioma de la interfaz con el que empezó.",
+    "settingsTitle": "Configuración de LAMB LEGATUS",
+    "settingsIntro": "Elige el modelo de LAMB LEGATUS independientemente de los valores predeterminados de los asistentes. La organización define los idiomas admitidos. Los cambios de modelo y de idioma alternativo se aplican en el siguiente turno. Cada sesión conserva el idioma de la interfaz con el que empezó.",
     "loadingSettings": "Cargando configuración…",
-    "provider": "Proveedor del agente",
-    "model": "Modelo del agente",
+    "provider": "Proveedor de LAMB LEGATUS",
+    "model": "Modelo de LAMB LEGATUS",
     "useDefault": "Usar el predeterminado de la organización",
     "notEnabled": "no habilitado actualmente",
     "selectModel": "Selecciona un modelo",
@@ -1049,14 +1049,14 @@
     "supported": "Admitido: responder en {name}",
     "unsupported": "No admitido: usar {name}",
     "saving": "Guardando…",
-    "saveSettings": "Guardar configuración del agente",
-    "settingsSaved": "Configuración del agente guardada.",
+    "saveSettings": "Guardar configuración de LAMB LEGATUS",
+    "settingsSaved": "Configuración de LAMB LEGATUS guardada.",
     "policyLabel": "Política lingüística de la organización"
   },
   "assistantTestCases": {
     "title": "Casos de prueba",
     "add": "Añadir caso de prueba",
-    "empty": "Todavía no hay casos de prueba. Añade uno o pide al agente que los genere.",
+    "empty": "Todavía no hay casos de prueba. Añade uno o pide a LAMB LEGATUS que los genere.",
     "delete": "Eliminar caso de prueba",
     "confirmDelete": "¿Quieres eliminar este caso de prueba? Esta acción no se puede deshacer."
   }

@@ -22,10 +22,10 @@
     const workspaceLabels = $derived(workspaceText($locale));
     const chartsTab = $derived($page.url.searchParams.get('tab') === 'charts' || !!$page.url.searchParams.get('chart'));
     const approvalLabels = {
-        en: ['LAMB AGENT approvals', 'Advanced mode', 'Show the exact command as well as the explanation when an action needs approval. This is a personal setting for all LAMB AGENT conversations. Changes apply to the next approval message.', 'Read-only Moodle commands run without asking for approval. Changes to Moodle or LAMB still require confirmation.', 'Preference saved.'],
-        es: ['Aprobaciones de LAMB AGENT', 'Modo avanzado', 'Mostrar el comando exacto junto a la explicación cuando una acción requiere aprobación. Es una preferencia personal para todas las conversaciones de LAMB AGENT. Se aplica al siguiente mensaje de aprobación.', 'Las consultas de solo lectura en Moodle se ejecutan sin pedir aprobación. Los cambios en Moodle o LAMB siguen requiriendo confirmación.', 'Preferencia guardada.'],
-        ca: ['Aprovacions de LAMB AGENT', 'Mode avançat', 'Mostrar l’ordre exacta al costat de l’explicació quan una acció requereix aprovació. És una preferència personal per a totes les converses de LAMB AGENT. S’aplica al següent missatge d’aprovació.', 'Les consultes de només lectura a Moodle s’executen sense demanar aprovació. Els canvis a Moodle o LAMB continuen requerint confirmació.', 'Preferència desada.'],
-        eu: ['LAMB AGENTen onarpenak', 'Modu aurreratua', 'Erakutsi komando zehatza azalpenarekin batera ekintza batek onarpena behar duenean. LAMB AGENTeko elkarrizketa guztietarako ezarpen pertsonala da. Hurrengo onarpen-mezuan aplikatuko da.', 'Moodleko irakurketa-komandoak onarpenik eskatu gabe exekutatzen dira. Moodle edo LAMB aldatzeko berrespena behar da.', 'Ezarpena gordeta.']
+        en: ['LAMB LEGATUS approvals', 'Advanced mode', 'Show the exact command as well as the explanation when an action needs approval. This is a personal setting for all LAMB LEGATUS conversations. Changes apply to the next approval message.', 'Read-only Moodle commands run without asking for approval. Changes to Moodle or LAMB still require confirmation.', 'Preference saved.'],
+        es: ['Aprobaciones de LAMB LEGATUS', 'Modo avanzado', 'Mostrar el comando exacto junto a la explicación cuando una acción requiere aprobación. Es una preferencia personal para todas las conversaciones de LAMB LEGATUS. Se aplica al siguiente mensaje de aprobación.', 'Las consultas de solo lectura en Moodle se ejecutan sin pedir aprobación. Los cambios en Moodle o LAMB siguen requiriendo confirmación.', 'Preferencia guardada.'],
+        ca: ['Aprovacions de LAMB LEGATUS', 'Mode avançat', 'Mostrar l’ordre exacta al costat de l’explicació quan una acció requereix aprovació. És una preferència personal per a totes les converses de LAMB LEGATUS. S’aplica al següent missatge d’aprovació.', 'Les consultes de només lectura a Moodle s’executen sense demanar aprovació. Els canvis a Moodle o LAMB continuen requerint confirmació.', 'Preferència desada.'],
+        eu: ['LAMB LEGATUSen onarpenak', 'Modu aurreratua', 'Erakutsi komando zehatza azalpenarekin batera ekintza batek onarpena behar duenean. LAMB LEGATUSeko elkarrizketa guztietarako ezarpen pertsonala da. Hurrengo onarpen-mezuan aplikatuko da.', 'Moodleko irakurketa-komandoak onarpenik eskatu gabe exekutatzen dira. Moodle edo LAMB aldatzeko berrespena behar da.', 'Ezarpena gordeta.']
     };
     let approvalText = $derived(approvalLabels[$locale] || approvalLabels.en);
 
@@ -44,12 +44,12 @@
     onMount(() => {load().catch(e => error=e.message);});
     let onboardingPending = $state(false);
     async function launchAgent() {
-        if ($sidebarBusy) {error='Finish or stop the current agent turn, then open the Moodle summary.'; return;}
+        if ($sidebarBusy) {error='Finish or stop the current LAMB LEGATUS turn, then open the Moodle summary.'; return;}
         busy=true; error=''; notice='Reading your Moodle course list…';
         try {
             const session = await createSession({moodleOnboarding:true});
             showSession(session.id, session.title);
-            onboardingPending=false; notice='Moodle course summary opened in LAMB AGENT.';
+            onboardingPending=false; notice='Moodle course summary opened in LAMB LEGATUS.';
         } catch(e) {error='Connected, but the course summary could not be opened. '+e.message;}
         finally {busy=false;}
     }
@@ -83,7 +83,7 @@
     <p>Connect your instructor account to the Moodle site allowed by your organization. Enter credentials here, never in the agent chat.</p>
     {#if error}<p role="alert" class="error">{error}</p>{/if}
     {#if notice}<p role="status" class="notice">{notice}</p>{/if}
-    {#if onboardingPending}<button disabled={busy || $sidebarBusy} onclick={launchAgent}>Open Moodle summary in LAMB AGENT</button>{/if}
+    {#if onboardingPending}<button disabled={busy || $sidebarBusy} onclick={launchAgent}>Open Moodle summary in LAMB LEGATUS</button>{/if}
     {#if status}
         <aside aria-label="Moodle data and AI provider">
             <p>{status.privacy_notice}</p>

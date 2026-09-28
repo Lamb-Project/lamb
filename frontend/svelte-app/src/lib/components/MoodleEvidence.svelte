@@ -46,7 +46,7 @@
                         {(data.snapshot.coverage.forums.failed || 0) + (data.snapshot.coverage.forums.denied || 0) + (data.snapshot.coverage.forums.unsupported || 0) + (data.snapshot.coverage.forums.partial || 0)} failed, partially checked or unavailable.</p>
                 {/if}
                 {#if data.snapshot.run.can_continue}
-                    <p><strong>Check paused. Progress is saved.</strong> Ask LAMB AGENT to continue this check.</p>
+                    <p><strong>Check paused. Progress is saved.</strong> Ask LAMB LEGATUS to continue this check.</p>
                 {:else if !data.snapshot.coverage.complete}
                     <p><strong>Check finished with gaps.</strong> Review the course details below. Finishing does not mean every message was checked.</p>
                 {:else}

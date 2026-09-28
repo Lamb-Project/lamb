@@ -1,4 +1,6 @@
 
+
+> **Name.** In the user interface this component is **LAMB LEGATUS**: like a Roman *legatus* acting on behalf of the Senate, it acts on behalf of the teacher, who keeps the agency and the decisions. Code, APIs and this manual keep the internal name AAC.
 ### Personal learning scenarios
 
 Use `lamb learning-scenario list|get|create|update|duplicate|remove|default|selected|select` for persistent teaching context, distinct from test cases. Load the `manage-learning-scenarios` skill before mutations. Inputs are inline text, never local filesystem paths. Read before editing, show changed fields, use the current `--revision`, request confirmation, and read back before reporting success. Discussion does not authorize saving.
@@ -24,7 +26,7 @@ CLI retains that spelling as a compatibility alias for `--file-reference`.
 `moodle chart submissions --course COURSE_ID --tz Europe/Madrid --language es`
 
 This read-only recipe saves an owned aggregate snapshot and exposes a chart card in
-LAMB AGENT. It uses Moodle's all-groups grading summary, not course enrolment totals.
+LAMB LEGATUS. It uses Moodle's all-groups grading summary, not course enrolment totals.
 It checks at most 20 assignments. Team and offline assignments, missing summaries
 and inconsistent counts are explicitly excluded, never shown as zero. Outstanding
 includes drafts; a passed course deadline does not prove individual lateness because

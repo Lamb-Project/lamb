@@ -23,18 +23,18 @@ describe('organisation agent settings', () => {
     });
     it('saves explicit driver, fallback and pack pin for the selected organisation', async () => {
         render(AgentSettings,{org:'my school'});
-        const provider = await screen.findByRole('combobox',{name:'Agent provider'});
+        const provider = await screen.findByRole('combobox',{name:'LAMB LEGATUS provider'});
         await fireEvent.change(provider,{target:{value:'ollama'}});
-        await fireEvent.change(screen.getByRole('combobox',{name:'Agent model'}),{target:{value:'qwen'}});
+        await fireEvent.change(screen.getByRole('combobox',{name:'LAMB LEGATUS model'}),{target:{value:'qwen'}});
         await fireEvent.change(screen.getByRole('combobox',{name:'Euskara fallback'}),{target:{value:'es'}});
         await fireEvent.change(screen.getByRole('combobox',{name:'Pinned version'}),{target:{value:'1.1.0'}});
         expect(screen.getByRole('combobox',{name:'Release channel'})).toBeDisabled();
-        await fireEvent.click(screen.getByRole('button',{name:'Save agent settings'}));
+        await fireEvent.click(screen.getByRole('button',{name:'Save LAMB LEGATUS settings'}));
         await screen.findByRole('status');
         expect(axios.put).toHaveBeenCalledWith('/creator/admin/org-admin/settings/aac?org=my%20school',expect.objectContaining({provider:'ollama',model:'qwen',language_fallbacks:{eu:'es'},pack_version:'1.1.0'}),{headers:{Authorization:'Bearer fixture-token'}});
     });
     it('renders labels in every frontend locale without changing API values', async () => {
-        for (const [code, label] of [['es','Proveedor del agente'],['ca','Proveïdor de l’agent'],['eu','Agentearen hornitzailea']]) {
+        for (const [code, label] of [['es','Proveedor de LAMB LEGATUS'],['ca','Proveïdor de LAMB LEGATUS'],['eu','LAMB LEGATUSen hornitzailea']]) {
             locale.set(code);render(AgentSettings);
             const provider = await screen.findByRole('combobox',{name:label});
             expect(provider).toHaveValue('');
@@ -45,20 +45,20 @@ describe('organisation agent settings', () => {
     it('allows a named model when the catalogue is unknown and preserves saved utility selection', async () => {
         axios.get.mockResolvedValue({data:response({models:{ollama:[]},settings:{...settings(),provider:'ollama',model:'existing',utility_provider:'ollama',utility_model:'utility'}})});
         render(AgentSettings);
-        const model = await screen.findByRole('textbox',{name:'Agent model'});
+        const model = await screen.findByRole('textbox',{name:'LAMB LEGATUS model'});
         expect(model).toHaveValue('existing');
         expect(screen.getByRole('textbox',{name:'Utility model'})).toHaveValue('utility');
         await fireEvent.input(model,{target:{value:'named-model'}});
-        await fireEvent.click(screen.getByRole('button',{name:'Save agent settings'}));
+        await fireEvent.click(screen.getByRole('button',{name:'Save LAMB LEGATUS settings'}));
         await screen.findByRole('status');
         expect(axios.put.mock.calls[0][1].model).toBe('named-model');
     });
     it('keeps the unsaved selection and exposes a rejected policy without claiming success', async () => {
         axios.put.mockRejectedValue({response:{data:{detail:'Fallbacks cannot form cycles'}}});
         render(AgentSettings);
-        await screen.findByRole('combobox',{name:'Agent provider'});
+        await screen.findByRole('combobox',{name:'LAMB LEGATUS provider'});
         await fireEvent.change(screen.getByRole('combobox',{name:'Euskara fallback'}),{target:{value:'es'}});
-        await fireEvent.click(screen.getByRole('button',{name:'Save agent settings'}));
+        await fireEvent.click(screen.getByRole('button',{name:'Save LAMB LEGATUS settings'}));
         expect(await screen.findByRole('alert')).toHaveTextContent('Fallbacks cannot form cycles');
         expect(screen.queryByRole('status')).toBeNull();
         expect(screen.getByRole('combobox',{name:'Euskara fallback'})).toHaveValue('es');

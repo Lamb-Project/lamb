@@ -42,5 +42,5 @@ it('distinguishes terminal gaps from resumable work',async()=>{
     moodleResult.mockResolvedValue(data);render(MoodleEvidence,{resultId:id});
     const coverage=await screen.findByLabelText('Coverage');
     expect(coverage).toHaveTextContent('Check finished with gaps.');
-    expect(coverage).not.toHaveTextContent('Ask LAMB AGENT to continue');
+    expect(coverage).not.toHaveTextContent('Ask LAMB LEGATUS to continue');
 });

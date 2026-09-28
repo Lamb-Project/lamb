@@ -14,7 +14,7 @@ it('keeps the document visible and reuses the matching conversation when asking 
  showSession('existing-chat');selectedScenario.mockResolvedValue({scenario_id:'owned'});
  render(Editor,{initialId:'owned'});
  await screen.findByText(item.content);
- await fireEvent.click(screen.getByRole('button',{name:'Edit with agent'}));
+ await fireEvent.click(screen.getByRole('button',{name:'Edit with LAMB LEGATUS'}));
  await waitFor(()=>expect(selectedScenario).toHaveBeenCalledWith('existing-chat'));
  expect(createSession).not.toHaveBeenCalled();expect(get(activeTabId)).toBe('existing-chat');
  expect(screen.getByText(item.content)).toBeVisible();
