@@ -264,11 +264,30 @@ def public_source(source, download_name, sha256):
             'source_url': source.get('source_url'), 'timemodified': source.get('timemodified'), 'sha256': sha256}
 
 
+def module_source(runtime, client, record, module_id):
+    """A course-module id from the inventory, resolved like one module of a course batch import."""
+    from .course_batch import course_sources
+    course = runtime.context.get('course_id')
+    if not course:
+        raise ValueError('Select the course first with moodle course get COURSE_ID, then read by module id')
+    _, found, skipped = course_sources(client, record['base_url'], record['moodle_user_id'], course, [module_id])
+    if not found:
+        reason = (skipped[0] if skipped else {}).get('reason', 'not_a_document')
+        raise ValueError(f'Module {module_id} cannot be read: {reason.replace("_", " ")}')
+    if len(found) > 1:
+        names = ', '.join(s.get('source_path', '') for s in found[:10])
+        raise ValueError(f'Module {module_id} holds {len(found)} files ({names}); list them with moodle file list and read one FILE_ID')
+    return found[0], None
+
+
 def read_source(runtime, client, record, token, key, params, results, owner):
     from lamb.aac.helper_model import helper_target
     kind = key.split('.')[0]
-    source, raw = resolve_source(client, record['base_url'], record['moodle_user_id'], runtime.context,
-                                 kind, ref=params['source_ref'])
+    if kind == 'file' and params['source_ref'].isdigit():
+        source, raw = module_source(runtime, client, record, int(params['source_ref']))
+    else:
+        source, raw = resolve_source(client, record['base_url'], record['moodle_user_id'], runtime.context,
+                                     kind, ref=params['source_ref'])
     download, originals, html_losses = materialize(source, raw, record['base_url'], token, single_file=False)
     blocks, losses, pages = convert(download)
     if html_losses:

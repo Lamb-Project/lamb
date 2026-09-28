@@ -39,7 +39,8 @@ def document_specs():
             'Review and import a listed ' + kind + ' into an owned KB or single-file grounding.', 'ask')
     # Reading (#525): a helper model reads; the text stays in a private 24-hour snapshot.
     add('file.read', [click.Argument(['source_ref'])],
-        'Read a listed file (FILE_ID from moodle file list) without importing it: a helper model returns an overview '
+        'Read a course document without importing it, by MODULE_ID (the course inventory row id of a Resource, Page or Book) '
+        'or by FILE_ID from moodle file list: a helper model returns an overview '
         '(summary, outline with passage ids and pages, key terms) and a READ_ID for follow-ups. No knowledge base, no approval.')
     for kind in ('page', 'book'):
         add(kind + '.read', [click.Argument(['source_ref'])],

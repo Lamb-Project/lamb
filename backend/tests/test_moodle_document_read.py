@@ -147,6 +147,24 @@ def test_read_is_bound_to_conversation_and_teacher(tmp_path):
         stranger.read(result['read_id'])
 
 
+def test_read_by_inventory_module_id_resolves_like_a_batch_module():
+    from lamb.moodle import course_batch
+    runtime = SimpleNamespace(context={'course_id': 50})
+    record = {'base_url': 'https://m.example', 'moodle_user_id': 9}
+    one = {'kind': 'course_file', 'course_id': 50, 'module_id': 104, 'source_path': 'Lesson 1/l1.pdf'}
+    with patch.object(course_batch, 'course_sources', return_value=(50, [one], [])) as sources:
+        assert reading.module_source(runtime, None, record, 104) == (one, None)
+    assert sources.call_args[0][3:] == (50, [104])
+    with patch.object(course_batch, 'course_sources', return_value=(50, [], [{'module_id': 5, 'reason': 'not_a_document'}])):
+        with pytest.raises(ValueError, match='not a document'):
+            reading.module_source(runtime, None, record, 5)
+    with patch.object(course_batch, 'course_sources', return_value=(50, [one, dict(one, source_path='Lesson 1/l1b.pdf')], [])):
+        with pytest.raises(ValueError, match='holds 2 files'):
+            reading.module_source(runtime, None, record, 104)
+    with pytest.raises(ValueError, match='course get'):
+        reading.module_source(SimpleNamespace(context={}), None, record, 104)
+
+
 def test_selection_errors_are_explained():
     snapshot = {'passages': [{'id': 1, 'page': 1, 'heading': None, 'text': 'a'}], 'overview': {'outline': []}}
     with pytest.raises(ValueError):
