@@ -132,7 +132,6 @@
 </script>
 
 {#if !$sidebarOpen && !hideFloatingLauncher}
-<button class="aac-launch" onclick={() => sidebarOpen.set(true)} aria-label="Open LAMB LEGATUS">LAMB LEGATUS</button>
 {/if}
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions (Panel-level Escape and mobile focus containment) -->
 <aside bind:this={panel} class="aac-sidebar" class:hidden={!$sidebarOpen} style:width={$sidebarWidth + 'px'} aria-label="LAMB LEGATUS" onkeydown={panelKeys}>
@@ -145,7 +144,7 @@
         <button onclick={chooseConversation} disabled={$sidebarBusy || creating}>New conversation</button>
         <button onclick={showHistory} disabled={$sidebarBusy || creating}>History</button>
         <button onclick={()=>openScenarios()} disabled={creating}>{scenarioLabels.plural}</button>
-        <button bind:this={backButton} onclick={hide} aria-label={$sidebarMobile ? "Back to LAMB" : "Hide LAMB LEGATUS"}>{$sidebarMobile ? "Back to LAMB" : "✕"}</button>
+        <button bind:this={backButton} class="close-panel" onclick={hide} aria-label={$sidebarMobile ? "Back to LAMB" : "Hide LAMB LEGATUS"} title={$sidebarMobile ? "Back to LAMB" : "Close panel"}>{$sidebarMobile ? "Back to LAMB" : "✕"}</button>
     </header>
     {#if $sidebarMobile && $frontendDestination}
     <button class="destination" onclick={hide}>{#if $frontendDestination.resource === 'learning-scenario'}{scenarioLabels.singular}: {selection?.scenario?.title || ''}{:else}Open in LAMB: {$frontendDestination.resource} {$frontendDestination.id} {$frontendDestination.tab}{/if}</button>
@@ -183,12 +182,13 @@
     </div>
 </aside>
 <style>
-.aac-launch { position: fixed; right: 24px; bottom: 24px; z-index: 45; background: #173f64; color: white; border-radius: 28px; padding: 12px 22px; box-shadow: 0 4px 20px #173f6430; font-weight: 600; }
 .aac-sidebar { position: fixed; right: 0; top: var(--aac-top, 0px); height: var(--aac-height, 100dvh); width: 440px; max-width: 100vw; z-index: 45; display: flex; flex-direction: column; background: white; border-left: 1px solid #d6e0ea; box-shadow: -8px 0 32px #173f6410; }
 header { flex-wrap: wrap; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 16px 12px; border-bottom: 1px solid #d6e0ea; color: #173f64; }
 header strong { margin-right: auto; font-size: 13px; white-space: nowrap; }
 .summary { font-size: 12px; line-height: 1.5; color: #475569; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-button { cursor: pointer; font-size: 13px; } button:disabled { opacity: .5; cursor: default; } button:focus-visible { outline: 2px solid #2271b3; outline-offset: 3px; }
+button { cursor: pointer; font-size: 13px; }
+.close-panel { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; height: 36px; padding: 0 10px; font-size: 20px; line-height: 1; color: #173f64; border: 1px solid #cad8e5; border-radius: 6px; background: #f4f8fb; } .close-panel:hover { background: #e2ecf5; }
+@media (max-width: 919px) { .close-panel { font-size: 14px; font-weight: 600; } } button:disabled { opacity: .5; cursor: default; } button:focus-visible { outline: 2px solid #2271b3; outline-offset: 3px; }
 .terminal { flex: 1; min-height: 0; overflow: hidden; } .hidden { display: none; }
 .history { flex: 1; overflow: auto; padding: 18px; } .history-heading { display: flex; justify-content: space-between; margin-bottom: 16px; }
 .scenario-picker h2 {margin-bottom:12px;}
@@ -205,5 +205,5 @@ button { cursor: pointer; font-size: 13px; } button:disabled { opacity: .5; curs
 .divider:hover::after, .divider.dragging::after, .divider:focus-visible::after { background: #2271b3; width: 4px; }
 .divider:focus-visible { outline: 2px solid #2271b3; }
 .destination { padding: 10px; background: #e8f2fc; color: #173f64; border-bottom: 1px solid #cad8e5; }
-@media (max-width: 919px) { .aac-sidebar { width: 100%; padding-bottom: env(safe-area-inset-bottom); } header strong { flex: 1 0 100%; } .aac-launch { bottom: max(20px, env(safe-area-inset-bottom)); } }
+@media (max-width: 919px) { .aac-sidebar { width: 100%; padding-bottom: env(safe-area-inset-bottom); } header strong { flex: 1 0 100%; } }
 </style>

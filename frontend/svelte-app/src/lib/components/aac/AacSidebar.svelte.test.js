@@ -16,8 +16,8 @@ describe('persistent AAC sidebar', () => {
         await fireEvent.click(screen.getByRole('button', { name: 'Hide LAMB LEGATUS' }));
         expect(get(activeTabId)).toBe('existing');
         expect(document.querySelector('.terminal')).not.toBeNull();
-        await fireEvent.click(screen.getByRole('button', { name: 'Open LAMB LEGATUS' }));
-        expect(get(sidebarOpen)).toBe(true);
+        expect(get(sidebarOpen)).toBe(false);
+        expect(screen.queryByRole('button', { name: 'Open LAMB LEGATUS' })).toBeNull();
     });
     it('waits for resumed history before sending so it cannot overwrite streamed output', async () => {
         let resolveHistory;
