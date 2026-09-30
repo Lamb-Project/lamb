@@ -171,6 +171,18 @@ def helper_call(target, system, user, *, json_mode=False, max_tokens=3000):
     return text
 
 
+def check_cancelled(cancel):
+    if cancel is not None and cancel.is_set():
+        raise InterruptedError('Document reading cancelled.')
+
+
+def checked_helper_call(cancel, *args, **kwargs):
+    check_cancelled(cancel)
+    answer = helper_call(*args, **kwargs)
+    check_cancelled(cancel)
+    return answer
+
+
 def bounded(value, limit):
     value = str(value or '').strip()
     return value if len(value) <= limit else value[:limit].rsplit(' ', 1)[0] + ' …'
@@ -197,16 +209,16 @@ OVERVIEW = ('You read a teaching document for LAMB LEGATUS, which will not see t
             'Omit "pages" when passages carry no page.')
 
 
-def overview(target, title, passages):
+def overview(target, title, passages, *, cancel=None):
     parts = list(chunks(passages))
     if len(parts) == 1:
-        return parse_overview(helper_call(target, OVERVIEW, f'Document: {title}\n\n' + marked(parts[0]), json_mode=True))
+        return parse_overview(checked_helper_call(cancel, target, OVERVIEW, f'Document: {title}\n\n' + marked(parts[0]), json_mode=True))
     notes = []
     for index, part in enumerate(parts, 1):
-        notes.append(helper_call(target, 'You take reading notes on one part of a long teaching document. ' + RULES +
+        notes.append(checked_helper_call(cancel, target, 'You take reading notes on one part of a long teaching document. ' + RULES +
             ' List its topics in order with passage ranges, the terms it defines, and its main points. At most 400 words.',
             f'Document: {title}, part {index} of {len(parts)}\n\n' + marked(part), max_tokens=1500))
-    return parse_overview(helper_call(target, OVERVIEW + ' You receive reading notes of consecutive parts, not the text.',
+    return parse_overview(checked_helper_call(cancel, target, OVERVIEW + ' You receive reading notes of consecutive parts, not the text.',
         f'Document: {title}\n\n' + '\n\n'.join(f'Notes on part {i}:\n{n}' for i, n in enumerate(notes, 1)), json_mode=True))
 
 
@@ -280,7 +292,8 @@ def module_source(runtime, client, record, module_id):
     return found[0], None
 
 
-def read_source(runtime, client, record, token, key, params, results, owner):
+def read_source(runtime, client, record, token, key, params, results, owner, *, cancel=None):
+    check_cancelled(cancel)
     from lamb.aac.helper_model import helper_target
     kind = key.split('.')[0]
     if kind == 'file' and params['source_ref'].isdigit():
@@ -288,8 +301,11 @@ def read_source(runtime, client, record, token, key, params, results, owner):
     else:
         source, raw = resolve_source(client, record['base_url'], record['moodle_user_id'], runtime.context,
                                      kind, ref=params['source_ref'])
+    check_cancelled(cancel)
     download, originals, html_losses = materialize(source, raw, record['base_url'], token, single_file=False)
+    check_cancelled(cancel)
     blocks, losses, pages = convert(download)
+    check_cancelled(cancel)
     if html_losses:
         losses = {**losses, **html_losses, 'notice': LOSS_NOTICE}
     passages = passages_from(blocks)
@@ -306,7 +322,8 @@ def read_source(runtime, client, record, token, key, params, results, owner):
                 'stats': {'pages': pages, 'passages': len(passages), 'characters': characters,
                           'words': sum(len(p['text'].split()) for p in passages), 'estimated_tokens': characters // 4},
                 'helper': {'provider': target['provider'], 'model': target['model']}}
-    snapshot['overview'] = overview(target, source.get('title') or download.filename, passages)
+    snapshot['overview'] = overview(target, source.get('title') or download.filename, passages, cancel=cancel)
+    check_cancelled(cancel)
     read_id = results.save(snapshot)
     return {'read_id': read_id, 'source': snapshot['source'], 'stats': snapshot['stats'],
             'conversion': losses, 'helper': snapshot['helper'], 'overview': snapshot['overview'],
@@ -328,10 +345,12 @@ def load(runtime, results, read_id, client, record):
     return snapshot
 
 
-def followup(runtime, client, record, key, params, results, owner):
+def followup(runtime, client, record, key, params, results, owner, *, cancel=None):
+    check_cancelled(cancel)
     from lamb.aac.helper_model import helper_target
     snapshot = load(runtime, results, params['read_id'], client, record)
-    header = {'read_id': params['read_id'], 'title': snapshot['source']['title'], 'filename': snapshot['source']['filename']}
+    check_cancelled(cancel)
+    header = {'source': snapshot['source'], 'read_id': params['read_id'], 'title': snapshot['source']['title'], 'filename': snapshot['source']['filename']}
     if key == 'read.verbatim':
         return verbatim(snapshot, header, params)
     target = helper_target(owner)
@@ -343,7 +362,7 @@ def followup(runtime, client, record, key, params, results, owner):
                   + RULES + ' Cover every idea in order, keep definitions, examples and the terms as the document uses them, '
                   'and cite passages for each point. 300-900 words, plain prose or short lists.' + focus)
         parts = list(chunks(chosen))
-        texts = [helper_call(target, system, f'Document: {title}\n\n' + marked(part), max_tokens=2500) for part in parts]
+        texts = [checked_helper_call(cancel, target, system, f'Document: {title}\n\n' + marked(part), max_tokens=2500) for part in parts]
         return {**header, 'kind': 'extended_summary', 'passages': span(chosen), 'helper': {'provider': target['provider'], 'model': target['model']},
                 'summary': '\n\n'.join(texts), 'verbatim': False}
     question = params['question'].strip()
@@ -353,10 +372,10 @@ def followup(runtime, client, record, key, params, results, owner):
     system = ('You answer a question about a teaching document for LAMB LEGATUS, which will not see the text. ' + RULES +
               ' Quote the exact words when the question asks for a definition or wording. '
               'If the document does not answer it, say so plainly.')
-    answers = [helper_call(target, system, f'Document: {title}\n\nQuestion: {question}\n\n' + marked(part), max_tokens=1500)
+    answers = [checked_helper_call(cancel, target, system, f'Document: {title}\n\nQuestion: {question}\n\n' + marked(part), max_tokens=1500)
                for part in parts]
     if len(answers) > 1:
-        answers = [helper_call(target, 'Combine partial answers about consecutive parts of one document into one answer. '
+        answers = [checked_helper_call(cancel, target, 'Combine partial answers about consecutive parts of one document into one answer. '
                                + RULES + ' Drop parts that found nothing.',
                                f'Question: {question}\n\n' + '\n\n'.join(answers), max_tokens=1500)]
     return {**header, 'kind': 'answer', 'question': question, 'answer': answers[0],

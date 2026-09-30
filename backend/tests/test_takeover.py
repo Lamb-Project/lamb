@@ -153,3 +153,50 @@ class _Ctx:
 
     def __exit__(self, *a):
         return False
+
+
+@pytest.mark.parametrize('actor_id,change', [
+    (2, 'disable'), (1, 'disable'), (2, 'demote'), (1, 'demote'),
+    (2, 'move_actor'), (1, 'move_target'), (2, 'promote_target'),
+    (1, 'disable_target'),
+])
+def test_active_delegation_rechecks_current_authority(db, actor_id, change):
+    from lamb.auth import decode_token
+    from lamb.auth_context import _build_auth_context
+    started = takeover.start(auth_for(db, actor_id), 3)
+    assert decode_token(started['token']) is not None
+    with db.get_connection() as conn:
+        table = db.table_prefix + 'Creator_users'
+        if change == 'disable':
+            conn.execute(f'UPDATE {table} SET enabled=0 WHERE id=?', (actor_id,))
+        elif change == 'demote' and actor_id == 1:
+            conn.execute(f"UPDATE {table} SET role='user' WHERE id=1")
+        elif change == 'move_actor':
+            conn.execute(f'UPDATE {table} SET organization_id=20 WHERE id=2')
+        elif change == 'move_target':
+            conn.execute(f'UPDATE {table} SET organization_id=20 WHERE id=3')
+        elif change == 'disable_target':
+            conn.execute(f'UPDATE {table} SET enabled=0 WHERE id=3')
+    if change == 'demote' and actor_id == 2:
+        db.assign_organization_role(10, 2, 'member')
+    if change == 'promote_target':
+        db.assign_organization_role(10, 3, 'admin')
+    assert decode_token(started['token']) is None
+    assert _build_auth_context(started['token']) is None
+    assert takeover._row(started['takeover_id'])['end_reason'] == 'authorization_revoked'
+
+
+def test_revoked_takeover_does_not_reactivate_when_role_restored(db):
+    started = takeover.start(auth_for(db, 2), 3)
+    db.assign_organization_role(10, 2, 'member')
+    assert not takeover.is_active(started['takeover_id'])
+    db.assign_organization_role(10, 2, 'admin')
+    assert not takeover.is_active(started['takeover_id'])
+
+
+def test_missing_actor_and_database_errors_fail_closed(db):
+    started = takeover.start(auth_for(db, 1), 3)
+    with patch.object(db, 'get_creator_user_by_id', return_value=None):
+        assert not takeover.is_active(started['takeover_id'])
+    with patch.object(takeover, '_row', side_effect=RuntimeError('unavailable')):
+        assert not takeover.is_active(started['takeover_id'])

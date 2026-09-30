@@ -399,6 +399,11 @@ class LiteShell:
                     binding['course_ids'] = sorted(set(map(int, course)))
                 elif course:
                     binding['course_id'] = int(course)
+            from lamb.moodle.reading import READ_KEYS
+            if key.removeprefix('moodle.') in READ_KEYS:
+                binding.pop('course_ids', None)
+                binding['course_id'] = int(data['source']['course_id'])
+                binding['document_scope_version'] = 1
             if key == 'moodle.chart.read':
                 binding['course_id'] = data['course_id']
             if key == 'moodle.chart.list':

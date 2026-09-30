@@ -330,7 +330,10 @@ class AgentLoop(SkillRouting):
             str: text content chunks from the final LLM response
         """
         if self.pending_action:
-            result_text = await self._resolve_pending_action(user_message)
+            action_events = []
+            result_text = await self._resolve_pending_action(user_message, action_events)
+            for event in action_events:
+                yield event
             if result_text is not None:
                 async with aclosing(self._run_agent_loop_stream()) as events:
                     async for event in events:
@@ -852,7 +855,7 @@ class AgentLoop(SkillRouting):
 
         return result.to_dict()
 
-    async def _resolve_pending_action(self, user_message: str) -> str | None:
+    async def _resolve_pending_action(self, user_message: str, events=None) -> str | None:
         """Check if user approved/rejected the pending action.
 
         Returns a string (can be empty) if the action was resolved,
@@ -912,6 +915,12 @@ class AgentLoop(SkillRouting):
                     data=result.data,
                     error=result.error,
                 )
+
+            if events is not None and result.success and not result.to_dict().get('awaiting_user_confirmation'):
+                from lamb.aac.language import changed_test_assistant
+                changed = changed_test_assistant(action['command'])
+                if changed is not None:
+                    events.append({'status': 'tests_changed', 'assistant_id': changed})
 
             # Inject into conversation: user message + system result
             self.conversation.append({"role": "user", "content": user_message})

@@ -44,7 +44,10 @@ class MoodleRuntime:
                           'write_groups':sorted(policy.write_groups), 'allow_grade_write':policy.allow_grade_write}}
 
     def validate_result_binding(self, binding, key):
-        expected = {k:v for k,v in binding.items() if k not in {'course_id', 'course_ids'}}
+        from .reading import READ_KEYS
+        if key.removeprefix('moodle.') in READ_KEYS and (binding.get('document_scope_version') != 1 or not binding.get('course_id')):
+            raise PermissionError('Document snapshot lacks verified source-course scope; run a fresh read')
+        expected = {k:v for k,v in binding.items() if k not in {'course_id', 'course_ids', 'document_scope_version'}}
         if self.result_binding() != expected or key not in self.available():
             raise PermissionError('Moodle snapshot is no longer accessible; run a fresh read')
         courses = binding.get('course_ids', binding.get('course_id'))
@@ -212,15 +215,17 @@ class MoodleRuntime:
                     result = list_activities(client, key.split('.')[0], params['course_id'],
                         record['moodle_user_id'], record['base_url'], self.context)
                 elif key.startswith('read.') or key.endswith('.read'):
-                    from .reading import read_source, followup
+                    from .reading import read_source, followup, check_cancelled
+                    check_cancelled(cancel)
                     from .results import ResultStore
                     if not self.owner_email: raise PermissionError('Reading needs the signed-in LAMB user')
                     results = ResultStore(self.store.organization_id, self.store.owner_id, base_url=record['base_url'],
                         moodle_user_id=record['moodle_user_id'], generation=snap['generation'], root=self.cache_root)
                     if key.endswith('.read'):
-                        result = read_source(self, client, record, token, key, params, results, self.owner_email)
+                        result = read_source(self, client, record, token, key, params, results, self.owner_email, cancel=cancel)
                     else:
-                        result = followup(self, client, record, key, params, results, self.owner_email)
+                        result = followup(self, client, record, key, params, results, self.owner_email, cancel=cancel)
+                    check_cancelled(cancel)
                 elif key == 'import.list':
                     from .imports import store_for_runtime, public_receipt, same_import_account
                     result = [public_receipt(r) for r in store_for_runtime(self).list('receipts')

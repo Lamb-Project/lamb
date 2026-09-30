@@ -57,12 +57,34 @@ def _row(takeover_id: str) -> Optional[Dict[str, Any]]:
 
 
 def is_active(takeover_id: str) -> bool:
+    """Revalidate the delegation against current account and organization roles."""
     try:
         row = _row(takeover_id)
+        if not row or row['ended_at'] is not None or row['expires_at'] <= time.time():
+            return False
+        db = _db()
+
+        def current_user(user_id):
+            found = db.get_creator_user_by_id(user_id)
+            return db.get_creator_user_by_email(found['user_email']) if found else None
+
+        actor = current_user(row['actor_user_id'])
+        target = current_user(row['target_user_id'])
+        try:
+            if not actor or actor.get('enabled') is False:
+                raise TakeoverRefused('The administrator account is unavailable.')
+            if not target or target.get('organization_id') != row['organization_id']:
+                raise TakeoverRefused('The target organization changed.')
+            actor_role = db.get_user_organization_role(actor['id'], actor['organization_id'])
+            target_role = db.get_user_organization_role(target['id'], target['organization_id'])
+            check_allowed(actor, actor.get('role') == 'admin', actor_role, target, target_role)
+        except TakeoverRefused:
+            end({'id': takeover_id}, reason='authorization_revoked')
+            return False
+        return True
     except Exception as e:  # a missing table or database error never grants access
         logger.error(f'Takeover check failed for {takeover_id}: {e}')
         return False
-    return bool(row and row['ended_at'] is None and row['expires_at'] > time.time())
 
 
 def check_allowed(actor: Dict[str, Any], actor_is_system_admin: bool, actor_org_role: Optional[str],

@@ -140,19 +140,16 @@ _TEST_CHANGING = {'add', 'update', 'delete-case', 'delete-scenario', 'run', 'eva
 def changed_test_assistant(command):
     """Assistant whose saved test cases or runs a successful `lamb test` command changed, or None.
     The frontend reloads that assistant's open test tab (Marc, 28 Sep)."""
-    import shlex
+    from lamb.aac.liteshell.shell import prepare_command
+    from lamb.aac.skill_routing import command_context
     try:
-        words = shlex.split(command or '')
-    except ValueError:
-        words = (command or '').split()
-    if words[:2] != ['lamb', 'test'] or len(words) < 3 or words[2] not in _TEST_CHANGING:
+        key, args, kwargs, help_requested = prepare_command(command or '')
+        if help_requested or key not in {'test.' + action for action in _TEST_CHANGING}:
+            return None
+        value = command_context(key, args, kwargs, {}).get('assistant_id')
+        return int(value) if value and str(value).isdigit() else None
+    except (ValueError, TypeError):
         return None
-    if '--assistant' in words:
-        i = words.index('--assistant')
-        value = words[i + 1] if i + 1 < len(words) else ''
-    else:
-        value = next((w for w in words[3:] if w.isdigit()), '')
-    return int(value) if value.isdigit() else None
 
 
 def confirmation_fallback(agent):
