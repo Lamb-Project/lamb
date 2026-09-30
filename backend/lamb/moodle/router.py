@@ -99,6 +99,18 @@ def connection_status(auth: AuthContext = Depends(get_auth_context), store=Depen
         translate_error(exc)
 
 
+@router.get('/connection/summary')
+def connection_overview(store=Depends(store_for)):
+    from fastapi.responses import JSONResponse
+    from .connection_summary import connection_summary
+    try:
+        return JSONResponse(connection_summary(store), headers={'Cache-Control': 'private, no-store'})
+    except PermissionError:
+        raise HTTPException(403, 'Moodle connection is unavailable. Reload the page or reconnect.') from None
+    except Exception:
+        raise HTTPException(503, 'Moodle course information is unavailable. Try again shortly.') from None
+
+
 @router.post('/connection')
 def connect(body: ConnectBody, store=Depends(store_for)):
     try:

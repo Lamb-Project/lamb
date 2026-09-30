@@ -45,12 +45,12 @@ def establish_connection(policy, cipher, *, organization_id, owner_id, token=Non
     except Exception:
         raise MoodleConnectionError('Moodle identity verification failed. Reconnect with a valid token from the allowed site') from None
     return {'schema_version': 1, 'functions': function_names(info.functions), 'base_url': policy.base_url, 'moodle_user_id': info.userid,
-            'username': info.username, 'token_encrypted': ciphertext,
+            'username': info.username, 'release': str(getattr(info, 'release', '') or '')[:120], 'token_encrypted': ciphertext,
             'connected_at': datetime.now(timezone.utc).isoformat()}
 
 
 def public_connection(record):
-    return {key: record[key] for key in ('base_url', 'moodle_user_id', 'username', 'connected_at') if key in record}
+    return {key: record[key] for key in ('base_url', 'moodle_user_id', 'username', 'connected_at', 'release') if key in record}
 
 
 def public_user_config(config):

@@ -1,87 +1,93 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/svelte';
 vi.mock('$app/stores', async () => {const {writable}=await import('svelte/store');return {page:writable({url:new URL('http://localhost/moodle')})};});
-vi.mock('$lib/services/moodleService', () => ({moodleStatus:vi.fn(),connectMoodleQrImage:vi.fn(),connectMoodle:vi.fn(),disconnectMoodle:vi.fn(),configureMoodle:vi.fn()}));
-vi.mock('$lib/services/aacService', () => ({createSession:vi.fn()}));
-vi.mock('$lib/stores/aacStore.svelte', async () => {const {writable}=await import('svelte/store');return {showSession:vi.fn(),sidebarBusy:writable(false)};});
-import {createSession} from '$lib/services/aacService';
-import {showSession} from '$lib/stores/aacStore.svelte';
+vi.mock('$lib/services/moodleService', () => ({moodleStatus:vi.fn(),moodleConnectionSummary:vi.fn(),connectMoodleQrImage:vi.fn(),connectMoodle:vi.fn(),disconnectMoodle:vi.fn(),setApprovalPreferences:vi.fn()}));
 vi.mock('$lib/services/frontendManage', () => ({clearWorkspaceDirty:vi.fn()}));
-import { moodleStatus, connectMoodleQrImage, connectMoodle, configureMoodle } from '$lib/services/moodleService';
+import { moodleStatus, moodleConnectionSummary, connectMoodleQrImage, connectMoodle, disconnectMoodle, setApprovalPreferences } from '$lib/services/moodleService';
 import { clearWorkspaceDirty } from '$lib/services/frontendManage';
 import Page from './+page.svelte';
-const status = () => ({settings:{enabled:true,base_url:'https://moodle.test',mode:'readonly',write_groups:[],allow_grade_write:false},can_configure:true,effective_driver:{provider:'ollama',model:'fixture'},privacy_notice:'Student data reaches the configured provider.',connection:null});
-beforeEach(() => {cleanup();vi.resetAllMocks();createSession.mockResolvedValue({id:"onboarding",title:"Moodle"});moodleStatus.mockImplementation(async () => status());connectMoodle.mockResolvedValue({});configureMoodle.mockResolvedValue({});});
-it('connection page excludes organization policy even for administrators', async () => {
+const connection = {base_url:'https://moodle.test',username:'teacher',moodle_user_id:7};
+const status = () => ({connected:false,settings:{enabled:true,base_url:'https://moodle.test',mode:'readonly'},approval_preferences:{advanced_mode:false},effective_driver:{provider:'openai',model:'fixture'},privacy_notice:'Student data reaches the configured provider.',connection:null});
+const summary = () => ({connection,release:'4.5.2',courses:[
+    {id:10,fullname:'Teaching course',shortname:'TEACH',my_roles:[{shortname:'editingteacher'}],my_roles_status:'available'},
+    {id:20,fullname:'Learning course',shortname:'LEARN',my_roles:[{shortname:'student'}],my_roles_status:'available'},
+    {id:30,fullname:'Unclassified course',shortname:'UNKNOWN',my_roles:null,my_roles_status:'unavailable'}
+]});
+beforeEach(() => {cleanup();vi.resetAllMocks();moodleStatus.mockResolvedValue(status());moodleConnectionSummary.mockResolvedValue(summary());connectMoodle.mockResolvedValue({connected:true,connection});connectMoodleQrImage.mockResolvedValue({connected:true,connection});disconnectMoodle.mockResolvedValue({connected:false});setApprovalPreferences.mockResolvedValue({advanced_mode:true});});
+it('disconnected page shows QR flow and bottom preferences without provider notices', async () => {
     render(Page);
-    await screen.findByLabelText('QR passport');
+    await screen.findByLabelText('QR code image');
+    expect(screen.queryByText(/Student data reaches/)).toBeNull();
+    expect(screen.queryByText(/Effective AAC provider/)).toBeNull();
     expect(screen.queryByLabelText('Allowed Moodle base URL')).toBeNull();
-    expect(screen.queryByText('Enable Moodle connector')).toBeNull();
+    expect(moodleConnectionSummary).not.toHaveBeenCalled();
+    expect(screen.getByRole('checkbox',{name:'Advanced mode'}).compareDocumentPosition(screen.getByLabelText('QR code image')) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+});
+it('connected page shows actual site version identity and roles, with no QR or token forms', async () => {
+    moodleStatus.mockResolvedValue({...status(),connected:true,connection});
+    render(Page);
+    await screen.findByText('Moodle 4.5.2');
+    expect(screen.getByText('teacher')).toBeInTheDocument();
+    expect(screen.getByText('Teaching course').closest('section')).toHaveAttribute('aria-label','You are a teacher');
+    expect(screen.getByText('Learning course').closest('section')).toHaveAttribute('aria-label','You are a student');
+    expect(screen.getByText('Unclassified course').closest('section')).toHaveAttribute('aria-label','Other or unavailable roles');
+    expect(screen.queryByLabelText('QR code image')).toBeNull();
+    expect(screen.queryByLabelText('QR passport')).toBeNull();
 });
 it('disabled organization has no connection forms', async () => {
     moodleStatus.mockResolvedValue({...status(),settings:{...status().settings,enabled:false}});
-    render(Page);
-    await screen.findByText(/connector is disabled/);
+    render(Page); await screen.findByText(/connector is disabled/);
     expect(screen.queryByLabelText('QR code image')).toBeNull();
 });
-it('failed verification preserves the credential draft and dirty state', async () => {
-    connectMoodle.mockRejectedValue(new Error('Moodle identity verification failed'));
-    render(Page);
+it('inactive saved connection must be disconnected before a new QR is offered', async () => {
+    moodleStatus.mockResolvedValue({...status(),connection});render(Page);
+    await screen.findByText('Stored connection is inactive');
+    expect(screen.queryByLabelText('QR code image')).toBeNull();
+    expect(moodleConnectionSummary).not.toHaveBeenCalled();
+    await fireEvent.click(screen.getByRole('button',{name:'Disconnect Moodle'}));
+    await screen.findByLabelText('QR code image');
+});
+it('failed token verification preserves draft and dirty state', async () => {
+    connectMoodle.mockRejectedValue(new Error('Moodle identity verification failed'));render(Page);
     const secret=await screen.findByLabelText('QR passport');
-    await fireEvent.input(secret,{target:{value:'fixture-passport'}});
-    await fireEvent.submit(secret.closest('form'));
-    await screen.findByRole('alert');
-    expect(secret).toHaveValue('fixture-passport');
-    expect(clearWorkspaceDirty).not.toHaveBeenCalled();
+    await fireEvent.input(secret,{target:{value:'fixture-passport'}});await fireEvent.submit(secret.closest('form'));
+    await screen.findByRole('alert');expect(secret).toHaveValue('fixture-passport');expect(clearWorkspaceDirty).not.toHaveBeenCalled();
 });
-it('members have no organization settings form', async () => {
-    moodleStatus.mockResolvedValue({...status(),can_configure:false});
-    render(Page);
-    await screen.findByLabelText('QR passport');
-    expect(screen.queryByRole('button',{name:'Save organization settings'})).toBeNull();
+it('QR connect shows the summary here and hides the credentials', async () => {
+    render(Page);const input=await screen.findByLabelText('QR code image');
+    const image=new File(['synthetic'],'qr.png',{type:'image/png'});
+    await fireEvent.change(input,{target:{files:[image]}});await fireEvent.submit(input.closest('form'));
+    await screen.findByText('Moodle 4.5.2');
+    expect(connectMoodleQrImage).toHaveBeenCalledWith(image);expect(connectMoodle).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('QR code image')).toBeNull();expect(clearWorkspaceDirty).toHaveBeenCalled();
 });
-it('shows an unavailable driver while preserving connection controls', async () => {
-    moodleStatus.mockResolvedValue({...status(),effective_driver:{provider:'',model:'',error:'Ask the organization administrator to correct the model.'}});
-    render(Page);
-    expect(await screen.findByRole('alert')).toHaveTextContent('correct the model');
-    expect(screen.getByLabelText('QR passport')).toBeInTheDocument();
-});
-
-it('uploads QR as an image and clears it after success', async () => {
-    connectMoodleQrImage.mockResolvedValue({});
-    render(Page);
-    const input=await screen.findByLabelText('QR code image');
-    const image=new File(['synthetic'], 'qr.png', {type:'image/png'});
-    await fireEvent.change(input,{target:{files:[image]}});
-    await fireEvent.submit(input.closest('form'));
-    await screen.findByText('Moodle course summary opened in LAMB LEGATUS.');
-    expect(createSession).toHaveBeenCalledWith({moodleOnboarding:true});
-    expect(showSession).toHaveBeenCalledWith('onboarding','Moodle');
-    expect(connectMoodleQrImage).toHaveBeenCalledWith(image);
-    expect(connectMoodle).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.getByRole('button',{name:'Connect with QR image'})).toBeDisabled());
-});
-it('shows QR errors, clears stale image and allows a new attempt', async () => {
-    connectMoodleQrImage.mockRejectedValue(new Error('Use a fresh login QR'));
-    render(Page);
-    const input=await screen.findByLabelText('QR code image');
-    await fireEvent.change(input,{target:{files:[new File(['x'],'qr.png')]}});
-    await fireEvent.submit(input.closest('form'));
+it('QR errors clear the stale image and allow a new attempt', async () => {
+    connectMoodleQrImage.mockRejectedValue(new Error('Use a fresh login QR'));render(Page);
+    const input=await screen.findByLabelText('QR code image');await fireEvent.change(input,{target:{files:[new File(['x'],'qr.png')]}});await fireEvent.submit(input.closest('form'));
     expect(await screen.findByRole('alert')).toHaveTextContent('fresh login QR');
-    await waitFor(() => expect(screen.getByRole('button',{name:'Connect with QR image'})).toBeDisabled());
-    expect(clearWorkspaceDirty).not.toHaveBeenCalled();
+    await waitFor(()=>expect(screen.getAllByRole('button',{name:'Connect Moodle'})[0]).toBeDisabled());
 });
-
-it('onboarding failure preserves connection and retries without reusing QR', async () => {
-    connectMoodleQrImage.mockResolvedValue({});
-    createSession.mockRejectedValueOnce(new Error('Course list unavailable'));
-    render(Page);
-    const input=await screen.findByLabelText('QR code image');
-    await fireEvent.change(input,{target:{files:[new File(['synthetic'],'qr.png')]}});
-    await fireEvent.submit(input.closest('form'));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Connected, but');
-    expect(showSession).not.toHaveBeenCalled();
-    await fireEvent.click(screen.getByRole('button',{name:'Open Moodle summary in LAMB LEGATUS'}));
-    await screen.findByText('Moodle course summary opened in LAMB LEGATUS.');
-    expect(connectMoodleQrImage).toHaveBeenCalledTimes(1);
+it('summary failure keeps disconnect available and retries without reconnecting', async () => {
+    moodleStatus.mockResolvedValue({...status(),connected:true,connection});moodleConnectionSummary.mockRejectedValueOnce(new Error('unavailable'));render(Page);
+    expect(await screen.findByRole('alert')).toHaveTextContent('saved connection has been kept');
+    expect(screen.getByRole('button',{name:'Disconnect Moodle'})).toBeEnabled();
+    await fireEvent.click(screen.getByRole('button',{name:'Try again'}));await screen.findByText('Moodle 4.5.2');expect(connectMoodle).not.toHaveBeenCalled();
+});
+it('disconnect hides courses and ignores a late summary response', async () => {
+    let resolve;moodleConnectionSummary.mockReturnValue(new Promise(r=>resolve=r));moodleStatus.mockResolvedValue({...status(),connected:true,connection});render(Page);
+    await fireEvent.click(await screen.findByRole('button',{name:'Disconnect Moodle'}));await screen.findByLabelText('QR code image');
+    resolve(summary());await waitFor(()=>expect(screen.queryByText('Teaching course')).toBeNull());expect(screen.queryByRole('button',{name:'Disconnect Moodle'})).toBeNull();
+});
+it('failed disconnect leaves connected state and courses intact', async () => {
+    moodleStatus.mockResolvedValue({...status(),connected:true,connection});disconnectMoodle.mockRejectedValue(new Error('Could not disconnect'));render(Page);
+    await screen.findByText('Teaching course');await fireEvent.click(screen.getByRole('button',{name:'Disconnect Moodle'}));
+    await screen.findByRole('alert');expect(screen.getByText('Teaching course')).toBeInTheDocument();expect(screen.queryByLabelText('QR code image')).toBeNull();
+});
+it('empty courses and missing version have truthful empty states', async () => {
+    moodleStatus.mockResolvedValue({...status(),connected:true,connection});moodleConnectionSummary.mockResolvedValue({connection,release:'',courses:[]});render(Page);
+    await screen.findByText('No enrolled courses were returned by Moodle.');expect(screen.getByText('Moodle version unavailable')).toBeInTheDocument();
+});
+it('preference feedback is local to the bottom section and saves the existing setting', async () => {
+    render(Page);await fireEvent.click(await screen.findByRole('checkbox',{name:'Advanced mode'}));
+    const saved=await screen.findByText('Preference saved.');expect(saved.closest('section')).toHaveAttribute('aria-label','Advanced mode');expect(setApprovalPreferences).toHaveBeenCalledWith(true);
 });

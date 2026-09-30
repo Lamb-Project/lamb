@@ -1,5 +1,6 @@
 import { apiJson } from './apiClient';
 export const moodleStatus = () => apiJson('/moodle/connection');
+export const moodleConnectionSummary = () => apiJson('/moodle/connection/summary');
 export const moodleResult = id => apiJson(`/moodle/results/${encodeURIComponent(id)}`);
 export const connectMoodle = credentials => apiJson('/moodle/connection', {method:'POST', body:JSON.stringify(credentials)});
 export const disconnectMoodle = () => apiJson('/moodle/connection', {method:'DELETE'});
