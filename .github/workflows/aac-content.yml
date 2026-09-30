@@ -16,8 +16,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install manifest parser
-        run: python -m pip install PyYAML==6.0.3
+      - name: Install content validation dependencies
+        run: |
+          python -m pip install PyYAML==6.0.3
+          python -m pip install 'moodle-cli @ git+https://github.com/Lamb-Project/moodle-cli.git@969fdae186abc5b8a052879b3805c28772fe3b55'
       - name: Validate immutable content, contracts, routing, references and coverage
         working-directory: backend
         run: python -m lamb.aac.pack_build
