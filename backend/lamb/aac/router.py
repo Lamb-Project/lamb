@@ -35,6 +35,8 @@ router = APIRouter(prefix="/aac", tags=["AAC"])
 from lamb.aac.skill_loader import SKILLS_DIR
 from lamb.aac.scenario_router import router as scenario_router
 router.include_router(scenario_router)
+from lamb.aac.workspace_router import router as workspace_router
+router.include_router(workspace_router)
 
 # ---------------------------------------------------------------------------
 # Session endpoints
@@ -680,6 +682,7 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
         user_email=user_email,
         organization_id=org_id,
         user_id=user_id,
+        session_id=session["id"],
     )
     authorizer = ActionAuthorizer()
 

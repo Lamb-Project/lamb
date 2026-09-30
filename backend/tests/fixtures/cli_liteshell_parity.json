@@ -8226,6 +8226,36 @@
       1,
       1,
       "path offset"
+    ],
+    "document.list": [
+      1,
+      2,
+      "course user offset"
+    ],
+    "document.open": [
+      1,
+      1,
+      ""
+    ],
+    "document.read": [
+      1,
+      1,
+      "offset find"
+    ],
+    "notebook.list": [
+      0,
+      0,
+      ""
+    ],
+    "notebook.read": [
+      1,
+      1,
+      "offset"
+    ],
+    "notebook.write": [
+      1,
+      1,
+      "content revision references"
     ]
   },
   "dispositions": {
@@ -8395,10 +8425,16 @@
     "assistant.list-shared",
     "docs.index",
     "docs.read",
+    "document.list",
+    "document.open",
+    "document.read",
     "frontend-manage.current",
     "frontend-manage.open",
     "glossary",
     "help",
+    "notebook.list",
+    "notebook.read",
+    "notebook.write",
     "session.rename",
     "skill.list",
     "skill.load",

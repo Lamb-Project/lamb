@@ -1159,3 +1159,55 @@ async def result_read(ctx: "CommandContext", args: list[str], kwargs: dict):
     identity = str(uuid.UUID(args[0]))
     return await ctx.http.get(f'/creator/aac/results/{identity}', params={
         'path':kwargs.get('path',''), 'offset':int(kwargs.get('offset',0))})
+
+
+# Session workspace: the model cannot select another session.
+def _workspace_url(ctx):
+    from uuid import UUID
+    if not ctx.session_id:
+        raise ValueError('This command needs an active AAC session')
+    return '/creator/aac/sessions/' + str(UUID(ctx.session_id))
+
+
+@register('document.list')
+async def document_list(ctx, args, kwargs):
+    """List text sources: KIND [ID], kinds submission/moodle/kb/assistant/upload; Moodle needs --course, submissions also --user."""
+    body = {'kind': args[0], **{k: int(v) for k, v in kwargs.items() if k in {'course', 'user', 'offset'}}}
+    if len(args) > 1:
+        body['id'] = int(args[1])
+    return await ctx.http.post(_workspace_url(ctx) + '/documents/sources', json=body)
+
+
+@register('document.open')
+async def document_open(ctx, args, kwargs):
+    """Extract text from a listed SOURCE_REF; returns READ_ID, length and losses. No images/OCR, imports or model calls."""
+    return await ctx.http.post(_workspace_url(ctx) + '/documents/open', json={'source_ref': args[0]})
+
+
+@register('document.read')
+async def document_read(ctx, args, kwargs):
+    """Read exact text from READ_ID in bounded pages; follow next_offset until null; --find is exact text search."""
+    from uuid import UUID
+    return await ctx.http.get(_workspace_url(ctx) + '/documents/' + str(UUID(args[0])), params=kwargs)
+
+
+@register('notebook.list')
+async def notebook_list(ctx, args, kwargs):
+    """List this session's persistent working draft notes; these are not source evidence or delivered answers."""
+    return await ctx.http.get(_workspace_url(ctx) + '/notebook')
+
+
+@register('notebook.read')
+async def notebook_read(ctx, args, kwargs):
+    """Read a named working note, revision and source references; text is paged with --offset."""
+    return await ctx.http.get(_workspace_url(ctx) + '/notebook/read', params={'name': args[0], **kwargs})
+
+
+@register('notebook.write')
+async def notebook_write(ctx, args, kwargs):
+    """Create/update NAME --content TEXT --revision N (0 to create); optional comma-separated --references READ_IDS."""
+    if 'content' not in kwargs or 'revision' not in kwargs:
+        raise ValueError('Provide --content and --revision (0 for a new note)')
+    body = {'name': args[0], 'content': kwargs['content'], 'revision': int(kwargs['revision']),
+            'references': [v.strip() for v in kwargs.get('references', '').split(',') if v.strip()]}
+    return await ctx.http.post(_workspace_url(ctx) + '/notebook', json=body)

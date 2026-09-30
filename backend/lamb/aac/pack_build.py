@@ -68,7 +68,7 @@ def validate_routing(pack):
         if command not in commands or command not in routing['CAPABILITIES'].get(skill, []):
             raise ValueError(f'Default workflow cannot execute command: {command}/{skill}')
     # Result readback is engine-provided, including for immutable older packs.
-    if commands - {'result.read'} - set(routing['BOOTSTRAP']) - set(routing['DEFAULT_SKILL']):
+    if commands - {'result.read', 'document.list', 'document.open', 'document.read', 'notebook.list', 'notebook.read', 'notebook.write'} - set(routing['BOOTSTRAP']) - set(routing['DEFAULT_SKILL']):
         raise ValueError('Installed commands are missing workflow coverage')
     hints = routing.get('USER_ROUTING', {})
     for pattern in [hints.get('negative', ''), hints.get('assistant_id', ''),

@@ -20,6 +20,13 @@ logger = get_logger(__name__, component="AAC")
 
 # Default policy: which commands need confirmation
 DEFAULT_POLICY: dict[str, str] = {
+    'document.list': "auto",
+    'document.open': "auto",
+    'document.read': "auto",
+    'notebook.list': "auto",
+    'notebook.read': "auto",
+    'notebook.write': "auto",
+
     "result.read": "auto",
     "learning-scenario.list": "auto",
     "learning-scenario.get": "auto",

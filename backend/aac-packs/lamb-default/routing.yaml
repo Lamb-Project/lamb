@@ -6,6 +6,9 @@
     "assistant.list-shared",
     "docs.index",
     "docs.read",
+    "document.list",
+    "document.open",
+    "document.read",
     "frontend-manage.current",
     "frontend-manage.open",
     "glossary",
@@ -17,6 +20,9 @@
     "learning-scenario.get",
     "learning-scenario.list",
     "learning-scenario.selected",
+    "notebook.list",
+    "notebook.read",
+    "notebook.write",
     "result.read",
     "rubric.list",
     "rubric.list-public",
@@ -675,7 +681,7 @@
       },
       {
         "skill": "about-lamb",
-        "pattern": "\\b(how should i design|when should i use|single file or|should i use a rubric|como disenar|cuando usar|fitxer o|com dissenyar|quan conv[eé]|quin tipus de)\\b",
+        "pattern": "\\b(how should i design|when should i use|single file or|should i use a rubric|como disenar|cuando usar|fitxer o|com dissenyar|quan conv[e\u00e9]|quin tipus de)\\b",
         "priority": 1
       },
       {

@@ -22,6 +22,13 @@ logger = get_logger(__name__, component="AAC")
 # Explicit supported shell surface. Unsupported CLI options fail instead of being ignored.
 # key: (minimum positional arguments, maximum, accepted option names)
 COMMAND_CONTRACTS = {
+    'document.list': (1, 2, 'course user offset'),
+    'document.open': (1, 1, ''),
+    'document.read': (1, 1, 'offset find'),
+    'notebook.list': (0, 0, ''),
+    'notebook.read': (1, 1, 'offset'),
+    'notebook.write': (1, 1, 'content revision references'),
+
     'result.read': (1, 1, 'path offset'),
     'learning-scenario.list': (0, 0, ''),
     'learning-scenario.get': (1, 1, ''),
@@ -267,6 +274,7 @@ class LiteShell:
     user_email: str
     organization_id: int
     user_id: int = 0
+    session_id: str = ""
     moodle: Any = None
     frontend: Any = None
     allowlist: set[str] | None = None
@@ -321,6 +329,10 @@ class LiteShell:
             key, args, kwargs, _ = prepare_command(command_str)
         except (ValueError, TypeError):
             key, args, kwargs = 'unknown', [], {}
+        if key.startswith(('document.', 'notebook.')):
+            # Already paged by the session API; never copy protected text into
+            # a generic result cache with a different lifetime/authority.
+            return payload
         origin = {'command': key, 'authority': authority(key, args, payload)}
         if payload.get('skill_loaded'):
             origin['skill_id'] = payload['skill_loaded']
@@ -427,6 +439,7 @@ class LiteShell:
             user_email=self.user_email,
             organization_id=self.organization_id,
             user_id=self.user_id,
+            session_id=self.session_id,
             frontend=self.frontend,
             knowledge=self.knowledge,
         )
@@ -458,6 +471,7 @@ class CommandContext:
     user_email: str
     organization_id: int
     user_id: int = 0
+    session_id: str = ""
     frontend: Any = None
     knowledge: dict = field(default_factory=dict)
 
