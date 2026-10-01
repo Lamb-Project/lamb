@@ -10,3 +10,5 @@ export const getMoodleSettings = org => apiJson(settingsUrl(org));
 export const configureMoodle = (settings, org = null) => apiJson(settingsUrl(org), {method:'PUT', body:JSON.stringify(settings)});
 
 export const connectMoodleQrImage = image => apiJson('/moodle/connection/qr-image', {method:'POST', body:image, headers:{'Content-Type':'application/octet-stream'}});
+
+export const prepareMoodleQrCommand = (image, platform) => apiJson('/moodle/connection/qr-command?platform=' + encodeURIComponent(platform), {method:'POST', body:image, headers:{'Content-Type':'application/octet-stream'}});

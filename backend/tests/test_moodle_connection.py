@@ -51,3 +51,12 @@ def test_exchange_failure_does_not_echo_passport_or_server_secret(respx_mock):
     with pytest.raises(MoodleConnectionError) as error:connect(passport='moodlemobile://https://moodle.test?qrlogin=one-use&userid=7')
     assert 'fixture-secret' not in str(error.value)
     assert 'one-use' not in str(error.value)
+
+
+def test_ip_mismatch_points_to_local_command_without_echoing_secrets(respx_mock):
+    respx_mock.post(BASE+'/lib/ajax/service-nologin.php').mock(return_value=httpx.Response(200,json=[{'error':True,'exception':{'message':'fixture-secret','errorcode':'ipmismatch'}}]))
+    with pytest.raises(MoodleConnectionError) as error:
+        connect(passport='moodlemobile://https://moodle.test?qrlogin=one-use&userid=7')
+    assert 'local command' in str(error.value)
+    assert 'expired' not in str(error.value)
+    assert 'fixture-secret' not in str(error.value)

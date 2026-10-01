@@ -32,7 +32,9 @@ def establish_connection(policy, cipher, *, organization_id, owner_id, token=Non
                 raise ValueError()
         except PermissionError:
             raise
-        except Exception:
+        except Exception as exc:
+            if getattr(exc, 'error_code', None) == 'ipmismatch':
+                raise MoodleConnectionError('Moodle requires the QR to be exchanged on the network where it was generated. Upload a fresh QR and use the local command option.') from None
             raise MoodleConnectionError('QR connection failed. The passport may have expired or already been used. Generate a fresh login QR code from the allowed Moodle site') from None
     try:
         with MoodleHTTPClient(policy.base_url, token, readonly=True) as client:

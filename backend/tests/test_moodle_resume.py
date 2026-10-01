@@ -203,8 +203,10 @@ def test_run_lock_refuses_overlap_and_retention_is_bounded(tmp_path):
 def test_initial_cutoff_excludes_posts_created_after_start(tmp_path):
     raw = Fixture()
     from datetime import datetime, timezone
-    raw.post_time = int(datetime.now(timezone.utc).timestamp()) + 60
-    result = execute(tmp_path, raw)
+    now = datetime.now(timezone.utc)
+    raw.post_time = int(now.timestamp()) + 60
+    # The test needs an open window, not the fixed September 2026 fixture.
+    result = execute(tmp_path, raw, params={**PARAMS, 'month': now.strftime('%Y-%m')})
     assert result['coverage']['posts_found'] == 0
     assert result['window']['observed_before'] < result['window']['until']
 

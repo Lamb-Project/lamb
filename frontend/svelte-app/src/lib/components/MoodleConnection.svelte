@@ -1,15 +1,18 @@
 <script>
     import { onMount } from 'svelte';
     import { locale } from '$lib/i18n';
-    import { moodleStatus, moodleConnectionSummary, connectMoodleQrImage, connectMoodle, disconnectMoodle, setApprovalPreferences } from '$lib/services/moodleService';
+    import { moodleStatus, moodleConnectionSummary, prepareMoodleQrCommand, connectMoodle, disconnectMoodle, setApprovalPreferences } from '$lib/services/moodleService';
     import { clearWorkspaceDirty } from '$lib/services/frontendManage';
+    import { qrCommandText } from '$lib/utils/moodleQrCommandText';
     import { moodleConnectionText, courseGroups } from '$lib/utils/moodleConnectionText';
     let status = $state(null);
     let summary = $state(null);
     let summaryLoading = $state(false);
     let summaryError = $state(false);
     let requestVersion = 0;
-    let method = $state('passport');
+    let platform = $state('macos');
+    let localCommand = $state('');
+    let commandNotice = $state('');
     let credential = $state('');
     let qrImage = $state(null);
     let qrInput = $state(null);
@@ -20,6 +23,7 @@
     let preferenceNotice = $state('');
     let preferenceError = $state('');
     const text = $derived(moodleConnectionText($locale));
+    const qrText = $derived(qrCommandText($locale));
     const groups = $derived(courseGroups(summary?.courses));
     const connection = $derived(summary?.connection || status?.connection);
     const release = $derived(summary?.release || connection?.release);
@@ -41,6 +45,8 @@
     }
     onMount(() => {
         let mounted = true;
+        const os = navigator.userAgent;
+        platform = /Windows/i.test(os) ? 'windows' : /Linux/i.test(os) ? 'linux' : 'macos';
         moodleStatus().then(result => {
             if (!mounted) return;
             status = result;
@@ -63,11 +69,25 @@
         try {
             const result = await work();
             clearWorkspaceDirty(form);
-            credential = ''; summary = null;
+            credential = ''; summary = null; localCommand = ''; commandNotice = ''; qrImage = null;
             status = {...status, ...result};
             if (status.connected) loadSummary();
         } catch (e) { error = e.message; }
         finally { busy = false; }
+    }
+    async function prepare(form) {
+        if (!qrImage) return;
+        busy = true; error = ''; localCommand = ''; commandNotice = '';
+        try {
+            const result = await prepareMoodleQrCommand(qrImage, platform);
+            localCommand = result.command;
+            clearWorkspaceDirty(form);
+        } catch (e) { error = e.message; }
+        finally { busy = false; }
+    }
+    async function copyCommand() {
+        try { await navigator.clipboard.writeText(localCommand); commandNotice = qrText.copied; }
+        catch { commandNotice = qrText.manualCopy; }
     }
     async function disconnect() {
         busy = true; error = ''; notice = '';
@@ -76,7 +96,7 @@
             requestVersion++;
             summary = null; summaryLoading = false; summaryError = false;
             status = {...status, connected: false, connection: null};
-            credential = ''; qrImage = null;
+            credential = ''; qrImage = null; localCommand = ''; commandNotice = '';
             notice = text.disconnected;
         } catch (e) { error = e.message; }
         finally { busy = false; }
@@ -132,28 +152,33 @@
                     e.preventDefault();
                     if (!qrImage) return;
                     if (qrImage.size > 5 * 1024 * 1024) { error = text.imageTooLarge; return; }
-                    const selected = qrImage;
-                    connect(async () => {
-                        try { return await connectMoodleQrImage(selected); }
-                        finally { qrImage = null; if (qrInput) qrInput.value = ''; }
-                    }, e.currentTarget);
+                    prepare(e.currentTarget);
                 }}>
                     <div class="upload">
                         <label>{text.qrLabel}<input bind:this={qrInput} type="file" accept="image/png,image/jpeg,image/webp" disabled={busy}
-                            onchange={e => { qrImage = e.currentTarget.files?.[0] || null; error = ''; }} /></label>
+                            onchange={e => { qrImage = e.currentTarget.files?.[0] || null; localCommand = ''; commandNotice = ''; error = ''; }} /></label>
                         <p class="muted formats">{text.formats}</p>
                     </div>
-                    <button disabled={busy || !qrImage}>{busy ? text.connecting : text.connect}</button>
+                    <label>{qrText.platform}<select bind:value={platform} disabled={busy} onchange={() => {localCommand = ''; commandNotice = '';}}><option value="macos">macOS</option><option value="windows">Windows (PowerShell)</option><option value="linux">Linux</option></select></label>
+                    <button disabled={busy || !qrImage}>{busy ? qrText.preparing : qrText.prepare}</button>
                 </form>
-                <details>
-                    <summary>{text.alternative}</summary>
-                    <form data-aac-edit-form onsubmit={e => { e.preventDefault(); connect(() => connectMoodle({[method]: credential}), e.currentTarget); }}>
-                        <label>{text.method}<select bind:value={method} disabled={busy}><option value="passport">{text.passport}</option><option value="token">{text.token}</option></select></label>
-                        <p class="muted">{method === 'passport' ? text.passportHelp : text.tokenHelp}</p>
-                        <label>{method === 'passport' ? text.passport : text.token}<input type="password" autocomplete="off" spellcheck="false" bind:value={credential} required disabled={busy} /></label>
-                        <button disabled={busy || !credential.trim()}>{busy ? text.connecting : text.connect}</button>
-                    </form>
-                </details>
+                {#if localCommand}
+                    <section class="local-command" aria-label={qrText.run}>
+                        <h3>{qrText.run}</h3>
+                        <p>{qrText.help}</p>
+                        <p class="muted">{platform === 'windows' ? qrText.windowsHelp : platform === 'linux' ? qrText.linuxHelp : qrText.macHelp}</p>
+                        <label>{qrText.command}<textarea readonly value={localCommand} rows="7" spellcheck="false"></textarea></label>
+                        <button type="button" onclick={copyCommand}>{qrText.copy}</button>
+                        {#if commandNotice}<p role="status">{commandNotice}</p>{/if}
+                        <p class="muted">{qrText.private}</p>
+                    </section>
+                {/if}
+                <form data-aac-edit-form onsubmit={e => { e.preventDefault(); connect(() => connectMoodle({token: credential.trim()}), e.currentTarget); }}>
+                    <h3 class="token-heading">{qrText.paste}</h3>
+                    <p class="muted">{qrText.tokenHelp}</p>
+                    <label>{text.token}<input type="password" autocomplete="off" spellcheck="false" bind:value={credential} required disabled={busy} /></label>
+                    <button disabled={busy || !credential.trim()}>{busy ? text.connecting : text.connect}</button>
+                </form>
             </section>
         {:else}<p class="disabled-connector">{text.disabled}</p>{/if}
         <section class="preferences" aria-label={text.advanced}>
@@ -181,7 +206,7 @@
     button.secondary {background:white;color:#1f2937;border-color:#cbd5e1}button:hover {filter:brightness(.96)}button:disabled {opacity:.55;cursor:default}
     .upload {border:1px dashed #cbd5e1;border-radius:8px;padding:20px;background:#f6f8fb;margin-top:20px}.formats {font-size:.85rem}
     label {display:flex;flex-direction:column;gap:.5rem;font-weight:500;margin:1rem 0}input:not([type=checkbox]),select {border:1px solid #94a3b8;border-radius:6px;padding:.6rem;width:100%;background:white;min-width:0;font-size:1rem}input[type=file] {padding:0;border:0;background:transparent;max-width:100%}
-    details {margin-top:22px}summary {cursor:pointer;color:#58697d;min-height:44px;display:list-item;align-content:center}
+    .local-command,.token-heading {margin-top:24px}.local-command textarea {width:100%;font:12px monospace;padding:12px;border:1px solid #94a3b8;border-radius:6px;resize:vertical}.local-command {overflow-wrap:anywhere}
     .preferences {border-top:1px solid #dce3ec;padding-top:22px;margin-top:32px}.toggle {flex-direction:row;align-items:flex-start;gap:12px;cursor:pointer;margin:0}.toggle input {width:18px;height:18px;flex:none;margin-top:3px;accent-color:#245fc4}.help {display:block;font-size:.85rem;font-weight:400;margin-top:4px}
     .error {color:#991b1b;background:#fee2e2;padding:12px;border-radius:6px;overflow-wrap:anywhere}.notice {color:#176544;font-size:.9rem}.summary-error {padding:12px;background:#fff4da;border-radius:6px}.disabled-connector {padding:20px 0}
     @media(max-width:600px){.course-groups {grid-template-columns:1fr}.connection-card {padding:18px}.course-group {padding:16px}}

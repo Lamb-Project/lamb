@@ -1,9 +1,9 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/svelte';
 vi.mock('$app/stores', async () => {const {writable}=await import('svelte/store');return {page:writable({url:new URL('http://localhost/moodle')})};});
-vi.mock('$lib/services/moodleService', () => ({moodleStatus:vi.fn(),moodleConnectionSummary:vi.fn(),connectMoodleQrImage:vi.fn(),connectMoodle:vi.fn(),disconnectMoodle:vi.fn(),setApprovalPreferences:vi.fn()}));
+vi.mock('$lib/services/moodleService', () => ({moodleStatus:vi.fn(),moodleConnectionSummary:vi.fn(),prepareMoodleQrCommand:vi.fn(),connectMoodle:vi.fn(),disconnectMoodle:vi.fn(),setApprovalPreferences:vi.fn()}));
 vi.mock('$lib/services/frontendManage', () => ({clearWorkspaceDirty:vi.fn()}));
-import { moodleStatus, moodleConnectionSummary, connectMoodleQrImage, connectMoodle, disconnectMoodle, setApprovalPreferences } from '$lib/services/moodleService';
+import { moodleStatus, moodleConnectionSummary, prepareMoodleQrCommand, connectMoodle, disconnectMoodle, setApprovalPreferences } from '$lib/services/moodleService';
 import { clearWorkspaceDirty } from '$lib/services/frontendManage';
 import Page from './+page.svelte';
 const connection = {base_url:'https://moodle.test',username:'teacher',moodle_user_id:7};
@@ -13,7 +13,7 @@ const summary = () => ({connection,release:'4.5.2',courses:[
     {id:20,fullname:'Learning course',shortname:'LEARN',my_roles:[{shortname:'student'}],my_roles_status:'available'},
     {id:30,fullname:'Unclassified course',shortname:'UNKNOWN',my_roles:null,my_roles_status:'unavailable'}
 ]});
-beforeEach(() => {cleanup();vi.resetAllMocks();moodleStatus.mockResolvedValue(status());moodleConnectionSummary.mockResolvedValue(summary());connectMoodle.mockResolvedValue({connected:true,connection});connectMoodleQrImage.mockResolvedValue({connected:true,connection});disconnectMoodle.mockResolvedValue({connected:false});setApprovalPreferences.mockResolvedValue({advanced_mode:true});});
+beforeEach(() => {cleanup();vi.resetAllMocks();moodleStatus.mockResolvedValue(status());moodleConnectionSummary.mockResolvedValue(summary());connectMoodle.mockResolvedValue({connected:true,connection});prepareMoodleQrCommand.mockResolvedValue({command:'sh fixture-command'});disconnectMoodle.mockResolvedValue({connected:false});setApprovalPreferences.mockResolvedValue({advanced_mode:true});});
 it('disconnected page shows QR flow and bottom preferences without provider notices', async () => {
     render(Page);
     await screen.findByLabelText('QR code image');
@@ -49,7 +49,7 @@ it('inactive saved connection must be disconnected before a new QR is offered', 
 });
 it('failed token verification preserves draft and dirty state', async () => {
     connectMoodle.mockRejectedValue(new Error('Moodle identity verification failed'));render(Page);
-    const secret=await screen.findByLabelText('QR passport');
+    const secret=await screen.findByLabelText('Mobile-service token');
     await fireEvent.input(secret,{target:{value:'fixture-passport'}});await fireEvent.submit(secret.closest('form'));
     await screen.findByRole('alert');expect(secret).toHaveValue('fixture-passport');expect(clearWorkspaceDirty).not.toHaveBeenCalled();
 });
@@ -57,15 +57,20 @@ it('QR connect shows the summary here and hides the credentials', async () => {
     render(Page);const input=await screen.findByLabelText('QR code image');
     const image=new File(['synthetic'],'qr.png',{type:'image/png'});
     await fireEvent.change(input,{target:{files:[image]}});await fireEvent.submit(input.closest('form'));
+    await screen.findByLabelText('Local connection command');
+    expect(prepareMoodleQrCommand).toHaveBeenCalledWith(image, expect.any(String));expect(connectMoodle).not.toHaveBeenCalled();
+    const token = screen.getByLabelText('Mobile-service token');
+    await fireEvent.input(token,{target:{value:'fixture-token'}});await fireEvent.submit(token.closest('form'));
     await screen.findByText('Moodle 4.5.2');
-    expect(connectMoodleQrImage).toHaveBeenCalledWith(image);expect(connectMoodle).not.toHaveBeenCalled();
+    expect(connectMoodle).toHaveBeenCalledWith({token:'fixture-token'});
     expect(screen.queryByLabelText('QR code image')).toBeNull();expect(clearWorkspaceDirty).toHaveBeenCalled();
 });
-it('QR errors clear the stale image and allow a new attempt', async () => {
-    connectMoodleQrImage.mockRejectedValue(new Error('Use a fresh login QR'));render(Page);
+it('QR errors allow a new attempt', async () => {
+    prepareMoodleQrCommand.mockRejectedValue(new Error('Use a fresh login QR'));render(Page);
     const input=await screen.findByLabelText('QR code image');await fireEvent.change(input,{target:{files:[new File(['x'],'qr.png')]}});await fireEvent.submit(input.closest('form'));
     expect(await screen.findByRole('alert')).toHaveTextContent('fresh login QR');
-    await waitFor(()=>expect(screen.getAllByRole('button',{name:'Connect Moodle'})[0]).toBeDisabled());
+    expect(screen.queryByLabelText('Local connection command')).toBeNull();
+    expect(screen.getByRole('button',{name:'Prepare local command'})).toBeEnabled();
 });
 it('summary failure keeps disconnect available and retries without reconnecting', async () => {
     moodleStatus.mockResolvedValue({...status(),connected:true,connection});moodleConnectionSummary.mockRejectedValueOnce(new Error('unavailable'));render(Page);
@@ -90,4 +95,18 @@ it('empty courses and missing version have truthful empty states', async () => {
 it('preference feedback is local to the bottom section and saves the existing setting', async () => {
     render(Page);await fireEvent.click(await screen.findByRole('checkbox',{name:'Advanced mode'}));
     const saved=await screen.findByText('Preference saved.');expect(saved.closest('section')).toHaveAttribute('aria-label','Advanced mode');expect(setApprovalPreferences).toHaveBeenCalledWith(true);
+});
+
+it('changing platform discards the old command and copy failure offers manual selection', async () => {
+    Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:vi.fn().mockRejectedValue(new Error('denied'))}});
+    render(Page);const input=await screen.findByLabelText('QR code image');
+    await fireEvent.change(input,{target:{files:[new File(['x'],'qr.png')]}});await fireEvent.submit(input.closest('form'));
+    await screen.findByLabelText('Local connection command');
+    await fireEvent.click(screen.getByRole('button',{name:'Copy command'}));
+    await screen.findByText(/Automatic copy is unavailable/);
+    await fireEvent.change(screen.getByLabelText('Your computer'),{target:{value:'windows'}});
+    expect(screen.queryByLabelText('Local connection command')).toBeNull();
+    await fireEvent.submit(input.closest('form'));
+    await screen.findByLabelText('Local connection command');
+    expect(prepareMoodleQrCommand).toHaveBeenLastCalledWith(expect.any(File),'windows');
 });

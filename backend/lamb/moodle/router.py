@@ -172,6 +172,32 @@ async def connect_qr_image(request: Request, store=Depends(store_for)):
         data.clear()
 
 
+@router.post('/connection/qr-command')
+async def prepare_qr_command(request: Request, platform: str = 'macos', store=Depends(store_for)):
+    """Decode only: the user's local curl performs the actual exchange."""
+    from fastapi.responses import JSONResponse
+    from starlette.concurrency import run_in_threadpool
+    from .qr_image import MAX_IMAGE_BYTES, decode_passport
+    from .qr_command import prepare_command
+    data = bytearray()
+    try:
+        snap = store.snapshot()
+        snap['policy'].require_connection_url(snap['policy'].base_url)
+        async for chunk in request.stream():
+            if len(data) + len(chunk) > MAX_IMAGE_BYTES:
+                raise HTTPException(413, 'Select a QR image smaller than 5 MiB.')
+            data.extend(chunk)
+        passport = await run_in_threadpool(decode_passport, bytes(data))
+        # Recheck organization policy after decoding; nothing is saved or exchanged.
+        current = store.snapshot()
+        result = prepare_command(passport, current['policy'], platform)
+        return JSONResponse(result, headers={'Cache-Control': 'private, no-store'})
+    except (MoodleConfigurationError, MoodleConnectionError, PermissionError, RuntimeError) as exc:
+        translate_error(exc)
+    finally:
+        data.clear()
+
+
 @router.post('/tasks')
 def run_task(body: TaskBody, store=Depends(store_for)):
     from .contract import prepare_moodle
