@@ -17,6 +17,26 @@ SELF_READS = frozenset({'site.info','site.functions','user.me','enrol.my-courses
                        'course.list','course.search','course.categories','cohort.list','course.timeline','calendar.upcoming','grade.overview','message.list','message.conversations','message.unread','content.types'})
 
 
+def _name_words(text):
+    """Lower-case, accent-free words: 'Transformers, LLMs ...' -> ['transformers', 'llms']."""
+    import re, unicodedata
+    plain = unicodedata.normalize('NFKD', str(text or '')).encode('ascii', 'ignore').decode()
+    return re.findall(r'[a-z0-9]+', plain.casefold())
+
+
+def course_name_matches(query, course):
+    """True when every word of the query starts a word of the course's short or full name.
+
+    Teachers name courses by fragments ("Transformers ...", "LLMs RAG", "transf"), with
+    other punctuation, accents or word order than the stored name; a plain substring
+    test misses those."""
+    words = _name_words(query)
+    if not words:
+        return False
+    names = _name_words(course.get('fullname'))+_name_words(course.get('shortname'))
+    return all(any(name.startswith(word) for name in names) for word in words)
+
+
 class MoodleRuntime:
     def __init__(self, store, *, cipher=None, cache_root=None, context=None, owner_email=None):
         self.store=store
@@ -282,8 +302,7 @@ class MoodleRuntime:
                 from .reads import plain
                 result=plain(list(MoodleScope(client,record['moodle_user_id']).own_courses().values()))
                 if key=='course.search':
-                    query=params['query'].casefold()
-                    result=[c for c in result if query in c['fullname'].casefold() or query in c['shortname'].casefold()]
+                    result=[c for c in result if course_name_matches(params['query'],c)]
                 from .course_roles import with_my_roles
                 result=with_my_roles(client,result,record['moodle_user_id'])
             else:

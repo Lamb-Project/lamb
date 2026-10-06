@@ -132,7 +132,10 @@
       "learning-scenario.duplicate",
       "learning-scenario.default",
       "learning-scenario.selected",
-      "learning-scenario.select"
+      "learning-scenario.select",
+      "moodle.course.list",
+      "moodle.course.search",
+      "moodle.enrol.my-courses"
     ],
     "moodle-triage": [
       "moodle.assign.grades",

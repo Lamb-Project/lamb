@@ -175,6 +175,14 @@ class ContextIdentityTests(unittest.TestCase):
         self.assertEqual(len(a.skill_state['snapshots']),count)
 
 class ScenarioTerminology(unittest.TestCase):
+    def test_scenario_workflow_can_still_find_the_scenario_course(self):
+        # #547: "the course associated with the scenario" switched to this workflow, which had no
+        # Moodle read, so the agent could not look the course up and refused three times.
+        from lamb.aac.skill_routing import select_workflow
+        self.assertEqual(select_workflow('the course associated with the scenario!', {})[0], 'manage-learning-scenarios')
+        for command in ('moodle.course.search', 'moodle.course.list', 'moodle.enrol.my-courses'):
+            self.assertIn(command, CAPABILITIES['manage-learning-scenarios'], command)
+
     def test_unqualified_scenario_means_learning_context_even_with_linked_assistant(self):
         from lamb.aac.skill_routing import select_workflow
         for text in ['Create a scenario', 'Edit my scenario for assistant 87', 'Editar mi escenario', 'Edita el meu escenari']:
