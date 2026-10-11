@@ -18,6 +18,7 @@ from lamb.lti_activity_manager import LtiActivityManager
 from lamb.database_manager import LambDatabaseManager
 from lamb.owi_bridge.owi_users import OwiUserManager
 from lamb.logging_config import get_logger
+from lamb.token_dealer import lti as llm_access
 import os
 import json
 from datetime import datetime, timedelta
@@ -137,6 +138,16 @@ async def lti_launch(request: Request):
         context_title = post_data.get("context_title", "")
 
         logger.info(f"LTI launch: resource_link={resource_link_id}, user={username}, roles={roles}")
+
+        # ── LLM access (token-dealer): a link configured as personal LLM keys ──
+        try:
+            llm_activity = llm_access.wiring.store().get_activity_by_resource_link(resource_link_id)
+        except Exception as e:  # never let token-dealer break assistant launches
+            logger.error(f"LLM-access lookup failed for {resource_link_id}: {e}")
+            llm_activity = None
+        if llm_activity and llm_activity['status'] == 'active':
+            return llm_access.launch_redirect(manager.get_public_base_url(request), llm_activity,
+                                              manager.is_instructor(roles), lms_user_id, lms_email, display_name)
 
         # Check if activity is already configured
         activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
@@ -258,6 +269,11 @@ async def lti_setup_page(request: Request, token: str = ""):
             org_names[org_id] = org.get('name', f'Organization {org_id}')
 
     needs_org_selection = len(orgs_with_assistants) > 1
+    try:
+        llm_access_url = f"llm-access/setup?token={token}" if llm_access.enabled_orgs(creator_users) else None
+    except Exception as e:
+        logger.error(f"LLM-access settings unreadable: {e}")
+        llm_access_url = None
 
     return templates.TemplateResponse("lti_activity_setup.html", {
         "request": request,
@@ -265,6 +281,7 @@ async def lti_setup_page(request: Request, token: str = ""):
         "resource_link_id": resource_link_id,
         "context_title": data.get("context_title", ""),
         "needs_org_selection": needs_org_selection,
+        "llm_access_url": llm_access_url,
         "orgs_with_assistants": orgs_with_assistants,
         "org_names": org_names,
         "orgs_json": json.dumps({

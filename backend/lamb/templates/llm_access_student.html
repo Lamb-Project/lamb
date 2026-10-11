@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAMB — Your LLM key</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }</style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4">
+<div class="bg-white rounded-xl shadow-lg max-w-2xl mx-auto p-8 space-y-5">
+    <h1 class="text-xl font-bold text-gray-900">Your LLM access · {{ a.activity_name or a.context_title }}</h1>
+    <p><span class="px-3 py-1 rounded-full text-sm font-medium {{ 'bg-green-100 text-green-800' if state.open else 'bg-gray-200 text-gray-700' }}">
+        {{ 'Open now' if state.open else 'Closed now' }}{% if state.next_change %} · {{ 'closes' if state.open else 'opens' }} {{ state.next_change }} ({{ state.timezone }}){% endif %}</span></p>
+    {% if error %}<div class="p-3 rounded bg-red-50 text-red-700 text-sm">{{ error }}</div>{% endif %}
+
+    {% if secret %}
+    <div class="p-4 rounded-lg border-2 border-blue-600 space-y-2">
+        <p class="font-medium">Your key. Copy it now: it is shown only once.</p>
+        <code class="block bg-gray-100 p-2 rounded break-all select-all">{{ secret }}</code>
+    </div>
+    <div class="space-y-2 text-sm">
+        <p class="font-medium">OpenAI-compatible tools (VS Code with Continue or Cline, Aider, Zed, Cursor)</p>
+        <pre class="bg-gray-100 p-2 rounded overflow-x-auto">Base URL: {{ endpoint }}
+API key:  {{ secret }}
+Model:    {{ model }}</pre>
+        <p class="font-medium">Claude Code</p>
+        <pre class="bg-gray-100 p-2 rounded overflow-x-auto">export ANTHROPIC_BASE_URL={{ anthropic_base }}
+export ANTHROPIC_AUTH_TOKEN={{ secret }}
+export ANTHROPIC_MODEL={{ model }}</pre>
+        <p class="font-medium">Test from a terminal</p>
+        <pre class="bg-gray-100 p-2 rounded overflow-x-auto">curl {{ endpoint }}/chat/completions -H "Authorization: Bearer {{ secret }}" \
+  -H "Content-Type: application/json" -d '{"model": "{{ model }}", "messages": [{"role": "user", "content": "hello"}]}'</pre>
+    </div>
+    {% elif key %}
+    <dl class="grid grid-cols-2 gap-3 text-sm">
+        <div><dt class="text-gray-500">Your key</dt><dd><code>{{ key.key_prefix }}…</code> · {{ key.status }}</dd></div>
+        <div><dt class="text-gray-500">Endpoint</dt><dd><code class="break-all">{{ endpoint }}</code></dd></div>
+        <div><dt class="text-gray-500">Used in the last {{ slot_minutes }} minutes</dt><dd>{{ '{:,}'.format(usage.slot) }}{% if a.slot_tokens %} of {{ '{:,}'.format(a.slot_tokens) }}{% endif %} tokens</dd></div>
+        <div><dt class="text-gray-500">Used in total</dt><dd>{{ '{:,}'.format(usage.total) }}{% if a.total_tokens %} of {{ '{:,}'.format(a.total_tokens) }}{% endif %} tokens</dd></div>
+    </dl>
+    {% endif %}
+
+    {% if not secret %}
+    <form method="POST" action="issue" class="space-y-3 border-t pt-4">
+        <input type="hidden" name="token" value="{{ token }}">
+        {% if key %}<input type="hidden" name="rotate" value="1">{% endif %}
+        <div class="text-sm text-gray-700 bg-gray-50 p-3 rounded space-y-1">
+            <p class="font-medium">Before you take a key</p>
+            <p>Your requests go through your institution's LLM gateway to the model your instructor chose. For each request the gateway records the time, the model and the number of tokens, linked to you, so your instructor can see your usage. The gateway does not store the text of your prompts or of the answers.</p>
+            <p>If the model is run by an outside provider, that provider receives the text of your requests under your institution's account, without your name.</p>
+            <p>The key is personal. Do not share it; you can replace it here at any time.</p>
+        </div>
+        <label class="text-sm flex gap-2"><input type="checkbox" name="accept" value="{{ notice_version }}" required> I have read this.</label>
+        <button class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg">{{ 'Replace my key' if key else 'Get my key' }}</button>
+        {% if key %}<p class="text-xs text-gray-500">Replacing stops your current key at once.</p>{% endif %}
+    </form>
+    {% endif %}
+</div>
+</body>
+</html>

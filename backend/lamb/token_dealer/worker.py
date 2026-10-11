@@ -101,26 +101,9 @@ class Worker:
 
 def _production():
     """Wire the worker to LAMB's database, organization settings and proxies."""
-    from lamb.database_manager import LambDatabaseManager
-    import config
-    from .ledger import UsageLedger
-    from .proxy_client import ProxyClient
-    from .settings import from_org_config
-    from .store import TokenDealerStore
-
-    db = LambDatabaseManager()
-    store = TokenDealerStore(db)
-
-    def settings_for(org_id):
-        org = db.get_organization_by_id(org_id) or {}
-        return from_org_config(org.get('config') or {})
-
-    def client_for(org_id):
-        s = settings_for(org_id)
-        return ProxyClient(s.proxy_url, s.proxy_admin_key)
-
-    path = os.environ.get('TOKEN_DEALER_LEDGER_PATH') or os.path.join(config.LAMB_DB_PATH, 'token_dealer_usage.db')
-    return Worker(store, UsageLedger(path), settings_for, client_for), path
+    from . import wiring
+    path = wiring.ledger_path()
+    return Worker(wiring.store(), wiring.ledger(), wiring.settings_for, wiring.client_for), path
 
 
 def main(argv=None):

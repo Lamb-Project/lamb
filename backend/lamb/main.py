@@ -19,6 +19,7 @@ from .simple_lti.simple_lti_main import router as simple_lti_router
 from .completions.main import router as completions_router
 from .mcp_router import router as mcp_router  # MCP protocol - KEEP (used by frontend for external MCP clients)
 from .lti_router import router as lti_router  # Unified LTI activity endpoint
+from .token_dealer.lti import router as llm_access_router  # LTI "LLM access" activities (token-dealer)
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -78,6 +79,7 @@ class UserPermissions(BaseModel):
 # REMOVED: owi_router (security risk - Dec 27, 2025)
 app.include_router(lti_users_router, prefix="/v1/lti_users")
 app.include_router(lti_creator_router, prefix="/v1/lti_creator")  # LTI creator login
+app.include_router(llm_access_router, prefix="/v1/lti/llm-access")  # before /v1/lti so its paths win
 app.include_router(lti_router, prefix="/v1/lti")  # Unified LTI activity endpoint
 app.include_router(simple_lti_router)
 app.include_router(completions_router, prefix="/v1/completions")

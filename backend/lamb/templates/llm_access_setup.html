@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAMB — Set up LLM access</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }</style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4">
+<div class="bg-white rounded-xl shadow-lg max-w-2xl mx-auto p-8">
+    <h1 class="text-xl font-bold text-gray-900 mb-1">Set up LLM access</h1>
+    <p class="text-gray-600 mb-6">Each student of <strong>{{ context_title or 'this course' }}</strong> gets a personal key for their own coding tools. You choose the model, the timetable and the limits.</p>
+    {% if error %}<div class="mb-4 p-3 rounded bg-red-50 text-red-700 text-sm">{{ error }}</div>{% endif %}
+    <form method="POST" action="configure" class="space-y-6">
+        <input type="hidden" name="token" value="{{ token }}">
+        {% for o in options %}
+        <fieldset class="border rounded-lg p-4 space-y-3">
+            <label class="flex items-center gap-2 font-medium">
+                <input type="radio" name="organization_id" value="{{ o.org_id }}" {% if loop.first %}checked{% endif %} required>
+                {{ o.org_name }}
+            </label>
+            <p class="text-sm text-gray-500">
+                Policy: <strong>{{ {'pool': 'an activity pool', 'per_student': 'a per-student allowance', 'both': 'an activity pool and a per-student allowance'}[o.policy] }}</strong>.
+                {% if o.left is not none %}Tokens you can still commit: <strong>{{ '{:,}'.format(o.left) }}</strong>.{% endif %}
+            </p>
+            <div class="text-sm">Models:
+                {% for m in o.models %}<label class="ml-3"><input type="checkbox" name="models" value="{{ m }}" {% if loop.first %}checked{% endif %}> {{ m }}</label>{% endfor %}
+            </div>
+        </fieldset>
+        {% endfor %}
+        <fieldset class="border rounded-lg p-4 space-y-3">
+            <legend class="font-medium px-1">Timetable</legend>
+            <label class="block text-sm"><input type="radio" name="mode" value="always" checked> Open all the time</label>
+            <label class="block text-sm"><input type="radio" name="mode" value="weekly"> Open on these days, from
+                <input type="time" name="start" step="600" value="15:00" class="border rounded px-1"> to
+                <input type="time" name="end" step="600" value="17:00" class="border rounded px-1"></label>
+            <div class="text-sm flex flex-wrap gap-3">{% for i, d in days %}<label><input type="checkbox" name="days" value="{{ i }}"> {{ d }}</label>{% endfor %}</div>
+            <div class="text-sm flex flex-wrap gap-4">
+                <label>From <input type="date" name="from" class="border rounded px-1"></label>
+                <label>Until <input type="date" name="until" class="border rounded px-1"></label>
+                <label>Time zone <input type="text" name="timezone" value="Europe/Madrid" class="border rounded px-1 w-40"></label>
+            </div>
+            <p class="text-xs text-gray-500">Times are on 10-minute steps. Outside the timetable, keys are refused.</p>
+        </fieldset>
+        <fieldset class="border rounded-lg p-4 space-y-3">
+            <legend class="font-medium px-1">Limits, in tokens</legend>
+            <label class="block text-sm">Activity pool, shared by all students <input type="number" name="pool_tokens" min="1" class="border rounded px-1 w-36"></label>
+            <label class="block text-sm">Per student, every 10 minutes <input type="number" name="slot_tokens" min="1" class="border rounded px-1 w-36"></label>
+            <label class="block text-sm">Per student, in total <input type="number" name="total_tokens" min="1" class="border rounded px-1 w-36"></label>
+            <p class="text-xs text-gray-500">Your organization's policy says which of these are required. Leave the others empty.</p>
+        </fieldset>
+        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg">Create LLM access</button>
+    </form>
+</div>
+</body>
+</html>
