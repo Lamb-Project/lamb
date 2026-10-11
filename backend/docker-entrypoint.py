@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
+import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -69,8 +71,39 @@ def patch_frontend_config() -> None:
     config_js_path.write_text(text, encoding="utf-8")
 
 
+REQUIREMENTS_STAMP = Path("/usr/local/lib/lamb-requirements.sha256")
+
+
+def sync_dev_requirements() -> None:
+    """Install bind-mounted requirements that are newer than the image.
+
+    In dev mode the backend source is mounted over the image, so a pulled
+    requirements.txt can reference packages the image never installed.
+    """
+    if not config.DEV_MODE:
+        return
+    requirements = Path(__file__).resolve().parent / "requirements.txt"
+    if not requirements.exists():
+        return
+    digest = hashlib.sha256(requirements.read_bytes()).hexdigest()
+    try:
+        installed = REQUIREMENTS_STAMP.read_text(encoding="utf-8").strip()
+    except OSError:
+        installed = ""
+    if digest == installed:
+        return
+    print("requirements.txt changed since the image was built; installing dependencies...", flush=True)
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--no-cache-dir", "-r", str(requirements)])
+    if result.returncode != 0:
+        print("Warning: dependency sync failed; rebuild the image with 'docker compose build lamb'", flush=True)
+        return
+    REQUIREMENTS_STAMP.write_text(digest + "\n", encoding="utf-8")
+
+
 def main() -> None:
     patch_frontend_config()
+    sync_dev_requirements()
     if len(sys.argv) > 1:
         # Handle LAMB_WORKERS configuration
         workers = os.getenv("LAMB_WORKERS")
