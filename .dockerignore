@@ -21,6 +21,10 @@ scripts/
 frontend/svelte-app/node_modules/
 frontend/svelte-app/.svelte-kit/
 frontend/svelte-app/.vite/
+frontend/module-*/node_modules/
+frontend/module-*/.svelte-kit/
+frontend/module-*/.vite/
+frontend/module-*/static/config.js
 
 frontend/build/
 backend/test_output/
