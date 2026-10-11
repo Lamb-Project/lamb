@@ -63,7 +63,8 @@ class LlmAccessModule(ActivityModule):
         ]
 
     def on_activity_configured(self, activity_id: int, setup_data: Dict[str, Any]) -> None:
-        activity = self.db_manager.get_lti_activity_by_id(activity_id)
+        # The router passes the resource link; the database manager has no lookup by id.
+        activity = self.db_manager.get_lti_activity_by_resource_link(setup_data['resource_link_id'])
         org_id = activity['organization_id']
         settings = wiring.settings_for(org_id)
         existing = wiring.store().get_activity_by_resource_link(activity['resource_link_id'])

@@ -38,14 +38,15 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(wiring, 'ledger', lambda: UsageLedger(tmp_path / 'usage.db'))
     from lamb.modules import llm_access
     mod = llm_access.LlmAccessModule.__new__(llm_access.LlmAccessModule)
-    mod.db_manager = SimpleNamespace(get_lti_activity_by_id=lambda i: LTI_ACTIVITY)
+    mod.db_manager = SimpleNamespace(get_lti_activity_by_resource_link=lambda rl: LTI_ACTIVITY if rl == 'rl-9' else None)
     app = FastAPI()
     app.include_router(lti.router, prefix=PREFIX)
     return SimpleNamespace(client=TestClient(app), store=store, proxy=proxy, module=mod, settings=settings)
 
 
 def configure(env, **fields):
-    env.module.on_activity_configured(7, {'configured_by_email': 't@x.edu', 'activity_name': 'Databases', **fields})
+    env.module.on_activity_configured(7, {'resource_link_id': 'rl-9', 'configured_by_email': 't@x.edu',
+                                          'activity_name': 'Databases', **fields})
     return env.store.get_activity_by_resource_link('rl-9')
 
 
