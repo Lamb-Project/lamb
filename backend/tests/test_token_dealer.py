@@ -15,7 +15,7 @@ from lamb.token_dealer.service import AllocationError, KeyExists, TokenDealerSer
 from lamb.token_dealer.settings import Settings, SettingsError, check_limits, from_org_config, pool_sizing_warning
 from lamb.token_dealer.store import TokenDealerStore
 from lamb.token_dealer.units import tokens_to_units, units_to_tokens
-from lamb.token_dealer.worker import Worker
+from lamb.token_dealer.worker import Worker, next_boundary
 
 UTC = timezone.utc
 WEEKLY = {'timezone': 'Europe/Madrid', 'mode': 'weekly', 'weekly': [{'days': [0], 'start': '15:00', 'end': '17:00'}]}
@@ -292,3 +292,7 @@ def test_worker_ingests_into_the_ledger(svc, tmp_path):
     assert worker.ingest(now=MONDAY_1600_MADRID.timestamp()) == {'new': 2, 'skipped': 1, 'errors': 0}
     assert worker.ingest(now=MONDAY_1600_MADRID.timestamp()) == {'new': 0, 'skipped': 3, 'errors': 0}
     assert worker.ledger.totals(activity_id=aid)[1]['tokens'] == 30
+
+
+def test_worker_wakes_on_every_minute_mark():
+    assert next_boundary(1791720000.0) == 1791720060 and next_boundary(1791720059.9) == 1791720060

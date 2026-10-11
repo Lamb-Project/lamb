@@ -26,6 +26,7 @@ from .proxy_client import ProxyError
 
 log = logging.getLogger('lamb.token_dealer.worker')
 OVERLAP = 180          # seconds re-read on every ingestion
+BOUNDARY = 60          # timetables change only on minute marks: reconcile right after each one
 AHEAD = 60             # seconds past now in the query window (proxy clock skew)
 
 
@@ -99,6 +100,12 @@ class Worker:
         return out
 
 
+def next_boundary(t, step=BOUNDARY):
+    """The first minute mark after t: a reconcile there makes timetable changes take effect at once
+    instead of up to one cycle late (swarm run, 2026-10-11: openings were up to 9.9 s late)."""
+    return (int(t) // step + 1) * step
+
+
 def _production():
     """Wire the worker to LAMB's database, organization settings and proxies."""
     from . import wiring
@@ -123,8 +130,12 @@ def main(argv=None):
     stop = []
     signal.signal(signal.SIGTERM, lambda *_: stop.append(1))
     next_r = next_i = next_p = 0.0
+    next_b = next_boundary(time.time())
     while not stop:
         t = time.time()
+        if t >= next_b + 0.2:
+            next_r = t
+            next_b = next_boundary(t)
         if t >= next_r:
             r = worker.reconcile()
             if r['opened'] or r['closed'] or r['errors']:
@@ -140,7 +151,7 @@ def main(argv=None):
             next_p = t + 3600
         if args.once:
             break
-        time.sleep(0.5)
+        time.sleep(0.2)
     return 0
 
 
