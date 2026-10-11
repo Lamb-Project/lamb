@@ -142,9 +142,15 @@
         return true;
     }
 
+    // lamb-0.8: a module may not use assistants at all (LLM access)
+    let needsAssistants = $derived(
+        !(setupData?.modules || []).some(m => m.name === selectedActivity && m.requires_assistants === false)
+    );
+
     let canSubmit = $derived(
-        selectedActivity && selectedOrg && selectedAssistants.length > 0
-        && selectedAssistants.every(id => assistantsForCurrentActivity.some(a => a.id === id))
+        selectedActivity && selectedOrg
+        && (!needsAssistants || (selectedAssistants.length > 0
+            && selectedAssistants.every(id => assistantsForCurrentActivity.some(a => a.id === id))))
         && hasRequiredFields() && !saving
     );
 
@@ -168,7 +174,7 @@
             const payload = {
                 token: token,
                 organization_id: selectedOrg,
-                assistant_ids: selectedAssistants,
+                assistant_ids: needsAssistants ? selectedAssistants : [],
                 ...dynamicOptions,
                 activity_type: selectedActivity,
             };
@@ -272,7 +278,7 @@
                 {/if}
 
                 <!-- Step 2: Assistant Selection -->
-                {#if selectedOrg}
+                {#if selectedOrg && needsAssistants}
                     <div class="mb-6">
                         <h2 class="text-lg font-semibold text-gray-800 mb-1">Select Assistants</h2>
                         <p class="text-sm text-gray-600 mb-3">Choose which AI assistants will be available in this activity.</p>
@@ -330,7 +336,7 @@
                             {/if}
                         </div>
                     </div>
-                {:else if setupData?.needs_org_selection}
+                {:else if setupData?.needs_org_selection && !selectedOrg && needsAssistants}
                     <div class="mb-6">
                         <h2 class="text-lg font-semibold text-gray-800 mb-1">Select Assistants</h2>
                         <p class="text-sm text-gray-400 italic">Select an organization above to see available assistants.</p>

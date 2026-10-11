@@ -297,6 +297,14 @@ async def lti_setup_info(request: Request, token: str = ""):
         return JSONResponse({"detail": "Could not identify your Creator account."}, status_code=403)
 
     orgs_with_assistants = manager.get_published_assistants_for_instructor(creator_users)
+    # lamb-0.8: organizations where a module without assistants is enabled are offered too
+    no_assistant_modules = [m for m in get_all_modules() if not getattr(m, 'requires_assistants', True)]
+    for cu in creator_users:
+        org_id = cu['organization_id']
+        if org_id not in orgs_with_assistants and any(m.enabled_for_org(org_id) for m in no_assistant_modules):
+            orgs_with_assistants[org_id] = []
+    instructor_orgs = sorted({cu['organization_id'] for cu in creator_users})
+    offered_modules = [m for m in get_all_modules() if any(m.enabled_for_org(o) for o in instructor_orgs)]
 
     org_names = {}
     for org_id in orgs_with_assistants:
@@ -318,10 +326,12 @@ async def lti_setup_info(request: Request, token: str = ""):
         "needs_org_selection": needs_org_selection,
         "org_names": org_names,
         "orgs_with_assistants": orgs_with_assistants,
-        "modules": [{"name": m.name, "display_name": getattr(m, 'display_name', m.name), "description": getattr(m, 'description', '')} for m in get_all_modules()],
+        "modules": [{"name": m.name, "display_name": getattr(m, 'display_name', m.name),
+                     "description": getattr(m, 'description', ''),
+                     "requires_assistants": getattr(m, 'requires_assistants', True)} for m in offered_modules],
         "modules_fields": {
             m.name: [_field_to_json(f) for f in m.get_setup_fields()]
-            for m in get_all_modules()
+            for m in offered_modules
         }
     })
 
@@ -353,7 +363,10 @@ async def lti_configure_activity(request: Request):
 
         if not organization_id:
             return JSONResponse({"detail": "No organization selected"}, status_code=400)
-        if not assistant_ids:
+        requested_module = get_module(activity_type)
+        if not requested_module or not requested_module.enabled_for_org(organization_id):
+            return JSONResponse({"detail": f"Activity type '{activity_type}' is not available"}, status_code=400)
+        if not assistant_ids and getattr(requested_module, 'requires_assistants', True):
             return JSONResponse({"detail": "Please select at least one assistant"}, status_code=400)
 
         # File-evaluation specific validation
@@ -470,7 +483,13 @@ async def lti_configure_activity(request: Request):
             "chat_visibility_enabled": chat_visibility_enabled,
             **extras,
         }
-        module.on_activity_configured(activity['id'], setup_data)
+        try:
+            module.on_activity_configured(activity['id'], setup_data)
+        except Exception:
+            if not existing_activity:
+                # lamb-0.8: do not leave a half-configured link behind; the instructor can retry
+                db_manager.delete_lti_activity(activity['id'])
+            raise
 
         # Re-fetch activity: module may have filled in OWI fields
         activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
@@ -492,6 +511,9 @@ async def lti_configure_activity(request: Request):
 
         public_base = manager.get_public_base_url(request)
         at = activity.get("activity_type") or "chat"
+        module_redirect = module.configured_redirect(public_base, activity, lms_user_id, lms_email)
+        if module_redirect:
+            return JSONResponse({"status": "success", "redirect_url": module_redirect})
         if at == "file_evaluation":
             fe_lang = str(payload.get("language", "en")).lower()
             if fe_lang not in ("en", "es", "ca", "eu"):

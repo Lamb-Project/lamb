@@ -31,6 +31,16 @@ class ActivityModule(ABC):
     name: str            # Unique identifier (e.g., "chat", "file_evaluation")
     display_name: str    # Human readable ("AI Chat Activity")
     description: str     # Shown to instructors in the setup dropdown
+    requires_assistants: bool = True   # lamb-0.8: False lets setup skip assistant selection
+
+    def enabled_for_org(self, organization_id: int) -> bool:
+        """lamb-0.8: offer this module to instructors of this organization (default: always)."""
+        return True
+
+    def configured_redirect(self, public_base: str, activity: Dict[str, Any],
+                            lms_user_id: str, lms_email: str) -> Optional[str]:
+        """lamb-0.8: where to send the instructor after setup; None keeps the router's default."""
+        return None
     
     @abstractmethod
     def get_migrations(self) -> List[str]:

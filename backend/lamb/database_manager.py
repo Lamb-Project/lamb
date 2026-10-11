@@ -7960,6 +7960,23 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
+    def delete_lti_activity(self, activity_id: int) -> bool:
+        """Remove an LTI activity record and, through ON DELETE CASCADE, its assistant and user links
+        (lamb-0.8: used when a module's setup fails, so the link can be configured again)."""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                connection.execute("PRAGMA foreign_keys = ON")
+                cur = connection.execute(f"DELETE FROM {self.table_prefix}lti_activities WHERE id = ?", (activity_id,))
+                return cur.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error deleting LTI activity {activity_id}: {e}")
+            return False
+        finally:
+            connection.close()
+
     def get_lti_activities_by_org(self, organization_id: int) -> List[Dict[str, Any]]:
         """Get all LTI activities for an organization (for org-admin)."""
         connection = self.get_connection()
