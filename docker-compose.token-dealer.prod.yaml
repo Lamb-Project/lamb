@@ -1,0 +1,11 @@
+# Production front for LLM access: students reach the proxy at https://$LLM_PUBLIC_HOST/v1/.
+# Use with docker-compose.next.prod.yaml and docker-compose.token-dealer.yaml.
+# Set LLM_PUBLIC_HOST (e.g. llm.lamb.yourdomain.com) and TOKEN_DEALER_PUBLIC_URL=https://<that host>/v1.
+services:
+  caddy:
+    environment:
+      LLM_PUBLIC_HOST: ${LLM_PUBLIC_HOST?Set LLM_PUBLIC_HOST}
+    volumes:
+      - ./token-dealer/Caddyfile.llm:/etc/caddy/extra/llm.caddy:ro
+    depends_on:
+      - token-dealer-proxy

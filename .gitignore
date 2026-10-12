@@ -226,3 +226,7 @@ frontend/module-*/node_modules
 frontend/module-*/.svelte-kit
 frontend/module-*/src/lib/version.js
 frontend/module-*/package-lock.json
+
+# LLM access: the operator's proxy configuration
+token-dealer/config.yaml
+token-dealer/proxy.env
