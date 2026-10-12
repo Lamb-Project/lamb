@@ -120,7 +120,7 @@ async def manage_page(request: Request, token: str = ''):
         'request': request, 'token': token, 'a': a, 'state': _state(a), 'rows': rows, 'policy': s.policy,
         'warnings': svc.warnings(a['id']), 'endpoint': s.public_url, 'days': list(enumerate(DAYS)),
         'used': sum(v.get('tokens', 0) for v in totals.values()), 'models': s.models,
-        'error': request.query_params.get('error')})
+        'slot_minutes': s.slot_minutes, 'error': request.query_params.get('error')})
 
 
 @router.post('/override')

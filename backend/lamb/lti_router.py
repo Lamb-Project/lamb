@@ -479,6 +479,7 @@ async def lti_configure_activity(request: Request):
             "resource_link_id": resource_link_id,
             "assistant_ids": assistant_ids,
             "configured_by_email": creator_user["user_email"],
+            "lms_email": data.get("lti_lms_email", ""),   # lamb-0.8: the teacher's real email, for allowances
             "activity_name": resolved_activity_name,
             "chat_visibility_enabled": chat_visibility_enabled,
             **extras,

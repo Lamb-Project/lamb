@@ -59,7 +59,7 @@ def ctx(instructor):
 def test_module_contract_and_availability(env):
     m = env.module
     assert m.name == 'llm_access' and m.requires_assistants is False and m.get_migrations() == []
-    assert [f.name for f in m.get_setup_fields()] == ['pool_tokens', 'slot_tokens', 'total_tokens']
+    assert [f.name for f in m.get_setup_fields()] == ['title', 'pool_tokens', 'slot_tokens', 'total_tokens']
     assert m.enabled_for_org(1)
     env.settings['s'] = Settings(enabled=False)
     assert not m.enabled_for_org(1)
@@ -115,3 +115,11 @@ def test_instructor_pages_need_the_manage_token_and_change_every_key(env):
         'timezone': 'Europe/Madrid', 'pool_tokens': '60000', 'slot_tokens': '3000'})
     assert r.status_code == 303 and env.store.get_activity(a['id'])['slot_tokens'] == 3000
     assert [c for c in env.proxy.calls if c[0] == 'update_key'][0][2]['budget_limits'][0]['max_budget'] == 0.003
+
+
+def test_allowance_follows_the_lms_email_not_the_synthetic_creator_address(env):
+    a = configure(env, pool_tokens='50000', slot_tokens='2000', configured_by_email='lti_creator_org_1@lamb-lti.local',
+                  lms_email=' Ana.Teacher@X.edu ')
+    assert a['owner_email'] == 'ana.teacher@x.edu'
+    b = configure(env, pool_tokens='50000', slot_tokens='2000', lms_email='')
+    assert b['owner_email'] == 't@x.edu'

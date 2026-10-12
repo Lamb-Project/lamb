@@ -57,8 +57,9 @@ class LlmAccessModule(ActivityModule):
 
     def get_setup_fields(self) -> List[SetupField]:
         return [
+            SetupField(name="title", label="Activity name (shown to students)", field_type="text"),
             SetupField(name="pool_tokens", label="Activity pool: tokens shared by all students", field_type="number"),
-            SetupField(name="slot_tokens", label="Per student: tokens every 10 minutes", field_type="number"),
+            SetupField(name="slot_tokens", label="Per student: tokens per time slot (10 minutes unless your organization chose otherwise)", field_type="number"),
             SetupField(name="total_tokens", label="Per student: tokens in total", field_type="number"),
         ]
 
@@ -70,9 +71,13 @@ class LlmAccessModule(ActivityModule):
         existing = wiring.store().get_activity_by_resource_link(activity['resource_link_id'])
         schedule = existing['schedule'] if existing else {'mode': 'always', 'timezone': settings.timezone}
         models = existing['models'] if existing else list(settings.models)
+        # The allowance follows the teacher's email as the LMS sends it: accounts created through
+        # LTI Creator carry a synthetic address the org admin cannot know.
+        owner = ((setup_data.get('lms_email') or '').strip().lower() or setup_data.get('configured_by_email')
+                 or activity['owner_email'])
         try:
             wiring.service().configure_activity(
-                org_id, activity['resource_link_id'], setup_data.get('configured_by_email') or activity['owner_email'],
+                org_id, activity['resource_link_id'], owner,
                 models, schedule, pool_tokens=_tokens(setup_data.get('pool_tokens')),
                 slot_tokens=_tokens(setup_data.get('slot_tokens')), total_tokens=_tokens(setup_data.get('total_tokens')),
                 owner_name=activity.get('owner_name'), context_id=activity.get('context_id'),

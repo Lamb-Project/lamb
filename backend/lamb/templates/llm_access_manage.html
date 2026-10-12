@@ -28,7 +28,7 @@
     </div>
     <dl class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
         <div><dt class="text-gray-500">Pool</dt><dd class="font-medium">{{ '{:,}'.format(a.pool_tokens) if a.pool_tokens else '—' }}</dd></div>
-        <div><dt class="text-gray-500">Per student, 10 min</dt><dd class="font-medium">{{ '{:,}'.format(a.slot_tokens) if a.slot_tokens else '—' }}</dd></div>
+        <div><dt class="text-gray-500">Per student, {{ slot_minutes }} min</dt><dd class="font-medium">{{ '{:,}'.format(a.slot_tokens) if a.slot_tokens else '—' }}</dd></div>
         <div><dt class="text-gray-500">Per student, total</dt><dd class="font-medium">{{ '{:,}'.format(a.total_tokens) if a.total_tokens else '—' }}</dd></div>
         <div><dt class="text-gray-500">Used so far</dt><dd class="font-medium">{{ '{:,}'.format(used) }}</dd></div>
     </dl>
@@ -50,7 +50,7 @@
             </div>
             <div class="flex flex-wrap gap-4">
                 <label>Pool <input type="number" name="pool_tokens" min="1" value="{{ a.pool_tokens or '' }}" class="border rounded px-1 w-32"></label>
-                <label>Per student, 10 min <input type="number" name="slot_tokens" min="1" value="{{ a.slot_tokens or '' }}" class="border rounded px-1 w-32"></label>
+                <label>Per student, {{ slot_minutes }} min <input type="number" name="slot_tokens" min="1" value="{{ a.slot_tokens or '' }}" class="border rounded px-1 w-32"></label>
                 <label>Per student, total <input type="number" name="total_tokens" min="1" value="{{ a.total_tokens or '' }}" class="border rounded px-1 w-32"></label>
             </div>
             <p class="text-xs text-gray-500">Changes reach every student's key at once. Policy of this organization: {{ policy }}.</p>
