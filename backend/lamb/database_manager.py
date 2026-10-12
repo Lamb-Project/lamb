@@ -8081,10 +8081,12 @@ class LambDatabaseManager:
                 cursor.execute(f"""
                     SELECT a.id, a.name, a.owner, a.description,
                            aa.added_at,
-                           ap.oauth_consumer_name
+                           ap.oauth_consumer_name,
+                           u.user_name AS owner_name
                     FROM {self.table_prefix}lti_activity_assistants aa
                     JOIN {self.table_prefix}assistants a ON aa.assistant_id = a.id
                     LEFT JOIN {self.table_prefix}assistant_publish ap ON a.id = ap.assistant_id
+                    LEFT JOIN {self.table_prefix}Creator_users u ON u.user_email = a.owner
                     WHERE aa.activity_id = ?
                     ORDER BY a.name
                 """, (activity_id,))
@@ -8362,9 +8364,11 @@ class LambDatabaseManager:
                     SELECT a.id, a.name, a.description, a.owner,
                            ap.oauth_consumer_name, ap.group_id, ap.group_name,
                            'owned' as access_type,
-                           a.api_callback
+                           a.api_callback,
+                           u.user_name AS owner_name
                     FROM {self.table_prefix}assistants a
                     JOIN {self.table_prefix}assistant_publish ap ON a.id = ap.assistant_id
+                    LEFT JOIN {self.table_prefix}Creator_users u ON u.user_email = a.owner
                     WHERE a.owner = ? AND a.organization_id = ?
                           AND ap.oauth_consumer_name IS NOT NULL
                           AND ap.oauth_consumer_name != 'null'
@@ -8378,10 +8382,12 @@ class LambDatabaseManager:
                     SELECT a.id, a.name, a.description, a.owner,
                            ap.oauth_consumer_name, ap.group_id, ap.group_name,
                            'shared' as access_type,
-                           a.api_callback
+                           a.api_callback,
+                           u.user_name AS owner_name
                     FROM {self.table_prefix}assistant_shares s
                     JOIN {self.table_prefix}assistants a ON s.assistant_id = a.id
                     JOIN {self.table_prefix}assistant_publish ap ON a.id = ap.assistant_id
+                    LEFT JOIN {self.table_prefix}Creator_users u ON u.user_email = a.owner
                     WHERE s.shared_with_user_id = ? AND a.organization_id = ?
                           AND ap.oauth_consumer_name IS NOT NULL
                           AND ap.oauth_consumer_name != 'null'

@@ -83,3 +83,13 @@ def test_module_redirects_use_the_deployment_public_host(monkeypatch):
     assert module_public_base() == 'https://lamb.example.edu'
     monkeypatch.setenv('LAMB_PUBLIC_BASE_URL', 'https://public.example.edu')
     assert module_public_base() == 'https://public.example.edu'
+
+
+def test_same_named_organizations_are_told_apart_by_slug(env, monkeypatch):
+    users = {5: {**CU, 'organization_id': 3}, 6: {**CU, 'id': 6, 'organization_id': 4}}
+    orgs = {3: {'name': 'UPC', 'slug': 'upc-a'}, 4: {'name': 'UPC', 'slug': 'upc-b'}}
+    monkeypatch.setattr(lti_router, '_validate_lti_jwt', lambda token, kind: {**JWT, 'lti_creator_user_ids': [5, 6]})
+    monkeypatch.setattr(lti_router.db_manager, 'get_creator_user_by_id', users.get, raising=False)
+    monkeypatch.setattr(lti_router.db_manager, 'get_organization_by_id', orgs.get, raising=False)
+    info = env.client.get('/lamb/v1/lti/setup/info', params={'token': 't'}).json()
+    assert info['needs_org_selection'] and info['org_names'] == {'3': 'UPC (upc-a)', '4': 'UPC (upc-b)'}

@@ -211,6 +211,7 @@ class ChatModuleService:
                 "id": asst["id"],
                 "name": asst["name"],
                 "owner": asst.get("owner", ""),
+                "owner_name": asst.get("owner_name") or "",
                 "chat_count": chats,
                 "message_count": msgs,
             })

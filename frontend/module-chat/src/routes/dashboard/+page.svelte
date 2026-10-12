@@ -184,7 +184,7 @@
                             <div class="flex flex-wrap items-center gap-2">
                                 <span class="w-2 h-2 rounded-full bg-green-500 shrink-0"></span>
                                 <span class="font-medium text-gray-900 text-sm whitespace-nowrap">{asst.name}</span>
-                                <span class="text-xs text-gray-400 whitespace-nowrap">by {asst.owner}</span>
+                                <span class="text-xs text-gray-400 whitespace-nowrap">by {asst.owner_name || asst.owner}</span>
                             </div>
                             <div class="text-xs text-gray-500 text-right shrink-0 ml-2">
                                 {asst.chat_count} chats · {asst.message_count} msgs

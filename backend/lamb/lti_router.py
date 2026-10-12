@@ -306,11 +306,17 @@ async def lti_setup_info(request: Request, token: str = ""):
     instructor_orgs = sorted({cu['organization_id'] for cu in creator_users})
     offered_modules = [m for m in get_all_modules() if any(m.enabled_for_org(o) for o in instructor_orgs)]
 
-    org_names = {}
+    org_names, org_slugs = {}, {}
     for org_id in orgs_with_assistants:
         org = db_manager.get_organization_by_id(org_id)
         if org:
             org_names[org_id] = org.get('name', f'Organization {org_id}')
+            org_slugs[org_id] = org.get('slug', '')
+    # Two organizations with the same name cannot be told apart in the chooser: add the slug.
+    name_counts = {n: list(org_names.values()).count(n) for n in org_names.values()}
+    for org_id, name in list(org_names.items()):
+        if org_slugs.get(org_id) and name_counts[name] > 1:
+            org_names[org_id] = f"{name} ({org_slugs[org_id]})"
 
     needs_org_selection = len(orgs_with_assistants) > 1
 

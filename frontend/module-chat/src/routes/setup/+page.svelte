@@ -312,7 +312,7 @@
                                         {#if a.access_type === 'shared'}
                                             <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full ml-2 font-medium">shared</span>
                                         {/if}
-                                        <p class="text-sm text-gray-500">by {a.owner}</p>
+                                        <p class="text-sm text-gray-500">by {a.owner_name || a.owner}</p>
                                     </div>
                                 </label>
                             {/each}
