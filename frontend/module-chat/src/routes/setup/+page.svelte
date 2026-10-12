@@ -320,9 +320,9 @@
                                 <p class="text-sm text-gray-500 p-4 border rounded-lg bg-gray-50 italic">No assistants match the current filters. Adjust the filters above.</p>
                             {:else if assistantsForCurrentActivity.length === 0 && selectedActivity === 'file_evaluation'}
                                 <div class="p-4 border border-amber-300 rounded-lg bg-amber-50">
-                                    <p class="text-sm text-amber-800 font-medium mb-2">No assistants with a rubric found.</p>
+                                    <p class="text-sm text-amber-800 font-medium mb-2">No published assistant with a rubric.</p>
                                     <p class="text-sm text-amber-700">
-                                        File Evaluation requires an assistant configured with a rubric. Create one via the Creator LTI launch:
+                                        File Evaluation needs an assistant that has a rubric (RAG processor "Rubric RAG", chosen when the assistant is created) and is published. In LAMB Creator, create or open it and publish it, then reload this page. LAMB Creator from your course:
                                     </p>
                                     <code class="block mt-1 text-xs bg-amber-100 text-amber-900 px-2 py-1 rounded font-mono">/lamb/v1/lti_creator/launch</code>
                                 </div>
@@ -330,7 +330,7 @@
                                 <div class="p-4 border border-amber-300 rounded-lg bg-amber-50">
                                     <p class="text-sm text-amber-800 font-medium mb-2">No published assistants found.</p>
                                     <p class="text-sm text-amber-700">
-                                        You need to create an assistant first. Use the Creator LTI launch to get started:
+                                        Create an assistant in LAMB Creator and publish it, then reload this page. LAMB Creator from your course:
                                     </p>
                                     <code class="block mt-1 text-xs bg-amber-100 text-amber-900 px-2 py-1 rounded font-mono">/lamb/v1/lti_creator/launch</code>
                                 </div>
