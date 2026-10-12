@@ -1,4 +1,4 @@
-from lamb.modules.base import ActivityModule, SetupField, LTIContext
+from lamb.modules.base import ActivityModule, SetupField, LTIContext, module_public_base
 from lamb.modules.chat.service import ChatModuleService
 from fastapi.responses import RedirectResponse
 from fastapi import HTTPException
@@ -96,7 +96,7 @@ class ChatModule(ActivityModule):
         instructor_email = lti_manager.generate_student_email(ctx.username, ctx.resource_link_id)
         instructor_user = {"email": instructor_email, "display_name": ctx.display_name}
 
-        public_base = os.getenv("LAMB_PUBLIC_BASE_URL", "http://localhost:9099") 
+        public_base = module_public_base() 
 
         dashboard_token = _create_dashboard_jwt(
             activity, instructor_user,

@@ -18,6 +18,15 @@ class LTIContext(BaseModel):
     # LTI 1.1: per-user grade line id for Outcomes passback (from launch POST)
     lis_result_sourcedid: Optional[str] = None
 
+def module_public_base() -> str:
+    """Public base URL for module redirects made without a request at hand (student launches).
+    lamb-0.8: alpha read only LAMB_PUBLIC_BASE_URL and fell back to http://localhost:9099, which
+    sends students to a dead address on any deployment that sets LAMB_WEB_HOST instead."""
+    import os
+    import config
+    return (os.getenv("LAMB_PUBLIC_BASE_URL") or config.LAMB_WEB_HOST or "http://localhost:9099").rstrip("/")
+
+
 class SetupField(BaseModel):
     """Defines extra fields the module needs on the setup page"""
     name: str           # e.g., 'rubric_pdf' or 'chat_visibility_enabled'

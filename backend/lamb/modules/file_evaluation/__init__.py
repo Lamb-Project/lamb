@@ -1,4 +1,4 @@
-from lamb.modules.base import ActivityModule, SetupField, LTIContext
+from lamb.modules.base import ActivityModule, SetupField, LTIContext, module_public_base
 from lamb.modules.file_evaluation.service import FileEvalService
 from . import migrations as _fe_migrations
 from fastapi.responses import RedirectResponse
@@ -187,7 +187,7 @@ class FileEvalModule(ActivityModule):
             lis_result_sourcedid=ctx.lis_result_sourcedid,
         )
 
-        public_base = os.getenv("LAMB_PUBLIC_BASE_URL", "http://localhost:9099")
+        public_base = module_public_base()
         lang = _activity_language(activity)
         url = (
             f"{public_base}/m/file-eval/upload"
@@ -213,7 +213,7 @@ class FileEvalModule(ActivityModule):
             ctx.lms_user_id, is_instructor=True,
         )
 
-        public_base = os.getenv("LAMB_PUBLIC_BASE_URL", "http://localhost:9099")
+        public_base = module_public_base()
         lang = _activity_language(activity)
         redirect_url = (
             f"{public_base}/m/file-eval/grading"
@@ -244,7 +244,7 @@ class FileEvalModule(ActivityModule):
             is_instructor,
             lis_result_sourcedid=lis_result_sourcedid,
         )
-        public_base = os.getenv("LAMB_PUBLIC_BASE_URL", "http://localhost:9099")
+        public_base = module_public_base()
         page = "grading" if is_instructor else "upload"
         lang = _activity_language(activity)
         return (

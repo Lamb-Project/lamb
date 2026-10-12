@@ -7,6 +7,7 @@
     let saving = $state(false);
     /** @type {string | null} */
     let error = $state(null);
+    let saveError = $state(null);   // a refused save keeps the form, so the teacher can correct it
     let success = $state(false);
 
     /** LTI /lamb/v1/lti/setup/info JSON @type {any} */
@@ -167,7 +168,7 @@
         if (!canSubmit) return;
         
         saving = true;
-        error = null;
+        saveError = null;
 
         try {
             // Module id last so it is never overwritten by module-specific field names (e.g. submission_type).
@@ -198,7 +199,7 @@
             success = true;
             saving = false;
         } catch (e) {
-            error = e instanceof Error ? e.message : String(e);
+            saveError = e instanceof Error ? e.message : String(e);
             saving = false;
         }
     }
@@ -463,6 +464,11 @@
                     </div>
                 {/if}
 
+                {#if saveError}
+                    <div role="alert" class="bg-red-50 text-red-600 p-4 rounded-lg mb-4">
+                        <strong>Not saved:</strong> {saveError}
+                    </div>
+                {/if}
                 <!-- Submit -->
                 <div class="flex justify-end pt-4 border-t border-gray-100">
                     <button type="submit" 

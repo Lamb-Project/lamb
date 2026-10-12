@@ -73,3 +73,13 @@ def test_an_unavailable_module_is_refused(env, monkeypatch):
     monkeypatch.setattr(wiring, 'settings_for', lambda org: Settings(enabled=False))
     r = env.client.post('/lamb/v1/lti/configure', json={'token': 't', 'organization_id': 3, 'activity_type': 'llm_access'})
     assert r.status_code == 400 and 'not available' in r.json()['detail']
+
+
+def test_module_redirects_use_the_deployment_public_host(monkeypatch):
+    import config
+    from lamb.modules.base import module_public_base
+    monkeypatch.delenv('LAMB_PUBLIC_BASE_URL', raising=False)
+    monkeypatch.setattr(config, 'LAMB_WEB_HOST', 'https://lamb.example.edu/')
+    assert module_public_base() == 'https://lamb.example.edu'
+    monkeypatch.setenv('LAMB_PUBLIC_BASE_URL', 'https://public.example.edu')
+    assert module_public_base() == 'https://public.example.edu'
