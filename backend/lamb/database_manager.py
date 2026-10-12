@@ -2329,6 +2329,9 @@ class LambDatabaseManager:
         # Deep copy the system config and modify it for new organizations
         import copy
         baseline_config = copy.deepcopy(system_org['config'])
+        # lamb-0.8: LLM access is decided per organization (its admin sets the policy, the system
+        # admin the proxy connection); never inherit the system org's switch, policy or admin key.
+        baseline_config.pop('token_dealer', None)
 
         # Modify for non-system organizations
         baseline_config['metadata'] = {

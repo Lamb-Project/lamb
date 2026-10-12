@@ -48,6 +48,10 @@ class ProxyClient:
         except ProxyError:
             return False
 
+    def list_models(self):
+        """Public model names the proxy serves (for the org-admin screen)."""
+        return sorted({m['id'] for m in (self._call('GET', '/v1/models') or {}).get('data', [])})
+
     # teams: one per activity, carries the activity pool
     def create_team(self, alias, models, max_budget=None, metadata=None):
         body = {'team_alias': alias, 'models': models, 'metadata': metadata or {}}
