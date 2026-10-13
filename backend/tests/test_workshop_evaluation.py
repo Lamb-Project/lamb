@@ -298,6 +298,141 @@ class TestNormalizeEvaluation:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Truncated / malformed LLM output (observed in the wild)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Verbatim shape of a real response from a small local model: every criterion
+# and both scores are there, but generation stopped inside `overall_feedback`
+# (the closing quote and both braces are missing). The old parser sliced from
+# the first `{` to the *last* `}`, which turned this into
+# "Expecting ',' delimiter" and threw the whole evaluation away.
+TRUNCATED_RESPONSE = """{
+  "criteria": [
+    {
+      "criterion": "Design Decisions",
+      "level": "Proficient",
+      "score": 3,
+      "weight": 30,
+      "feedback": "The assistant demonstrates a clear understanding of the attached notes."
+    },
+    {
+      "criterion": "Conversational Flow",
+      "level": "Beginning",
+      "score": 1,
+      "weight": 40,
+      "feedback": "The student could improve the conversational flow by providing more context."
+    },
+    {
+      "criterion": "Tool Awareness",
+      "level": "Proficient",
+      "score": 3,
+      "weight": 30,
+      "feedback": "The student demonstrates a good understanding of when to use the calculator."
+    }
+  ],
+  "total_score": 6,
+  "max_score": 12,
+  "overall_feedback": "The assistant demonstrates a solid understanding of the attached notes. However, there is room for improvement in terms of conversational flow and tool awareness."""
+
+
+class TestTruncatedEvaluationJson:
+    """A cut-off response must not cost the student their whole evaluation."""
+
+    def test_recovers_every_criterion_and_the_score(self):
+        data, note = ev.parse_evaluation_json_detailed(TRUNCATED_RESPONSE)
+
+        assert len(data["criteria"]) == 3
+        assert data["total_score"] == 6
+        assert data["max_score"] == 12
+        assert "[knowledge" not in data["overall_feedback"]  # sanity
+        # The caller is told the payload was repaired, so it can say so.
+        assert note and "cut off" in note
+
+    def test_marks_the_clipped_sentence_rather_than_faking_a_full_stop(self):
+        data, _note = ev.parse_evaluation_json_detailed(TRUNCATED_RESPONSE)
+        assert data["overall_feedback"].endswith("…")
+        assert "tool awareness" in data["overall_feedback"].lower()
+
+    def test_missing_only_the_envelope_brace_is_repaired(self):
+        payload = '{"criteria": [], "total_score": 3, "max_score": 10'
+        data, note = ev.parse_evaluation_json_detailed(payload)
+        assert data["total_score"] == 3
+        assert note is not None
+
+    def test_trailing_comma_is_tolerated(self):
+        payload = '{"criteria": [{"criterion": "A", "score": 2,},], "total_score": 2,}'
+        data, _note = ev.parse_evaluation_json_detailed(payload)
+        assert data["criteria"][0]["criterion"] == "A"
+
+    def test_truncated_inside_a_string_recovers_the_earlier_fields(self):
+        payload = ('{"criteria": [{"criterion": "A", "level": "Good", '
+                   '"score": 3, "weight": 50, "feedback": "It works becau')
+        data, note = ev.parse_evaluation_json_detailed(payload)
+        assert data["criteria"][0]["criterion"] == "A"
+        assert data["criteria"][0]["feedback"].endswith("…")
+        assert note is not None
+
+    def test_a_clean_response_is_untouched_and_unflagged(self):
+        clean = json.dumps({
+            "criteria": [{"criterion": "A", "score": 3}],
+            "total_score": 3, "max_score": 4, "overall_feedback": "Good.",
+        })
+        data, note = ev.parse_evaluation_json_detailed(clean)
+        assert note is None
+        assert data["overall_feedback"] == "Good."
+
+    def test_fences_and_prose_around_the_object_still_parse(self):
+        payload = f"Here is the evaluation:\n```json\n{TRUNCATED_RESPONSE}\n```\nHope it helps!"
+        data, _note = ev.parse_evaluation_json_detailed(payload)
+        assert len(data["criteria"]) == 3
+
+    def test_prose_after_a_complete_object_is_ignored(self):
+        payload = '{"total_score": 5, "max_score": 10}\n\nLet me know if you need more detail.'
+        data, note = ev.parse_evaluation_json_detailed(payload)
+        assert data["total_score"] == 5
+        assert note is None
+
+    def test_unrecoverable_output_still_raises(self):
+        with pytest.raises(ValueError) as exc:
+            ev.parse_evaluation_json_detailed("I could not evaluate this work.")
+        assert "JSON" in str(exc.value)
+
+    def test_empty_output_raises(self):
+        with pytest.raises(ValueError):
+            ev.parse_evaluation_json_detailed("")
+
+    def test_public_parser_keeps_its_contract(self):
+        """Regression: parse_evaluation_json still returns a plain dict."""
+        assert isinstance(ev.parse_evaluation_json(TRUNCATED_RESPONSE), dict)
+
+
+class TestClampForPrompt:
+    """The prompt budget guard (the rubric alone is ~5 000 characters)."""
+
+    def test_short_transcripts_pass_through_untouched(self):
+        text = "=== BUILD DECISIONS ===\nshort"
+        assert ev.clamp_for_prompt(text) == text
+
+    def test_long_transcripts_keep_both_ends_and_say_so(self):
+        head = "HEAD-MARKER " + ("a" * 4000)
+        tail = ("b" * 4000) + " TAIL-MARKER"
+        clamped = ev.clamp_for_prompt(head + tail, 1000)
+
+        assert len(clamped) <= 1000
+        assert clamped.startswith("HEAD-MARKER")
+        assert clamped.endswith("TAIL-MARKER")
+        assert "shortened for length" in clamped
+
+    def test_a_zero_budget_disables_clamping(self):
+        text = "x" * 100
+        assert ev.clamp_for_prompt(text, 0) == text
+
+    def test_the_directive_asks_for_concise_feedback(self):
+        """Headroom depends on the answer staying short (see 9.1 numbers)."""
+        assert "two short sentences" in ev._JSON_OUTPUT_DIRECTIVE
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # evaluate_session
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -396,6 +531,58 @@ class TestEvaluateSession:
         kwargs = mock_db.upsert_workshop_evaluation.call_args.kwargs
         assert kwargs["status"] == "failed"
         assert kwargs["raw_response"] == "oh no, not json"
+
+    @pytest.mark.asyncio
+    async def test_truncated_response_still_produces_feedback(self):
+        """The real-world failure mode: generation cut short inside the tail.
+
+        Marking this `failed` threw away three complete criteria and the score,
+        so the student saw "feedback could not be generated" for an evaluation
+        the model had in fact produced.
+        """
+        with patch.object(ev, "_rubric_db") as mock_rub, \
+                patch.object(ev, "invoke_small_fast_model",
+                             new_callable=AsyncMock) as mock_llm, \
+                patch.object(ev, "_db_manager") as mock_db:
+            mock_rub.get_rubric_by_id.return_value = {
+                "rubric_data": _rubric_data()}
+            mock_llm.return_value = _llm_response(TRUNCATED_RESPONSE)
+
+            result = await ev.evaluate_session(_session(), _activity(), None)
+
+        assert result["status"] == "completed"
+        assert len(result["criteria"]) == 3
+        assert result["total_score"] == 6.0
+        # …but the truncation is disclosed, not silently swallowed.
+        assert "cut off" in (result["error_message"] or "")
+
+        kwargs = mock_db.upsert_workshop_evaluation.call_args.kwargs
+        assert kwargs["status"] == "completed"
+        assert kwargs["raw_response"] == TRUNCATED_RESPONSE
+        assert "cut off" in (kwargs["error_message"] or "")
+
+    @pytest.mark.asyncio
+    async def test_prompt_transcript_is_bounded_but_the_model_sees_a_marker(self):
+        long_chat = json.dumps([
+            {"role": "user", "content": "question " * 400},
+            {"role": "assistant", "content": "answer " * 400},
+        ])
+        session = dict(_session(), saved_chat=long_chat)
+
+        with patch.object(ev, "_rubric_db") as mock_rub, \
+                patch.object(ev, "invoke_small_fast_model",
+                             new_callable=AsyncMock) as mock_llm, \
+                patch.object(ev, "_db_manager"):
+            mock_rub.get_rubric_by_id.return_value = {
+                "rubric_data": _rubric_data()}
+            mock_llm.return_value = _llm_response(
+                '{"criteria": [], "total_score": 0, "max_score": 1}')
+
+            await ev.evaluate_session(session, _activity(), None)
+
+        sent = mock_llm.call_args.kwargs["messages"][1]["content"]
+        assert len(sent) <= ev.MAX_EVALUATION_TRANSCRIPT_CHARS
+        assert "shortened for length" in sent
 
     @pytest.mark.asyncio
     async def test_llm_failure_marks_failed_without_raising(self):

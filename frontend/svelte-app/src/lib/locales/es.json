@@ -1125,7 +1125,8 @@
     "comparisonMissing": "Aún no se ha ejecutado en este modo.",
     "comparisonNoSources": "No se recuperó ningún fragmento (la herramienta de consulta también se quitó).",
     "comparisonNoHits": "Ningún fragmento coincidió con esta pregunta.",
-    "comparisonSourceCount": "Se incluyeron {count} fragmento(s) en el prompt."
+    "comparisonSourceCount": "Se incluyeron {count} fragmento(s) en el prompt.",
+    "feedbackTruncated": "El modelo se detuvo antes de terminar, así que los comentarios de abajo pueden acabar a mitad de frase."
   },
   "aacSettings": {
     "settingsTitle": "Configuración de LAMB AGENT",

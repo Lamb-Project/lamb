@@ -55,6 +55,18 @@
 				</h3>
 			</div>
 
+			<!-- The model ran out of room mid-answer: the feedback below is real,
+			     but its last sentence may be clipped. Saying so beats hiding the
+			     recovered evaluation or presenting it as complete. -->
+			{#if evaluation.error_message}
+				<p
+					class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1"
+					data-testid="feedback-truncated"
+				>
+					{$_('workshop.feedbackTruncated', { default: 'The model stopped before finishing, so the feedback below may end mid-sentence.' })}
+				</p>
+			{/if}
+
 			<!-- The numeric suggestion is folded away by default (D6): a score
 			     shown first invites students to read it as the mark and stop
 			     reading the feedback, which is the part meant to teach. Teachers

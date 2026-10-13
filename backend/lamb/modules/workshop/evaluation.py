@@ -181,6 +181,32 @@ DESIGN_QUESTIONS = (
 # bury it (and cost tokens).
 MAX_TRANSCRIPT_SNAPSHOTS = 6
 
+# Prompt budget for the evaluation transcript, in characters (~1 000 tokens).
+# Chosen against the measured reality of a small-context deployment: the rubric
+# instructions are ~4 900 chars and Ollama's default window is 2 048 tokens, so
+# the prompt has to leave the answer room. The full transcript is still shown to
+# the teacher on the dashboard — this bounds only what is sent to the model.
+MAX_EVALUATION_TRANSCRIPT_CHARS = 4000
+
+
+def clamp_for_prompt(text: str, max_chars: int = MAX_EVALUATION_TRANSCRIPT_CHARS) -> str:
+    """Trim an over-long prompt transcript, keeping both ends.
+
+    The head carries the build decisions and the tail carries the reflection and
+    the observation snapshots — the parts the rubric actually grades. The middle
+    (a long conversation) is what gets dropped, with an explicit marker so the
+    model knows the transcript was shortened rather than assuming the student
+    submitted very little.
+    """
+    text = text or ""
+    if max_chars <= 0 or len(text) <= max_chars:
+        return text
+
+    marker = "\n\n[... conversation shortened for length ...]\n\n"
+    head_budget = int((max_chars - len(marker)) * 0.4)
+    tail_budget = max_chars - len(marker) - head_budget
+    return text[:head_budget].rstrip() + marker + text[-tail_budget:].lstrip()
+
 
 def _render_design_questions(build_state: Dict[str, Any]) -> List[str]:
     """Render the structured reflection answers as their own section.
@@ -308,7 +334,13 @@ _JSON_OUTPUT_DIRECTIVE = (
     '{"criteria": [{"criterion": string, "level": string, "score": number, '
     '"weight": number, "feedback": string}], "total_score": number, '
     '"max_score": number, "overall_feedback": string}. '
-    "criteria must contain one entry per rubric criterion."
+    "criteria must contain one entry per rubric criterion. "
+    # Small-context models (a 2048-token Ollama model is a realistic deployment)
+    # share their window between the prompt and the answer: this prompt is
+    # ~1500 tokens, so a verbose answer is what gets cut off mid-JSON. Asking
+    # for short feedback is what keeps the whole object inside the window.
+    "Keep every \"feedback\" to at most two short sentences and the whole JSON "
+    "compact, with no line breaks inside string values."
 )
 
 
@@ -320,30 +352,117 @@ def _strip_code_fences(text: str) -> str:
     return stripped.strip()
 
 
-def parse_evaluation_json(raw: str) -> Dict[str, Any]:
-    """Parse the LLM's evaluation JSON, tolerating markdown fences / prose.
+def _repair_truncated_json(text: str) -> str:
+    """Close a JSON object the model stopped writing in the middle of.
 
-    Raises ``ValueError`` when no parseable JSON object can be found.
+    A model running out of context/output budget leaves the object unterminated
+    — typically missing the trailing `}` of the envelope, sometimes cut inside a
+    string. Everything before the cut is valid, so closing it recovers a
+    complete evaluation instead of throwing away a usable one.
+
+    The cut string is terminated with an ellipsis so a reader can see the
+    sentence was clipped rather than assume it ended there.
+    """
+    out: List[str] = []
+    stack: List[str] = []
+    in_string = False
+    escape = False
+
+    for ch in text:
+        out.append(ch)
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch in "[{":
+            stack.append(ch)
+        elif ch in "]}":
+            if stack:
+                stack.pop()
+
+    repaired = "".join(out)
+    if escape:  # a dangling backslash cannot end a string
+        repaired = repaired[:-1]
+    if in_string:
+        repaired += '…"'
+    # A trailing comma would make the appended closers invalid.
+    repaired = re.sub(r",\s*$", "", repaired.rstrip())
+    for opener in reversed(stack):
+        repaired += "]" if opener == "[" else "}"
+    return repaired
+
+
+def _load_json_object(candidate: str) -> Optional[Dict[str, Any]]:
+    """Parse a JSON object, tolerating the defects LLMs actually produce."""
+    attempts = [candidate]
+    # Trailing commas before a closer are the most common small-model slip.
+    attempts.append(re.sub(r",(\s*[}\]])", r"\1", candidate))
+    # …and a response cut off mid-object needs its brackets closed first.
+    repaired = _repair_truncated_json(candidate)
+    attempts.extend([repaired, re.sub(r",(\s*[}\]])", r"\1", repaired)])
+
+    for attempt in attempts:
+        try:
+            parsed = json.loads(attempt)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
+def parse_evaluation_json_detailed(raw: str) -> "tuple[Dict[str, Any], Optional[str]]":
+    """Parse the LLM's evaluation JSON and say whether it had to be repaired.
+
+    Returns ``(data, note)``; ``note`` is None for a clean response and a short
+    human-readable explanation when the payload was truncated or malformed and
+    the parser recovered what it could. Raises ``ValueError`` when no object can
+    be recovered at all.
     """
     text = _strip_code_fences(raw or "")
     if not text:
         raise ValueError("Empty LLM response")
 
     start = text.find("{")
+    candidate = text[start:] if start != -1 else text
+
+    parsed = _load_json_object(candidate)
+    if parsed is not None:
+        # A response that never closed its envelope was cut short, even if the
+        # recovered fragment parsed cleanly.
+        balanced = _repair_truncated_json(candidate) == candidate.rstrip()
+        note = None if balanced else (
+            "The model's response was cut off before the JSON was complete; "
+            "the fields it did produce are shown.")
+        return parsed, note
+
+    # Nothing parseable from the first brace: fall back to the last balanced
+    # slice, which is what an object followed by prose looks like.
     end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        candidate = text[start:end + 1]
-    else:
-        candidate = text
+    if start != -1 and end > start:
+        parsed = _load_json_object(text[start:end + 1])
+        if parsed is not None:
+            return parsed, None
 
     try:
-        parsed = json.loads(candidate)
+        json.loads(candidate)
     except (json.JSONDecodeError, TypeError) as e:
         raise ValueError(f"Could not parse evaluation JSON: {e}") from e
+    raise ValueError("Evaluation JSON is not an object")
 
-    if not isinstance(parsed, dict):
-        raise ValueError("Evaluation JSON is not an object")
-    return parsed
+
+def parse_evaluation_json(raw: str) -> Dict[str, Any]:
+    """Parse the LLM's evaluation JSON, tolerating markdown fences / prose.
+
+    Raises ``ValueError`` when no parseable JSON object can be found.
+    """
+    return parse_evaluation_json_detailed(raw)[0]
 
 
 def _first_present(data: Dict[str, Any], *keys: str) -> Any:
@@ -467,6 +586,12 @@ async def evaluate_session(
     rubric_data = rubric.get("rubric_data") or {}
     instructions = generate_rubric_evaluation_json(rubric_data)
     transcript = build_transcript(session)
+    # The rubric instructions alone are ~5 000 characters (≈1 250 tokens) and a
+    # small-context model shares its window between prompt and answer, so the
+    # transcript is bounded for the *prompt* only: the teacher dashboard still
+    # shows the full transcript, and a lesson-length conversation cannot push
+    # the model past its window and truncate the answer mid-JSON.
+    transcript = clamp_for_prompt(transcript, MAX_EVALUATION_TRANSCRIPT_CHARS)
 
     messages = [
         {"role": "system", "content": instructions + _JSON_OUTPUT_DIRECTIVE},
@@ -502,13 +627,25 @@ async def evaluate_session(
     raw = extract_llm_content(response)
     model_used = response.get("model") if isinstance(response, dict) else None
 
+    parse_note = None
     try:
-        parsed = parse_evaluation_json(raw)
+        parsed, parse_note = parse_evaluation_json_detailed(raw)
         normalized = normalize_evaluation(parsed, rubric_data)
         status = "completed"
         error_message = None
+        if parse_note:
+            # The feedback is real but was cut short; say so instead of either
+            # discarding it (status failed) or pretending it is complete.
+            logger.warning(
+                "Workshop evaluation truncated for session %s (%s criteria "
+                "recovered from %d chars)",
+                session_id, len(normalized.get("criteria") or []), len(raw))
+            error_message = parse_note
     except ValueError as e:
-        logger.warning(f"Workshop evaluation malformed JSON: {e}")
+        logger.warning(
+            "Workshop evaluation malformed JSON for session %s: %s "
+            "(prompt=%d chars, response=%d chars)",
+            session_id, e, len(instructions) + len(transcript), len(raw))
         normalized = {
             "criteria": [],
             "overall_feedback": None,

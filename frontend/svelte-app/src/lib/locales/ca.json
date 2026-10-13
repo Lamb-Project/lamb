@@ -1114,7 +1114,8 @@
     "comparisonMissing": "Encara no s'ha executat en aquest mode.",
     "comparisonNoSources": "No s'ha recuperat cap fragment (l'eina de consulta també s'ha tret).",
     "comparisonNoHits": "Cap fragment no coincideix amb aquesta pregunta.",
-    "comparisonSourceCount": "S'han inclòs {count} fragment(s) al prompt."
+    "comparisonSourceCount": "S'han inclòs {count} fragment(s) al prompt.",
+    "feedbackTruncated": "El model s'ha aturat abans d'acabar, així que els comentaris de sota poden quedar tallats a mig frase."
   },
   "aacSettings": {
     "settingsTitle": "Configuració de LAMB AGENT",

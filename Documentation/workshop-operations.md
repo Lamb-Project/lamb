@@ -171,6 +171,50 @@ on `workflow_dispatch` or before a release
 
 ---
 
+## 7.1 Formative evaluation and small-context models
+
+The rubric evaluation sends a **large** prompt: the rubric instructions alone are
+~4 900 characters (≈1 250 tokens), and the student transcript is added on top. A
+small local model shares one window between prompt and answer, and Ollama's
+default window is 2 048 tokens — so the *answer* is what gets cut off, mid-JSON,
+and the evaluation used to be reported as "feedback could not be generated" even
+though the model had produced every criterion.
+
+Measured on this deployment (`llama3.2:latest` via Ollama, 3-criterion rubric):
+
+| | prompt | answer | outcome |
+|---|---|---|---|
+| Before (verbose feedback) | ~6 130 chars ≈ 1 533 tokens | 1 189 chars, **never closed** | parse error, evaluation discarded |
+| After (concise feedback) | ~6 130 chars ≈ 1 533 tokens | 788 chars, closed | `completed`, 12/12 |
+
+Three layers now protect this:
+
+1. **The parser salvages a cut-off response.** `parse_evaluation_json_detailed`
+   closes an unterminated string/bracket structure and tolerates trailing
+   commas, so the recovered criteria and score are kept. The clipped sentence
+   gets an ellipsis, and the evaluation is stored as `completed` with a note in
+   `error_message`; the student's feedback panel shows a short "the model stopped
+   before finishing" hint instead of an empty result.
+2. **The answer is asked to be short.** The JSON directive caps each criterion's
+   `feedback` at two short sentences, which is what created the headroom above.
+3. **The prompt transcript is bounded** (`MAX_EVALUATION_TRANSCRIPT_CHARS`,
+   4 000 chars) with an explicit `[... conversation shortened for length ...]`
+   marker. Only the model's copy is trimmed: the teacher dashboard still shows
+   the full transcript, and the graded parts (build decisions, reflection,
+   observation snapshots) are kept at both ends.
+
+**Deployment-level remedy**, if you have the VRAM: raise the model's context so
+nothing has to be trimmed — e.g. an Ollama Modelfile with `PARAMETER num_ctx
+4096`, or a larger small-fast-model. The connector forwards only
+`temperature`/`top_p`/`top_k` from the request, so `num_ctx` is a model-side
+setting today, not a per-request one.
+
+When feedback does fail, the raw model output and the error are stored on the row
+(`workshop_evaluations.raw_response` / `error_message`) and shown in the
+teacher's session detail — start there rather than re-running blind.
+
+---
+
 ## 8. Known limitation: KB server credentials
 
 The KB server authenticates with a single global API key that carries no

@@ -1121,7 +1121,8 @@
     "comparisonMissing": "Oraindik ez da modu honetan exekutatu.",
     "comparisonNoSources": "Ez da zatirik berreskuratu (kontsulta-tresna ere kendu da).",
     "comparisonNoHits": "Ez da zatirik bat etorri galdera honekin.",
-    "comparisonSourceCount": "{count} zati sartu dira promptean."
+    "comparisonSourceCount": "{count} zati sartu dira promptean.",
+    "feedbackTruncated": "Modeloa amaitu aurretik gelditu da, beraz, beheko iritzia esaldi erdian moztuta egon daiteke."
   },
   "aacSettings": {
     "settingsTitle": "LAMB AGENT ezarpenak",

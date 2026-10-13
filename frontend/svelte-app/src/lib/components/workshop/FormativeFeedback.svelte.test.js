@@ -115,3 +115,32 @@ describe('FormativeFeedback — suggested score is opt-in', () => {
 		expect(screen.getByText('clear')).toBeInTheDocument();
 	});
 });
+
+describe('FormativeFeedback — a cut-off evaluation is disclosed', () => {
+	test('warns when the recovered feedback was truncated', () => {
+		render(FormativeFeedback, {
+			props: {
+				evaluation: {
+					...successEvaluation,
+					// A *completed* evaluation whose JSON had to be repaired: the
+					// feedback is usable, but its last sentence is clipped.
+					error_message:
+						"The model's response was cut off before the JSON was complete; " +
+						'the fields it did produce are shown.',
+				},
+				evaluating: false,
+			},
+		});
+		expect(screen.getByTestId('feedback-truncated')).toBeInTheDocument();
+		expect(screen.getByText(/may end mid-sentence/)).toBeInTheDocument();
+		// The recovered feedback is still shown — that is the whole point.
+		expect(screen.getByText('Clarity')).toBeInTheDocument();
+	});
+
+	test('says nothing extra for a clean evaluation', () => {
+		render(FormativeFeedback, {
+			props: { evaluation: successEvaluation, evaluating: false },
+		});
+		expect(screen.queryByTestId('feedback-truncated')).not.toBeInTheDocument();
+	});
+});

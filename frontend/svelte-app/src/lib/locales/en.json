@@ -1111,7 +1111,8 @@
     "comparisonMissing": "Not run in this mode yet.",
     "comparisonNoSources": "No excerpts were retrieved (the retrieval tool was removed too).",
     "comparisonNoHits": "No excerpts matched this question.",
-    "comparisonSourceCount": "{count} excerpt(s) were placed in the prompt."
+    "comparisonSourceCount": "{count} excerpt(s) were placed in the prompt.",
+    "feedbackTruncated": "The model stopped before finishing, so the feedback below may end mid-sentence."
   },
   "aacSettings": {
     "settingsTitle": "LAMB AGENT settings",
