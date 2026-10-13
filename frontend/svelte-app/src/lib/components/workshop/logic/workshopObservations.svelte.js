@@ -125,17 +125,19 @@ export function formatBytes(bytes) {
 export function compareRagRuns(history) {
 	/** @type {Array<{question: string, on: any | null, off: any | null}>} */
 	const pairs = [];
-	const index = new Map();
 
 	for (const run of history || []) {
 		if (!run) continue;
 		const question = (run.question || '').trim();
 		if (!question) continue;
-		if (!index.has(question)) {
-			index.set(question, pairs.length);
-			pairs.push({ question, on: null, off: null });
+
+		// A linear scan keeps this a plain function over plain data — no
+		// reactive Map, and the group counts here are tiny (a lesson's turns).
+		let pair = pairs.find((candidate) => candidate.question === question);
+		if (!pair) {
+			pair = { question, on: null, off: null };
+			pairs.push(pair);
 		}
-		const pair = pairs[index.get(question)];
 		// Keep the most recent run of each mode.
 		if (run.ragMode === 'off') pair.off = run;
 		else pair.on = run;

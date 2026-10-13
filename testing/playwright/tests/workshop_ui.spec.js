@@ -181,12 +181,16 @@ test.describe('Workshop student UI (route-mocked)', () => {
   test('follows the LMS language and lets the student switch', async ({ page }) => {
     await openWizard(page, '&lang=eu');
 
-    // The `?lang=` parameter (from launch_presentation_locale) wins the chain.
-    await expect(page.getByRole('button', { name: /Argibideak/ })).toBeVisible();
+    // `?lang=` (from launch_presentation_locale) wins the chain. Locale bundles
+    // load lazily, so the first paint can still be English while `eu.json` is
+    // fetched — hence the generous timeout (a cold dev server is slow).
+    await expect(page.getByRole('button', { name: /Argibideak/ }))
+      .toBeVisible({ timeout: 30_000 });
 
     // …and the student can correct it in class.
     await page.getByTestId('workshop-locale-switcher').selectOption('es');
-    await expect(page.getByRole('button', { name: /Instrucciones/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Instrucciones/ }))
+      .toBeVisible({ timeout: 30_000 });
   });
 
   test('step 5 renders the A/B switch and applies the chosen mode', async ({ page }) => {

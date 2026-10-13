@@ -262,7 +262,7 @@
 						{$_('workshop.finalMessages', { default: 'Messages sent to LLM' })}
 					</h4>
 					<div class="text-xs mt-1 space-y-1">
-						{#each resultFrame.final_llm_messages as msg, i}
+						{#each resultFrame.final_llm_messages as msg, i (i)}
 							<details class="border border-gray-200 rounded px-2 py-1" open>
 								<summary class="opacity-80">
 									<code>{msg.role}{#if msg.tool_call_id} › {msg.tool_call_id}{/if}</code>

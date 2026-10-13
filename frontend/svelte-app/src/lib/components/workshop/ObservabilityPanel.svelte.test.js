@@ -111,7 +111,7 @@ describe('ObservabilityPanel — renders observability data', () => {
 	});
 
 	test('C5: full request body is shown by default with no toggle', () => {
-		const { container } = render(ObservabilityPanel, {
+		render(ObservabilityPanel, {
 			props: {
 				obsData: {
 					request_body: {

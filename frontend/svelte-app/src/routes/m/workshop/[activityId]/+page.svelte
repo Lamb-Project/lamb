@@ -519,7 +519,11 @@
 			)
 			// Strip frontend-only fields (`hidden`) — they must not reach the
 			// model API. Keep role/content/tool_calls/tool_call_id.
-			.map(({ hidden, ...m }) => m);
+			.map((m) => {
+				const wire = { ...m };
+				delete wire.hidden;
+				return wire;
+			});
 	}
 
 	async function handleSend() {
