@@ -24,7 +24,7 @@ creator identity to create/ingest/query the KB server, so students never call
 import json
 import logging
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Header, Form, Request, File, UploadFile, Query
 from fastapi.responses import StreamingResponse, RedirectResponse
@@ -51,6 +51,11 @@ MAX_DOCUMENTS_PER_SESSION = 1
 MAX_KBS_PER_SESSION = 1
 MAX_DOCUMENT_BYTES = 10 * 1024 * 1024  # 10 MB upload cap
 
+# Version of the consent notice. Bump it whenever CONSENT_STRINGS changes in a
+# way that materially changes what the student is told (the v2 notice added
+# model-based evaluation), so returning students can be asked again (C8/C20).
+CONSENT_VERSION = "2026-10"
+
 
 
 def _verify_workshop_principal(session_id: str, token: str) -> Dict[str, Any]:
@@ -58,17 +63,35 @@ def _verify_workshop_principal(session_id: str, token: str) -> Dict[str, Any]:
 
     Returns the principal dict, or raises 401/403. Authorization boundary for
     every workshop route.
+
+    An expired token is reported as ``401 detail="token_expired"`` (a machine
+    readable string the frontend keys on to renew silently or to send the
+    student back to the course page) instead of the generic 401, because a
+    lesson outlives the 30-minute token and "invalid token" is unactionable.
     """
     from lamb import auth as lamb_auth
 
     data = lamb_auth.decode_token(token)
-    if not data or data.get("scope") != "workshop_student":
+    if not data:
+        if _token_is_expired(token):
+            raise HTTPException(status_code=401, detail="token_expired")
+        raise HTTPException(status_code=401, detail="Invalid workshop token")
+
+    if data.get("scope") != "workshop_student":
         raise HTTPException(status_code=401, detail="Invalid workshop token")
 
     if data.get("session_id") != session_id:
         raise HTTPException(status_code=403, detail="Session mismatch")
 
     return data
+
+
+def _token_is_expired(token: str) -> bool:
+    """Whether a token is a well-formed, correctly signed, expired JWT."""
+    from lamb import auth as lamb_auth
+
+    _, reason = lamb_auth.decode_token_ex(token)
+    return reason == "expired"
 
 
 def _verify_assistant_ownership(assistant_id: int, principal: Dict[str, Any]) -> None:
@@ -153,6 +176,152 @@ def _session_activity(session: Dict[str, Any]) -> Dict[str, Any]:
     return activity
 
 
+def _normalize_kb_id(value: Any) -> Any:
+    """Normalize an incoming kb_id (str/int/None) to a string or None."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text.lower() in ("null", "none", "undefined"):
+        return None
+    return text
+
+
+def _collection_ids(value: Any) -> list:
+    """Parse a rag_collections value (list, JSON array or comma string).
+
+    ``simple_rag`` persists collections as a comma-separated string, but the
+    wizard and older clients may hand us a JSON array or a real list.
+    """
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        items = [str(c) for c in value]
+    else:
+        text = str(value).strip()
+        if not text:
+            return []
+        if text.startswith("["):
+            try:
+                parsed = json.loads(text)
+            except (json.JSONDecodeError, TypeError):
+                parsed = None
+            items = ([str(c) for c in parsed]
+                     if isinstance(parsed, (list, tuple)) else text.split(","))
+        else:
+            items = text.split(",")
+    return [c.strip() for c in items if c and c.strip()]
+
+
+def _resolve_session_kb_id(
+    session: Dict[str, Any], requested: Any
+) -> Any:
+    """Resolve the KB id for a session-bound route (S1, decision C1).
+
+    The session's ``kb_id`` is the only KB a student may touch, so an incoming
+    ``kb_id`` is treated as an *assertion* rather than as a choice:
+
+    - nothing sent → the session's kb_id (possibly None)
+    - value equal to the session's kb_id → that value
+    - session has no KB but a value was sent → 400: the workspace is in an
+      inconsistent state (e.g. after an erase), which is not an attack
+    - value differs from the session's kb_id → 403 + warning: cross-session
+      read attempt
+    """
+    requested_id = _normalize_kb_id(requested)
+    if requested_id is None:
+        return _normalize_kb_id(session.get("kb_id"))
+
+    session_kb = _normalize_kb_id(session.get("kb_id"))
+    if session_kb is None:
+        logger.warning(
+            "Workshop KB: kb_id %r sent for session %s that has no KB "
+            "(state anomaly, not an attack)",
+            requested_id, session.get("id"))
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This workshop workspace has no knowledge base yet. "
+                "Upload a document in step 2 first."
+            ),
+        )
+    if requested_id != session_kb:
+        logger.warning(
+            "Workshop KB: rejecting foreign kb_id %r for session %s "
+            "(session kb_id=%r)",
+            requested_id, session.get("id"), session_kb)
+        raise HTTPException(
+            status_code=403, detail="kb_id does not belong to this session")
+    return session_kb
+
+
+def _assert_rag_collections_allowed(
+    session: Dict[str, Any], rag_collections: Any
+) -> str:
+    """Whitelist-check a *client-supplied* rag_collections value (S1, C1/C2).
+
+    A workshop assistant may only reference its own session KB. Empty means
+    "no RAG wiring yet" and is always allowed. Anything else is either a state
+    anomaly (no session KB yet → 400) or a cross-session injection (→ 403).
+
+    Returns the normalized comma-separated collections string to persist.
+    """
+    requested = _collection_ids(rag_collections)
+    if not requested:
+        return ""
+
+    session_kb = _normalize_kb_id(session.get("kb_id"))
+    if session_kb is None:
+        logger.warning(
+            "Workshop assistant: rag_collections=%s supplied for session %s "
+            "that has no KB (state anomaly)", requested, session.get("id"))
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This workshop workspace has no knowledge base yet, so no "
+                "collections can be attached."
+            ),
+        )
+    if requested != [session_kb]:
+        logger.warning(
+            "Workshop assistant: rejecting foreign rag_collections=%s for "
+            "session %s (session kb_id=%r)",
+            requested, session.get("id"), session_kb)
+        raise HTTPException(
+            status_code=403,
+            detail="rag_collections must reference this session's knowledge base",
+        )
+    return session_kb
+
+
+def _sanitize_stored_collections(
+    session: Dict[str, Any], stored: Any
+) -> str:
+    """Repair a *stored* rag_collections value instead of rejecting it.
+
+    Used when a PATCH does not mention rag_collections: rewriting the whole
+    assistant row must not turn pre-existing dirty data (foreign collection
+    ids written before S1) into a hard failure for an unrelated edit such as
+    the step-1 instructions. Foreign ids are dropped and recorded.
+    """
+    requested = _collection_ids(stored)
+    if not requested:
+        return ""
+
+    session_kb = _normalize_kb_id(session.get("kb_id"))
+    if session_kb is None:
+        logger.warning(
+            "Workshop assistant: clearing stored rag_collections=%s on "
+            "session %s that has no KB", requested, session.get("id"))
+        return ""
+    if requested != [session_kb]:
+        logger.warning(
+            "Workshop assistant: dropping foreign stored rag_collections=%s "
+            "for session %s (session kb_id=%r) — historical dirty data",
+            requested, session.get("id"), session_kb)
+        return session_kb
+    return session_kb
+
+
 def _raise_kb_error(e: Exception) -> None:
     """Translate KB helper failures into clean HTTP responses."""
     if isinstance(e, HTTPException):
@@ -200,6 +369,48 @@ async def get_workshop_session(session_id: str, token: str = Header(...)):
     }
 
 
+@router.post("/sessions/{session_id}/refresh")
+async def refresh_workshop_token(session_id: str, token: str = Header(...)):
+    """Mint a fresh workshop token from a still-valid one (W1).
+
+    A lesson runs longer than the 30-minute token TTL, so the wizard renews in
+    the background instead of dropping the student mid-activity.
+
+    Renewal is deliberately only possible while the current token is valid: an
+    expired token can never be renewed (that is the security boundary — the
+    student re-enters from the course page). The renewed token keeps the same
+    scope and the same ``session_id``; only ``exp``/``iat`` move.
+    """
+    from lamb import auth as lamb_auth
+    from lamb.modules.workshop import service as workshop_service
+
+    data, reason = lamb_auth.decode_token_ex(token)
+    if reason == "expired":
+        raise HTTPException(status_code=401, detail="token_expired")
+    if not data or data.get("scope") != "workshop_student":
+        raise HTTPException(status_code=401, detail="Invalid workshop token")
+    if data.get("session_id") != session_id:
+        raise HTTPException(status_code=403, detail="Session mismatch")
+
+    session = _db_manager.get_workshop_session_by_id(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    principal = {
+        key: value for key, value in data.items()
+        if key not in ("exp", "iat", "scope")
+    }
+    principal["session_id"] = session_id
+    principal["scope"] = "workshop_student"
+
+    new_token = workshop_service._create_workshop_token(principal)
+    ttl = workshop_service.workshop_token_ttl()
+    logger.info(
+        "Workshop token renewed for session %s (principal=%s, ttl=%ss)",
+        session_id, data.get("email"), ttl)
+    return {"success": True, "token": new_token, "expires_in": ttl}
+
+
 @router.post("/sessions/{session_id}/assistant")
 async def create_workshop_assistant(
     session_id: str,
@@ -218,8 +429,13 @@ async def create_workshop_assistant(
     if not owner_email:
         raise HTTPException(status_code=403, detail="Missing principal email")
 
+    # S1: a student may only wire their own session KB into the assistant.
+    session = existing or {"id": session_id}
+    allowed_collections = _assert_rag_collections_allowed(
+        session, body.get("rag_collections", ""))
+
     api_callback, rag_collections = _apply_rag_defaults(
-        body.get("api_callback", "{}"), body.get("rag_collections", ""))
+        body.get("api_callback", "{}"), allowed_collections)
 
     assistant = Assistant(
         name=body.get("name", "My AI Assistant"),
@@ -280,9 +496,23 @@ async def update_workshop_assistant(
     if not existing:
         raise HTTPException(status_code=404, detail="Assistant not found")
 
+    session = _db_manager.get_workshop_session_by_id(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # S1: an explicitly supplied value is validated strictly (403 on a foreign
+    # collection); a stored value that PATCH never mentions is repaired instead
+    # of rejected, so unrelated edits keep working on legacy rows.
+    if "rag_collections" in body:
+        rag_collections = _assert_rag_collections_allowed(
+            session, body.get("rag_collections"))
+    else:
+        rag_collections = _sanitize_stored_collections(
+            session, existing.RAG_collections)
+
     api_callback, rag_collections = _apply_rag_defaults(
         body.get("api_callback", existing.metadata),
-        body.get("rag_collections", existing.RAG_collections),
+        rag_collections,
     )
 
     updated = Assistant(
@@ -414,7 +644,7 @@ async def connect_workshop_kb(
         raise HTTPException(status_code=404, detail="Session not found")
 
     activity = _session_activity(session)
-    kb_id = body.get("kb_id") or session.get("kb_id")
+    kb_id = _resolve_session_kb_id(session, body.get("kb_id"))
     try:
         if not kb_id:
             kb_id = await workshop_kb.ensure_session_kb(activity, session)
@@ -451,7 +681,7 @@ async def query_workshop_kb(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    kb_id = body.get("kb_id") or session.get("kb_id")
+    kb_id = _resolve_session_kb_id(session, body.get("kb_id"))
     if not kb_id:
         raise HTTPException(status_code=400, detail="No knowledge base connected")
 
@@ -584,38 +814,229 @@ def _decode_workshop_student(token: str) -> Dict[str, Any]:
     from lamb import auth as lamb_auth
 
     data = lamb_auth.decode_token(token)
-    if not data or data.get("scope") != "workshop_student":
+    if not data:
+        if _token_is_expired(token):
+            raise HTTPException(status_code=401, detail="token_expired")
+        raise HTTPException(status_code=401, detail="Invalid workshop token")
+    if data.get("scope") != "workshop_student":
         raise HTTPException(status_code=401, detail="Invalid workshop token")
     return data
 
 
-def _wizard_url(request: Request, activity_id: Any, token: str) -> str:
+def _wizard_url(
+    request: Request, activity_id: Any, token: str, locale: str = ""
+) -> str:
     """Build the public wizard URL for a student's workshop activity."""
     from lamb.lti_activity_manager import LtiActivityManager
 
     public_base = LtiActivityManager().get_public_base_url(request)
-    return f"{public_base}/m/workshop/{activity_id}?token={token}"
+    url = f"{public_base}/m/workshop/{activity_id}?token={token}"
+    if locale:
+        url += f"&lang={locale}"
+    return url
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Consent scope disclosure (decision C17)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Providers that are, by construction, external services. Anything else is
+# classified from its configured base URL (see ``classify_model_class``).
+_EXTERNAL_PROVIDERS = {"openai", "anthropic", "google", "gemini"}
+# Providers that never leave the deployment (no third party sees the data).
+_LOCAL_PROVIDERS = {"ollama", "bypass"}
+
+
+def classify_model_class(connector: str, base_url: str = "") -> str:
+    """Classify a resolved connector as ``local``, ``external`` or ``unknown``.
+
+    The consent page must not claim a model setup the deployment does not have,
+    so this reads the *resolved* provider rather than a hard-coded sentence. A
+    self-hosted OpenAI-compatible endpoint (``llm``) is judged by its URL:
+    a loopback/private host stays local, anything else is external.
+    """
+    provider = (connector or "").strip().lower()
+    if provider in _LOCAL_PROVIDERS:
+        return "local"
+    if provider in _EXTERNAL_PROVIDERS:
+        return "external"
+    if not provider:
+        return "unknown"
+
+    url = (base_url or "").strip().lower()
+    if not url:
+        # An unknown provider with no endpoint we can inspect: assume it leaves
+        # the deployment. Over-disclosing is the safe direction.
+        return "external"
+    if any(token in url for token in (
+            "localhost", "127.0.0.1", "0.0.0.0", "host.docker.internal",
+            "://10.", "://192.168.", "://172.1", "://172.2", "://172.3")):
+        return "local"
+    return "external"
+
+
+def resolve_consent_model_info(activity: Dict[str, Any]) -> Dict[str, Any]:
+    """Which model actually sees student work, via the real resolution chain.
+
+    Reuses ``OrganizationConfigResolver.resolve_model_for_completion`` — the
+    same call the completion pipeline makes — so the disclosure cannot drift
+    from the deployment's real configuration. Returns
+    ``{"model_class", "model", "connector"}``.
+    """
+    owner = (activity or {}).get("owner_email") or (
+        activity or {}).get("configured_by_email")
+    if not owner:
+        return {"model_class": "unknown", "model": "", "connector": ""}
+
+    try:
+        from lamb.completions.main import load_plugins
+        from lamb.completions.org_config_resolver import OrganizationConfigResolver
+
+        resolver = OrganizationConfigResolver(owner)
+        resolved = resolver.resolve_model_for_completion(
+            None, None, available_providers=set(load_plugins("connectors")))
+        connector = resolved.get("provider") or ""
+        model = resolved.get("model") or ""
+        provider_config = {}
+        try:
+            provider_config = resolver.get_provider_config(connector) or {}
+        except Exception:  # pragma: no cover - config lookup is best effort
+            provider_config = {}
+        model_class = classify_model_class(
+            connector, provider_config.get("base_url") or "")
+    except Exception as e:
+        logger.info(
+            "Workshop consent: model resolution unavailable for %s: %s",
+            owner, e)
+        return {"model_class": "unknown", "model": "", "connector": ""}
+
+    return {"model_class": model_class, "model": model, "connector": connector}
+
+
+def resolve_consent_model_info_for_token(token: str) -> Dict[str, Any]:
+    """``consent/info`` payload for a workshop token (see the route)."""
+    data = _decode_workshop_student(token)
+    activity_id = data.get("activity_id")
+    activity = (
+        _db_manager.get_lti_activity_by_id(activity_id) if activity_id else None)
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    from lamb.modules.workshop.retention import retention_days
+
+    info = resolve_consent_model_info(activity)
+    info["retention_days"] = retention_days(activity)
+    info["consent_version"] = CONSENT_VERSION
+    return info
+
+
+def _reconsent_required(activity: Optional[Dict[str, Any]]) -> bool:
+    """Whether a notice-version change forces students to accept again.
+
+    Activity/org level switch ``require_reconsent_on_version_change``; defaults
+    to **on** (C20) because the new notice materially widens what is disclosed.
+    """
+    if not activity:
+        return True
+    owner = activity.get("owner_email") or activity.get("configured_by_email")
+    if not owner:
+        return True
+    try:
+        from lamb.completions.org_config_resolver import OrganizationConfigResolver
+
+        value = OrganizationConfigResolver(owner).get_feature_value(
+            "require_reconsent_on_version_change", 1)
+        if isinstance(value, str):
+            return value.strip().lower() not in ("0", "false", "no", "off")
+        return bool(value)
+    except Exception as e:
+        logger.debug("Reconsent flag unavailable (%s) — defaulting to on", e)
+        return True
+
+
+def _needs_reconsent(
+    activity: Optional[Dict[str, Any]], student: Dict[str, Any]
+) -> bool:
+    """Whether a returning student must accept the current notice again."""
+    if not _reconsent_required(activity):
+        return False
+    return (student.get("consent_version") or "") != CONSENT_VERSION
+
+
+def _consent_context(
+    request: Request,
+    activity: Optional[Dict[str, Any]],
+    locale: str,
+    token: str,
+) -> Dict[str, Any]:
+    """Template context for the consent page (localized + truthful)."""
+    from lamb.modules.workshop import i18n as workshop_i18n
+    from lamb.modules.workshop.retention import retention_days
+
+    strings = workshop_i18n.consent_strings(locale)
+    model_info = (
+        resolve_consent_model_info(activity) if activity
+        else {"model_class": "unknown", "model": ""})
+    days = retention_days(activity) if activity else None
+
+    return {
+        "request": request,
+        "token": token,
+        "lang": strings.get("lang", locale),
+        "s": strings,
+        "model_class": model_info.get("model_class", "unknown"),
+        "model_name": model_info.get("model", ""),
+        "retention_days": days,
+        "retention_note": (
+            strings.get("retentionDays", "").format(days=days) if days else ""
+        ),
+    }
 
 
 @router.get("/consent")
-async def consent_page(request: Request, token: str = ""):
+async def consent_page(request: Request, token: str = "", lang: str = ""):
     """Show the consent page on first visit; skip straight to the wizard after.
 
-    A student who already consented (lti_activity_users.consent_given_at set) is
-    redirected to the wizard instead of being asked again.
+    A student who already consented *to the current notice version*
+    (``lti_activity_users.consent_given_at`` + ``consent_version``) is
+    redirected to the wizard instead of being asked again. The page language
+    follows the same chain as the wizard (``?lang=`` → Accept-Language → en).
     """
+    from lamb.modules.workshop import i18n as workshop_i18n
+
     data = _decode_workshop_student(token)
     activity_id = data.get("activity_id")
     email = data.get("email")
+
+    activity = (
+        _db_manager.get_lti_activity_by_id(activity_id) if activity_id else None)
+    locale = workshop_i18n.resolve_locale(request, activity, url_lang=lang)
 
     student = None
     if activity_id and email:
         student = _db_manager.get_activity_user(activity_id=activity_id, user_email=email)
 
-    if student and student.get("consent_given_at"):
-        return RedirectResponse(url=_wizard_url(request, activity_id, token), status_code=303)
+    if student and student.get("consent_given_at") and not _needs_reconsent(
+            activity, student):
+        return RedirectResponse(
+            url=_wizard_url(request, activity_id, token, locale), status_code=303)
 
-    return _templates.TemplateResponse(request, "consent.html", {"token": token})
+    context = _consent_context(request, activity, locale, token)
+    return _templates.TemplateResponse(request, "consent.html", context)
+
+
+@router.get("/consent/info")
+async def consent_info(token: str = ""):
+    """What the consent page must disclose, resolved from the live config (C17).
+
+    Returns ``{model_class, model, retention_days, consent_version}``. The
+    classification comes from the same resolution chain the completion pipeline
+    uses, so the page cannot describe a model setup the deployment lacks.
+
+    Also usable by the SPA (same token contract) to render the disclosure
+    outside the server-rendered consent page.
+    """
+    return resolve_consent_model_info_for_token(token)
 
 
 @router.post("/consent")
@@ -625,6 +1046,9 @@ async def consent_submit(request: Request, token: str = Form(...)):
     activity_id = data.get("activity_id")
     email = data.get("email")
     if activity_id and email:
-        _db_manager.record_student_consent(activity_id, email)
+        _db_manager.record_student_consent(
+            activity_id, email, consent_version=CONSENT_VERSION)
 
-    return RedirectResponse(url=_wizard_url(request, activity_id, token), status_code=303)
+    return RedirectResponse(
+        url=_wizard_url(request, activity_id, token, data.get("locale")),
+        status_code=303)

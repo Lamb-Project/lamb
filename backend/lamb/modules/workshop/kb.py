@@ -306,6 +306,88 @@ def config_for_owner(owner_email: Optional[str]) -> Dict[str, Any]:
     return manager._get_kb_config_for_user({"email": owner_email})
 
 
+# Synthetic student email domain (lti_activity_manager.generate_student_email).
+# Used as a cheap gate so the shared RAG path pays no DB query for the
+# overwhelming majority of assistants, which are not workshop-built.
+WORKSHOP_STUDENT_EMAIL_DOMAIN = "@lamb-lti.local"
+
+
+def _split_collection_ids(collections: Any) -> list[str]:
+    """Normalize a collections value (list, JSON array or comma string)."""
+    if collections is None:
+        return []
+    if isinstance(collections, (list, tuple, set)):
+        items = [str(c) for c in collections]
+    else:
+        text = str(collections).strip()
+        if not text:
+            return []
+        if text.startswith("["):
+            try:
+                parsed = json.loads(text)
+            except (json.JSONDecodeError, TypeError):
+                parsed = None
+            if isinstance(parsed, (list, tuple)):
+                items = [str(c) for c in parsed]
+            else:
+                items = text.split(",")
+        else:
+            items = text.split(",")
+    return [c.strip() for c in items if c and c.strip()]
+
+
+def is_workshop_assistant(assistant: Any) -> bool:
+    """Cheap pre-check: does this assistant look workshop-built?
+
+    Students are virtual principals whose synthetic email lives on a fixed
+    domain, so the domain alone answers "could this be a workshop assistant?".
+    """
+    owner = str(getattr(assistant, "owner", "") or "")
+    return owner.lower().endswith(WORKSHOP_STUDENT_EMAIL_DOMAIN)
+
+
+def restrict_collections_for_assistant(
+    assistant: Any, collections: Any
+) -> list[str]:
+    """Narrow a workshop assistant's RAG collections to its own session KB.
+
+    Defense in depth for S1: even if a foreign collection id was persisted on a
+    workshop assistant (historical dirty data, or a write path that slipped
+    through), retrieval must never read another session's documents. Both the
+    ``kb_query`` tool and ``simple_rag`` call this before hitting the KB server.
+
+    Non-workshop assistants are returned unchanged, and the synthetic-email
+    domain gate means ordinary assistants cost no extra DB query.
+    """
+    requested = _split_collection_ids(collections)
+    if not requested or not is_workshop_assistant(assistant):
+        return requested
+
+    db = _db()
+    try:
+        session = db.get_workshop_session_by_assistant(
+            getattr(assistant, "id", None))
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning("Workshop KB: session lookup failed for assistant %s: %s",
+                       getattr(assistant, "id", None), e)
+        return requested
+
+    if not session:
+        # A student-domain assistant with no workshop session: treat as ordinary
+        # rather than silently breaking retrieval.
+        return requested
+
+    session_kb = session.get("kb_id")
+    allowed = [c for c in requested if session_kb and c == str(session_kb)]
+    if len(allowed) != len(requested):
+        logger.warning(
+            "Workshop KB: dropped %d collection(s) not owned by session %s "
+            "(assistant=%s, session_kb=%s, requested=%s)",
+            len(requested) - len(allowed), session.get("id"),
+            getattr(assistant, "id", None), session_kb, requested)
+    return allowed
+
+
 def link_kb_to_assistant(
     assistant_id: int, kb_id: str, org_id: Optional[int] = None
 ) -> bool:

@@ -27,6 +27,10 @@
  * @property {string[]} [selectedTools]
  * @property {boolean} [sandboxEnabled]
  * @property {string} [reflection]
+ * @property {{q1?: string, q2?: string, q3?: string}} [reflectionAnswers]
+ * @property {'on' | 'off'} [ragMode]
+ * @property {Array<{turn: number, ragMode: string, sources: Array<any>, answer: string, question: string}>} [obsHistory]
+ * @property {Array<{step: number, kind: string, data: any, at?: number}>} [observations]
  * @property {Array<{role: string, content: string}>} [chatMessages]
  * @property {number | null} [assistantId]
  * @property {string} [assistantName]
@@ -34,6 +38,38 @@
  */
 
 /**
+ * Reflection questions, in order. Kept here (not only in the component) so the
+ * composed `reflection` string and the transcript agree with the UI.
+ */
+export const REFLECTION_QUESTIONS = [
+	{ key: 'q1', heading: 'What did you ask your assistant to do, and why?' },
+	{ key: 'q2', heading: 'What did the assistant actually receive?' },
+	{ key: 'q3', heading: 'What would you change in your design after testing it?' }
+];
+
+/**
+ * Compose the free-text `reflection` field from the three structured answers.
+ *
+ * `dashboard.avg_reflection_length` and `evaluation.build_transcript` keep
+ * working unchanged: the composed string is what they read. Answers left blank
+ * are skipped, so a half-filled form never produces empty headings.
+ *
+ * @param {{q1?: string, q2?: string, q3?: string}} [answers]
+ * @returns {string}
+ */
+export function composeReflection(answers = {}) {
+	const parts = [];
+	for (const question of REFLECTION_QUESTIONS) {
+		const answer = (answers?.[question.key] || '').trim();
+		if (!answer) continue;
+		parts.push(`### ${question.heading}\n${answer}`);
+	}
+	return parts.join('\n\n');
+}
+
+/**
+ * A form store seeded from persisted build state.
+ *
  * @param {WorkshopBuildState} [initial] - persisted build_state from the backend.
  */
 export function createWorkshopFormState(initial = {}) {
@@ -63,7 +99,22 @@ export function createWorkshopFormState(initial = {}) {
 		sandboxEnabled: initial.sandboxEnabled ?? false,
 
 		// --- Step 5: Test chat + reflection ---
+		// `reflection` stays the free-text field the backend/transcript read; the
+		// three structured answers are the UI, and compose into it on submit
+		// (legacy rows keep their original text — D5).
 		reflection: initial.reflection ?? '',
+		/** @type {{q1: string, q2: string, q3: string}} */
+		reflectionAnswers: {
+			q1: initial.reflectionAnswers?.q1 ?? '',
+			q2: initial.reflectionAnswers?.q2 ?? '',
+			q3: initial.reflectionAnswers?.q3 ?? '',
+		},
+		/** @type {'on' | 'off'} */
+		ragMode: initial.ragMode === 'off' ? 'off' : 'on',
+		/** @type {Array<{turn: number, ragMode: string, sources: Array<any>, answer: string, question: string}>} */
+		obsHistory: initial.obsHistory ?? [],
+		/** @type {Array<{step: number, kind: string, data: any, at?: number}>} */
+		observations: initial.observations ?? [],
 		/** @type {Array<{role: string, content: string}>} */
 		chatMessages: initial.chatMessages ?? [],
 
@@ -106,6 +157,17 @@ export function createWorkshopFormState(initial = {}) {
 			}
 		},
 		/**
+		 * Compose the structured reflection answers into the persisted
+		 * `reflection` string, keeping any legacy text that predates the
+		 * three questions.
+		 * @returns {string}
+		 */
+		composeReflection() {
+			const composed = composeReflection(form.reflectionAnswers);
+			if (composed) return composed;
+			return form.reflection || '';
+		},
+		/**
 		 * Serialize the current build state (for persistence / submit).
 		 * @returns {Object}
 		 */
@@ -124,6 +186,10 @@ export function createWorkshopFormState(initial = {}) {
 				selectedTools: form.selectedTools,
 				sandboxEnabled: form.sandboxEnabled,
 				reflection: form.reflection,
+				reflectionAnswers: form.reflectionAnswers,
+				ragMode: form.ragMode,
+				obsHistory: form.obsHistory,
+				observations: form.observations,
 				chatMessages: form.chatMessages,
 				assistantId: form.assistantId,
 				assistantName: form.assistantName,

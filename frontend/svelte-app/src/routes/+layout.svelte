@@ -14,6 +14,7 @@
 	import { replaceSessionWithToken } from '$lib/session/sessionManager';
 	import { get } from 'svelte/store';
 	import { user } from '$lib/stores/userStore';
+	import { isWorkshopPath as isWorkshopRoute } from '$lib/workshop/workshopRoute.js';
 
 	let { children } = $props();
 
@@ -22,7 +23,7 @@
 	// bootstrap a creator session from them — that would eat the token from the
 	// URL and drop the student into the login page (#workshop-P4).
 	const isWorkshopPath = () =>
-		browser && $page.url.pathname.startsWith(base + '/m/workshop/');
+		browser && isWorkshopRoute($page.url.pathname, base);
 	let sessionReady = $state(
 		!$page.url.searchParams.get('token') || isWorkshopPath()
 	);
@@ -35,7 +36,7 @@
 		if (!browser) return;
 
 		// Workshop URLs carry their own student token — skip creator bootstrap.
-		if (url.pathname.startsWith(base + '/m/workshop/')) {
+		if (isWorkshopRoute(url.pathname, base)) {
 			sessionReady = true;
 			return;
 		}
@@ -108,7 +109,12 @@
 
 <div class="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
 	<div class="lamb-workspace" class:agent-open={$sidebarOpen && !!$user.token} style:--aac-width={$sidebarWidth + "px"} inert={$sidebarOpen && $sidebarMobile && !!$user.token}>
-	<Nav />
+	<!-- Students are workshop principals, not Creator users: the Assistants /
+	     Knowledge bases / account chrome is a set of dead ends for them (C7).
+	     The workshop page provides its own minimal header instead. -->
+	{#if !isWorkshopPath()}
+		<Nav />
+	{/if}
 
 
 	<main oninputcapture={markWorkspaceDirty} onchangecapture={markWorkspaceDirty} class="w-full mx-auto py-6 sm:px-6 lg:px-8 flex-grow" class:aac-workspace={$sidebarOpen && !!$user.token}>
@@ -125,9 +131,11 @@
 		{/if}
 	</main>
 
-	<Footer />
+	{#if !isWorkshopPath()}
+		<Footer />
+	{/if}
 	</div>
-	{#if sessionReady && $user.token}<AacSidebar />{/if}
+	{#if sessionReady && $user.token && !isWorkshopPath()}<AacSidebar />{/if}
 </div>
 
 <style>

@@ -159,6 +159,18 @@ class OrganizationConfigResolver:
         org_config = self.organization.get('config', {})
         features = org_config.get("features", {})
         return features.get(feature, False)
+
+    def get_feature_value(self, feature: str, default: Any = None) -> Any:
+        """Get a feature *value* (not just a boolean flag).
+
+        Workshop settings such as ``workshop_retention_days`` are numbers rather
+        than flags, so ``get_feature_flag`` cannot express them. Missing keys
+        (and unconfigured orgs) return ``default``.
+        """
+        org_config = self.organization.get('config', {}) or {}
+        features = org_config.get("features", {}) or {}
+        value = features.get(feature)
+        return default if value is None else value
     
     def get_global_default_model_config(self) -> Dict[str, str]:
         """

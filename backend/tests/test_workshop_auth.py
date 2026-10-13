@@ -233,7 +233,8 @@ class TestConsent:
         assert isinstance(resp, RedirectResponse)
         assert resp.status_code == 303
         assert resp.headers["location"] == "http://t/m/workshop/1?token=tok"
-        mock_db.record_student_consent.assert_called_once_with(1, "s@lamb.com")
+        mock_db.record_student_consent.assert_called_once_with(
+            1, "s@lamb.com", consent_version=routers.CONSENT_VERSION)
 
     @pytest.mark.asyncio
     @patch("lamb.modules.workshop.routers._wizard_url",
@@ -251,13 +252,18 @@ class TestConsent:
         assert "text/html" in resp.media_type
 
     @pytest.mark.asyncio
+    @patch("lamb.modules.workshop.routers._reconsent_required", return_value=False)
     @patch("lamb.modules.workshop.routers._wizard_url",
            return_value="http://t/m/workshop/1?token=tok")
     @patch("lamb.auth.decode_token")
     @patch("lamb.modules.workshop.routers._db_manager")
     async def test_consent_page_revisit_skips(
-            self, mock_db, mock_decode, mock_wizard):
-        """WE2: consent already given → straight to the wizard (303)."""
+            self, mock_db, mock_decode, mock_wizard, mock_reconsent):
+        """WE2: consent already given → straight to the wizard (303).
+
+        Version handling (re-asking after a notice change) is covered in
+        ``test_workshop_consent.py``; here the switch is simply off.
+        """
         mock_decode.return_value = _token_payload(activity_id=1, email="s@lamb.com")
         mock_db.get_activity_user.return_value = {"consent_given_at": 1770000000}
 

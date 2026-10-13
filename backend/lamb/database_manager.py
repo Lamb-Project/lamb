@@ -8093,19 +8093,33 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
-    def record_student_consent(self, activity_id: int, user_email: str) -> bool:
-        """Record that a student has accepted the chat visibility consent."""
+    def record_student_consent(self, activity_id: int, user_email: str,
+                               consent_version: Optional[str] = None) -> bool:
+        """Record that a student has accepted the workshop consent notice.
+
+        ``consent_version`` records *which* notice was accepted: when the copy
+        changes materially (the v2 notice discloses model-based evaluation),
+        students who accepted an older version can be asked again. Passing
+        None leaves any previously recorded version untouched.
+        """
         connection = self.get_connection()
         if not connection:
             return False
         try:
             with connection:
                 cursor = connection.cursor()
-                cursor.execute(f"""
-                    UPDATE {self.table_prefix}lti_activity_users
-                    SET consent_given_at = ?
-                    WHERE activity_id = ? AND user_email = ?
-                """, (int(time.time()), activity_id, user_email))
+                if consent_version:
+                    cursor.execute(f"""
+                        UPDATE {self.table_prefix}lti_activity_users
+                        SET consent_given_at = ?, consent_version = ?
+                        WHERE activity_id = ? AND user_email = ?
+                    """, (int(time.time()), consent_version, activity_id, user_email))
+                else:
+                    cursor.execute(f"""
+                        UPDATE {self.table_prefix}lti_activity_users
+                        SET consent_given_at = ?
+                        WHERE activity_id = ? AND user_email = ?
+                    """, (int(time.time()), activity_id, user_email))
                 return cursor.rowcount > 0
         except sqlite3.Error as e:
             logger.error(f"Error recording student consent: {e}")
@@ -8732,6 +8746,42 @@ class LambDatabaseManager:
                 return None
         except sqlite3.Error as e:
             logger.error(f"Error getting workshop session: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_workshop_session_by_assistant(
+        self, assistant_id: int
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch the workshop session that owns an assistant, or None.
+
+        Used by the S1 defense-in-depth check (``workshop.kb``): when an
+        assistant was built inside a workshop, its RAG collections are pinned to
+        the session's own knowledge base. Regular (non-workshop) assistants have
+        no session row and are returned ``None`` — callers must treat that as
+        "not a workshop assistant", never as an error.
+        """
+        if assistant_id is None:
+            return None
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_workshop_sessions
+                    WHERE assistant_id = ?
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """, (assistant_id,))
+                row = cursor.fetchone()
+                if row:
+                    columns = [col[0] for col in cursor.description]
+                    return dict(zip(columns, row))
+                return None
+        except sqlite3.Error as e:
+            logger.error(f"Error getting workshop session by assistant: {e}")
             return None
         finally:
             connection.close()

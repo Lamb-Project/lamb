@@ -55,15 +55,23 @@ export function setupI18n() {
 // Set the current locale
 /**
  * Sets the current application locale.
+ *
+ * `persist: false` changes the locale for this page view only, without writing
+ * `localStorage.lang`. The student workshop uses it: its locale comes from the
+ * LMS/browser (a guess the student never made), so it must not overwrite the
+ * choice this browser already saved for the Creator app. A manual switch from
+ * the wizard's language picker persists normally.
+ *
  * @param {string} newLocale - The locale code (e.g., 'en', 'es').
+ * @param {{persist?: boolean}} [options]
  */
-export function setLocale(newLocale) {
+export function setLocale(newLocale, { persist = true } = {}) {
   if (supportedLocales.includes(newLocale)) {
-    if (browser) {
+    if (browser && persist) {
       localStorage.setItem('lang', newLocale);
     }
     svelteLocale.set(newLocale);
-    console.log(`Locale set to: ${newLocale}`);
+    console.log(`Locale set to: ${newLocale}${persist ? '' : ' (not persisted)'}`);
   } else {
     console.warn(`Attempted to set unsupported locale: ${newLocale}`);
   }

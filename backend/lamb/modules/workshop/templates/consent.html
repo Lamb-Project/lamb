@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Workshop — Consent</title>
+    <title>{{ s.title }} — {{ 'AI Workshop' }}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
@@ -12,30 +12,46 @@
 <body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
     <div class="bg-white rounded-xl shadow-lg max-w-lg w-full p-8">
         <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">&#x1F9E0;</div>
-        <h1 class="text-xl font-bold text-gray-900 mb-2 text-center">AI Workshop — Consent</h1>
-        <p class="text-gray-600 mb-4">
-            Before you start building your AI assistant, please read the following:
-        </p>
+        <h1 class="text-xl font-bold text-gray-900 mb-2 text-center">{{ s.title }}</h1>
+        <p class="text-gray-600 mb-4">{{ s.intro }}</p>
+
+        <h2 class="text-sm font-semibold uppercase text-gray-500 mb-2">{{ s.purposeHeading }}</h2>
         <ul class="list-disc pl-5 text-sm text-gray-600 space-y-2 mb-6">
-            <li>
-                Your chat messages and the documents you upload will be used to build
-                and test your AI assistant.
-            </li>
-            <li>
-                The assistant will only use the information you provide (instructions,
-                documents, knowledge base) to answer questions.
-            </li>
+            <li>{{ s.purposeBuild | safe }}</li>
+            <li>{{ s.purposeTest | safe }}</li>
+            <li>{{ s.purposeEvaluate | safe }}</li>
         </ul>
+
+        <h2 class="text-sm font-semibold uppercase text-gray-500 mb-2">{{ s.modelHeading }}</h2>
         <p class="text-sm text-gray-600 mb-6">
-            By clicking "I agree", you consent to this activity.
+            {% if model_class == 'local' %}
+                {{ s.modelLocal }}
+            {% elif model_class == 'external' %}
+                {{ s.modelExternal.format(model=model_name or '—') }}
+            {% else %}
+                {{ s.modelUnknown }}
+            {% endif %}
         </p>
+
+        <h2 class="text-sm font-semibold uppercase text-gray-500 mb-2">{{ s.retentionHeading }}</h2>
+        <p class="text-sm text-gray-600 mb-6">
+            {{ s.retentionBody }}
+            {% if retention_note %}
+                <span class="block mt-1 text-gray-500">{{ retention_note }}</span>
+            {% endif %}
+        </p>
+
+        <h2 class="text-sm font-semibold uppercase text-gray-500 mb-2">{{ s.privacyHeading }}</h2>
+        <p class="text-sm text-gray-600 mb-6">{{ s.privacyBody }}</p>
+
         <form method="POST" action="/lamb/v1/workshop/consent">
             <input type="hidden" name="token" value="{{ token }}" />
             <button type="submit"
                     class="w-full bg-blue-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors">
-                I agree
+                {{ s.consentButton }}
             </button>
         </form>
+        <p class="text-xs text-gray-500 mt-3 text-center">{{ s.declineHint }}</p>
     </div>
 </body>
 </html>

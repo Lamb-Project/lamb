@@ -10,14 +10,21 @@
 	//
 	// Adapter-static has no SSR: everything happens client-side in onMount.
 
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import { _ } from '$lib/i18n';
 	import { createWorkshopFormState } from '$lib/components/workshop/logic/workshopFormState.svelte.js';
 	import WizardSteps from '$lib/components/workshop/WizardSteps.svelte';
 	import ObservabilityPanel from '$lib/components/workshop/ObservabilityPanel.svelte';
 	import FormativeFeedback from '$lib/components/workshop/FormativeFeedback.svelte';
+	import LocaleSwitcher from '$lib/components/workshop/LocaleSwitcher.svelte';
 	import { sendWorkshopChat } from '$lib/services/workshopChatService.js';
+	import {
+		createWorkshopApi,
+		decodeTokenPayload,
+		TOKEN_EXPIRED
+	} from '$lib/services/workshopApi.js';
+	import { initWorkshopLocale } from '$lib/workshop/workshopLocale.js';
 	import { getWorkshopLlmConfig } from '$lib/config.js';
 
 	// ── Auth / session (from URL) ──
@@ -33,6 +40,8 @@
 	/** @type {any} */ let form = $state(null);
 	/** @type {string} */
 	let error = $state('');
+	/** @type {boolean} */
+	let reentryRequired = $state(false);
 	/** @type {boolean} */
 	let loading = $state(true);
 	/** @type {boolean} */
@@ -65,65 +74,57 @@
 	/** @type {number | null} */
 	let assistantId = $state(null);
 
-	// Token payload decode (JWT middle segment, base64url → JSON). No crypto;
-	// the server re-verifies the token on every authenticated call.
-	/** @param {string} jwt */
-	function decodeTokenPayload(jwt) {
-		try {
-			const part = jwt.split('.')[1] || '';
-			const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
-			const pad = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
-			const json = decodeURIComponent(
-				atob(pad)
-					.split('')
-					.map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-					.join('')
-			);
-			return JSON.parse(json);
-		} catch (e) {
-			console.error('Failed to decode token payload:', e);
-			return {};
+	// ── API client (token renewal + readable 401s) ──
+	/** @type {ReturnType<typeof createWorkshopApi> | null} */
+	let api = null;
+
+	/**
+	 * Turn an error into the text the student should read.
+	 *
+	 * `token_expired` is special: renewal already failed (or is impossible), so
+	 * the only way forward is re-entering from the course page — saying
+	 * "invalid token" there would be a dead end.
+	 * @param {any} e
+	 */
+	function errorText(e, fallback = 'Request failed') {
+		if (e?.code === TOKEN_EXPIRED) {
+			return $_('workshop.tokenExpired', {
+				default: 'Your workshop session expired.'
+			});
 		}
+		return e?.message || fallback;
+	}
+
+	/**
+	 * Whether an error means "the student must re-enter from the course page".
+	 * @param {any} e
+	 */
+	function needsReentry(e) {
+		return e?.code === TOKEN_EXPIRED;
+	}
+
+	/**
+	 * Record a failure for display.
+	 * @param {any} e
+	 * @param {string} [fallback]
+	 */
+	function fail(e, fallback = '') {
+		error = errorText(e, fallback || undefined);
+		reentryRequired = needsReentry(e);
 	}
 
 	async function fetchSession() {
-		const res = await fetch(
-			`/lamb/v1/workshop/sessions/${encodeURIComponent(sessionId)}`,
-			{ headers: { token } }
-		);
-		if (!res.ok) {
-			const err = await res.json().catch(() => ({}));
-			throw new Error(err.detail || `Failed to load session (${res.status})`);
-		}
-		return res.json();
+		return api.request(`/sessions/${encodeURIComponent(sessionId)}`);
 	}
 
 	/** @param {string} path @param {Object} [body] */
 	async function wsPost(path, body = {}) {
-		const res = await fetch(`/lamb/v1/workshop${path}`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', token },
-			body: JSON.stringify(body),
-		});
-		if (!res.ok) {
-			const err = await res.json().catch(() => ({}));
-			throw new Error(err.detail || `Request failed (${res.status})`);
-		}
-		return res.json();
+		return api.request(path, { method: 'POST', body });
 	}
 
 	/** @param {string} path @param {Object} [body] */
 	async function wsPatch(path, body = {}) {
-		const res = await fetch(`/lamb/v1/workshop${path}`, {
-			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json', token },
-			body: JSON.stringify(body),
-		});
-		if (!res.ok) {
-			const err = await res.json().catch(() => ({}));
-			throw new Error(err.detail || `Request failed (${res.status})`);
-		}
-		return res.json();
+		return api.request(path, { method: 'PATCH', body });
 	}
 
 	/**
@@ -132,12 +133,8 @@
 	 */
 	async function fetchEvaluation() {
 		try {
-			const res = await fetch(
-				`/lamb/v1/workshop/sessions/${encodeURIComponent(sessionId)}/evaluation`,
-				{ headers: { token } }
-			);
-			if (!res.ok) return;
-			const data = await res.json();
+			const data = await api.request(
+				`/sessions/${encodeURIComponent(sessionId)}/evaluation`);
 			if (data.evaluation) {
 				evaluation = { configured: data.configured, ...data.evaluation };
 			} else if (data.configured === false) {
@@ -150,11 +147,20 @@
 
 	onMount(async () => {
 		activityId = /** @type {string} */ ($page.params.activityId);
+
+		// Locale chain (C6): the LMS locale travels in ?lang=, then the saved
+		// choice, then the browser, then English. Applied without persisting —
+		// a guess must not overwrite a choice made elsewhere in the app.
+		initWorkshopLocale($page.url.searchParams.get('lang'));
+
 		const urlToken = $page.url.searchParams.get('token') || '';
 		token = urlToken;
 
 		if (!token) {
-			error = 'Missing workshop token. This page must be opened from an LTI launch link.';
+			error = $_('workshop.missingToken', {
+				default:
+					'Missing workshop token. This page must be opened from an LTI launch link.'
+			});
 			loading = false;
 			return;
 		}
@@ -163,10 +169,24 @@
 		sessionId = payload.session_id || '';
 
 		if (!sessionId) {
-			error = 'Token payload is missing session_id.';
+			error = $_('workshop.missingSession', {
+				default: 'Token payload is missing session_id.'
+			});
 			loading = false;
 			return;
 		}
+
+		// One client per session: it renews the short-lived token in the
+		// background (every 5 minutes / on tab focus) and writes the fresh
+		// token back to the URL so a reload keeps working.
+		api = createWorkshopApi({
+			sessionId,
+			token,
+			onToken: (next) => {
+				token = next;
+			}
+		});
+		api.startAutoRenew();
 
 		try {
 			const session = await fetchSession();
@@ -194,10 +214,15 @@
 			console.error('[workshop] session load failed:', e);
 			formStore = createWorkshopFormState({});
 			form = formStore.form;
-			error = e?.message || 'Failed to load your workshop session.';
+			error = errorText(e);
+			reentryRequired = needsReentry(e);
 		} finally {
 			loading = false;
 		}
+	});
+
+	onDestroy(() => {
+		api?.stopAutoRenew();
 	});
 
 	async function createAssistantIfNeeded() {
@@ -240,7 +265,7 @@
 			persistBuildState();
 			return assistantId;
 		} catch (/** @type {any} */ e) {
-			error = e?.message || 'Failed to create your assistant.';
+			fail(e, 'Failed to create your assistant.');
 			return null;
 		} finally {
 			assistantCreating = false;
@@ -271,7 +296,7 @@
 			});
 		} catch (/** @type {any} */ e) {
 			// Non-fatal: the student can still chat; the next sync retries.
-			error = e?.message || 'Failed to save your instructions.';
+			fail(e, 'Failed to save your instructions.');
 		}
 	}
 
@@ -292,13 +317,14 @@
 		}
 		uploading = true;
 		error = '';
+		reentryRequired = false;
 		form.documentStatus = 'uploading';
 		try {
 			const fd = new FormData();
 			fd.append('file', file);
-			const res = await fetch(
-				`/lamb/v1/workshop/sessions/${encodeURIComponent(sessionId)}/assistant/${assistantId}/doc`,
-				{ method: 'POST', headers: { token }, body: fd }
+			const res = await api.fetchWithRenew(
+				`/sessions/${encodeURIComponent(sessionId)}/assistant/${assistantId}/doc`,
+				{ method: 'POST', body: fd }
 			);
 			if (!res.ok) {
 				const err = await res.json().catch(() => ({}));
@@ -320,7 +346,7 @@
 			}
 		} catch (/** @type {any} */ e) {
 			form.documentStatus = 'failed';
-			error = e?.message || 'Upload failed';
+			fail(e, 'Upload failed');
 		} finally {
 			uploading = false;
 		}
@@ -335,12 +361,9 @@
 		for (let attempt = 0; attempt < maxAttempts; attempt++) {
 			await new Promise((r) => setTimeout(r, 3000));
 			try {
-				const res = await fetch(
-					`/lamb/v1/workshop/sessions/${encodeURIComponent(sessionId)}/doc/status?job_id=${encodeURIComponent(jobId)}`,
-					{ headers: { token } }
+				const data = await api.request(
+					`/sessions/${encodeURIComponent(sessionId)}/doc/status?job_id=${encodeURIComponent(jobId)}`
 				);
-				if (!res.ok) continue;
-				const data = await res.json();
 				form.documentStatus = data.status;
 				if (data.status === 'completed') return;
 				if (data.status === 'failed' || data.status === 'cancelled') {
@@ -381,7 +404,7 @@
 			form.kbVerificationResult = data;
 			persistBuildState();
 		} catch (/** @type {any} */ e) {
-			error = e?.message || 'Knowledge base test failed.';
+			fail(e, 'Knowledge base test failed.');
 		} finally {
 			probing = false;
 		}
@@ -469,8 +492,9 @@
 				sessionId,
 				assistantId,
 				token,
+				api,
 				messages: requestMessages(chatMessages),
-				opts: { tools, observability: true },
+				opts: { tools, observability: true, ragMode: form.ragMode },
 			},
 			{
 				onChunk: (chunk) => {
@@ -530,7 +554,9 @@
 			const buildState = formStore ? formStore.serialize() : {};
 			await wsPost(`/sessions/${sessionId}/submit`, {
 				saved_chat: JSON.stringify(chatMessages),
-				reflection: form.reflection || '',
+				// The three structured questions compose into the free-text
+				// `reflection` the transcript and dashboard read (D5).
+				reflection: formStore ? formStore.composeReflection() : form.reflection || '',
 				// Persist the per-step decisions so the formative transcript and
 				// the teacher dashboard can show what the student actually built.
 				build_state: JSON.stringify(buildState),
@@ -540,7 +566,7 @@
 			// Feedback is advisory and never blocks the submission.
 			await evaluateWorkshop();
 		} catch (/** @type {any} */ e) {
-			error = e?.message || 'Submit failed';
+			fail(e, 'Submit failed');
 		} finally {
 			submitting = false;
 		}
@@ -557,7 +583,7 @@
 			const result = await wsPost(`/sessions/${sessionId}/evaluate`, {});
 			evaluation = result;
 		} catch (/** @type {any} */ e) {
-			error = e?.message || 'Could not generate feedback.';
+			fail(e, 'Could not generate feedback.');
 		} finally {
 			evaluating = false;
 		}
@@ -568,38 +594,56 @@
 	}
 
 	/** @type {Array<{n: number, label: string}>} */
-	const stepLabels = [
-		{ n: 1, label: 'Instructions' },
-		{ n: 2, label: 'Document' },
-		{ n: 3, label: 'Knowledge Base' },
-		{ n: 4, label: 'Tools' },
-		{ n: 5, label: 'Test & Reflect' },
-	];
+	const stepLabels = $derived([
+		{ n: 1, label: $_('workshop.step1', { default: 'Instructions' }) },
+		{ n: 2, label: $_('workshop.step2', { default: 'Attach Document' }) },
+		{ n: 3, label: $_('workshop.step3', { default: 'Connect Knowledge Base' }) },
+		{ n: 4, label: $_('workshop.step4', { default: 'Add Tool' }) },
+		{ n: 5, label: $_('workshop.step5', { default: 'Test & Reflect' }) },
+	]);
 </script>
 
 <svelte:head>
-	<title>AI Workshop</title>
+	<title>{$_('workshop.title', { default: 'AI Workshop' })}</title>
 </svelte:head>
 
 <div class="max-w-7xl mx-auto px-4 py-6">
-	<!-- Header -->
-	<header class="flex items-center justify-between mb-6">
-		<div>
-			<h1 class="text-2xl font-bold">{$_('workshop.title', { default: 'AI Workshop' })}</h1>
+	<!-- Minimal student shell (C7): activity identity + language, no Creator
+	     navigation. The LMS provides the "back to course" affordance. -->
+	<header class="flex items-center justify-between gap-4 mb-6">
+		<div class="min-w-0">
+			<h1 class="text-2xl font-bold truncate">
+				{$_('workshop.title', { default: 'AI Workshop' })}
+			</h1>
 			<p class="text-sm text-gray-500">Activity #{activityId || '—'}</p>
 		</div>
+		<LocaleSwitcher />
 	</header>
 
 	{#if loading}
-		<div class="py-16 text-center text-gray-500">Loading your workshop…</div>
+		<div class="py-16 text-center text-gray-500">
+			{$_('workshop.loadingWorkshop', { default: 'Loading your workshop…' })}
+		</div>
 	{:else if error && !form}
 		<div class="border rounded p-4 bg-red-50 text-red-700 text-sm">
-			<p class="font-medium">Workshop unavailable</p>
+			<p class="font-medium">{$_('workshop.workshopUnavailable', { default: 'Workshop unavailable' })}</p>
 			<p class="mt-1">{error}</p>
+			{#if reentryRequired}
+				<p class="mt-2">
+					{$_('workshop.reenterFromCourse', { default: 'Open the activity again from your course page to continue.' })}
+				</p>
+			{/if}
 		</div>
 	{:else}
 		{#if error}
-			<div class="mb-4 border rounded p-3 bg-amber-50 text-amber-800 text-sm">{error}</div>
+			<div class="mb-4 border rounded p-3 bg-amber-50 text-amber-800 text-sm">
+				<p>{error}</p>
+				{#if reentryRequired}
+					<p class="mt-1">
+						{$_('workshop.reenterFromCourse', { default: 'Open the activity again from your course page to continue.' })}
+					</p>
+				{/if}
+			</div>
 		{/if}
 
 		<!-- Step progress bar -->
@@ -618,7 +662,10 @@
 			<section class="lg:col-span-2 border rounded-lg p-5 bg-white shadow-sm">
 				{#if form.currentStep <= 4}
 					<p class="text-xs font-semibold uppercase text-gray-400 mb-4">
-						Step {form.currentStep} of 5 — {stepLabels[form.currentStep - 1].label}
+						{$_('workshop.stepOf', {
+							values: { n: form.currentStep, label: stepLabels[form.currentStep - 1].label },
+							default: `Step ${form.currentStep} of 5 — ${stepLabels[form.currentStep - 1].label}`
+						})}
 					</p>
 				{/if}
 				<WizardSteps
@@ -634,7 +681,9 @@
 					nextDisabled={nextDisabled()}
 				/>
 				{#if assistantCreating}
-					<p class="text-xs text-blue-600 mt-3">Creating your assistant…</p>
+					<p class="text-xs text-blue-600 mt-3">
+						{$_('workshop.creatingAssistant', { default: 'Creating your assistant…' })}
+					</p>
 				{/if}
 			</section>
 
@@ -659,9 +708,9 @@
 						<h2 class="text-sm font-semibold">{$_('workshop.testChat', { default: 'Test your assistant' })}</h2>
 						<p class="text-xs text-gray-500 mt-0.5">
 							{#if assistantId}
-								Assistant #{assistantId} — {form.assistantName}
+								{$_('workshop.assistantLabel', { default: 'Assistant' })} #{assistantId} — {form.assistantName}
 							{:else}
-								Finish step 1 to create your assistant first.
+								{$_('workshop.noAssistantYet', { default: 'Finish step 1 to create your assistant first.' })}
 							{/if}
 						</p>
 					</div>
@@ -669,7 +718,9 @@
 					<!-- Messages -->
 					<div class="h-80 overflow-y-auto p-4 space-y-3">
 						{#if chatMessages.length === 0}
-							<p class="text-sm text-gray-400 text-center pt-16">Send a message to test your assistant.</p>
+							<p class="text-sm text-gray-400 text-center pt-16">
+								{$_('workshop.chatEmpty', { default: 'Send a message to test your assistant.' })}
+							</p>
 						{:else}
 							{#each chatMessages as m, i (i)}
 								{#if !m.hidden}
@@ -687,7 +738,9 @@
 								{/if}
 							{/each}
 							{#if streaming}
-								<div class="text-xs text-gray-400 pl-1">streaming…</div>
+								<div class="text-xs text-gray-400 pl-1">
+									{$_('workshop.streaming', { default: 'streaming…' })}
+								</div>
 							{/if}
 						{/if}
 					</div>
@@ -696,21 +749,21 @@
 					<div class="border-t p-3 flex gap-2">
 						<input
 							class="flex-1 border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-							placeholder="Ask your assistant something…"
+							placeholder={$_('workshop.chatPlaceholder', { default: 'Ask your assistant something…' })}
 							bind:value={chatInput}
 							onkeydown={(e) => { if (e.key === 'Enter' && !streaming) handleSend(); }}
 							disabled={streaming}
 						/>
 						{#if streaming}
 							<button class="px-4 py-2 border rounded text-sm hover:bg-gray-50" onclick={handleStop}>
-								Stop
+								{$_('workshop.stop', { default: 'Stop' })}
 							</button>
 						{:else}
 							<button
 								class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
 								onclick={handleSend}
 								disabled={!chatInput.trim()}
-							>Send</button>
+							>{$_('workshop.send', { default: 'Send' })}</button>
 						{/if}
 					</div>
 				</div>

@@ -80,6 +80,30 @@ def create_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     return jwt.encode(to_encode, _get_jwt_secret(), algorithm="HS256")
 
 
+def decode_token_ex(token: str) -> "tuple[Optional[dict], Optional[str]]":
+    """
+    Decode and validate a LAMB JWT, reporting *why* it failed.
+
+    The workshop student token expires mid-lesson; callers need to tell an
+    expired-but-genuine token (renewable) apart from a forged/garbled one
+    (not renewable) so the UI can either renew silently or tell the student to
+    re-enter from the course page.
+
+    Returns:
+        ``(payload, reason)`` where ``reason`` is ``None`` on success,
+        ``"expired"`` for a well-formed but expired token, and ``"invalid"``
+        for anything else (bad signature, malformed, missing secret).
+    """
+    try:
+        return jwt.decode(token, _get_jwt_secret(), algorithms=["HS256"]), None
+    except jwt.ExpiredSignatureError:
+        logger.debug("Token expired")
+        return None, "expired"
+    except jwt.InvalidTokenError as e:
+        logger.debug(f"Invalid token: {e}")
+        return None, "invalid"
+
+
 def decode_token(token: str) -> Optional[dict]:
     """
     Decode and validate a LAMB JWT.
@@ -87,11 +111,4 @@ def decode_token(token: str) -> Optional[dict]:
     Returns:
         Decoded payload dict, or None if the token is invalid/expired.
     """
-    try:
-        return jwt.decode(token, _get_jwt_secret(), algorithms=["HS256"])
-    except jwt.ExpiredSignatureError:
-        logger.debug("Token expired")
-        return None
-    except jwt.InvalidTokenError as e:
-        logger.debug(f"Invalid token: {e}")
-        return None
+    return decode_token_ex(token)[0]

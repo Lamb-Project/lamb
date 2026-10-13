@@ -65,7 +65,18 @@ async def run_kb_query(
     owner = getattr(assistant, "owner", None)
 
     # Late import: keeps the tool importable without pulling creator_interface.
-    from lamb.modules.workshop.kb import config_for_owner, query_kb_collection
+    from lamb.modules.workshop.kb import (
+        config_for_owner,
+        query_kb_collection,
+        restrict_collections_for_assistant,
+    )
+
+    # S1 defense in depth: a workshop assistant may only ever read its own
+    # session KB, even if a foreign collection id reached RAG_collections.
+    collections = restrict_collections_for_assistant(assistant, collections)
+    if not collections:
+        logger.warning("kb_query: no accessible collections after restriction")
+        return {"success": True, "results": [], "count": 0}
 
     try:
         config = config_for_owner(owner)

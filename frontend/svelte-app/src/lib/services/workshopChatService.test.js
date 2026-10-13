@@ -184,4 +184,72 @@ describe('sendWorkshopChat — SSE frame dispatch', () => {
 		// Aborted before read — no crash; at most zero chunks delivered.
 		expect(true).toBe(true);
 	});
+
+	test('E1: error frame → onError with the frame message', async () => {
+		// The generator can fail *after* the response headers were sent (a
+		// connector error, a misconfigured plugin). Without this branch the UI
+		// would sit on "streaming…" forever.
+		fetchMock.mockResolvedValue({
+			ok: true,
+			body: mockSseStream([
+				'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n',
+				'data: {"type":"error","data":{"message":"Connector failed"}}\n\n',
+				'data: {"choices":[{"delta":{"content":"never reached"}}]}\n\n'
+			])
+		});
+		const onError = vi.fn();
+		const onChunk = vi.fn();
+		await sendWorkshopChat(baseParams, { onError, onChunk });
+
+		expect(onError).toHaveBeenCalledTimes(1);
+		expect(onError).toHaveBeenCalledWith('Connector failed');
+		expect(onChunk).toHaveBeenCalledTimes(1); // nothing after the error frame
+	});
+
+	test('E2: error frame without a message still reports a failure', async () => {
+		fetchMock.mockResolvedValue({
+			ok: true,
+			body: mockSseStream(['data: {"type":"error"}\n\n'])
+		});
+		const onError = vi.fn();
+		await sendWorkshopChat(baseParams, { onError });
+		expect(onError).toHaveBeenCalledWith('Generation failed.');
+	});
+
+	test('A/B: rag_mode is forwarded when provided', async () => {
+		fetchMock.mockResolvedValue({ ok: true, body: mockSseStream(['data: [DONE]\n\n']) });
+		await sendWorkshopChat(
+			{ ...baseParams, opts: { ragMode: 'off' } },
+			{}
+		);
+		const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+		expect(body.rag_mode).toBe('off');
+	});
+
+	test('A/B: rag_mode is omitted when not provided (backend default on)', async () => {
+		fetchMock.mockResolvedValue({ ok: true, body: mockSseStream(['data: [DONE]\n\n']) });
+		await sendWorkshopChat({ ...baseParams, opts: {} }, {});
+		const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+		expect('rag_mode' in body).toBe(false);
+	});
+
+	test('W1: an api client is used instead of a raw token header', async () => {
+		const stream = mockSseStream([
+			'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n',
+			'data: [DONE]\n\n'
+		]);
+		const api = {
+			getToken: () => 'renewed-token',
+			fetchWithRenew: vi.fn().mockResolvedValue({ ok: true, body: stream })
+		};
+		const onChunk = vi.fn();
+
+		await sendWorkshopChat({ ...baseParams, api }, { onChunk });
+
+		expect(api.fetchWithRenew).toHaveBeenCalledTimes(1);
+		expect(api.fetchWithRenew.mock.calls[0][0]).toBe(
+			'/sessions/ws-1-2-123/assistant/7/chat');
+		expect(onChunk).toHaveBeenCalledWith('hi');
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
 });

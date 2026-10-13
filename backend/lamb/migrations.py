@@ -20,7 +20,7 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="MIGRATIONS")
 
 # Increment this when adding a new migration method below.
-LATEST_VERSION = 30
+LATEST_VERSION = 31
 
 
 class MigrationRunner:
@@ -1179,3 +1179,56 @@ class MigrationRunner:
             f"CREATE INDEX IF NOT EXISTS "
             f"idx_{tp}workshop_eval_activity "
             f"ON {tp}workshop_evaluations(activity_id)")
+
+    def _migration_31(self, cursor):
+        """Workshop consent versioning + the teacher pilot-first gate.
+
+        Three pieces of state, all defaulted so existing rows keep behaving:
+
+        * ``lti_activity_users.consent_version`` — which notice the student
+          accepted (a version change may require asking again, C8/C20).
+        * ``lti_activities.pilot_completed_at`` — when the activity owner
+          finished their own pilot run, so the teacher-first gate can open (C13).
+        * ``lti_workshop_sessions.is_pilot`` / ``lti_activity_users.is_pilot`` —
+          the pilot is a real run by the teacher, and it must not be counted as
+          a student in the roster or the stats (the roster count comes from
+          ``lti_activity_users``, so both sides are marked, C13).
+        """
+        tp = self.db.table_prefix
+
+        if self._table_exists(cursor, 'lti_activities'):
+            if not self._column_exists(cursor, 'lti_activities',
+                                       'pilot_completed_at'):
+                logger.info(
+                    "Adding pilot_completed_at column to lti_activities")
+                cursor.execute(
+                    f"ALTER TABLE {tp}lti_activities "
+                    f"ADD COLUMN pilot_completed_at INTEGER")
+            cursor.execute(
+                f"CREATE INDEX IF NOT EXISTS "
+                f"idx_{tp}lti_activities_workshop_pilot "
+                f"ON {tp}lti_activities(organization_id, activity_type)")
+
+        if self._table_exists(cursor, 'lti_workshop_sessions'):
+            if not self._column_exists(cursor, 'lti_workshop_sessions',
+                                       'is_pilot'):
+                logger.info(
+                    "Adding is_pilot column to lti_workshop_sessions")
+                cursor.execute(
+                    f"ALTER TABLE {tp}lti_workshop_sessions "
+                    f"ADD COLUMN is_pilot INTEGER NOT NULL DEFAULT 0")
+
+        if self._table_exists(cursor, 'lti_activity_users'):
+            if not self._column_exists(cursor, 'lti_activity_users',
+                                       'consent_version'):
+                logger.info(
+                    "Adding consent_version column to lti_activity_users")
+                cursor.execute(
+                    f"ALTER TABLE {tp}lti_activity_users "
+                    f"ADD COLUMN consent_version TEXT")
+            if not self._column_exists(cursor, 'lti_activity_users',
+                                       'is_pilot'):
+                logger.info("Adding is_pilot column to lti_activity_users")
+                cursor.execute(
+                    f"ALTER TABLE {tp}lti_activity_users "
+                    f"ADD COLUMN is_pilot INTEGER NOT NULL DEFAULT 0")

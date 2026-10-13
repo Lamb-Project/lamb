@@ -7,6 +7,11 @@
 	// Steps (Lean MVP):
 	//   1. Instructions → 2. Attach document → 3. Connect KB →
 	//   4. Add tool → 5. Test & reflect
+	//
+	// Every student-visible string is localized (en/es/ca/eu) — students reach
+	// this page straight from the LMS, with no Creator session in between.
+	// Step 3's retrieval results are rendered by the shared ObservabilityPanel
+	// (the page owns that panel), so all five steps observe the same way (D2).
 
 	import { _ } from '$lib/i18n';
 
@@ -59,6 +64,23 @@
 			form.selectedTools = [...form.selectedTools, toolId];
 		}
 	}
+
+	/**
+	 * The exact tool definitions this wizard sends to the backend (name-only —
+	 * the backend completes them against the canonical schema). Shown verbatim
+	 * in step 4 so "adding a tool" is not a leap of faith (D2).
+	 */
+	const toolsPayload = $derived(
+		(form.selectedTools || []).map((/** @type {string} */ name) => ({
+			type: 'function',
+			function: { name }
+		}))
+	);
+
+	/** @param {boolean} on */
+	function setRagMode(on) {
+		form.ragMode = on ? 'on' : 'off';
+	}
 </script>
 
 <div class="space-y-6">
@@ -75,7 +97,9 @@
 				class="w-full border rounded-md p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
 				placeholder="You are a helpful tutor that explains fractions step by step..."
 			></textarea>
-			<p class="text-xs text-gray-500 mt-1">System prompt for your assistant.</p>
+			<p class="text-xs text-gray-500 mt-1">
+				{$_('workshop.instructionHint', { default: 'System prompt for your assistant.' })}
+			</p>
 		</div>
 	{:else if form.currentStep === 2}
 		<!-- Step 2: Attach document -->
@@ -87,7 +111,7 @@
 						<button
 							class="text-xs text-red-600 hover:underline"
 							onclick={() => { form.attachedFilePath = ''; form.attachedFileMeta = null; form.documentStatus = ''; }}
-						>Remove</button>
+						>{$_('workshop.remove', { default: 'Remove' })}</button>
 					</div>
 					{#if form.documentStatus === 'completed'}
 						<p class="text-xs text-green-700 mt-1">
@@ -121,9 +145,13 @@
 					</p>
 				{/if}
 			{/if}
+			<p class="text-xs text-gray-500">
+				{$_('workshop.documentStepTitle', { default: 'What happened to your document' })} —
+				{$_('workshop.panelHint', { default: 'see the panel for how it was split.' })}
+			</p>
 		</div>
 	{:else if form.currentStep === 3}
-		<!-- Step 3: Connect KB + verify retrieval -->
+		<!-- Step 3: Connect KB + verify retrieval (results render in the panel) -->
 		<div class="space-y-3">
 			<label class="block text-sm font-medium text-gray-700" for="ws-kb">
 				{$_('workshop.kbCollection', { default: 'Knowledge base collection' })}
@@ -152,67 +180,118 @@
 			>{probing
 					? $_('workshop.probing', { default: 'Retrieving…' })
 					: $_('workshop.verifyKb', { default: 'Test retrieval' })}</button>
-
-			{#if form.kbVerificationResult}
-				{@const results = form.kbVerificationResult.results || []}
-				<div class="border rounded p-3 bg-gray-50">
-					<h4 class="text-xs font-semibold uppercase text-gray-500">
-						{$_('workshop.kbRetrieved', { default: 'Excerpts your assistant can retrieve' })}
-					</h4>
-					{#if results.length === 0}
-						<p class="text-xs text-gray-400 mt-1">
-							{$_('workshop.kbNoHits', { default: 'No matching excerpts — try a different question or document.' })}
-						</p>
-					{:else}
-						<ol class="text-xs mt-2 space-y-2">
-							{#each results as r, i (i)}
-								<li class="border-t pt-2 first:border-t-0 first:pt-0">
-									<span class="font-mono text-gray-500">
-										{$_('workshop.similarity', { default: 'similarity' })} {r.similarity?.toFixed?.(3) ?? r.similarity}
-									</span>
-									<p class="mt-0.5 whitespace-pre-wrap">{r.data}</p>
-								</li>
-							{/each}
-						</ol>
-					{/if}
-				</div>
-			{/if}
+			<p class="text-xs text-gray-500">
+				{$_('workshop.probeHitsTitle', { default: 'Excerpts retrieved by this test question' })} —
+				{$_('workshop.panelHint', { default: 'see the panel for how it was split.' })}
+			</p>
 		</div>
 	{:else if form.currentStep === 4}
 		<!-- Step 4: Add tool -->
 		<div class="space-y-3">
-			<p class="text-sm font-medium text-gray-700">Select tools your assistant can call</p>
+			<p class="text-sm font-medium text-gray-700">
+				{$_('workshop.selectTools', { default: 'Select tools your assistant can call' })}
+			</p>
 			<label class="flex items-center gap-2 border rounded p-3 cursor-pointer">
 				<input type="checkbox" checked={form.selectedTools.includes('calculator')} onchange={() => toggleTool('calculator')} />
-				<span class="text-sm">🧮 Calculator</span>
+				<span class="text-sm">🧮 {$_('workshop.calculator', { default: 'Calculator' })}</span>
 			</label>
 			<label class="flex items-center gap-2 border rounded p-3 cursor-pointer">
 				<input type="checkbox" checked={form.selectedTools.includes('kb_query')} onchange={() => toggleTool('kb_query')} />
-				<span class="text-sm">📚 Knowledge Base Query</span>
+				<span class="text-sm">📚 {$_('workshop.kbQuery', { default: 'Knowledge Base Query' })}</span>
 			</label>
 			<label class="flex items-center gap-2 border rounded p-3 opacity-50">
 				<input type="checkbox" disabled checked={false} />
-				<span class="text-sm">🖥️ Sandbox Execution (unavailable)</span>
+				<span class="text-sm">🖥️ {$_('workshop.sandbox', { default: 'Sandbox Execution (unavailable)' })}</span>
 			</label>
+
+			<div class="border rounded p-3 bg-gray-50">
+				<h4 class="text-xs font-semibold uppercase text-gray-500">
+					{$_('workshop.toolsPreviewTitle', { default: 'Tools that will be sent to the model' })}
+				</h4>
+				{#if toolsPayload.length === 0}
+					<p class="text-xs text-gray-400 mt-1">
+						{$_('workshop.toolsPreviewEmpty', { default: 'No tools selected — the assistant will answer with text only.' })}
+					</p>
+				{:else}
+					<pre class="text-[10px] whitespace-pre-wrap mt-1 text-gray-600">{JSON.stringify(toolsPayload, null, 2)}</pre>
+				{/if}
+			</div>
 		</div>
 	{:else}
 		<!-- Step 5: Test & reflect -->
-		<div class="space-y-3">
-			<p class="text-sm text-gray-700">Chat panel appears below — send a message to test your assistant, watch the observability dashboard update live.</p>
-			<label class="block text-sm font-medium text-gray-700" for="ws-reflection">Reflection</label>
-			<textarea
-				id="ws-reflection"
-				bind:value={form.reflection}
-				rows="4"
-				class="w-full border rounded-md p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-				placeholder="What did you notice about what your assistant received?"
-			></textarea>
+		<div class="space-y-4">
+			<p class="text-sm text-gray-700">
+				{$_('workshop.chatHint', { default: 'Send a message to test your assistant, and watch what it receives below.' })}
+			</p>
+
+			<!-- A/B experiment: knowledge base on vs off (D3) -->
+			<div class="border rounded p-3">
+				<div class="flex items-center justify-between gap-2">
+					<span class="text-sm font-medium">
+						{$_('workshop.abToggle', { default: 'Knowledge base' })}
+					</span>
+					<div class="inline-flex rounded border overflow-hidden text-xs" role="group">
+						<button
+							class="px-3 py-1 {form.ragMode !== 'off' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600'}"
+							aria-pressed={form.ragMode !== 'off'}
+							data-testid="rag-mode-on"
+							onclick={() => setRagMode(true)}
+						>{$_('workshop.abOn', { default: 'On' })}</button>
+						<button
+							class="px-3 py-1 {form.ragMode === 'off' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600'}"
+							aria-pressed={form.ragMode === 'off'}
+							data-testid="rag-mode-off"
+							onclick={() => setRagMode(false)}
+						>{$_('workshop.abOff', { default: 'Off' })}</button>
+					</div>
+				</div>
+				<p class="text-xs text-gray-500 mt-2">
+					{$_('workshop.abHint', { default: 'Ask the same question twice — once with the knowledge base on and once off — and compare the answers.' })}
+				</p>
+			</div>
+
+			<!-- Reflection: three fixed questions (D5) -->
+			<div class="space-y-2">
+				<h4 class="text-sm font-semibold">
+					{$_('workshop.reflectionTitle', { default: 'Reflection' })}
+				</h4>
+				{#each [
+					{ key: 'q1', label: $_('workshop.reflectionQ1', { default: 'What did you ask your assistant to do, and why?' }) },
+					{ key: 'q2', label: $_('workshop.reflectionQ2', { default: 'What did you see in the panels — what did the assistant actually receive?' }) },
+					{ key: 'q3', label: $_('workshop.reflectionQ3', { default: 'What would you change in your design after testing it?' }) }
+				] as question (question.key)}
+					<label class="block text-xs font-medium text-gray-700" for="ws-reflection-{question.key}">
+						{question.label}
+					</label>
+					<textarea
+						id="ws-reflection-{question.key}"
+						data-testid="reflection-{question.key}"
+						bind:value={form.reflectionAnswers[question.key]}
+						rows="2"
+						class="w-full border rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+					></textarea>
+				{/each}
+				{#if form.reflection}
+					<p class="text-xs text-gray-500">
+						{$_('workshop.reflectionLegacyHint', { default: 'Your earlier reflection is kept below as written.' })}
+					</p>
+					<textarea
+						readonly
+						rows="3"
+						value={form.reflection}
+						class="w-full border rounded-md p-2 text-xs bg-gray-50 text-gray-600"
+					></textarea>
+				{/if}
+			</div>
+
 			{#if onSubmit}
 				<button
 					class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
 					disabled={submitting}
 					onclick={onSubmit}
-				>{submitting ? 'Submitting…' : $_('workshop.submit', { default: 'Submit workshop' })}</button>
+				>{submitting
+						? $_('workshop.submitting', { default: 'Submitting…' })
+						: $_('workshop.submit', { default: 'Submit workshop' })}</button>
 			{/if}
 		</div>
 	{/if}
@@ -220,7 +299,9 @@
 	<!-- Navigation -->
 	<div class="flex justify-between pt-4 border-t mt-6">
 		{#if form.currentStep > 1}
-			<button class="px-4 py-2 border rounded text-sm hover:bg-gray-50" onclick={onBack}>← Back</button>
+			<button class="px-4 py-2 border rounded text-sm hover:bg-gray-50" onclick={onBack}>
+				← {$_('workshop.back', { default: 'Back' })}
+			</button>
 		{:else}
 			<span></span>
 		{/if}
@@ -229,7 +310,7 @@
 				class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
 				disabled={nextDisabled}
 				onclick={onNext}
-			>Next →</button>
+			>{$_('workshop.next', { default: 'Next' })} →</button>
 		{/if}
 	</div>
 </div>

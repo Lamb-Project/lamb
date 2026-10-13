@@ -8,12 +8,17 @@
  *   - `data: {"type":"tool_event","data":{...}}`           → tool timeline frames
  *   - `data: {"type":"tool_messages","data":{"messages":[…]}}` → tool exchanges to persist
  *   - `data: {"type":"observability","data":{...}}`        → obs dashboard frames
+ *   - `data: {"type":"error","data":{...}}`                → generation failed mid-stream
  *   - `data: [DONE]`                                       → stream end
  *
  * Auth: the workshop student token travels in the custom `token` header
  * (the LTI launch contract), NOT the Bearer header — so we must NOT use apiFetch,
  * which auto-attaches Bearer and triggers the creator 401 redirect. We fetch
  * directly against the backend `/lamb` mount.
+ *
+ * Pass `api` (from `createWorkshopApi`) to get transparent token renewal: a
+ * `401 token_expired` on the streaming POST renews and retries once instead of
+ * dropping the student mid-lesson.
  */
 
 /**
@@ -22,11 +27,13 @@
  * @param {Object} params
  * @param {string} params.sessionId - workshop session id
  * @param {number} params.assistantId - workshop-built assistant id
- * @param {string} params.token - workshop_student JWT
+ * @param {string} [params.token] - workshop_student JWT (ignored when `api` is given)
+ * @param {ReturnType<import('./workshopApi.js').createWorkshopApi>} [params.api] - renewing API client
  * @param {Array<{role: string, content: string}>} params.messages - full chat history
  * @param {Object} [params.opts]
  * @param {Array<Object>} [params.opts.tools] - tool definitions for the ToolLoop
  * @param {boolean} [params.opts.observability] - request observability frames (default true)
+ * @param {string} [params.opts.ragMode] - 'on' | 'off' (A/B experiment, default 'on')
  * @param {Object} handlers
  * @param {(chunk: string) => void} [handlers.onChunk]
  * @param {(data: Object) => void} [handlers.onObservability]
@@ -37,7 +44,7 @@
  * @param {AbortSignal} [signal]
  */
 export async function sendWorkshopChat(
-	{ sessionId, assistantId, token, messages, opts = {} },
+	{ sessionId, assistantId, token, api, messages, opts = {} },
 	handlers = {},
 	signal
 ) {
@@ -46,24 +53,38 @@ export async function sendWorkshopChat(
 	// Dev (5173) proxies /lamb to the backend; prod SPA is served by the same
 	// origin. Use the relative /lamb path in both cases. getLambApiUrl would
 	// point at the raw backend port which is not proxied in dev via the SPA.
-	const path = `/lamb/v1/workshop/sessions/${encodeURIComponent(sessionId)}/assistant/${assistantId}/chat`;
+	const wsPath = `/sessions/${encodeURIComponent(sessionId)}/assistant/${assistantId}/chat`;
+	const path = `/lamb/v1/workshop${wsPath}`;
+
+	const body = JSON.stringify({
+		messages,
+		stream: true,
+		observability: opts.observability ?? true,
+		tools: opts.tools || [],
+		...(opts.ragMode ? { rag_mode: opts.ragMode } : {})
+	});
 
 	let res;
 	try {
-		res = await fetch(path, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				token
-			},
-			body: JSON.stringify({
-				messages,
-				stream: true,
-				observability: opts.observability ?? true,
-				tools: opts.tools || []
-			}),
-			signal
-		});
+		if (api) {
+			// `fetchWithRenew` owns the token header and the renew-and-retry.
+			res = await api.fetchWithRenew(wsPath, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body,
+				signal
+			});
+		} else {
+			res = await fetch(path, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					token
+				},
+				body,
+				signal
+			});
+		}
 	} catch (/** @type {any} */ e) {
 		// AbortError on unmount is expected; do not surface as an error.
 		if (e?.name === 'AbortError') return;
@@ -114,6 +135,16 @@ export async function sendWorkshopChat(
 						if (onToolEvent) onToolEvent(data.data);
 					} else if (data.type === 'tool_messages') {
 						if (onToolMessages) onToolMessages(data.data?.messages || []);
+					} else if (data.type === 'error') {
+						// The generator failed after the headers were sent (connector
+						// error, plugin misconfiguration). Without this branch the UI
+						// would sit on "streaming…" forever.
+						const message =
+							data.data?.message ||
+							data.error?.message ||
+							'Generation failed.';
+						if (onError) onError(message);
+						return;
 					} else if (
 						data.choices &&
 						data.choices[0] &&

@@ -135,6 +135,10 @@ async def lti_launch(request: Request):
                         or lms_user_id or "LTI User")
         context_id = post_data.get("context_id", "")
         context_title = post_data.get("context_title", "")
+        # Moodle (and most LMSs) announce the UI language in
+        # launch_presentation_locale; the workshop wizard uses it as the first
+        # link of its locale chain so students see their own language.
+        launch_locale = post_data.get("launch_presentation_locale", "")
 
         logger.info(f"LTI launch: resource_link={resource_link_id}, user={username}, roles={roles}")
 
@@ -197,6 +201,7 @@ async def lti_launch(request: Request):
                     "display_name": display_name,
                     "lms_user_id": lms_user_id,
                     "public_base": public_base,
+                    "locale": launch_locale,
                 })
                 if not result or not result.get("redirect"):
                     raise HTTPException(
