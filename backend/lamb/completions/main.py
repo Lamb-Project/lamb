@@ -719,6 +719,10 @@ async def run_lamb_assistant(
         # The short-circuit lives here rather than in the shared
         # `get_rag_context`, so no other caller's behaviour changes.
         rag_mode = workshop_rag_mode(request)
+        # Consume the private key immediately: connectors forward the request
+        # body to the provider verbatim (`params = body.copy()`), and an unknown
+        # namespaced parameter would be rejected — or worse, persisted.
+        request.pop("_workshop_disable_rag", None)
         if rag_mode == "off":
             logger.info(
                 "RAG disabled for this request (workshop A/B) — assistant %s",

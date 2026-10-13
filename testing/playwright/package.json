@@ -12,6 +12,8 @@
     "test": "playwright test",
     "test:ui": "playwright test --ui",
     "test:headed": "playwright test --headed",
+    "test:workshop": "playwright test tests/workshop_student_journey.spec.js",
+    "test:workshop:ui": "playwright test --config playwright.workshop-ui.config.js",
     "report": "playwright show-report",
     "codegen": "playwright codegen"
   }

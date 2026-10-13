@@ -1,0 +1,96 @@
+name: Workshop journey (real model)
+
+# Track B of the workshop e2e strategy (plan decision C21): the full student
+# journey against a live stack and a real LLM.
+#
+# This is deliberately NOT part of the PR gate — it needs the whole stack, a
+# seeded activity and a working model, so it would be flaky and slow as a
+# per-PR check, and a test nobody runs protects nothing. The per-PR protection
+# is `workshop-ui.yml` (route-mocked UI + backend pytest).
+#
+# Run it before a release, or on demand.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Public base URL of the LAMB stack (must be reachable from the runner)'
+        required: false
+        default: 'http://localhost:9099'
+
+permissions:
+  contents: read
+
+jobs:
+  student-journey:
+    name: Real student journey
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare the compose environment
+        run: |
+          # docker-compose.next.yaml interpolates these from the repository root
+          # .env, which is not committed. Inject the minimum it needs.
+          cat > .env <<'EOF'
+          OWI_ADMIN_EMAIL=${{ secrets.OWI_ADMIN_EMAIL || 'admin@owi.com' }}
+          OWI_ADMIN_PASSWORD=${{ secrets.OWI_ADMIN_PASSWORD || 'admin' }}
+          OWI_ADMIN_NAME=Admin
+          LAMB_JWT_SECRET=${{ secrets.LAMB_JWT_SECRET || 'ci-only-secret-that-is-long-enough-for-hs256' }}
+          LAMB_BEARER_TOKEN=${{ secrets.LAMB_BEARER_TOKEN || 'ci-only-bearer-token' }}
+          EOF
+
+      - name: Start the stack
+        run: docker compose -f docker-compose.next.yaml up -d --build
+
+      - name: Wait for the backend
+        run: |
+          for i in $(seq 1 90); do
+            if curl -sf http://localhost:9099/openapi.json > /dev/null; then
+              echo "Backend is up"; exit 0
+            fi
+            sleep 5
+          done
+          docker compose -f docker-compose.next.yaml logs --tail 200
+          exit 1
+
+      - name: Seed a workshop activity and print its wizard URL
+        id: seed
+        run: |
+          docker compose -f docker-compose.next.yaml exec -T lamb \
+            python tests/mvp_smoke.py --seed-only | tee /tmp/seed.log
+          url=$(grep -oE 'https?://[^ ]*/m/workshop/[^ ]*token=[A-Za-z0-9._-]+' /tmp/seed.log | tail -1)
+          if [ -z "$url" ]; then
+            echo "Could not find a wizard URL in the seed output"; exit 1
+          fi
+          echo "wizard_url=$url" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright
+        working-directory: testing/playwright
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Walk the student journey
+        working-directory: testing/playwright
+        env:
+          CI: 'true'
+          WORKSHOP_E2E: '1'
+          WORKSHOP_URL: ${{ steps.seed.outputs.wizard_url }}
+          BASE_URL: ${{ github.event.inputs.base_url || 'http://localhost:9099' }}
+        run: npm run test:workshop
+
+      - name: Upload the Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workshop-journey-report
+          path: |
+            testing/playwright/test-results
+            testing/playwright/playwright-report
+          retention-days: 14

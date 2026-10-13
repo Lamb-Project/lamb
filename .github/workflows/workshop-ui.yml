@@ -1,0 +1,104 @@
+name: Workshop UI gate
+
+# Track A of the workshop e2e strategy (plan decision C21): the student UI is
+# asserted against *mocked* API/SSE responses, so this job needs no model, no
+# KB server, no database and no root .env. It runs on every push and PR, which
+# is what makes the UI assertions a real regression gate.
+#
+# The real-model journey (track B) lives in `workshop-e2e.yml` and only runs on
+# workflow_dispatch / before a release.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-workshop:
+    name: Backend workshop tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install backend requirements
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run the workshop test suite
+        working-directory: backend
+        env:
+          LAMB_JWT_SECRET: ci-only-secret-that-is-long-enough-for-hs256
+        run: python -m pytest tests/ -q -k workshop
+
+  frontend-unit:
+    name: Frontend unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/svelte-app/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend/svelte-app
+        run: npm ci
+      - name: Run vitest
+        working-directory: frontend/svelte-app
+        run: npx vitest run
+
+  workshop-ui:
+    name: Workshop UI (route-mocked Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/svelte-app/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend/svelte-app
+        run: npm ci
+      - name: Start the SPA dev server
+        working-directory: frontend/svelte-app
+        run: |
+          test -f static/config.js || cp static/config.js.sample static/config.js
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > /tmp/vite.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:5173/ > /dev/null; then
+              echo "Vite is up"; break
+            fi
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:5173/ > /dev/null || { cat /tmp/vite.log; exit 1; }
+      - name: Install Playwright browsers
+        working-directory: testing/playwright
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+      - name: Run the route-mocked workshop UI spec
+        working-directory: testing/playwright
+        env:
+          CI: 'true'
+          WORKSHOP_UI_BASE_URL: http://127.0.0.1:5173/
+        run: npm run test:workshop:ui
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workshop-ui-report
+          path: |
+            testing/playwright/test-results
+            testing/playwright/playwright-report
+          retention-days: 7

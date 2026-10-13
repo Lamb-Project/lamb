@@ -357,6 +357,37 @@ class TestWorkshopRagMode:
     @patch("lamb.completions.main.get_rag_context", new_callable=AsyncMock)
     @patch("lamb.completions.main.process_completion_request")
     @patch("lamb.completions.main.load_and_validate_plugins")
+    async def test_private_key_never_reaches_the_connector(
+            self, mock_load, mock_process, mock_rag, mock_db):
+        """The connector forwards `body` verbatim — internal keys must be gone.
+
+        `connectors/*.py` do `params = body.copy()` and hand it to the provider,
+        so leaving `_workshop_disable_rag` in the request would send an unknown
+        parameter to the model API.
+        """
+        mock_db.get_assistant_by_id.return_value = _make_assistant()
+        mock_process.return_value = [{"role": "user", "content": "Hi"}]
+        connector = AsyncMock()
+        connector.return_value = (_async_gen("data: [DONE]\n\n"), None)
+        mock_load.return_value = (
+            {"default": MagicMock()}, {"openai": connector},
+            {"simple_rag": AsyncMock()})
+
+        response = await completions_main.run_lamb_assistant(
+            request={"messages": [{"role": "user", "content": "Hi"}],
+                     "stream": True, "observability": True,
+                     "_workshop_disable_rag": True},
+            assistant=1)
+        await _drain(response)
+
+        body_sent = connector.await_args.kwargs["body"]
+        assert "_workshop_disable_rag" not in body_sent
+
+    @pytest.mark.asyncio
+    @patch("lamb.completions.main.db_manager")
+    @patch("lamb.completions.main.get_rag_context", new_callable=AsyncMock)
+    @patch("lamb.completions.main.process_completion_request")
+    @patch("lamb.completions.main.load_and_validate_plugins")
     async def test_rag_runs_normally_when_on(
             self, mock_load, mock_process, mock_rag, mock_db):
         mock_db.get_assistant_by_id.return_value = _make_assistant()
