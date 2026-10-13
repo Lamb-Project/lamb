@@ -213,6 +213,36 @@ When feedback does fail, the raw model output and the error are stored on the ro
 (`workshop_evaluations.raw_response` / `error_message`) and shown in the
 teacher's session detail — start there rather than re-running blind.
 
+### 7.2 The rubric decides which criteria exist
+
+A model filling in a rubric will happily rename criteria, invent them, drop some
+and repeat others. Observed in the wild: a 3-criterion rubric came back with
+**20 rows** — the model turned the transcript's section headings into four
+"criteria" and repeated that set five times — and the student's panel showed the
+same four headings over and over with no relation to what the teacher had
+defined.
+
+`normalize_evaluation` now aligns the model's answer with the rubric:
+
+* each returned entry is matched to a rubric criterion by name, id, or a
+  decorated/partial form of the name ("criterion: instruction clarity (30%)");
+* entries that match nothing are **dropped** (counted and logged — a mismatch
+  never becomes rows on a student's screen);
+* repeats collapse to one row (first entry wins) and the output is re-ordered to
+  the rubric;
+* the **rubric's** label, weight and criterion id are what get stored and shown;
+* rows with no level, score or feedback are not rendered.
+
+If *nothing* matches while the model did return criteria, the run is reported as
+`failed` with an explicit message rather than showing invented criteria as if
+they were the rubric. If only some rubric criteria were scored, the evaluation
+is kept and the gap is recorded in `error_message`; the student sees a short
+"some of this feedback may be incomplete" note (four languages).
+
+The prompt also spells the criteria out (`build_evaluation_directive`) and tells
+the model to use those names verbatim and not to add, rename, split, merge or
+repeat them — prevention first, validation second.
+
 ---
 
 ## 8. Known limitation: KB server credentials

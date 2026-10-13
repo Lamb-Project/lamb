@@ -27,6 +27,19 @@
 		const n = Number(value);
 		return Number.isFinite(n) ? String(n) : String(value);
 	}
+
+	/**
+	 * Whether there is any number worth folding away.
+	 *
+	 * A rubric can score criteria without producing a total (the model may omit
+	 * it, or the run may have been repaired), so both are considered.
+	 */
+	const hasScores = $derived(
+		(evaluation?.total_score !== null && evaluation?.total_score !== undefined) ||
+			(evaluation?.criteria || []).some(
+				(/** @type {any} */ c) => c.score !== null && c.score !== undefined
+			)
+	);
 </script>
 
 {#if evaluating}
@@ -67,22 +80,44 @@
 				</p>
 			{/if}
 
-			<!-- The numeric suggestion is folded away by default (D6): a score
-			     shown first invites students to read it as the mark and stop
-			     reading the feedback, which is the part meant to teach. Teachers
-			     still see it (the dashboard renders it from the API directly). -->
-			{#if evaluation.total_score !== null && evaluation.total_score !== undefined}
+			<!-- All the numbers live behind ONE toggle (D6): a score shown first
+			     invites students to read it as the mark and stop reading the
+			     feedback, which is the part meant to teach. One toggle also keeps
+			     the list readable — a per-row toggle repeated the same label for
+			     every criterion. Teachers still see the scores directly (the
+			     dashboard renders them from the API). -->
+			{#if hasScores}
 				<details class="border border-gray-200 rounded px-3 py-2" data-testid="score-details">
 					<summary class="text-xs text-gray-600 cursor-pointer">
 						{$_('workshop.showSuggestedScore', { default: 'Show the suggested score' })}
 					</summary>
-					<p class="text-sm text-gray-600 mt-2">
-						{$_('workshop.suggestedScore', { default: 'Suggested' })}:
-						<span class="font-semibold">{displayScore(evaluation.total_score)}</span>
-						{#if evaluation.max_score !== null && evaluation.max_score !== undefined}
-							/ {displayScore(evaluation.max_score)}
+					<div class="mt-2 space-y-1">
+						{#if evaluation.total_score !== null && evaluation.total_score !== undefined}
+							<p class="text-sm text-gray-600">
+								{$_('workshop.suggestedScore', { default: 'Suggested' })}:
+								<span class="font-semibold">{displayScore(evaluation.total_score)}</span>
+								{#if evaluation.max_score !== null && evaluation.max_score !== undefined}
+									/ {displayScore(evaluation.max_score)}
+								{/if}
+							</p>
 						{/if}
-					</p>
+						<ul class="text-xs text-gray-500 space-y-0.5">
+							{#each evaluation.criteria as c, i (i)}
+								{#if c.score !== null && c.score !== undefined}
+									<li class="flex justify-between gap-3">
+										<span class="truncate">{c.criterion || `Criterion ${i + 1}`}</span>
+										<span class="whitespace-nowrap">
+											{#if c.level}{display(c.level)} · {/if}
+											{$_('workshop.score', { default: 'Score' })}: {displayScore(c.score)}
+											{#if c.weight !== null && c.weight !== undefined}
+												({displayScore(c.weight)}%)
+											{/if}
+										</span>
+									</li>
+								{/if}
+							{/each}
+						</ul>
+					</div>
 				</details>
 			{/if}
 
@@ -92,25 +127,10 @@
 						<li class="border-t pt-3 first:border-t-0 first:pt-0">
 							<div class="flex items-baseline justify-between gap-2">
 								<span class="text-sm font-medium">{c.criterion || `Criterion ${i + 1}`}</span>
-								{#if c.score !== null && c.score !== undefined}
-									<!-- Per-criterion numbers are folded too, behind the same
-									     "show the suggested score" intent. -->
-									<details class="text-xs text-gray-500" data-testid="criterion-score-{i}">
-										<summary class="cursor-pointer">
-											{$_('workshop.showSuggestedScore', { default: 'Show the suggested score' })}
-										</summary>
-										<span class="whitespace-nowrap">
-											{#if c.level}
-												{$_('workshop.level', { default: 'Level' })}: {display(c.level)}
-											{/if}
-											<span class="ml-2">
-												{$_('workshop.score', { default: 'Score' })}: {displayScore(c.score)}
-											</span>
-											{#if c.weight !== null && c.weight !== undefined}
-												<span class="ml-2">({displayScore(c.weight)}%)</span>
-											{/if}
-										</span>
-									</details>
+								{#if c.level}
+									<span class="text-xs text-gray-500 whitespace-nowrap">
+										{$_('workshop.level', { default: 'Level' })}: {display(c.level)}
+									</span>
 								{/if}
 							</div>
 							{#if c.feedback}

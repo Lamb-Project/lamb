@@ -344,6 +344,36 @@ _JSON_OUTPUT_DIRECTIVE = (
 )
 
 
+def build_evaluation_directive(rubric_data: Dict[str, Any]) -> str:
+    """The JSON contract, with the rubric's own criterion names spelled out.
+
+    Naming the criteria explicitly is what stops a small model from inventing
+    its own (and from echoing the transcript's section headings back as
+    criteria). Normalization also enforces this, but a prompt that asks for the
+    right answer is cheaper than one that has to be repaired.
+    """
+    index = _rubric_criteria_index(rubric_data)
+    if not index:
+        return _JSON_OUTPUT_DIRECTIVE
+
+    listing = "\n".join(
+        "- \"{name}\"{weight}".format(
+            name=entry["name"],
+            weight=(f" (weight {entry['weight']}%)"
+                    if entry.get("weight") is not None else ""))
+        for entry in index
+    )
+    return (
+        _JSON_OUTPUT_DIRECTIVE
+        + "\n\nEvaluate EXACTLY these "
+        + f"{len(index)} rubric criteria, one entry each, in this order:\n"
+        + listing
+        + "\nUse those names verbatim as the \"criterion\" value. Do not add, "
+          "rename, split, merge or repeat criteria, and do not invent criteria "
+          "from the student's text."
+    )
+
+
 def _strip_code_fences(text: str) -> str:
     stripped = text.strip()
     if stripped.startswith("```"):
@@ -472,6 +502,88 @@ def _first_present(data: Dict[str, Any], *keys: str) -> Any:
     return None
 
 
+def _match_key(value: Any) -> str:
+    """Loose comparison key for criterion names and ids."""
+    text = str(value or "").lower().replace("&", " and ")
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return " ".join(text.split())
+
+
+def _rubric_criteria_index(rubric_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The rubric's criteria, with the keys a model might refer to them by.
+
+    The rubric — not the model — decides which criteria exist, what they are
+    called and how much they weigh. This index is what makes that enforceable:
+    models rename criteria, invent their own (a small model once turned the
+    transcript's section headings into four "criteria" and then repeated them
+    five times), and drop others.
+    """
+    index: List[Dict[str, Any]] = []
+    for criterion in (rubric_data or {}).get("criteria") or []:
+        if not isinstance(criterion, dict):
+            continue
+        name = (criterion.get("name") or criterion.get("label")
+                or criterion.get("title"))
+        keys = set()
+        for candidate in (name, criterion.get("id"), criterion.get("criterion")):
+            key = _match_key(candidate)
+            if key:
+                keys.add(key)
+        if not keys:
+            continue
+        index.append({
+            "id": criterion.get("id"),
+            "name": name or criterion.get("id"),
+            # Keep 0 weights (a rubric may mark a criterion as unweighted) but
+            # treat a missing one as unknown.
+            "weight": criterion.get("weight"),
+            "keys": keys,
+        })
+    return index
+
+
+def _match_rubric_position(
+    entry: Dict[str, Any], index: List[Dict[str, Any]]
+) -> Optional[int]:
+    """Which rubric criterion a model entry refers to, or None if it invented one."""
+    candidates = [
+        entry.get("criterion"), entry.get("name"), entry.get("criterion_name"),
+        entry.get("criterionName"), entry.get("title"), entry.get("criterion_id"),
+        entry.get("criterionId"),
+    ]
+    keys = [_match_key(c) for c in candidates]
+    keys = [k for k in keys if k]
+
+    for key in keys:
+        for position, rubric_entry in enumerate(index):
+            if key in rubric_entry["keys"]:
+                return position
+
+    # Fuzzy fallback for decorations the model adds around a real name
+    # ("Instruction clarity (30%)", "criterion: tool awareness"). The minimum
+    # length keeps short words from matching everything.
+    for key in keys:
+        if len(key) < 4:
+            continue
+        for position, rubric_entry in enumerate(index):
+            for rubric_key in rubric_entry["keys"]:
+                if len(rubric_key) >= 4 and (key in rubric_key or rubric_key in key):
+                    return position
+    return None
+
+
+def _criterion_has_content(entry: Dict[str, Any]) -> bool:
+    """Whether a criterion row is worth rendering.
+
+    A row with a name but no level, score or feedback is an empty box on the
+    student's screen — the model listed the criterion without evaluating it.
+    """
+    return any(
+        entry.get(field) not in (None, "", [])
+        for field in ("level", "score", "feedback")
+    )
+
+
 def _normalize_criterion(entry: Any) -> Optional[Dict[str, Any]]:
     """Normalize one criterion evaluation into a stable shape."""
     if isinstance(entry, str):
@@ -519,6 +631,54 @@ def normalize_evaluation(
         if normalized is not None
     ]
 
+    # ── Align the model's answer with the rubric ──
+    # The rubric is the authority on which criteria exist, how they are named
+    # and what they weigh; the model's own naming is advisory at best. Anything
+    # it invented is dropped, repeats collapse, and the output is re-ordered to
+    # the rubric so the panel reads in the teacher's intended sequence.
+    index = _rubric_criteria_index(rubric_data)
+    diagnostics: Dict[str, Any] = {"matched": len(criteria), "dropped": 0,
+                                   "missing": 0, "empty": 0, "rubric_total": 0}
+
+    if index and criteria:
+        by_position: Dict[int, Dict[str, Any]] = {}
+        unmatched = 0
+        for entry in criteria:
+            position = _match_rubric_position(entry, index)
+            if position is None:
+                unmatched += 1
+                continue
+            if position in by_position:
+                continue  # the model scored the same criterion twice
+            by_position[position] = entry
+
+        selected = []
+        for position, rubric_entry in enumerate(index):
+            entry = by_position.get(position)
+            if entry is None:
+                continue
+            entry = dict(entry)
+            # The rubric owns the label and the weight.
+            entry["criterion"] = rubric_entry["name"] or entry.get("criterion")
+            if rubric_entry.get("weight") is not None:
+                entry["weight"] = rubric_entry["weight"]
+            entry["rubric_criterion_id"] = rubric_entry.get("id")
+            selected.append(entry)
+
+        diagnostics = {
+            "matched": len(selected),
+            "dropped": unmatched,
+            "missing": len(index) - len(selected),
+            "empty": 0,
+            "rubric_total": len(index),
+        }
+        criteria = selected
+
+    # Never render an empty row.
+    with_content = [c for c in criteria if _criterion_has_content(c)]
+    diagnostics["empty"] = len(criteria) - len(with_content)
+    criteria = with_content
+
     overall = _first_present(
         data, "overall_feedback", "overallFeedback", "overall", "feedback",
         "summary")
@@ -534,6 +694,7 @@ def normalize_evaluation(
         "overall_feedback": overall,
         "total_score": total,
         "max_score": max_score,
+        "criteria_diagnostics": diagnostics,
     }
 
 
@@ -594,7 +755,8 @@ async def evaluate_session(
     transcript = clamp_for_prompt(transcript, MAX_EVALUATION_TRANSCRIPT_CHARS)
 
     messages = [
-        {"role": "system", "content": instructions + _JSON_OUTPUT_DIRECTIVE},
+        {"role": "system",
+         "content": instructions + build_evaluation_directive(rubric_data)},
         {"role": "user", "content": transcript},
     ]
 
@@ -633,14 +795,53 @@ async def evaluate_session(
         normalized = normalize_evaluation(parsed, rubric_data)
         status = "completed"
         error_message = None
-        if parse_note:
-            # The feedback is real but was cut short; say so instead of either
-            # discarding it (status failed) or pretending it is complete.
+
+        diagnostics = normalized.get("criteria_diagnostics") or {}
+        rubric_total = diagnostics.get("rubric_total") or 0
+        matched = diagnostics.get("matched") or 0
+        produced = matched + (diagnostics.get("dropped") or 0)
+
+        if rubric_total and produced and not matched:
+            # Every entry the model returned names a criterion this rubric does
+            # not have: there is nothing to show under the rubric's headings,
+            # and inventing rows is exactly the bug this guard exists for.
+            status = "failed"
+            dropped = diagnostics.get("dropped") or 0
+            error_message = (
+                f"The model scored criteria that are not in this rubric "
+                f"({dropped} unrecognised entr{'y' if dropped == 1 else 'ies'}), "
+                f"so no rubric criterion could be graded. Try evaluating again.")
             logger.warning(
-                "Workshop evaluation truncated for session %s (%s criteria "
-                "recovered from %d chars)",
-                session_id, len(normalized.get("criteria") or []), len(raw))
-            error_message = parse_note
+                "Workshop evaluation criteria mismatch for session %s: %s "
+                "entries, none matched the rubric", session_id, dropped)
+
+        if status == "completed":
+            notes = []
+            if parse_note:
+                # The feedback is real but was cut short; say so instead of
+                # either discarding it or pretending it is complete.
+                notes.append(parse_note)
+                logger.warning(
+                    "Workshop evaluation truncated for session %s (%s criteria "
+                    "recovered from %d chars)",
+                    session_id, matched, len(raw))
+            if rubric_total and matched < rubric_total:
+                notes.append(
+                    f"{matched} of {rubric_total} rubric criteria could be "
+                    f"graded; the model did not score the rest.")
+                logger.info(
+                    "Workshop evaluation covered %s/%s criteria for session %s",
+                    matched, rubric_total, session_id)
+            if diagnostics.get("dropped"):
+                # Logged, not disclosed: extra entries change nothing about the
+                # rubric criteria the student is shown, so a student-facing
+                # "this is incomplete" hint would be wrong.
+                logger.info(
+                    "Workshop evaluation ignored %s model entr%s that did not "
+                    "match any rubric criterion for session %s",
+                    diagnostics["dropped"],
+                    "y" if diagnostics["dropped"] == 1 else "ies", session_id)
+            error_message = " ".join(notes) or None
     except ValueError as e:
         logger.warning(
             "Workshop evaluation malformed JSON for session %s: %s "

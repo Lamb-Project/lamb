@@ -34,7 +34,7 @@ describe('FormativeFeedback — renders rubric feedback', () => {
 			props: { evaluation: successEvaluation, evaluating: false },
 		});
 		// The qualitative feedback is visible immediately…
-		expect(screen.getByText('Clarity')).toBeInTheDocument();
+		expect(screen.getAllByText('Clarity').length).toBeGreaterThanOrEqual(1);
 		expect(screen.getByText('The instruction is clear and focused.')).toBeInTheDocument();
 		expect(screen.getByText('Nice grounding with the document.')).toBeInTheDocument();
 		// …the numbers are not (D6).
@@ -70,23 +70,42 @@ describe('FormativeFeedback — renders rubric feedback', () => {
 // ── D6: the scores are folded away by default ─────────────────────────────
 
 describe('FormativeFeedback — suggested score is opt-in', () => {
-	test('D6a: neither the total nor the criterion score is visible up front', () => {
+	test('D6a: the numbers sit behind a single closed toggle', () => {
 		const { container } = render(FormativeFeedback, {
 			props: { evaluation: successEvaluation, evaluating: false },
 		});
 
-		// The values exist in the DOM (inside <details>) but the sections are
+		// The values exist in the DOM (inside <details>) but the section is
 		// closed, so nothing numeric is shown until the student asks for it.
 		const totals = container.querySelector('[data-testid="score-details"]');
 		expect(totals).toBeInTheDocument();
 		expect(totals.hasAttribute('open')).toBe(false);
 
-		const criterionScore = container.querySelector('[data-testid="criterion-score-0"]');
-		expect(criterionScore).toBeInTheDocument();
-		expect(criterionScore.hasAttribute('open')).toBe(false);
+		// Exactly one toggle for the whole evaluation: a per-criterion toggle
+		// repeated the same label for every row, which is what made a runaway
+		// 20-row evaluation look like a wall of identical links.
+		expect(screen.getAllByText('Show the suggested score')).toHaveLength(1);
 	});
 
-	test('D6b: the student can reveal the total by opening the section', async () => {
+	test('D6a2: a long criteria list still renders one toggle, not one per row', () => {
+		const many = {
+			...successEvaluation,
+			criteria: Array.from({ length: 12 }, (_, i) => ({
+				criterion: `Criterion ${i + 1}`,
+				level: 'Beginning',
+				score: 1,
+				weight: 10,
+				feedback: `Feedback ${i + 1}`,
+			})),
+		};
+		render(FormativeFeedback, { props: { evaluation: many, evaluating: false } });
+
+		expect(screen.getAllByText('Show the suggested score')).toHaveLength(1);
+		// …and every criterion's feedback is still readable.
+		expect(screen.getByText('Feedback 12')).toBeInTheDocument();
+	});
+
+	test('D6b: the student can reveal the total and the per-criterion scores', async () => {
 		const { container } = render(FormativeFeedback, {
 			props: { evaluation: successEvaluation, evaluating: false },
 		});
@@ -94,9 +113,12 @@ describe('FormativeFeedback — suggested score is opt-in', () => {
 			container.querySelector('[data-testid="score-details"]')
 		);
 		await fireEvent.click(details.querySelector('summary'));
-		// The revealed block reads "Suggested: 9 / 10" (split across nodes).
+		// The revealed block reads "Suggested: 9 / 10" (split across nodes)…
 		expect(details.textContent).toContain('9');
 		expect(details.textContent).toContain('10');
+		// …plus each criterion's score and weight.
+		expect(details.textContent).toContain('Score: 4');
+		expect(details.textContent).toContain('100%');
 	});
 
 	test('D6c: feedback without a score renders no score section at all', () => {
@@ -116,14 +138,14 @@ describe('FormativeFeedback — suggested score is opt-in', () => {
 	});
 });
 
-describe('FormativeFeedback — a cut-off evaluation is disclosed', () => {
-	test('warns when the recovered feedback was truncated', () => {
+describe('FormativeFeedback — an incomplete evaluation is disclosed', () => {
+	test('warns when the recovered feedback was truncated or partial', () => {
 		render(FormativeFeedback, {
 			props: {
 				evaluation: {
 					...successEvaluation,
-					// A *completed* evaluation whose JSON had to be repaired: the
-					// feedback is usable, but its last sentence is clipped.
+					// A *completed* evaluation whose JSON had to be repaired, or
+					// that only covered some of the rubric's criteria.
 					error_message:
 						"The model's response was cut off before the JSON was complete; " +
 						'the fields it did produce are shown.',
@@ -132,9 +154,9 @@ describe('FormativeFeedback — a cut-off evaluation is disclosed', () => {
 			},
 		});
 		expect(screen.getByTestId('feedback-truncated')).toBeInTheDocument();
-		expect(screen.getByText(/may end mid-sentence/)).toBeInTheDocument();
+		expect(screen.getByText(/may be incomplete/)).toBeInTheDocument();
 		// The recovered feedback is still shown — that is the whole point.
-		expect(screen.getByText('Clarity')).toBeInTheDocument();
+		expect(screen.getAllByText('Clarity').length).toBeGreaterThanOrEqual(1);
 	});
 
 	test('says nothing extra for a clean evaluation', () => {

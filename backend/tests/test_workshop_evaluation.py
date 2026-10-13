@@ -52,6 +52,62 @@ def _rubric_data():
     }
 
 
+def _three_criteria_rubric():
+    """The shape the smoke-test rubric has: three named, weighted criteria."""
+    return {
+        "rubricId": "rub-3",
+        "title": "AI Workshop rubric",
+        "maxScore": 12,
+        "criteria": [
+            {"id": "c-instructions", "name": "Instruction clarity",
+             "weight": 30, "levels": [{"id": "l1", "score": 4, "label": "Exemplary"}]},
+            {"id": "c-grounding",
+             "name": "Use of the document / knowledge base", "weight": 40,
+             "levels": [{"id": "l1", "score": 4, "label": "Exemplary"}]},
+            {"id": "c-tools", "name": "Tool awareness", "weight": 30,
+             "levels": [{"id": "l1", "score": 4, "label": "Exemplary"}]},
+        ],
+    }
+
+
+def _rubric_matching(truncated_payload_names=(
+        "Design Decisions", "Conversational Flow", "Tool Awareness")):
+    """A rubric whose criteria are the ones in TRUNCATED_RESPONSE."""
+    return {
+        "rubricId": "rub-trunc",
+        "title": "Assistant design",
+        "maxScore": 12,
+        "criteria": [
+            {"id": f"c{i}", "name": name, "weight": weight,
+             "levels": [{"id": "l1", "score": 4, "label": "Exemplary"}]}
+            for i, (name, weight) in enumerate(
+                zip(truncated_payload_names, (30, 40, 30)), start=1)
+        ],
+    }
+
+
+# Verbatim shape of a real response that produced 20 rows on the student's
+# screen for a 3-criterion rubric: the model turned the transcript's section
+# headings ("design questions", …) into criteria, padded them with two more
+# inventions, and then looped the same four entries five times.
+LOOPING_INVENTED_RESPONSE = json.dumps({
+    "criteria": [
+        {"criterion": name, "level": "Beginning", "score": 1, "weight": weight,
+         "feedback": feedback}
+        for _ in range(5)
+        for name, weight, feedback in (
+            ("design questions", 30, "The assistant did not attempt to answer design questions."),
+            ("oob-observations", 0, "No observations were provided."),
+            ("obtained-score", 30, "The assistant did not achieve the expected score."),
+            ("conversational flow", 40, "The student did not demonstrate effective conversational flow."),
+        )
+    ],
+    "total_score": 6,
+    "max_score": 12,
+    "overall_feedback": "The student made significant progress.",
+})
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Transcript serialization
 # ─────────────────────────────────────────────────────────────────────────────
@@ -295,6 +351,105 @@ class TestNormalizeEvaluation:
         result = ev.normalize_evaluation({}, {"maxScore": 20})
         assert result["max_score"] == 20
         assert result["criteria"] == []
+
+
+class TestCriteriaAreMatchedAgainstTheRubric:
+    """The rubric decides which criteria exist — the model only fills them in."""
+
+    def test_invented_criteria_are_dropped(self):
+        data = {"criteria": [
+            {"criterion": "design questions", "level": "Beginning", "score": 1,
+             "feedback": "not attempted"},
+            {"criterion": "Tool awareness", "level": "Proficient", "score": 3,
+             "feedback": "knows when to use it"},
+        ]}
+        result = ev.normalize_evaluation(data, _three_criteria_rubric())
+
+        assert [c["criterion"] for c in result["criteria"]] == ["Tool awareness"]
+        assert result["criteria_diagnostics"]["dropped"] == 1
+        assert result["criteria_diagnostics"]["matched"] == 1
+        assert result["criteria_diagnostics"]["rubric_total"] == 3
+
+    def test_output_follows_the_rubric_order_not_the_model_order(self):
+        data = {"criteria": [
+            {"criterion": "Tool awareness", "level": "Proficient", "score": 3},
+            {"criterion": "Instruction clarity", "level": "Exemplary", "score": 4},
+        ]}
+        result = ev.normalize_evaluation(data, _three_criteria_rubric())
+        assert [c["criterion"] for c in result["criteria"]] == [
+            "Instruction clarity", "Tool awareness"]
+
+    def test_model_names_and_weights_are_replaced_by_the_rubric_ones(self):
+        data = {"criteria": [
+            {"criterion": "Instruction Clarity", "level": "Proficient",
+             "score": 3, "weight": 5},
+        ]}
+        result = ev.normalize_evaluation(data, _three_criteria_rubric())
+        assert result["criteria"][0]["criterion"] == "Instruction clarity"
+        assert result["criteria"][0]["weight"] == 30
+        assert result["criteria"][0]["rubric_criterion_id"] == "c-instructions"
+
+    def test_matching_accepts_the_rubric_criterion_id(self):
+        data = {"criteria": [
+            {"criterion": "c-tools", "level": "Beginning", "score": 1},
+        ]}
+        result = ev.normalize_evaluation(data, _three_criteria_rubric())
+        assert result["criteria"][0]["criterion"] == "Tool awareness"
+
+    def test_repeated_criteria_collapse_to_one(self):
+        data = {"criteria": [
+            {"criterion": "Tool awareness", "level": "Beginning", "score": 1,
+             "feedback": "first"},
+            {"criterion": "Tool awareness", "level": "Exemplary", "score": 4,
+             "feedback": "second"},
+        ]}
+        result = ev.normalize_evaluation(data, _three_criteria_rubric())
+        assert len(result["criteria"]) == 1
+        assert result["criteria"][0]["feedback"] == "first"
+
+    def test_empty_rows_are_not_rendered(self):
+        data = {"criteria": [
+            {"criterion": "Tool awareness"},                       # nothing at all
+            {"criterion": "Instruction clarity", "level": "Excellent",
+             "score": 4, "feedback": "clear"},
+        ]}
+        result = ev.normalize_evaluation(data, _three_criteria_rubric())
+        assert len(result["criteria"]) == 1
+        assert result["criteria_diagnostics"]["empty"] == 1
+
+    def test_a_rubric_without_named_criteria_keeps_the_model_output(self):
+        """Rubrics that identify criteria only by position must still work."""
+        data = {"criteria": [
+            {"criterion": "Whatever", "level": "Good", "score": 3},
+        ]}
+        result = ev.normalize_evaluation(data, {"maxScore": 10, "criteria": []})
+        assert len(result["criteria"]) == 1
+        assert result["criteria_diagnostics"]["rubric_total"] == 0
+
+    def test_zero_weights_from_the_rubric_are_kept(self):
+        rubric = _three_criteria_rubric()
+        rubric["criteria"][2]["weight"] = 0
+        data = {"criteria": [
+            {"criterion": "Tool awareness", "level": "Proficient", "score": 3,
+             "weight": 99},
+        ]}
+        result = ev.normalize_evaluation(data, rubric)
+        assert result["criteria"][0]["weight"] == 0
+
+
+class TestEvaluationDirective:
+    def test_directive_lists_the_rubric_criteria_by_name(self):
+        directive = ev.build_evaluation_directive(_three_criteria_rubric())
+        for name in ("Instruction clarity", "Use of the document / knowledge base",
+                     "Tool awareness"):
+            assert name in directive
+        assert "weight 40%" in directive
+        assert "EXACTLY these 3 rubric criteria" in directive
+        assert "Do not add, rename, split, merge or repeat" in directive
+
+    def test_directive_falls_back_when_the_rubric_has_no_criteria(self):
+        assert ev.build_evaluation_directive({}) == ev._JSON_OUTPUT_DIRECTIVE
+        assert ev.build_evaluation_directive({"criteria": []}) == ev._JSON_OUTPUT_DIRECTIVE
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -545,7 +700,7 @@ class TestEvaluateSession:
                              new_callable=AsyncMock) as mock_llm, \
                 patch.object(ev, "_db_manager") as mock_db:
             mock_rub.get_rubric_by_id.return_value = {
-                "rubric_data": _rubric_data()}
+                "rubric_data": _rubric_matching()}
             mock_llm.return_value = _llm_response(TRUNCATED_RESPONSE)
 
             result = await ev.evaluate_session(_session(), _activity(), None)
@@ -560,6 +715,90 @@ class TestEvaluateSession:
         assert kwargs["status"] == "completed"
         assert kwargs["raw_response"] == TRUNCATED_RESPONSE
         assert "cut off" in (kwargs["error_message"] or "")
+
+    @pytest.mark.asyncio
+    async def test_invented_criteria_are_rejected_not_rendered(self):
+        """The panel bug: 20 rows for a 3-criterion rubric.
+
+        A small model echoed the transcript's section headings as four
+        "criteria" and repeated that set five times. Every row is meaningless
+        against the rubric, so the run is reported as failed with a message a
+        teacher can act on — rather than 20 fake rows on the student's screen.
+        """
+        with patch.object(ev, "_rubric_db") as mock_rub, \
+                patch.object(ev, "invoke_small_fast_model",
+                             new_callable=AsyncMock) as mock_llm, \
+                patch.object(ev, "_db_manager") as mock_db:
+            mock_rub.get_rubric_by_id.return_value = {
+                "rubric_data": _three_criteria_rubric()}
+            mock_llm.return_value = _llm_response(LOOPING_INVENTED_RESPONSE)
+
+            result = await ev.evaluate_session(_session(), _activity(), None)
+
+        assert result["status"] == "failed"
+        assert result["criteria"] == []
+        assert "not in this rubric" in result["error_message"]
+        # The raw output is kept so the mismatch can be inspected later.
+        assert mock_db.upsert_workshop_evaluation.call_args.kwargs[
+            "raw_response"] == LOOPING_INVENTED_RESPONSE
+
+    @pytest.mark.asyncio
+    async def test_rubric_names_and_weights_win_over_the_model(self):
+        """Decorated or partial names are matched, then re-labelled from the rubric."""
+        payload = json.dumps({
+            "criteria": [
+                {"criterion": "criterion: instruction clarity (30%)",
+                 "level": "Proficient", "score": 3, "weight": 99,
+                 "feedback": "Clear instructions."},
+                {"criterion": "knowledge base", "level": "Exemplary", "score": 4,
+                 "weight": 1, "feedback": "Well grounded."},
+            ],
+            "total_score": 7, "max_score": 12, "overall_feedback": "Good.",
+        })
+        with patch.object(ev, "_rubric_db") as mock_rub, \
+                patch.object(ev, "invoke_small_fast_model",
+                             new_callable=AsyncMock) as mock_llm, \
+                patch.object(ev, "_db_manager"):
+            mock_rub.get_rubric_by_id.return_value = {
+                "rubric_data": _three_criteria_rubric()}
+            mock_llm.return_value = _llm_response(payload)
+
+            result = await ev.evaluate_session(_session(), _activity(), None)
+
+        names = [c["criterion"] for c in result["criteria"]]
+        # Rubric order, rubric labels…
+        assert names == ["Instruction clarity",
+                         "Use of the document / knowledge base"]
+        # …and the rubric's weights, not the model's invented ones.
+        assert [c["weight"] for c in result["criteria"]] == [30, 40]
+        # The missing third criterion is disclosed rather than silently absent.
+        assert "2 of 3 rubric criteria" in result["error_message"]
+
+    @pytest.mark.asyncio
+    async def test_duplicate_criteria_collapse_into_one_row(self):
+        payload = json.dumps({
+            "criteria": [
+                {"criterion": "Tool awareness", "level": "Beginning",
+                 "score": 1, "weight": 30, "feedback": "First pass."},
+                {"criterion": "Tool awareness", "level": "Proficient",
+                 "score": 3, "weight": 30, "feedback": "Second pass."},
+            ],
+            "total_score": 3, "max_score": 12, "overall_feedback": "ok",
+        })
+        with patch.object(ev, "_rubric_db") as mock_rub, \
+                patch.object(ev, "invoke_small_fast_model",
+                             new_callable=AsyncMock) as mock_llm, \
+                patch.object(ev, "_db_manager"):
+            mock_rub.get_rubric_by_id.return_value = {
+                "rubric_data": _three_criteria_rubric()}
+            mock_llm.return_value = _llm_response(payload)
+
+            result = await ev.evaluate_session(_session(), _activity(), None)
+
+        assert len(result["criteria"]) == 1
+        assert result["criteria"][0]["criterion"] == "Tool awareness"
+        # The first attempt is the one kept — stable and predictable.
+        assert result["criteria"][0]["feedback"] == "First pass."
 
     @pytest.mark.asyncio
     async def test_prompt_transcript_is_bounded_but_the_model_sees_a_marker(self):
