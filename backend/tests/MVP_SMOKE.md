@@ -50,6 +50,10 @@ docker compose exec backend python tests/mvp_smoke.py
 # Require a real LLM (for CI / acceptance)
 docker compose exec backend python tests/mvp_smoke.py --require-llm
 
+# Seed a clean activity/student/session and stop — prints the wizard URL with
+# nothing pre-filled (no chat, reflection, or feedback). Walk it yourself.
+docker compose exec backend python tests/mvp_smoke.py --seed-only
+
 # Delete the activity seeded by this run when done (cascades to session/user/evaluation)
 docker compose exec backend python tests/mvp_smoke.py --cleanup
 

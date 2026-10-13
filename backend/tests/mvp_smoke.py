@@ -626,6 +626,9 @@ def main():
                              "when no model is reachable")
     parser.add_argument("--cleanup", action="store_true",
                         help="Delete the seeded activity when done")
+    parser.add_argument("--seed-only", action="store_true",
+                        help="Seed a clean activity/student/session and print "
+                             "the wizard URL without running the student flow")
     args = parser.parse_args()
 
     api = args.base.rstrip("/") + "/lamb/v1"
@@ -640,6 +643,19 @@ def main():
     rubric_db = RubricDatabaseManager()
 
     ctx = seed(db, rubric_db, report)
+
+    if args.seed_only:
+        print("\n" + "=" * 64)
+        print(" --seed-only: skipping student/teacher flow (clean session)")
+        print("=" * 64)
+        print(f" Student wizard : {args.base}/m/workshop/{ctx['activity_id']}"
+              f"?token={ctx['student_token']}")
+        print(f" Teacher board  : {args.base}/lamb/v1/lti/workshop/dashboard"
+              f"?resource_link_id={ctx['resource_link']}"
+              f"&token={ctx['dashboard_token']}")
+        if args.cleanup:
+            _cleanup(db, ctx)
+        return 1 if report.failed else 0
 
     with httpx.Client(timeout=120.0) as client:
         run_student_flow(client, api, ctx, report, args.require_llm)
