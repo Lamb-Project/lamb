@@ -1115,7 +1115,17 @@
     "requestPhase": "A punto de enviarse",
     "resultPhase": "Enviado al modelo",
     "panelHint": "mira el panel para ver cómo se ha dividido.",
-    "submitting": "Enviando…"
+    "submitting": "Enviando…",
+    "panelEmpty": "Todavía no hay nada que observar: el panel se va llenando mientras construyes.",
+    "noSystemInstructions": "No hay ninguna en este asistente; por eso no aparece ningún mensaje con role: system.",
+    "noToolsDefined": "No hay herramientas definidas.",
+    "noToolActivity": "Aún no hay actividad de herramientas.",
+    "toolFailed": "ha fallado",
+    "comparisonQuestion": "Pregunta",
+    "comparisonMissing": "Aún no se ha ejecutado en este modo.",
+    "comparisonNoSources": "No se recuperó ningún fragmento (la herramienta de consulta también se quitó).",
+    "comparisonNoHits": "Ningún fragmento coincidió con esta pregunta.",
+    "comparisonSourceCount": "Se incluyeron {count} fragmento(s) en el prompt."
   },
   "aacSettings": {
     "settingsTitle": "Configuración de LAMB AGENT",

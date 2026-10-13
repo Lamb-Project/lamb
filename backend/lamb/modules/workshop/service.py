@@ -47,7 +47,9 @@ def workshop_token_ttl() -> int:
     return DEFAULT_WORKSHOP_TOKEN_TTL
 
 
-def initialize_workshop_workspace(ctx: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def initialize_workshop_workspace(
+    ctx: Dict[str, Any], pilot: bool = False
+) -> Optional[Dict[str, Any]]:
     """Initialize a student's workshop workspace after LTI launch.
 
     ctx keys:
@@ -56,6 +58,13 @@ def initialize_workshop_workspace(ctx: Dict[str, Any]) -> Optional[Dict[str, Any
         display_name (str): Student display name.
         lms_user_id (str, optional): LMS user id.
         public_base (str, optional): Public-facing base URL for redirects.
+        locale (str, optional): LMS ``launch_presentation_locale``.
+
+    Args:
+        pilot: True when the *teacher* is taking the workshop themselves as the
+            required dry run (decision C13). The roster row and the session are
+            both marked, and the consent gate is skipped — the teacher already
+            knows what the activity discloses.
 
     Returns:
         dict with redirect target, session, and principal, or None on failure.
@@ -92,10 +101,17 @@ def initialize_workshop_workspace(ctx: Dict[str, Any]) -> Optional[Dict[str, Any
         activity_id=activity["id"],
         activity_user_id=activity_user.get("id"),
         owi_user_id=activity_user.get("owi_user_id"),
+        is_pilot=pilot,
     )
     if not session:
         logger.error("Workshop: failed to create workshop session")
         return None
+
+    if pilot:
+        # Mark the *roster* row too: `total_students` is a COUNT over
+        # lti_activity_users, so marking only the session would still show the
+        # teacher as a student on the dashboard (decision C13).
+        _db_manager.mark_activity_user_pilot(activity["id"], email, True)
 
     # 3. Build a restricted creator principal for this student (virtual
     #    principal — no Creator_users row; scope bound to this activity).
@@ -114,7 +130,9 @@ def initialize_workshop_workspace(ctx: Dict[str, Any]) -> Optional[Dict[str, Any
 
     # Consent gate: first visit sends the student to the consent page; once
     # consent_given_at is set (POST /workshop/consent) they skip straight in.
-    if not activity_user.get("consent_given_at"):
+    # The teacher's pilot run skips it: they configured the activity, so asking
+    # them to consent to their own disclosure would be theatre.
+    if not activity_user.get("consent_given_at") and not pilot:
         consent_path = f"/lamb/v1/workshop/consent?token={token}"
         if url_lang:
             consent_path += f"&lang={url_lang}"
@@ -139,6 +157,7 @@ def initialize_workshop_workspace(ctx: Dict[str, Any]) -> Optional[Dict[str, Any
         "principal": principal,
         "token": token,
         "locale": url_lang or None,
+        "is_pilot": bool(pilot),
     }
 
 

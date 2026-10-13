@@ -124,6 +124,129 @@ class TestBuildTranscript:
         assert "STUDENT REFLECTION" in text
 
 
+class TestTranscriptStructuredReflection:
+    """D5/D2/D3: the transcript carries the design answers and observations."""
+
+    @staticmethod
+    def _session(build_state, reflection=None):
+        return {
+            "id": "ws-1",
+            "activity_id": 1,
+            "saved_chat": json.dumps([
+                {"role": "user", "content": "What is a fraction?"},
+                {"role": "assistant", "content": "Equal parts of a whole."},
+            ]),
+            "reflection": reflection if reflection is not None else (
+                "### What did you ask your assistant to do, and why?\n"
+                "Explain fractions."),
+            "build_state": json.dumps(build_state),
+        }
+
+    def test_design_questions_are_labelled(self):
+        transcript = ev.build_transcript(self._session({
+            "instructions": "Explain fractions",
+            "reflectionAnswers": {
+                "q1": "Explain fractions simply.",
+                "q2": "It received 45 chunks of my notes.",
+                "q3": "I would add worked examples.",
+            },
+        }))
+
+        assert "=== DESIGN QUESTIONS ===" in transcript
+        for _key, heading in ev.DESIGN_QUESTIONS:
+            assert heading in transcript
+        assert "A: Explain fractions simply." in transcript
+        assert "A: It received 45 chunks of my notes." in transcript
+        assert "A: I would add worked examples." in transcript
+
+    def test_legacy_submission_says_so_instead_of_duplicating(self):
+        transcript = ev.build_transcript(self._session(
+            {"instructions": "Explain fractions"},
+            reflection="Free text from before the guided questions."))
+
+        assert "=== STUDENT REFLECTION ===" in transcript
+        assert "Free text from before the guided questions." in transcript
+        assert "predates the guided reflection" in transcript
+
+    def test_partially_answered_questions_keep_their_slots(self):
+        transcript = ev.build_transcript(self._session({
+            "reflectionAnswers": {"q1": "only the first"},
+        }))
+        assert "A: only the first" in transcript
+        assert "(not answered)" in transcript
+
+    def test_document_chunking_facts_are_included(self):
+        transcript = ev.build_transcript(self._session({
+            "observations": [{
+                "step": 2,
+                "kind": "document",
+                "data": {"files": [{
+                    "original_filename": "notes.md",
+                    "document_count": 45,
+                    "status": "completed",
+                    "plugin_params": {"chunk_size": 1000, "chunk_overlap": 200},
+                }]},
+            }],
+        }))
+
+        assert "=== OBSERVABILITY SNAPSHOTS ===" in transcript
+        assert "notes.md → 45 chunk(s)" in transcript
+        assert "chunk_size=1000" in transcript
+        assert "overlap=200" in transcript
+
+    def test_retrieval_probes_are_included(self):
+        transcript = ev.build_transcript(self._session({
+            "observations": [{
+                "step": 3,
+                "kind": "probe",
+                "data": {"query": "what is a fraction", "count": 3, "results": []},
+            }],
+        }))
+        assert "Retrieval probe" in transcript
+        assert "3 excerpt(s)" in transcript
+
+    def test_ab_history_records_the_rag_mode_per_turn(self):
+        transcript = ev.build_transcript(self._session({
+            "obsHistory": [
+                {"turn": 1, "ragMode": "on", "question": "What is a fraction?",
+                 "sources": [{}, {}], "answer": "Equal parts of a whole."},
+                {"turn": 2, "ragMode": "off", "question": "What is a fraction?",
+                 "sources": [], "answer": "I don't know."},
+            ],
+        }))
+
+        assert "[knowledge base ON]" in transcript
+        assert "[knowledge base OFF]" in transcript
+        assert "excerpts sent: 2" in transcript
+        assert "excerpts sent: 0" in transcript
+
+    def test_missing_observations_state_it_explicitly(self):
+        transcript = ev.build_transcript(self._session({"instructions": "x"}))
+        assert "(no build-time observations recorded)" in transcript
+        assert "did not run the knowledge-base comparison" in transcript
+
+    def test_snapshot_list_is_limited(self):
+        """A long lesson must not bury the rubric in raw frames."""
+        history = [
+            {"turn": i, "ragMode": "on" if i % 2 else "off",
+             "question": f"question {i}", "sources": [], "answer": f"answer {i}"}
+            for i in range(1, 21)
+        ]
+        transcript = ev.build_transcript(self._session({"obsHistory": history}))
+
+        assert transcript.count("[knowledge base") == ev.MAX_TRANSCRIPT_SNAPSHOTS
+        # The most recent turns are the ones kept.
+        assert "answer 20" in transcript
+        assert "answer 1 |" not in transcript
+
+    def test_legacy_transcript_shape_is_unchanged(self):
+        """Regression: the original sections still lead the transcript."""
+        transcript = ev.build_transcript(self._session({"instructions": "Teach"}))
+        assert transcript.startswith("=== BUILD DECISIONS ===")
+        assert "=== CONVERSATION ===" in transcript
+        assert "=== STUDENT REFLECTION ===" in transcript
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # JSON parsing / normalization
 # ─────────────────────────────────────────────────────────────────────────────

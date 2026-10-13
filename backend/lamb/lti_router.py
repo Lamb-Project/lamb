@@ -85,6 +85,67 @@ def _format_timestamp(ts):
         return "—"
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Teacher-first pilot gate helpers (decision C13)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def is_teacher_pilot_required(activity: dict) -> bool:
+    """Whether the org has switched the teacher-first gate on."""
+    from lamb.modules.workshop.dashboard import is_teacher_pilot_required as _req
+
+    return _req(activity)
+
+
+def _audit_pilot_skip(activity: dict, lms_email: str) -> None:
+    """Record an owner bypassing the teacher-first gate.
+
+    The escape hatch exists so a teacher who already knows the workshop is not
+    forced through it again; bypassing a safety gate without a trace is what
+    would make the gate untrustworthy.
+    """
+    owner_email = activity.get("owner_email") or activity.get("configured_by_email")
+    details = {
+        "activity_id": activity.get("id"),
+        "resource_link_id": activity.get("resource_link_id"),
+        "owner_email": owner_email,
+        "lms_email": lms_email,
+        "reason": "skip_pilot=1 on the launch URL",
+    }
+    logger.warning(f"Teacher pilot gate bypassed: {details}")
+
+    try:
+        owner = db_manager.get_creator_user_by_email(owner_email) if owner_email else None
+        actor_id = (owner or {}).get("id")
+        org_id = activity.get("organization_id")
+        if actor_id and org_id:
+            db_manager.write_audit_log(
+                organization_id=org_id,
+                actor_user_id=actor_id,
+                action="workshop.pilot_skip",
+                target_type="lti_activity",
+                target_id=str(activity.get("id")),
+                details=details,
+            )
+    except Exception as e:  # pragma: no cover - auditing must never break a launch
+        logger.warning(f"Could not write the pilot-skip audit entry: {e}")
+
+
+def _workshop_locale(request: Request, launch_locale: str) -> str:
+    """Resolve the locale for a workshop HTML page."""
+    from lamb.modules.workshop import i18n as workshop_i18n
+
+    return workshop_i18n.resolve_locale(request, None, url_lang=launch_locale)
+
+
+def _workshop_pilot_strings(request: Request, launch_locale: str) -> dict:
+    """Localized copy for the student waiting page."""
+    from lamb.modules.workshop import i18n as workshop_i18n
+
+    locale = _workshop_locale(request, launch_locale)
+    return workshop_i18n.PILOT_REQUIRED_STRINGS.get(
+        locale, workshop_i18n.PILOT_REQUIRED_STRINGS["en"])
+
+
 # =============================================================================
 # Main Launch Endpoint
 # =============================================================================
@@ -166,6 +227,40 @@ async def lti_launch(request: Request):
                 # chat dashboard (dispatch on activity_type, mirroring students).
                 if activity.get("activity_type", "chat") == "workshop":
                     from lamb.modules.workshop import module as workshop_module
+                    from lamb.modules.workshop.dashboard import (
+                        is_teacher_pilot_blocking,
+                    )
+
+                    # Teacher-first gate (C13): a teacher who has not run the
+                    # workshop themselves is sent through it once instead of
+                    # straight to the dashboard. `?skip_pilot=1` on the launch
+                    # URL is the owner's escape hatch and is audited.
+                    skip_pilot = str(
+                        request.query_params.get("skip_pilot", "")).strip().lower()
+                    wants_skip = skip_pilot in ("1", "true", "yes", "on")
+
+                    if is_teacher_pilot_blocking(activity) and not wants_skip:
+                        pilot = workshop_module.on_student_launch({
+                            "activity": activity,
+                            "username": username,
+                            "display_name": display_name,
+                            "lms_user_id": lms_user_id,
+                            "public_base": public_base,
+                            "locale": launch_locale,
+                            "pilot": True,
+                        })
+                        if pilot and pilot.get("redirect"):
+                            logger.info(
+                                f"Workshop instructor {resource_link_id} → pilot run")
+                            return RedirectResponse(
+                                url=pilot["redirect"], status_code=303)
+                        logger.warning(
+                            f"Workshop pilot redirect failed for {resource_link_id}; "
+                            f"falling back to the dashboard")
+
+                    if wants_skip and is_teacher_pilot_required(activity):
+                        _audit_pilot_skip(activity, lms_email)
+
                     result = workshop_module.on_instructor_launch({
                         "activity": activity,
                         "public_base": public_base,
@@ -192,6 +287,30 @@ async def lti_launch(request: Request):
             # Workshop activities dispatch to the build wizard, not OWI chat.
             activity_type = activity.get("activity_type", "chat")
             if activity_type == "workshop":
+                from lamb.modules.workshop.dashboard import (
+                    is_teacher_pilot_blocking,
+                )
+
+                # Teacher-first gate (C13): until the teacher has taken the
+                # workshop themselves, students see a waiting page rather than
+                # a broken-looking wizard. The teacher is *guided* (redirected
+                # into the pilot), students are only *informed*.
+                if is_teacher_pilot_blocking(activity):
+                    logger.info(
+                        f"Workshop student {username} held: teacher pilot pending "
+                        f"for {resource_link_id}")
+                    return templates.TemplateResponse(
+                        "workshop_pilot_required.html",
+                        {
+                            "request": request,
+                            "context_title": context_title or "",
+                            "activity_title": activity.get("activity_name")
+                            or context_title or "",
+                            "lang": _workshop_locale(request, launch_locale),
+                            "s": _workshop_pilot_strings(request, launch_locale),
+                        },
+                    )
+
                 logger.info(
                     f"Workshop student launch for {resource_link_id} → build wizard")
                 from lamb.modules.workshop import module
@@ -956,6 +1075,98 @@ async def workshop_dashboard_evaluate(session_id: str,
         raise HTTPException(status_code=404, detail="Session not found")
 
     result = await evaluate_session(session, activity)
+    return JSONResponse(result)
+
+
+def _workshop_session_in_activity(session_id: str, activity: dict) -> dict:
+    """Load a session and prove it belongs to this teacher's activity."""
+    session = db_manager.get_workshop_session_by_id(session_id)
+    if not session or session.get("activity_id") != activity["id"]:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
+
+def _student_identifiers(session: dict) -> set:
+    """Names/emails that identify the student behind a session."""
+    identifiers = set()
+    activity_user_id = session.get("activity_user_id")
+    if activity_user_id is not None:
+        row = db_manager.get_activity_user_by_id(activity_user_id)
+        if row:
+            for key in ("user_display_name", "user_name", "user_email"):
+                value = (row.get(key) or "").strip().lower()
+                if value:
+                    identifiers.add(value)
+    return identifiers
+
+
+@router.post("/workshop/dashboard/sessions/{session_id}/data/erase")
+async def workshop_dashboard_erase(session_id: str,
+                                   resource_link_id: str = "",
+                                   token: str = ""):
+    """Erase a student's workshop content — the default teacher action (C18).
+
+    Removes the conversation, reflection, build state, evaluation and the KB
+    collection and files, and clears the assistant's RAG binding. The assistant
+    itself and the roster row survive, so the dashboard counts stay meaningful
+    and a mis-attached document does not cost the student their work.
+    """
+    from lamb.modules.workshop import retention
+
+    _require_dashboard_token(token, resource_link_id)
+    activity = _get_workshop_activity(resource_link_id)
+    session = _workshop_session_in_activity(session_id, activity)
+
+    result = await retention.erase_session_content(session, activity)
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=502,
+            detail=result.get("detail") or "Could not erase the session data")
+    return JSONResponse(result)
+
+
+@router.delete("/workshop/dashboard/sessions/{session_id}/data")
+async def workshop_dashboard_purge(session_id: str,
+                                   resource_link_id: str = "",
+                                   token: str = "",
+                                   confirm: str = ""):
+    """Purge a student's data: content *and* the assistant row (C18).
+
+    Irreversible, so the caller must echo the student's name or email in
+    ``confirm`` — the UI asks the teacher to type it. The session row is kept
+    (as the record that work existed) with ``assistant_id`` set to NULL so it
+    cannot point at a deleted assistant.
+    """
+    from lamb.modules.workshop import retention
+
+    _require_dashboard_token(token, resource_link_id)
+    activity = _get_workshop_activity(resource_link_id)
+    session = _workshop_session_in_activity(session_id, activity)
+
+    provided = (confirm or "").strip().lower()
+    if not provided:
+        raise HTTPException(
+            status_code=400,
+            detail="Type the student's name to confirm the deletion")
+    identifiers = _student_identifiers(session)
+    if identifiers and provided not in identifiers:
+        raise HTTPException(
+            status_code=400,
+            detail="The name you typed does not match this student")
+    if not identifiers:
+        # No roster row (dangling session): accept the session id as the token
+        # of intent rather than making deletion impossible.
+        if provided != str(session_id).lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Type the session id to confirm the deletion")
+
+    result = await retention.purge_session(session, activity)
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=502,
+            detail=result.get("detail") or "Could not purge the session data")
+    logger.info(f"Workshop session {session_id} purged by teacher")
     return JSONResponse(result)
 
 

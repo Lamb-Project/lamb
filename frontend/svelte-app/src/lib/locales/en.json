@@ -1101,7 +1101,17 @@
     "requestPhase": "About to be sent",
     "resultPhase": "Sent to the model",
     "panelHint": "see the panel for how it was split.",
-    "submitting": "Submitting…"
+    "submitting": "Submitting…",
+    "panelEmpty": "Nothing to observe yet — the panel fills in as you build.",
+    "noSystemInstructions": "None set on this assistant — that's why no role: system message appears.",
+    "noToolsDefined": "No tools defined.",
+    "noToolActivity": "No tool activity yet.",
+    "toolFailed": "failed",
+    "comparisonQuestion": "Question",
+    "comparisonMissing": "Not run in this mode yet.",
+    "comparisonNoSources": "No excerpts were retrieved (the retrieval tool was removed too).",
+    "comparisonNoHits": "No excerpts matched this question.",
+    "comparisonSourceCount": "{count} excerpt(s) were placed in the prompt."
   },
   "aacSettings": {
     "settingsTitle": "LAMB AGENT settings",

@@ -21,6 +21,11 @@ logger = logging.getLogger(__name__)
 SUPPORTED_LOCALES = ("en", "es", "ca", "eu")
 DEFAULT_LOCALE = "en"
 
+# Version of the consent notice. Bump it whenever the copy below changes in a
+# way that materially changes what the student is told — the v2 notice added
+# model-based evaluation — so returning students can be asked again (C8/C20).
+CONSENT_VERSION = "2026-10"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Consent page copy (all four supported languages)
 #
@@ -240,6 +245,51 @@ CONSENT_STRINGS: Dict[str, Dict[str, str]] = {
         "retentionDays": "Zure ikastetxeak ezarritako gordetze-epea: {days} egun.",
         "consentButton": "Ulertzen dut — hasi jarduera",
         "declineHint": "Ados ez bazaude, itxi orri hau eta esan zure irakasleari.",
+    },
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# "The teacher goes first" waiting page (decision C13)
+#
+# When an organization requires the teacher to take the workshop before opening
+# it to a class, students who launch early must be told what is happening. A
+# bare error page would read as "the activity is broken"; this says who is
+# doing what and that they should try again shortly.
+# ─────────────────────────────────────────────────────────────────────────────
+
+PILOT_REQUIRED_STRINGS: Dict[str, Dict[str, str]] = {
+    "en": {
+        "title": "Not open yet",
+        "body": (
+            "Your teacher is completing this activity themselves first, so that "
+            "they can guide you through it. Please try again in a few minutes."
+        ),
+        "hint": "If it is still closed later, ask your teacher to open the activity.",
+    },
+    "es": {
+        "title": "Todavía no está abierta",
+        "body": (
+            "Tu profesor está completando antes esta actividad para poder "
+            "guiarte. Vuelve a intentarlo dentro de unos minutos."
+        ),
+        "hint": "Si sigue cerrada más tarde, pídele a tu profesor que abra la actividad.",
+    },
+    "ca": {
+        "title": "Encara no està oberta",
+        "body": (
+            "El teu professor està completant abans aquesta activitat per poder "
+            "guiar-te. Torna-ho a provar d'aquí a uns minuts."
+        ),
+        "hint": "Si encara està tancada més tard, demana al teu professor que obri l'activitat.",
+    },
+    "eu": {
+        "title": "Oraindik ez dago irekita",
+        "body": (
+            "Zure irakaslea jarduera hau lehenago egiten ari da, gero zure "
+            "gidari izateko. Saiatu berriro minutu batzuen buruan."
+        ),
+        "hint": "Geroago ere itxita badago, eskatu irakasleari jarduera irekitzeko.",
     },
 }
 

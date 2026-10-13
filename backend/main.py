@@ -170,6 +170,57 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to start DB maintenance tasks: {e}")
     # --- end background-tasks setup ---
 
+    # --- Workshop retention sweep (opt-in; see lamb/modules/workshop/retention.py) ---
+    workshop_task = None
+    try:
+        from lamb.modules.workshop.retention import (
+            RETENTION_ENABLED_ENV,
+            purge_expired_sessions,
+            retention_enabled,
+        )
+
+        if retention_enabled():
+            workshop_hour = int(os.getenv('WORKSHOP_RETENTION_HOUR', '4'))
+            workshop_minute = int(os.getenv('WORKSHOP_RETENTION_MINUTE', '0'))
+
+            async def _workshop_retention_loop():
+                """Daily workshop data sweep (mirrors the _daily_optimize_loop shape).
+
+                Deletes knowledge-base material past its retention window and
+                reports — but never silently deletes — conversations and
+                reflections; assistants are never touched (decision C9).
+                """
+                try:
+                    while True:
+                        now = datetime.now()
+                        target = now.replace(
+                            hour=workshop_hour, minute=workshop_minute,
+                            second=0, microsecond=0)
+                        if target <= now:
+                            target += timedelta(days=1)
+                        await asyncio.sleep((target - now).total_seconds())
+                        logger.info("Workshop retention: starting daily sweep")
+                        try:
+                            summary = await purge_expired_sessions()
+                            logger.info(f"Workshop retention sweep: {summary}")
+                        except Exception as e:
+                            logger.error(f"Workshop retention sweep error: {e}")
+                except asyncio.CancelledError:
+                    logger.info("Workshop retention loop cancelled")
+                    return
+
+            workshop_task = asyncio.create_task(
+                _workshop_retention_loop(), name='workshop_retention_loop')
+            logger.info(
+                f"Workshop retention sweep started (daily at "
+                f"{workshop_hour:02d}:{workshop_minute:02d})")
+        else:
+            logger.info(
+                f"Workshop retention disabled ({RETENTION_ENABLED_ENV} not set) — "
+                f"no workshop data is deleted automatically")
+    except Exception as e:
+        logger.error(f"Failed to start workshop retention task: {e}")
+
     yield
 
     # Shutdown
@@ -204,6 +255,14 @@ async def lifespan(app: FastAPI):
 
     except Exception as e:
         logger.error(f"Error shutting down DB scheduler/tasks: {e}")
+
+    # Stop the workshop retention sweep
+    if workshop_task is not None:
+        try:
+            workshop_task.cancel()
+            await asyncio.gather(workshop_task, return_exceptions=True)
+        except Exception:
+            logger.debug("Exception while cancelling the workshop retention task")
 
     await stop_news_cache_refresh_loop()
     logger.info("News cache refresh loop stopped")

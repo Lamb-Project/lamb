@@ -158,7 +158,120 @@ def build_transcript(session: Dict[str, Any]) -> str:
     reflection = (session.get("reflection") or "").strip()
     lines.append(reflection or "(none provided)")
 
+    # ── Structured design questions (D5) ──
+    lines.extend(_render_design_questions(build_state))
+
+    # ── Observability snapshots (D2/D3) ──
+    lines.extend(_render_observability_snapshots(build_state))
+
     return "\n".join(lines)
+
+
+# The three reflection questions, mirroring REFLECTION_QUESTIONS in the wizard
+# (frontend/svelte-app .../workshopFormState.svelte.js). Kept here so the
+# transcript labels the answers instead of pasting an unlabelled blob.
+DESIGN_QUESTIONS = (
+    ("q1", "What did you ask your assistant to do, and why?"),
+    ("q2", "What did the assistant actually receive?"),
+    ("q3", "What would you change in your design after testing it?"),
+)
+
+# How many A/B turns are worth sending. The rubric only needs enough to judge
+# whether the student understood grounding; a whole lesson's transcript would
+# bury it (and cost tokens).
+MAX_TRANSCRIPT_SNAPSHOTS = 6
+
+
+def _render_design_questions(build_state: Dict[str, Any]) -> List[str]:
+    """Render the structured reflection answers as their own section.
+
+    Students who answered the three fixed questions get them laid out
+    question → answer, which is far easier for the rubric to judge than one
+    free-text blob. Legacy submissions (free text only) fall back to the
+    reflection section above and say so, rather than duplicating it.
+    """
+    answers = build_state.get("reflectionAnswers")
+    lines = ["", "=== DESIGN QUESTIONS ==="]
+
+    if not isinstance(answers, dict) or not any(
+            (answers.get(key) or "").strip() for key, _ in DESIGN_QUESTIONS):
+        lines.append("(not answered — this submission predates the guided "
+                     "reflection; see STUDENT REFLECTION above)")
+        return lines
+
+    for key, heading in DESIGN_QUESTIONS:
+        answer = (answers.get(key) or "").strip()
+        lines.append(f"Q: {heading}")
+        lines.append(f"A: {answer or '(not answered)'}")
+    return lines
+
+
+def _render_observability_snapshots(build_state: Dict[str, Any]) -> List[str]:
+    """Render what the student observed while building (D2/D3).
+
+    Two kinds of evidence, deliberately kept distinct:
+
+    * the **document facts** (how many chunks the upload became) and the
+      **retrieval probes** are deterministic observations of the build;
+    * the **A/B turns** record the knowledge-base mode per turn, which is what
+      lets the rubric see whether the student actually ran the comparison.
+
+    Everything is limited (``MAX_TRANSCRIPT_SNAPSHOTS``) so a long session does
+    not drown the rubric in raw frames.
+    """
+    lines = ["", "=== OBSERVABILITY SNAPSHOTS ==="]
+
+    observations = _as_list(build_state.get("observations"))
+    document_lines = []
+    probe_lines = []
+    for entry in observations:
+        if not isinstance(entry, dict):
+            continue
+        kind = entry.get("kind")
+        data = _as_dict(entry.get("data"))
+        if kind == "document":
+            for file in _as_list(data.get("files")):
+                file = _as_dict(file)
+                params = _as_dict(file.get("plugin_params"))
+                document_lines.append(
+                    "Document chunking: {name} → {chunks} chunk(s) "
+                    "(chunk_size={size}, overlap={overlap}, status={status})".format(
+                        name=file.get("original_filename")
+                        or file.get("filename") or "(unnamed)",
+                        chunks=file.get("document_count", 0),
+                        size=params.get("chunk_size", "?"),
+                        overlap=params.get("chunk_overlap", "?"),
+                        status=file.get("status", "?")))
+        elif kind == "probe":
+            probe_lines.append(
+                "Retrieval probe {query!r}: {count} excerpt(s)".format(
+                    query=(data.get("query") or "")[:120],
+                    count=data.get("count", len(_as_list(data.get("results"))))))
+
+    if document_lines or probe_lines:
+        lines.extend(document_lines)
+        lines.extend(probe_lines)
+    else:
+        lines.append("(no build-time observations recorded)")
+
+    history = _as_list(build_state.get("obsHistory"))
+    if history:
+        lines.append("")
+        lines.append(
+            f"Knowledge-base comparison (last {MAX_TRANSCRIPT_SNAPSHOTS} turn(s)):")
+        for run in history[-MAX_TRANSCRIPT_SNAPSHOTS:]:
+            run = _as_dict(run)
+            mode = "ON" if (run.get("ragMode") or "on") != "off" else "OFF"
+            lines.append(
+                "- [knowledge base {mode}] Q: {q} | excerpts sent: {n} | A: {a}".format(
+                    mode=mode,
+                    q=(run.get("question") or "")[:160],
+                    n=len(_as_list(run.get("sources"))),
+                    a=(run.get("answer") or "")[:400]))
+    else:
+        lines.append("(the student did not run the knowledge-base comparison)")
+
+    return lines
 
 
 # ─────────────────────────────────────────────────────────────────────────────

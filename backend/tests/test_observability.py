@@ -268,12 +268,17 @@ async def test_observability_payload_has_all_fields(
         chunks.append(chunk.decode() if isinstance(chunk, bytes) else chunk)
 
     obs_frames = [c for c in chunks if '"type": "observability"' in c]
-    assert len(obs_frames) == 1
+    # Two frames now: one *before* the first LLM call (D1 — the student sees
+    # what is about to be sent while the model is still thinking) and one at
+    # the end with the messages the model finally saw.
+    assert len(obs_frames) == 2
 
-    obs_data = json.loads(obs_frames[0].replace("data: ", "").strip())
-    payload = obs_data["data"]
+    parsed = [json.loads(f.replace("data: ", "").strip()) for f in obs_frames]
+    assert parsed[0]["data"]["phase"] == "request"
+    assert parsed[-1]["data"]["phase"] == "result"
 
-    # Required top-level fields
+    # Required top-level fields (the result frame is the superset: it carries
+    # the post-tool-round messages).
     required_payload_fields = [
         "assistant_name",
         "system_instructions",
@@ -284,8 +289,11 @@ async def test_observability_payload_has_all_fields(
         "tools",
         "request_body",
     ]
-    for field in required_payload_fields:
-        assert field in payload, f"Missing payload field: {field}"
+    for frame in parsed:
+        for field in required_payload_fields:
+            assert field in frame["data"], f"Missing payload field: {field}"
+
+    payload = parsed[-1]["data"]
 
     # tools should echo the request tools
     assert payload["tools"] == request_body["tools"]

@@ -196,6 +196,18 @@ async def proxy_assistant_chat(
         # 5. Extract chat persistence parameters
         chat_id = body.pop("chat_id", None)  # Remove from body before passing to LLM
         persist_chat = body.pop("persist_chat", True)  # Default to persisting
+
+        # Private namespaced keys belong to internal callers only. The raw body
+        # is forwarded to the completion pipeline, so without this an external
+        # request could set `_workshop_disable_rag` and silently degrade an
+        # assistant's retrieval (the workshop A/B is the only legitimate user,
+        # and it calls the pipeline directly, not through this proxy).
+        for private_key in ("_workshop_disable_rag",):
+            if private_key in body:
+                logger.warning(
+                    f"Stripped internal completion key '{private_key}' from an "
+                    f"external request (assistant {assistant_id})")
+                body.pop(private_key, None)
         
         # 6. Get the latest user message for persistence
         messages = body.get("messages", [])

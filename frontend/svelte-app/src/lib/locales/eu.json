@@ -1111,7 +1111,17 @@
     "requestPhase": "Bidaltzeko zorian",
     "resultPhase": "Modelora bidalita",
     "panelHint": "ikusi panela nola zatitu den ikusteko.",
-    "submitting": "Bidaltzen…"
+    "submitting": "Bidaltzen…",
+    "panelEmpty": "Oraindik ez dago behatzeko ezer: panela eraikitzen duzun heinean betetzen da.",
+    "noSystemInstructions": "Laguntzaile honek ez du bat ere; horregatik ez da role: system mezurik agertzen.",
+    "noToolsDefined": "Ez dago tresnarik definituta.",
+    "noToolActivity": "Oraindik ez dago tresna-jarduerarik.",
+    "toolFailed": "huts egin du",
+    "comparisonQuestion": "Galdera",
+    "comparisonMissing": "Oraindik ez da modu honetan exekutatu.",
+    "comparisonNoSources": "Ez da zatirik berreskuratu (kontsulta-tresna ere kendu da).",
+    "comparisonNoHits": "Ez da zatirik bat etorri galdera honekin.",
+    "comparisonSourceCount": "{count} zati sartu dira promptean."
   },
   "aacSettings": {
     "settingsTitle": "LAMB AGENT ezarpenak",

@@ -264,11 +264,24 @@ def build_observability_payload(
     assistant_details,
     request: dict,
     rag_context: Optional[dict],
-    messages: list
+    messages: list,
+    phase: str = "result",
+    rag_mode: str = "on",
 ) -> dict:
     """
     Build the observability SSE frame payload from available scope variables.
-    Called after the generator completes, before [DONE].
+
+    ``phase`` tells the panel *when* it is looking at the request:
+
+    * ``"request"`` — emitted before the first LLM call, so the student sees
+      what is about to be sent while the model is still thinking (D1). RAG
+      context is included when it has already been retrieved, and is honestly
+      empty when RAG is off.
+    * ``"result"`` — emitted at the end of the stream, reflecting the messages
+      the model finally saw (after any tool rounds).
+
+    ``rag_mode`` records whether the knowledge base was on for this turn, which
+    is what makes the A/B comparison (D3) interpretable.
     """
     # Last user message
     user_input = ""
@@ -317,8 +330,35 @@ def build_observability_payload(
             "final_llm_messages": messages,
             "tools": tools,
             "request_body": request_body,
+            "phase": phase,
+            "rag_mode": rag_mode,
         }
     }
+
+
+def observability_frame(payload: dict) -> str:
+    """Serialize an observability payload as one SSE frame."""
+    return f"data: {json.dumps(payload)}\n\n"
+
+
+def error_frame(message: str, error_type: str = "internal_server_error") -> str:
+    """Serialize a mid-stream failure as an SSE ``error`` frame.
+
+    Once the response headers are on the wire an HTTP status is no longer
+    available, so a failure inside a generator has to be delivered as a frame —
+    otherwise the browser waits on "streaming…" until the connection drops.
+    """
+    return f"data: {json.dumps({'type': 'error', 'data': {'message': message, 'type': error_type}})}\n\n"
+
+
+async def with_error_frame(generator) -> AsyncGenerator[str, None]:
+    """Yield from ``generator``, turning a crash into an ``error`` frame."""
+    try:
+        async for chunk in generator:
+            yield chunk
+    except Exception as e:  # noqa: BLE001 - the whole point is to catch anything
+        logger.error(f"Streaming generation failed: {e}", exc_info=True)
+        yield error_frame(f"Internal server error: {e}")
 
 
 def observability_enabled(request: dict) -> bool:
@@ -327,6 +367,18 @@ def observability_enabled(request: dict) -> bool:
     Phase 1: request-level flag only (no org feature gate yet).
     """
     return request.get("observability", False) is True
+
+
+def workshop_rag_mode(request: dict) -> str:
+    """Effective RAG mode for this request: ``"on"`` or ``"off"``.
+
+    The A/B experiment (D3) switches RAG off *per request* instead of editing
+    the assistant's persisted ``RAG_collections`` — the wizard never mutates
+    saved configuration to run an experiment (which is exactly how the S1 bug
+    leaked into later turns). ``_workshop_disable_rag`` is a namespaced private
+    key: the shared proxy strips it from external bodies.
+    """
+    return "off" if request.get("_workshop_disable_rag") is True else "on"
 
 
 async def _stream_with_observability(
@@ -341,6 +393,7 @@ async def _stream_with_observability(
     connector: str,
     assistant: int,
     llm: str,
+    rag_mode: str = "on",
 ) -> AsyncGenerator[str, None]:
     """
     Wrap a connector's async chunk generator and inject an observability SSE
@@ -364,6 +417,7 @@ async def _stream_with_observability(
         connector: connector name (used to skip usage logging for free LLMs).
         assistant: assistant id (for token usage log).
         llm: model name (for token usage log).
+        rag_mode: "on"/"off" for this turn, echoed in the observability frame.
     """
     obs_injected = False
     async for chunk in generator:
@@ -371,17 +425,19 @@ async def _stream_with_observability(
         # sees it before returning on [DONE].
         if observability_enabled(request) and not obs_injected and "data: [DONE]" in chunk:
             obs_payload = build_observability_payload(
-                assistant_details, request, rag_context, obs_messages
+                assistant_details, request, rag_context, obs_messages,
+                phase="result", rag_mode=rag_mode,
             )
-            yield f"data: {json.dumps(obs_payload)}\n\n"
+            yield observability_frame(obs_payload)
             obs_injected = True
         yield chunk
     # Fallback: if the generator never emitted [DONE], inject here.
     if observability_enabled(request) and not obs_injected:
         obs_payload = build_observability_payload(
-            assistant_details, request, rag_context, obs_messages
+            assistant_details, request, rag_context, obs_messages,
+            phase="result", rag_mode=rag_mode,
         )
-        yield f"data: {json.dumps(obs_payload)}\n\n"
+        yield observability_frame(obs_payload)
     # Log usage when stream completes for tracked connectors.
     # Skip ollama (free) and orgs without an organization.
     if connector != "ollama" and usage_out and provider and assistant_details.organization_id is not None:
@@ -657,18 +713,122 @@ async def run_lamb_assistant(
                 headers=final_headers
             )
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
-        rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
+
+        # RAG is decided per request (A/B experiment, D3): turning the knowledge
+        # base off must not touch the assistant's persisted RAG_collections.
+        # The short-circuit lives here rather than in the shared
+        # `get_rag_context`, so no other caller's behaviour changes.
+        rag_mode = workshop_rag_mode(request)
+        if rag_mode == "off":
+            logger.info(
+                "RAG disabled for this request (workshop A/B) — assistant %s",
+                assistant)
+            rag_context = None
+        else:
+            rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
+
         messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps)
         stream = request.get("stream", False)
         llm = plugin_config.get("llm") # Get LLM from config
 
-        logger.debug(f"Calling connector '{connector}' with stream={stream}, llm={llm}")
-
         # Get the connector function
         connector_func = connectors[connector]
 
+        tools = request.get("tools")
+        use_tool_loop = bool(stream and tools)
+
+        if use_tool_loop:
+            # ── ToolLoop path: function-calling rounds ──
+            #
+            # No connector call happens here: the previous eager call's result
+            # was discarded, and — worse — it delayed the observability frame by
+            # a whole model turn. With it removed, the "request" frame below is
+            # the very first thing the student's panel receives (D1/C11).
+            async def _tool_stream():
+                if observability_enabled(request):
+                    yield observability_frame(build_observability_payload(
+                        assistant_details, request, rag_context, messages,
+                        phase="request", rag_mode=rag_mode,
+                    ))
+
+                tool_loop = ToolLoop()
+                final_msgs = None
+                async for event in tool_loop.run(
+                    messages=messages,
+                    tools=tools,
+                    tool_choice=request.get("tool_choice", "auto"),
+                    llm_call_fn=lambda msgs, tl, tc: connectors[connector](
+                        messages=msgs,
+                        stream=False,
+                        body=request,
+                        llm=llm,
+                        assistant_owner=assistant_details.owner,
+                        tools=tl,
+                        tool_choice=tc,
+                    ),
+                    assistant=assistant_details,
+                    request=request,
+                ):
+                    if event["type"] in ("thinking", "tool", "tool_done"):
+                        yield f"data: {json.dumps({'type': 'tool_event', 'data': event})}\n\n"
+                    elif event["type"] == "result":
+                        final_msgs = event["messages"]
+
+                if final_msgs is None:
+                    final_msgs = messages
+
+                # Echo the tool exchanges produced this turn back to the
+                # client (assistant tool_calls + role:tool results) so it can
+                # persist them and resend them on later turns. Without this
+                # the model loses the record of prior tool invocations across
+                # a multi-turn conversation.
+                appended = final_msgs[len(messages):]
+                tool_messages = [
+                    m for m in appended
+                    if m.get("role") == "tool"
+                    or (m.get("role") == "assistant" and m.get("tool_calls"))
+                ]
+                if tool_messages:
+                    yield f"data: {json.dumps({'type': 'tool_messages', 'data': {'messages': tool_messages}})}\n\n"
+
+                # Stream final text reply
+                gen_result = await connectors[connector](
+                    messages=final_msgs,
+                    stream=True,
+                    body=request,
+                    llm=llm,
+                    assistant_owner=assistant_details.owner,
+                )
+                if isinstance(gen_result, tuple):
+                    gen, usage_out = gen_result
+                else:
+                    gen, usage_out = gen_result, None
+
+                async for chunk in _stream_with_observability(
+                    gen,
+                    request=request,
+                    assistant_details=assistant_details,
+                    rag_context=rag_context,
+                    obs_messages=final_msgs,
+                    usage_out=usage_out,
+                    provider=provider,
+                    connector=connector,
+                    assistant=assistant,
+                    llm=llm,
+                    rag_mode=rag_mode,
+                ):
+                    yield chunk
+
+            logger.debug("Returning ToolLoop streaming response")
+            return StreamingResponse(
+                with_error_frame(_tool_stream()),
+                media_type="text/event-stream",
+                headers=final_headers
+            )
+
         # Call the connector function, passing all necessary arguments
         # The openai.py connector expects: messages, stream, body (original request), llm, assistant_owner
+        logger.debug(f"Calling connector '{connector}' with stream={stream}, llm={llm}")
         llm_response = await connector_func( # Use await as connector is now async
             messages=messages,
             stream=stream,
@@ -680,86 +840,6 @@ async def run_lamb_assistant(
         )
 
         if stream:
-            tools = request.get("tools")
-            use_tool_loop = bool(tools)
-
-            if use_tool_loop:
-                # ── ToolLoop path: function-calling rounds ──
-                async def _tool_stream():
-                    tool_loop = ToolLoop()
-                    final_msgs = None
-                    async for event in tool_loop.run(
-                        messages=messages,
-                        tools=tools,
-                        tool_choice=request.get("tool_choice", "auto"),
-                        llm_call_fn=lambda msgs, tl, tc: connectors[connector](
-                            messages=msgs,
-                            stream=False,
-                            body=request,
-                            llm=llm,
-                            assistant_owner=assistant_details.owner,
-                            tools=tl,
-                            tool_choice=tc,
-                        ),
-                        assistant=assistant_details,
-                        request=request,
-                    ):
-                        if event["type"] in ("thinking", "tool", "tool_done"):
-                            yield f"data: {json.dumps({'type': 'tool_event', 'data': event})}\n\n"
-                        elif event["type"] == "result":
-                            final_msgs = event["messages"]
-
-                    if final_msgs is None:
-                        final_msgs = messages
-
-                    # Echo the tool exchanges produced this turn back to the
-                    # client (assistant tool_calls + role:tool results) so it can
-                    # persist them and resend them on later turns. Without this
-                    # the model loses the record of prior tool invocations across
-                    # a multi-turn conversation.
-                    appended = final_msgs[len(messages):]
-                    tool_messages = [
-                        m for m in appended
-                        if m.get("role") == "tool"
-                        or (m.get("role") == "assistant" and m.get("tool_calls"))
-                    ]
-                    if tool_messages:
-                        yield f"data: {json.dumps({'type': 'tool_messages', 'data': {'messages': tool_messages}})}\n\n"
-
-                    # Stream final text reply
-                    gen_result = await connectors[connector](
-                        messages=final_msgs,
-                        stream=True,
-                        body=request,
-                        llm=llm,
-                        assistant_owner=assistant_details.owner,
-                    )
-                    if isinstance(gen_result, tuple):
-                        gen, usage_out = gen_result
-                    else:
-                        gen, usage_out = gen_result, None
-
-                    async for chunk in _stream_with_observability(
-                        gen,
-                        request=request,
-                        assistant_details=assistant_details,
-                        rag_context=rag_context,
-                        obs_messages=final_msgs,
-                        usage_out=usage_out,
-                        provider=provider,
-                        connector=connector,
-                        assistant=assistant,
-                        llm=llm,
-                    ):
-                        yield chunk
-
-                logger.debug("Returning ToolLoop streaming response")
-                return StreamingResponse(
-                    _tool_stream(),
-                    media_type="text/event-stream",
-                    headers=final_headers
-                )
-
             # ── Standard (non-tool) streaming path ──
             # Tracked connectors return (generator, usage_out); others return the generator directly
             if isinstance(llm_response, tuple):
@@ -779,6 +859,7 @@ async def run_lamb_assistant(
                     connector=connector,
                     assistant=assistant,
                     llm=llm,
+                    rag_mode=rag_mode,
                 ):
                     yield chunk
 
@@ -786,7 +867,7 @@ async def run_lamb_assistant(
             # Wrap this directly in StreamingResponse
             logger.debug("Returning StreamingResponse for async generator from connector.")
             return StreamingResponse(
-                _tracked_stream(),
+                with_error_frame(_tracked_stream()),
                 media_type="text/event-stream",
                 headers=final_headers
             )

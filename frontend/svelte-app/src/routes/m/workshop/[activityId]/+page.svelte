@@ -18,7 +18,10 @@
 	import ObservabilityPanel from '$lib/components/workshop/ObservabilityPanel.svelte';
 	import FormativeFeedback from '$lib/components/workshop/FormativeFeedback.svelte';
 	import LocaleSwitcher from '$lib/components/workshop/LocaleSwitcher.svelte';
-	import { sendWorkshopChat } from '$lib/services/workshopChatService.js';
+	import RagComparison from '$lib/components/workshop/RagComparison.svelte';
+	import {
+		recordObservation
+	} from '$lib/components/workshop/logic/workshopObservations.svelte.js';	import { sendWorkshopChat } from '$lib/services/workshopChatService.js';
 	import {
 		createWorkshopApi,
 		decodeTokenPayload,
@@ -68,11 +71,38 @@
 	let abortController = $state(null);
 	/** @type {any | null} */
 	let obsData = $state(null);
+	/**
+	 * The observability "request" frame — what is about to be sent, available
+	 * before the model has produced anything (D1). Kept apart from `obsData`
+	 * (the "result" frame) so the panel can show both.
+	 * @type {any | null}
+	 */
+	let obsRequest = $state(null);
 	/** @type {Array<any>} */
 	let toolEvents = $state([]);
+	/** @type {Array<any>} */
+	let documentFiles = $state([]);
 
 	/** @type {number | null} */
 	let assistantId = $state(null);
+
+	/** Tool definitions that will be sent to the model (steps 4 and 5). */
+	const toolsPayload = $derived(
+		(form?.selectedTools || []).map((/** @type {string} */ name) => ({
+			type: 'function',
+			function: { name }
+		}))
+	);
+
+	/**
+	 * The observation panel is the through-line of the wizard (D2), not a
+	 * by-product of chatting: it is visible from step 2 on, whether or not the
+	 * student has sent a message yet.
+	 */
+	const panelVisible = $derived(
+		!!form &&
+			(form.currentStep >= 2 || !!obsData || !!obsRequest || toolEvents.length > 0)
+	);
 
 	// ── API client (token renewal + readable 401s) ──
 	/** @type {ReturnType<typeof createWorkshopApi> | null} */
@@ -209,6 +239,12 @@
 				form.documentStatus = session.document_status || form.documentStatus;
 			}
 			chatMessages = form.chatMessages || [];
+			// Re-populate step 2's observation after a reload: the fact that the
+			// document was chunked a certain way does not change, but the panel
+			// would otherwise be empty until the next upload.
+			if (session.document_file_id) {
+				await loadDocumentFiles();
+			}
 			await fetchEvaluation();
 		} catch (/** @type {any} */ e) {
 			console.error('[workshop] session load failed:', e);
@@ -344,11 +380,34 @@
 			} else {
 				form.documentStatus = 'completed';
 			}
+			// Step 2's observation: how the document was actually chunked. This
+			// is the KB file registry (deterministic facts), not a guess from a
+			// probe query's top-k hits (D2 / C16).
+			await loadDocumentFiles();
 		} catch (/** @type {any} */ e) {
 			form.documentStatus = 'failed';
 			fail(e, 'Upload failed');
 		} finally {
 			uploading = false;
+		}
+	}
+
+	/**
+	 * Read the KB file registry for this session and snapshot it for the panel.
+	 * Best effort: the upload already succeeded, so a registry read failure must
+	 * not turn into a student-facing error.
+	 */
+	async function loadDocumentFiles() {
+		if (!api || !sessionId) return;
+		try {
+			const data = await api.request(
+				`/sessions/${encodeURIComponent(sessionId)}/doc/files`);
+			documentFiles = data.files || [];
+			if (documentFiles.length) {
+				form.observations = recordObservation(
+					form.observations, 2, 'document', { files: documentFiles });
+			}
+		} catch (/** @type {any} */ e) {			console.info('[workshop] document registry unavailable:', e?.message);
 		}
 	}
 
@@ -402,6 +461,14 @@
 				form.kbCollection = form.kbCollection || data.kb_id;
 			}
 			form.kbVerificationResult = data;
+			// Step 3's observation: the excerpts this exact question retrieved
+			// (as opposed to step 2's "how it was split" facts).
+			form.observations = recordObservation(
+				form.observations, 3, 'probe', {
+					query: form.kbQuery,
+					results: data.results || [],
+					count: data.count || 0
+				});
 			persistBuildState();
 		} catch (/** @type {any} */ e) {
 			fail(e, 'Knowledge base test failed.');
@@ -478,15 +545,19 @@
 		streaming = true;
 		toolEvents = [];
 		obsData = null;
+		obsRequest = null;
 		abortController = new AbortController();
 
 		// Tool definitions passed to the backend (calculator default per wizard).
-		const tools = (form.selectedTools || ['calculator']).map((/** @type {string} */ name) => ({
-			type: 'function',
-			function: { name },
-		}));
+		// With the knowledge base off, the retrieval tool is dropped too — the
+		// backend enforces this as well, but the panel should show the truth.
+		const ragMode = form.ragMode === 'off' ? 'off' : 'on';
+		const tools = toolsPayload.filter(
+			(t) => !(ragMode === 'off' && t.function.name === 'kb_query')
+		);
 
 		let assistantBuffer = '';
+		let requestFrame = null;
 		await sendWorkshopChat(
 			{
 				sessionId,
@@ -494,7 +565,7 @@
 				token,
 				api,
 				messages: requestMessages(chatMessages),
-				opts: { tools, observability: true, ragMode: form.ragMode },
+				opts: { tools, observability: true, ragMode },
 			},
 			{
 				onChunk: (chunk) => {
@@ -505,7 +576,18 @@
 					);
 				},
 				onObservability: (data) => {
-					obsData = data;
+					// Two frames per turn (D1): "request" arrives before the
+					// first LLM call, "result" at the end of the stream.
+					if (data?.phase === 'request') {
+						obsRequest = data;
+						requestFrame = data;
+						form.observations = recordObservation(
+							form.observations, 5, 'chat_request', data);
+					} else {
+						obsData = data;
+						form.observations = recordObservation(
+							form.observations, 5, 'chat_result', data);
+					}
 				},
 				onToolEvent: (evt) => {
 					toolEvents = [...toolEvents, evt];
@@ -527,16 +609,47 @@
 				onDone: () => {
 					streaming = false;
 					abortController = null;
+					recordTurn(text, ragMode, requestFrame, assistantBuffer);
 					persistBuildState();
 				},
 				onError: (msg) => {
 					streaming = false;
 					abortController = null;
 					error = msg || 'Stream error';
+					// A failed turn still counts as an attempt: the comparison
+					// should not silently lose the "off" run.
+					recordTurn(text, ragMode, requestFrame, assistantBuffer);
 				},
 			},
 			abortController.signal
 		);
+	}
+
+	/**
+	 * Remember one chat turn for the A/B comparison (D3).
+	 *
+	 * Stores the question, the mode, the excerpts that were sent and the answer
+	 * — the four things a student needs side by side to explain why the two
+	 * answers differ.
+	 *
+	 * @param {string} question
+	 * @param {string} ragMode
+	 * @param {any} frame - the observability "request" frame, when it arrived
+	 * @param {string} answer
+	 */
+	function recordTurn(question, ragMode, frame, answer) {
+		if (!form || !question) return;
+		form.obsHistory = [
+			...(form.obsHistory || []),
+			{
+				turn: (form.obsHistory || []).length + 1,
+				ragMode,
+				question,
+				sources: frame?.retrieved_sources || [],
+				ragContext: frame?.rag_context || '',
+				answer: answer || ''
+			}
+		];
 	}
 
 	function handleStop() {
@@ -687,19 +800,35 @@
 				{/if}
 			</section>
 
-			<!-- Chat + observability (appears from step 5, but dashboard also aids step 1-4) -->
+			<!-- Chat + observability. The panel is the through-line of the wizard
+			     (D2): it carries the step's own evidence from step 2 on, not just
+			     the last chat exchange. -->
 			<section class="lg:col-span-3 space-y-6">
 				<!-- Formative feedback (after submit / on restore) -->
 				{#if evaluating || evaluation}
 					<FormativeFeedback {evaluation} {evaluating} />
 				{/if}
 
-				<!-- Observability dashboard always visible once chat starts -->
-				{#if obsData || toolEvents.length > 0 || chatMessages.length > 0}
+				{#if panelVisible}
 					<div class="border rounded-lg p-4 bg-white shadow-sm">
-						<h2 class="text-sm font-semibold mb-3">{$_('workshop.observabilityTitle', { default: 'What your assistant received' })}</h2>
-						<ObservabilityPanel {obsData} {toolEvents} />
+						<h2 class="text-sm font-semibold mb-3">
+							{$_('workshop.observabilityTitle', { default: 'What your assistant received' })}
+						</h2>
+						<ObservabilityPanel
+							{obsData}
+							{obsRequest}
+							{toolEvents}
+							documents={documentFiles}
+							toolDefinitions={form.currentStep === 4 ? toolsPayload : null}
+							step={form.currentStep}
+							ragMode={form.ragMode === 'off' ? 'off' : 'on'}
+						/>
 					</div>
+				{/if}
+
+				<!-- A/B comparison (D3): shown once the student has run a turn -->
+				{#if form.currentStep === 5 && (form.obsHistory || []).length > 0}
+					<RagComparison history={form.obsHistory} />
 				{/if}
 
 				<!-- Chat panel -->

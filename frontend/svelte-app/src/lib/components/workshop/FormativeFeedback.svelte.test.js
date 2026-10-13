@@ -1,6 +1,6 @@
 // src/lib/components/workshop/FormativeFeedback.svelte.test.js
 import { describe, test, expect, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { render, screen, fireEvent } from '@testing-library/svelte';
 import '@testing-library/jest-dom/vitest';
 import { waitLocale } from 'svelte-i18n';
 import { setupI18n } from '$lib/i18n';
@@ -29,15 +29,15 @@ const successEvaluation = {
 };
 
 describe('FormativeFeedback — renders rubric feedback', () => {
-	test('F1: renders criteria, scores and overall feedback', () => {
+	test('F1: renders criteria, feedback and the "not a grade" framing', () => {
 		render(FormativeFeedback, {
 			props: { evaluation: successEvaluation, evaluating: false },
 		});
+		// The qualitative feedback is visible immediately…
 		expect(screen.getByText('Clarity')).toBeInTheDocument();
-		expect(screen.getByText(/Excellent/)).toBeInTheDocument();
 		expect(screen.getByText('The instruction is clear and focused.')).toBeInTheDocument();
 		expect(screen.getByText('Nice grounding with the document.')).toBeInTheDocument();
-		// Score is framed as a suggestion, never a grade.
+		// …the numbers are not (D6).
 		expect(screen.getByText(/not a grade/i)).toBeInTheDocument();
 	});
 
@@ -64,5 +64,54 @@ describe('FormativeFeedback — renders rubric feedback', () => {
 		});
 		expect(screen.getByText(/Feedback could not be generated/)).toBeInTheDocument();
 		expect(screen.getByText('boom')).toBeInTheDocument();
+	});
+});
+
+// ── D6: the scores are folded away by default ─────────────────────────────
+
+describe('FormativeFeedback — suggested score is opt-in', () => {
+	test('D6a: neither the total nor the criterion score is visible up front', () => {
+		const { container } = render(FormativeFeedback, {
+			props: { evaluation: successEvaluation, evaluating: false },
+		});
+
+		// The values exist in the DOM (inside <details>) but the sections are
+		// closed, so nothing numeric is shown until the student asks for it.
+		const totals = container.querySelector('[data-testid="score-details"]');
+		expect(totals).toBeInTheDocument();
+		expect(totals.hasAttribute('open')).toBe(false);
+
+		const criterionScore = container.querySelector('[data-testid="criterion-score-0"]');
+		expect(criterionScore).toBeInTheDocument();
+		expect(criterionScore.hasAttribute('open')).toBe(false);
+	});
+
+	test('D6b: the student can reveal the total by opening the section', async () => {
+		const { container } = render(FormativeFeedback, {
+			props: { evaluation: successEvaluation, evaluating: false },
+		});
+		const details = /** @type {HTMLDetailsElement} */ (
+			container.querySelector('[data-testid="score-details"]')
+		);
+		await fireEvent.click(details.querySelector('summary'));
+		// The revealed block reads "Suggested: 9 / 10" (split across nodes).
+		expect(details.textContent).toContain('9');
+		expect(details.textContent).toContain('10');
+	});
+
+	test('D6c: feedback without a score renders no score section at all', () => {
+		render(FormativeFeedback, {
+			props: {
+				evaluation: {
+					configured: true,
+					status: 'completed',
+					criteria: [{ criterion: 'Clarity', feedback: 'clear' }],
+					overall_feedback: 'ok',
+				},
+				evaluating: false,
+			},
+		});
+		expect(screen.queryByTestId('score-details')).not.toBeInTheDocument();
+		expect(screen.getByText('clear')).toBeInTheDocument();
 	});
 });

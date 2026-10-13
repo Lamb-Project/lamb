@@ -49,6 +49,35 @@
         </div>
         {% endif %}
 
+        {% if stats.pending_reconsent %}
+        <div class="bg-blue-50 border border-blue-200 text-blue-800 rounded-xl p-4 mb-6 text-sm"
+             id="reconsent-banner">
+            The student notice changed: <strong>{{ stats.pending_reconsent }}</strong>
+            student(s) will be asked to accept it again on their next launch.
+            Tell them before the lesson so nobody is surprised.
+        </div>
+        {% endif %}
+
+        {% if stats.retention_warning %}
+        <div class="bg-red-50 border border-red-200 text-red-800 rounded-xl p-4 mb-6 text-sm"
+             id="retention-warning">
+            Student work is sent to an <strong>external</strong> model provider, but no
+            retention period is configured for this activity — the data is kept
+            indefinitely. Set <code>workshop_retention_days</code> on the organization
+            (or <code>WORKSHOP_RETENTION_DAYS</code>) to bound it.
+        </div>
+        {% endif %}
+
+        {% if stats.expiring_soon %}
+        <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-4 mb-6 text-sm"
+             id="expiring-soon">
+            <strong>{{ stats.expiring_soon }}</strong> conversation(s)/reflection(s) are past
+            {% if stats.retention_days %}the {{ stats.retention_days }}-day{% else %}the configured{% endif %}
+            retention window. They are <em>not</em> deleted automatically — review or
+            export the work you still need.
+        </div>
+        {% endif %}
+
         {% if not activity.rubric_id %}
         <div class="bg-gray-100 border border-gray-200 text-gray-600 rounded-xl p-4 mb-6 text-sm">
             No rubric is configured for this activity, so formative evaluation is disabled.
@@ -106,6 +135,7 @@
                             <th class="pb-3 pr-4">Tools used</th>
                             <th class="pb-3 pr-4">Feedback</th>
                             <th class="pb-3 pr-4">Last access</th>
+                            <th class="pb-3 pr-4">Data</th>
                             <th class="pb-3 pr-2 text-right">Detail</th>
                         </tr>
                     </thead>
@@ -134,6 +164,18 @@
                                 {% endif %}
                             </td>
                             <td class="py-3 pr-4 text-gray-600">{{ format_ts(s.last_access) }}</td>
+                            <td class="py-3 pr-4">
+                                {% if s.session_id %}
+                                <button onclick="eraseStudentData('{{ s.session_id }}')"
+                                        title="Delete the conversation, reflection, evaluation and uploaded document; keep the assistant"
+                                        class="text-amber-700 hover:text-amber-900 text-xs font-medium">Erase</button>
+                                <button onclick="purgeStudentData('{{ s.session_id }}', '{{ s.name }}')"
+                                        title="Delete everything, including the assistant built by the student"
+                                        class="ml-2 text-red-600 hover:text-red-800 text-xs font-medium">Delete all</button>
+                                {% else %}
+                                <span class="text-gray-300 text-xs">—</span>
+                                {% endif %}
+                            </td>
                             <td class="py-3 pr-2 text-right">
                                 {% if s.session_id %}
                                 <button onclick="toggleDetail('{{ s.session_id }}')"
@@ -144,13 +186,13 @@
                             </td>
                         </tr>
                         <tr class="hidden" id="detail-{{ s.session_id }}">
-                            <td colspan="6" class="bg-gray-50 px-4 py-4" id="detail-body-{{ s.session_id }}">
+                            <td colspan="7" class="bg-gray-50 px-4 py-4" id="detail-body-{{ s.session_id }}">
                                 <div class="text-sm text-gray-400">Loading…</div>
                             </td>
                         </tr>
                         {% endfor %}
                         {% if not students %}
-                        <tr><td colspan="6" class="py-6 text-center text-gray-400 italic">No students have accessed this activity yet.</td></tr>
+                        <tr><td colspan="7" class="py-6 text-center text-gray-400 italic">No students have accessed this activity yet.</td></tr>
                         {% endif %}
                     </tbody>
                 </table>
@@ -277,6 +319,57 @@
                 }
             } catch (e) {
                 if (target) target.innerHTML = '<p class="text-sm text-red-500">Evaluation failed.</p>';
+            }
+        }
+
+        // ── Data deletion (two levels, decision C18) ──────────────────────
+        // `erase` is the default: it removes the conversation, reflection,
+        // build state, evaluation and the uploaded document + KB collection,
+        // but keeps the assistant the student built. `purge` additionally
+        // deletes the assistant row and is irreversible, so the teacher has to
+        // type the student's name.
+
+        async function eraseStudentData(sessionId) {
+            const ok = window.confirm(
+                'Erase this student\'s content?\n\n' +
+                'Deletes: conversation, reflection, build state, formative feedback, ' +
+                'the uploaded document and its knowledge base.\n' +
+                'Keeps: the assistant the student built, and the record that they took part.\n\n' +
+                'This cannot be undone.'
+            );
+            if (!ok) return;
+            await sendDataAction('POST', sessionId, `/data/erase`, {});
+        }
+
+        async function purgeStudentData(sessionId, studentName) {
+            const typed = window.prompt(
+                'Delete EVERYTHING for ' + studentName + '?\n\n' +
+                'This also deletes the assistant they built. Type the student\'s name ' +
+                'to confirm:',
+                ''
+            );
+            if (typed === null) return;
+            await sendDataAction('DELETE', sessionId, '/data', { confirm: typed });
+        }
+
+        async function sendDataAction(method, sessionId, suffix, body) {
+            const params = new URLSearchParams({
+                token: TOKEN,
+                resource_link_id: RESOURCE_LINK_ID
+            });
+            if (body && body.confirm !== undefined) params.set('confirm', body.confirm);
+            const url = `/lamb/v1/lti/workshop/dashboard/sessions/${encodeURIComponent(sessionId)}${suffix}?${params.toString()}`;
+            try {
+                const resp = await fetch(url, { method });
+                const payload = await resp.json().catch(() => ({}));
+                if (!resp.ok) {
+                    window.alert(payload.detail || 'The deletion failed.');
+                    return;
+                }
+                window.alert('Done. Reloading the page…');
+                window.location.reload();
+            } catch (e) {
+                window.alert('The deletion request failed.');
             }
         }
     </script>

@@ -1,6 +1,10 @@
 // src/lib/components/workshop/logic/workshopFormState.svelte.test.js
 import { describe, test, expect } from 'vitest';
-import { createWorkshopFormState } from './workshopFormState.svelte.js';
+import {
+	composeReflection,
+	createWorkshopFormState,
+	REFLECTION_QUESTIONS
+} from './workshopFormState.svelte.js';
 
 describe('createWorkshopFormState — step navigation', () => {
 	// S1: nextStep/prevStep move correctly, bounded to 1..5
@@ -130,5 +134,111 @@ describe('createWorkshopFormState — independent instances', () => {
 		b.form.instructions = 'B';
 		expect(a.form.instructions).toBe('A');
 		expect(b.form.instructions).toBe('B');
+	});
+});
+
+// ── D5: structured reflection, D3: A/B mode, D2: observation snapshots ────
+
+describe('composeReflection — the three questions become the reflection', () => {
+	test('composes every answered question under its own heading', () => {
+		const text = composeReflection({
+			q1: 'I asked it to explain fractions.',
+			q2: 'It received my document in 45 chunks.',
+			q3: 'I would add more examples.'
+		});
+
+		for (const question of REFLECTION_QUESTIONS) {
+			expect(text).toContain(question.heading);
+		}
+		expect(text).toContain('I asked it to explain fractions.');
+		expect(text).toContain('I would add more examples.');
+	});
+
+	test('skips unanswered questions instead of emitting empty headings', () => {
+		const text = composeReflection({ q1: 'only this one' });
+		expect(text).toContain('only this one');
+		expect(text).not.toContain(REFLECTION_QUESTIONS[1].heading);
+		expect(text).not.toContain(REFLECTION_QUESTIONS[2].heading);
+	});
+
+	test('ignores whitespace-only answers', () => {
+		expect(composeReflection({ q1: '   ', q2: '\n' })).toBe('');
+	});
+
+	test('an empty answer set composes to an empty string', () => {
+		expect(composeReflection()).toBe('');
+		expect(composeReflection({})).toBe('');
+	});
+});
+
+describe('createWorkshopFormState — structured reflection', () => {
+	test('answers default to empty strings and survive serialization', () => {
+		const { form, serialize } = createWorkshopFormState();
+		expect(form.reflectionAnswers).toEqual({ q1: '', q2: '', q3: '' });
+
+		form.reflectionAnswers.q2 = 'It received the chunks.';
+		expect(serialize().reflectionAnswers.q2).toBe('It received the chunks.');
+	});
+
+	test('composeReflection() writes the composed text', () => {
+		const { form, composeReflection: compose } = createWorkshopFormState();
+		form.reflectionAnswers.q1 = 'Because fractions are hard.';
+		expect(compose()).toContain('Because fractions are hard.');
+	});
+
+	test('legacy data (free text only) is preserved verbatim', () => {
+		const { form, composeReflection: compose } = createWorkshopFormState({
+			reflection: 'My old reflection text.'
+		});
+		// No structured answers → the legacy string is what gets submitted.
+		expect(compose()).toBe('My old reflection text.');
+		expect(form.reflectionAnswers).toEqual({ q1: '', q2: '', q3: '' });
+	});
+
+	test('structured answers win over the legacy string once answered', () => {
+		const { form, composeReflection: compose } = createWorkshopFormState({
+			reflection: 'Old text.'
+		});
+		form.reflectionAnswers.q1 = 'New text.';
+		expect(compose()).toContain('New text.');
+		expect(compose()).not.toBe('Old text.');
+	});
+
+	test('an empty form composes to an empty string (never "undefined")', () => {
+		const { composeReflection: compose } = createWorkshopFormState();
+		expect(compose()).toBe('');
+	});
+});
+
+describe('createWorkshopFormState — A/B mode and observations', () => {
+	test('ragMode defaults to on and round-trips through serialize', () => {
+		const { form, serialize } = createWorkshopFormState();
+		expect(form.ragMode).toBe('on');
+
+		form.ragMode = 'off';
+		expect(serialize().ragMode).toBe('off');
+	});
+
+	test('an unknown persisted ragMode falls back to on', () => {
+		const { form } = createWorkshopFormState({ ragMode: 'maybe' });
+		expect(form.ragMode).toBe('on');
+	});
+
+	test('obsHistory and observations are persisted with the rest', () => {
+		const { form, serialize } = createWorkshopFormState();
+		form.obsHistory = [{ turn: 1, ragMode: 'off', question: 'q', answer: 'a' }];
+		form.observations = [{ step: 2, kind: 'document', data: {}, at: 1 }];
+
+		const out = serialize();
+		expect(out.obsHistory).toHaveLength(1);
+		expect(out.observations[0].kind).toBe('document');
+	});
+	test('rehydrates persisted history and observations', () => {
+		const { form } = createWorkshopFormState({
+			obsHistory: [{ turn: 1, ragMode: 'on', question: 'q1' }],
+			observations: [{ step: 3, kind: 'probe', data: { count: 2 }, at: 5 }]
+		});
+		expect(form.obsHistory).toHaveLength(1);
+		expect(form.observations[0].data.count).toBe(2);
 	});
 });

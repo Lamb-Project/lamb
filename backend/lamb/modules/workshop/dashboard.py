@@ -20,6 +20,23 @@ _db_manager = LambDatabaseManager()
 WORKSHOP_TEACHER_PILOT_FLAG = "workshop_teacher_pilot"
 
 
+def _pilot_filtered_sessions(
+    sessions: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Drop the teacher's own pilot runs from a session list (C13)."""
+    return [s for s in (sessions or []) if not s.get("is_pilot")]
+
+
+def _is_pilot_row(row: Dict[str, Any]) -> bool:
+    """Whether a joined roster+session row belongs to a pilot run.
+
+    ``is_pilot`` is the roster flag (``lti_activity_users``) and
+    ``session_is_pilot`` the session flag (``lti_workshop_sessions``); either
+    one marks the row as the teacher's own walkthrough.
+    """
+    row = row or {}
+    return bool(row.get("is_pilot")) or bool(row.get("session_is_pilot"))
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Parsing helpers
 # ─────────────────────────────────────────────────────────────────────────────
@@ -101,6 +118,43 @@ def is_teacher_pilot_required(activity: Dict[str, Any]) -> bool:
         return False
 
 
+def is_teacher_pilot_blocking(activity: Dict[str, Any]) -> bool:
+    """Whether student launches must wait for the teacher's pilot (C13).
+
+    Three conditions, all required:
+
+    1. the org flag is on;
+    2. **this teacher** has not completed a pilot in this org — the granularity
+       is per owner, so a second teacher is not blocked because a colleague
+       already ran one;
+    3. the activity has no submitted sessions yet — a running class is never
+       hijacked by a gate that was switched on mid-course.
+
+    Fails closed to "not blocking": a lookup error must never lock students out
+    of a lesson.
+    """
+    activity = activity or {}
+    if not is_teacher_pilot_required(activity):
+        return False
+
+    activity_id = activity.get("id")
+    owner = activity.get("owner_email") or activity.get("configured_by_email")
+    if not owner:
+        return False
+
+    try:
+        if activity_id and _db_manager.has_submitted_sessions(activity_id):
+            logger.info(
+                "Teacher pilot gate skipped for activity %s: students have "
+                "already submitted (not hijacking a running lesson)", activity_id)
+            return False
+        return not _db_manager.has_completed_workshop_pilot(
+            owner, activity.get("organization_id"))
+    except Exception as e:
+        logger.warning(f"Teacher pilot gate unavailable for {owner}: {e}")
+        return False
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Launch redirect
 # ─────────────────────────────────────────────────────────────────────────────
@@ -145,14 +199,18 @@ def workshop_dashboard_stats(activity: Dict[str, Any]) -> Dict[str, Any]:
         return {"error": "Missing activity id"}
 
     try:
-        roster = _db_manager.get_activity_students(activity_id, page=1, per_page=1)
+        # Pilot runs are excluded: a teacher's own pilot creates a real roster
+        # row, and counting it would show the teacher as a student (C13).
+        roster = _db_manager.get_activity_students(
+            activity_id, page=1, per_page=1, include_pilot=False)
         total_students = roster.get("total", 0)
     except Exception as e:
         logger.warning(f"Could not fetch workshop roster: {e}")
         total_students = 0
 
     try:
-        sessions = _db_manager.get_workshop_sessions_by_activity(activity_id)
+        sessions = _pilot_filtered_sessions(
+            _db_manager.get_workshop_sessions_by_activity(activity_id))
     except Exception as e:
         logger.warning(f"Could not fetch workshop sessions: {e}")
         sessions = []
@@ -194,7 +252,86 @@ def workshop_dashboard_stats(activity: Dict[str, Any]) -> Dict[str, Any]:
         "tool_calls_total": sum(tool_calls.values()),
         "avg_reflection_length": avg_reflection_length,
         "teacher_pilot_required": is_teacher_pilot_required(activity),
+        "pending_reconsent": pending_reconsent_count(activity),
+        "expiring_soon": expiring_soon_count(activity_id),
+        "retention_warning": retention_warning(activity),
+        "retention_days": _retention_days(activity),
     }
+
+
+def _retention_days(activity: Dict[str, Any]) -> Any:
+    """Effective retention window (None when unset) — never raises."""
+    try:
+        from lamb.modules.workshop.retention import retention_days
+
+        return retention_days(activity)
+    except Exception as e:
+        logger.debug(f"Retention window unavailable: {e}")
+        return None
+
+
+def pending_reconsent_count(activity: Dict[str, Any]) -> int:
+    """Students who will be asked to accept the notice again (C8/C20).
+
+    Surfaced on the dashboard so a teacher can warn the class instead of being
+    surprised by a wall of consent pages at the start of the lesson.
+    """
+    activity_id = (activity or {}).get("id")
+    if not activity_id:
+        return 0
+    try:
+        from lamb.modules.workshop.i18n import CONSENT_VERSION
+
+        return _db_manager.count_pending_reconsent(activity_id, CONSENT_VERSION)
+    except Exception as e:
+        logger.warning(f"Could not count pending reconsent: {e}")
+        return 0
+
+
+def expiring_soon_count(activity_id: Any) -> int:
+    """Sessions with content past the retention window (reported, not deleted).
+
+    Conversations and reflections are the assessed work: when their retention
+    window closes they are listed here rather than removed silently (C9).
+    """
+    if not activity_id:
+        return 0
+    try:
+        from lamb.modules.workshop.retention import retention_cutoff
+
+        cutoff = retention_cutoff()
+        if cutoff is None:
+            return 0
+        sessions = _db_manager.list_workshop_sessions_for_retention(cutoff)
+        return sum(
+            1 for s in sessions
+            if s.get("activity_id") == activity_id
+            and (s.get("saved_chat") or s.get("reflection"))
+        )
+    except Exception as e:
+        logger.warning(f"Could not count expiring sessions: {e}")
+        return 0
+
+
+def retention_warning(activity: Dict[str, Any]) -> bool:
+    """Whether the activity needs attention about data lifetime (C9).
+
+    True when student work is sent to an **external** model provider but no
+    retention window is configured: the deployment discloses external
+    processing yet keeps the data forever, which the teacher should see.
+    """
+    try:
+        from lamb.modules.workshop.retention import retention_days
+
+        if retention_days(activity) is not None:
+            return False
+        from lamb.modules.workshop.routers import resolve_consent_model_info
+
+        info = resolve_consent_model_info(activity)
+        return info.get("model_class") == "external"
+    except Exception as e:
+        logger.debug(f"Retention warning unavailable: {e}")
+        return False
 
 
 def _reflection_excerpt(reflection: str, limit: int = 200) -> str:
@@ -215,6 +352,13 @@ def workshop_dashboard_students(activity: Dict[str, Any]) -> List[Dict[str, Any]
     except Exception as e:
         logger.warning(f"Could not fetch workshop student progress: {e}")
         return []
+
+    # Pilot runs are the teacher's own walkthrough: they must not appear as
+    # students in the roster (the row is marked, because the count comes from
+    # the roster table, not from the session table — C13).
+    rows = [
+        row for row in rows if not _is_pilot_row(row)
+    ]
 
     try:
         evaluations = _db_manager.get_workshop_evaluations_by_activity(activity_id)

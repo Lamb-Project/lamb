@@ -8150,26 +8150,64 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
+    def get_activity_user_by_id(self, activity_user_id: int) -> Optional[Dict[str, Any]]:
+        """Get an LTI activity user record by its primary key.
+
+        Workshop sessions reference the roster row by id (not by email), which
+        is what the teacher-initiated delete flows need to confirm *which*
+        student they are about to erase.
+        """
+        if activity_user_id is None:
+            return None
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_activity_users
+                    WHERE id = ?
+                """, (activity_user_id,))
+                row = cursor.fetchone()
+                if row:
+                    columns = [col[0] for col in cursor.description]
+                    return dict(zip(columns, row))
+                return None
+        except sqlite3.Error as e:
+            logger.error(f"Error getting activity user by id: {e}")
+            return None
+        finally:
+            connection.close()
+
     def get_activity_students(self, activity_id: int, page: int = 1,
-                               per_page: int = 20) -> Dict[str, Any]:
-        """Get paginated list of students for an activity (for dashboard)."""
+                               per_page: int = 20,
+                               include_pilot: bool = True) -> Dict[str, Any]:
+        """Get paginated list of students for an activity (for dashboard).
+
+        ``include_pilot`` defaults to True, preserving the historical behaviour
+        for chat activities and every existing caller. Workshop callers pass
+        False: a teacher's pilot run creates a real ``lti_activity_users`` row,
+        and counting it would show the teacher as a student (decision C13).
+        """
         connection = self.get_connection()
         if not connection:
             return {"students": [], "total": 0}
         try:
             with connection:
                 cursor = connection.cursor()
+                pilot_clause = "" if include_pilot else " AND COALESCE(is_pilot, 0) = 0"
                 # Count total
                 cursor.execute(f"""
                     SELECT COUNT(*) FROM {self.table_prefix}lti_activity_users
-                    WHERE activity_id = ?
+                    WHERE activity_id = ?{pilot_clause}
                 """, (activity_id,))
                 total = cursor.fetchone()[0]
                 # Get page
                 offset = (page - 1) * per_page
                 cursor.execute(f"""
                     SELECT * FROM {self.table_prefix}lti_activity_users
-                    WHERE activity_id = ?
+                    WHERE activity_id = ?{pilot_clause}
                     ORDER BY created_at ASC
                     LIMIT ? OFFSET ?
                 """, (activity_id, per_page, offset))
@@ -8227,7 +8265,8 @@ class LambDatabaseManager:
                            s.assistant_id AS session_assistant_id,
                            s.saved_chat AS session_saved_chat,
                            s.reflection AS session_reflection,
-                           s.updated_at AS session_updated_at
+                           s.updated_at AS session_updated_at,
+                           s.is_pilot AS session_is_pilot
                     FROM {self.table_prefix}lti_activity_users u
                     LEFT JOIN {self.table_prefix}lti_workshop_sessions s
                         ON s.activity_user_id = u.id
@@ -8791,8 +8830,14 @@ class LambDatabaseManager:
         activity_id: int,
         activity_user_id: int,
         owi_user_id: Optional[str] = None,
+        is_pilot: bool = False,
     ) -> Optional[Dict[str, Any]]:
-        """Get the workshop session for an activity_user, creating it if absent."""
+        """Get the workshop session for an activity_user, creating it if absent.
+
+        ``is_pilot`` marks the teacher's own walkthrough. It is kept on the row
+        (not only in memory) because every teacher-facing count has to be able
+        to exclude it — a pilot is a real launch and creates real rows (C13).
+        """
         connection = self.get_connection()
         if not connection:
             return None
@@ -8808,15 +8853,24 @@ class LambDatabaseManager:
                 row = cursor.fetchone()
                 if row:
                     columns = [col[0] for col in cursor.description]
-                    return dict(zip(columns, row))
+                    session = dict(zip(columns, row))
+                    if is_pilot and not session.get("is_pilot"):
+                        cursor.execute(f"""
+                            UPDATE {self.table_prefix}lti_workshop_sessions
+                            SET is_pilot = 1, updated_at = ?
+                            WHERE id = ?
+                        """, (now, session["id"]))
+                        session["is_pilot"] = 1
+                    return session
 
                 session_id = f"ws-{activity_id}-{activity_user_id}-{now}"
                 cursor.execute(f"""
                     INSERT INTO {self.table_prefix}lti_workshop_sessions
                     (id, activity_id, activity_user_id, owi_user_id,
-                     build_state, status, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, '{{}}', 'in_progress', ?, ?)
-                """, (session_id, activity_id, activity_user_id, owi_user_id, now, now))
+                     build_state, status, is_pilot, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, '{{}}', 'in_progress', ?, ?, ?)
+                """, (session_id, activity_id, activity_user_id, owi_user_id,
+                      1 if is_pilot else 0, now, now))
                 cursor.execute(f"""
                     SELECT * FROM {self.table_prefix}lti_workshop_sessions
                     WHERE id = ?
@@ -9072,6 +9126,274 @@ class LambDatabaseManager:
         except sqlite3.Error as e:
             logger.error(f"Error upserting workshop evaluation: {e}")
             return None
+        finally:
+            connection.close()
+
+    # ── Workshop data lifecycle (retention + teacher-initiated deletion) ──
+
+    def list_workshop_sessions_for_retention(
+        self, cutoff_ts: int
+    ) -> List[Dict[str, Any]]:
+        """Workshop sessions untouched since ``cutoff_ts`` (sweep candidates).
+
+        The caller decides per data category what to do with each row (decision
+        C9): conversations/reflections are only reported, knowledge-base
+        material is deleted, assistants are never touched.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_workshop_sessions
+                    WHERE updated_at <= ?
+                    ORDER BY updated_at ASC
+                """, (int(cutoff_ts),))
+                columns = [col[0] for col in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error(f"Error listing sessions for retention: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def erase_workshop_session_content(self, session_id: str) -> bool:
+        """Erase a session's content, keeping the session row and assistant.
+
+        Clears the conversation, the reflection and the wizard build state,
+        drops the stored evaluation, and forgets the KB/document binding (the
+        caller deletes the collection itself). The session row survives so the
+        teacher dashboard's counts do not collapse, and the assistant row is
+        preserved unless the caller escalates to a full purge (C18).
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}lti_workshop_sessions
+                    SET saved_chat = NULL,
+                        reflection = NULL,
+                        build_state = '{{}}',
+                        kb_id = NULL,
+                        document_file_id = NULL,
+                        document_name = NULL,
+                        document_status = NULL,
+                        updated_at = ?
+                    WHERE id = ?
+                """, (int(time.time()), session_id))
+                updated = cursor.rowcount > 0
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}workshop_evaluations
+                    WHERE session_id = ?
+                """, (session_id,))
+                return updated
+        except sqlite3.Error as e:
+            logger.error(f"Error erasing workshop session content: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def detach_workshop_session_assistant(self, session_id: str) -> bool:
+        """Null out ``assistant_id`` on a session before the assistant is deleted.
+
+        Without this a purged session would keep pointing at a row that no
+        longer exists, which reads as a broken session in the teacher view.
+        """
+        return self._set_workshop_session_field(
+            session_id, "assistant_id", None)
+
+    def _set_workshop_session_field(
+        self, session_id: str, field: str, value: Any
+    ) -> bool:
+        """Set one (whitelisted) column on a workshop session row."""
+        allowed = {"assistant_id", "is_pilot", "status"}
+        if field not in allowed:
+            raise ValueError(f"Unsupported workshop session field: {field}")
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}lti_workshop_sessions
+                    SET {field} = ?, updated_at = ?
+                    WHERE id = ?
+                """, (value, int(time.time()), session_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error updating workshop session {field}: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def clear_assistant_rag_collections(self, assistant_id: int) -> bool:
+        """Drop an assistant's RAG wiring (used when its KB is deleted).
+
+        Leaves a dangling collection id behind and every later turn would log a
+        KB error, so the collection binding *and* the ``rag_processor`` marker
+        are cleared alongside the collection itself.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}assistants
+                    SET RAG_collections = '',
+                        metadata = CASE
+                            WHEN metadata IS NULL OR TRIM(metadata) = ''
+                                THEN '{{}}'
+                            ELSE json_remove(metadata, '$.rag_processor')
+                        END
+                    WHERE id = ?
+                """, (assistant_id,))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error clearing assistant RAG collections: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def count_pending_reconsent(
+        self, activity_id: int, consent_version: Optional[str] = None
+    ) -> int:
+        """Students who still owe consent for the current notice version.
+
+        Counts real students only (pilot roster rows are excluded): the number
+        is shown to the teacher as "N students will be asked again", and
+        counting the teacher's own pilot row would make it wrong by one.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return 0
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT COUNT(*) FROM {self.table_prefix}lti_activity_users
+                    WHERE activity_id = ?
+                      AND COALESCE(is_pilot, 0) = 0
+                      AND (consent_given_at IS NULL
+                           OR COALESCE(consent_version, '') != ?)
+                """, (activity_id, consent_version or ""))
+                row = cursor.fetchone()
+                return row[0] if row else 0
+        except sqlite3.Error as e:
+            logger.error(f"Error counting pending reconsent: {e}")
+            return 0
+        finally:
+            connection.close()
+
+    def has_submitted_sessions(self, activity_id: int) -> bool:
+        """Whether any student has already submitted in this activity.
+
+        The teacher-first pilot gate is skipped once a class is running: the
+        gate must never hijack an activity that is already in use (C13).
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT 1 FROM {self.table_prefix}lti_workshop_sessions
+                    WHERE activity_id = ? AND status = 'submitted'
+                    LIMIT 1
+                """, (activity_id,))
+                return cursor.fetchone() is not None
+        except sqlite3.Error as e:
+            logger.error(f"Error checking submitted sessions: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def has_completed_workshop_pilot(
+        self, owner_email: str, org_id: Optional[int] = None
+    ) -> bool:
+        """Whether this teacher has already piloted a workshop in this org.
+
+        The granularity is per teacher (decision C13): a new teacher is asked to
+        run the activity once, an experienced one is not re-blocked because a
+        colleague already piloted.
+        """
+        if not owner_email:
+            return False
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                params: List[Any] = [owner_email, "workshop"]
+                sql = (
+                    f"SELECT 1 FROM {self.table_prefix}lti_activities "
+                    f"WHERE owner_email = ? AND activity_type = ? "
+                    f"AND pilot_completed_at IS NOT NULL"
+                )
+                if org_id is not None:
+                    sql += " AND organization_id = ?"
+                    params.append(org_id)
+                sql += " LIMIT 1"
+                cursor.execute(sql, tuple(params))
+                return cursor.fetchone() is not None
+        except sqlite3.Error as e:
+            logger.error(f"Error checking workshop pilot: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def mark_workshop_pilot_completed(self, activity_id: int) -> bool:
+        """Record that the activity owner finished their pilot run."""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}lti_activities
+                    SET pilot_completed_at = ?, updated_at = ?
+                    WHERE id = ?
+                """, (int(time.time()), int(time.time()), activity_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error marking workshop pilot completed: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def mark_activity_user_pilot(
+        self, activity_id: int, user_email: str, is_pilot: bool = True
+    ) -> bool:
+        """Flag an activity-user row as the teacher's pilot roster entry.
+
+        ``total_students`` is a COUNT over ``lti_activity_users``, so marking
+        only the session would still count the teacher as a student (C13).
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}lti_activity_users
+                    SET is_pilot = ?
+                    WHERE activity_id = ? AND user_email = ?
+                """, (1 if is_pilot else 0, activity_id, user_email))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error marking activity user as pilot: {e}")
+            return False
         finally:
             connection.close()
 

@@ -302,6 +302,7 @@ def _init_dashboard_db(path):
             user_display_name TEXT NOT NULL DEFAULT '',
             last_access_at INTEGER,
             access_count INTEGER NOT NULL DEFAULT 0,
+            is_pilot INTEGER NOT NULL DEFAULT 0,
             created_at INTEGER NOT NULL
         )
     """)
@@ -314,6 +315,7 @@ def _init_dashboard_db(path):
             assistant_id INTEGER,
             saved_chat TEXT,
             reflection TEXT,
+            is_pilot INTEGER NOT NULL DEFAULT 0,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         )

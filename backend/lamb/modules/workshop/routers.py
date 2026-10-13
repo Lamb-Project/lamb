@@ -34,6 +34,7 @@ from lamb.completions.tools.definitions import WORKSHOP_TOOLS
 from lamb.database_manager import LambDatabaseManager
 from lamb.lamb_classes import Assistant
 from lamb.modules.workshop import kb as workshop_kb
+from lamb.modules.workshop.i18n import CONSENT_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -50,12 +51,6 @@ _templates = Jinja2Templates(directory=[
 MAX_DOCUMENTS_PER_SESSION = 1
 MAX_KBS_PER_SESSION = 1
 MAX_DOCUMENT_BYTES = 10 * 1024 * 1024  # 10 MB upload cap
-
-# Version of the consent notice. Bump it whenever CONSENT_STRINGS changes in a
-# way that materially changes what the student is told (the v2 notice added
-# model-based evaluation), so returning students can be asked again (C8/C20).
-CONSENT_VERSION = "2026-10"
-
 
 
 def _verify_workshop_principal(session_id: str, token: str) -> Dict[str, Any]:
@@ -624,6 +619,44 @@ async def get_workshop_document_status(
     return {"success": True, "kb_id": kb_id, **result}
 
 
+@router.get("/sessions/{session_id}/doc/files")
+async def get_workshop_document_files(session_id: str, token: str = Header(...)):
+    """Read-only view of the session KB's file registry (D2 / C16).
+
+    Why a proxy instead of putting this in the connect/query responses: the
+    session's ``kb_id`` and the document scope are decided server-side, so the
+    student can never ask for another session's registry, and the teaching
+    panel gets *deterministic* facts about ingestion — how many chunks the
+    document became, with which chunk size and overlap — rather than an
+    inference from whichever top-k excerpts a probe happened to return.
+    """
+    _verify_workshop_principal(session_id, token)
+
+    session = _db_manager.get_workshop_session_by_id(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    kb_id = session.get("kb_id")
+    if not kb_id:
+        raise HTTPException(
+            status_code=404, detail="No knowledge base for this session")
+
+    activity = _session_activity(session)
+    try:
+        result = await workshop_kb.list_collection_files(activity, kb_id)
+    except Exception as e:
+        _raise_kb_error(e)
+
+    return {
+        "success": True,
+        "kb_id": kb_id,
+        "document_name": session.get("document_name"),
+        "document_status": session.get("document_status"),
+        "files": result.get("items", []),
+        "count": result.get("count", 0),
+    }
+
+
 @router.post("/sessions/{session_id}/assistant/{assistant_id}/kb")
 async def connect_workshop_kb(
     session_id: str,
@@ -727,13 +760,32 @@ async def chat_with_workshop_assistant(
 
     from lamb.completions.main import run_lamb_assistant
 
+    rag_mode = (str(body.get("rag_mode") or "on")).strip().lower()
+    if rag_mode not in ("on", "off"):
+        raise HTTPException(status_code=400, detail="rag_mode must be 'on' or 'off'")
+
+    tools = _resolve_tool_definitions(body.get("tools"))
+    if rag_mode == "off":
+        # Turning RAG off must *also* remove the retrieval tool: leaving
+        # `kb_query` in place would let the model fetch the very material the
+        # experiment is meant to withhold, and the two runs would look
+        # identical (decision C10).
+        tools = [
+            t for t in (tools or [])
+            if ((t or {}).get("function") or {}).get("name") != "kb_query"
+        ] or None
+
     completion_request = {
         "messages": body.get("messages", []),
         "stream": True,
         "observability": body.get("observability", True),
-        "tools": _resolve_tool_definitions(body.get("tools")),
+        "tools": tools,
         "tool_choice": body.get("tool_choice", "auto"),
     }
+    if rag_mode == "off":
+        # Namespaced private key: read by `run_lamb_assistant`, stripped from
+        # anything that arrives through the public completion proxy.
+        completion_request["_workshop_disable_rag"] = True
 
     response = await run_lamb_assistant(
         request=completion_request,
@@ -761,6 +813,21 @@ async def submit_workshop(
         reflection=body.get("reflection"),
         build_state=body.get("build_state"),
     )
+
+    # A submitted *pilot* is what opens the activity for students: the teacher
+    # has now seen the whole flow from the student's side (decision C13).
+    session = _db_manager.get_workshop_session_by_id(session_id)
+    if session and session.get("is_pilot"):
+        _db_manager.mark_workshop_pilot_completed(session.get("activity_id"))
+        logger.info(
+            "Workshop pilot completed for activity %s (session %s)",
+            session.get("activity_id"), session_id)
+        return {
+            "success": True,
+            "status": "submitted",
+            "pilot_completed": True,
+        }
+
     return {"success": True, "status": "submitted"}
 
 

@@ -306,6 +306,119 @@ def config_for_owner(owner_email: Optional[str]) -> Dict[str, Any]:
     return manager._get_kb_config_for_user({"email": owner_email})
 
 
+async def get_collection(config: Dict[str, Any], kb_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch one collection's metadata, or None when it no longer exists."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{config['url']}/collections/{kb_id}",
+            headers=_auth_headers(config),
+        )
+    if resp.status_code == 404:
+        return None
+    if resp.status_code != 200:
+        raise RuntimeError(
+            f"KB server collection fetch failed ({resp.status_code}): {resp.text}")
+    return resp.json()
+
+
+async def delete_collection_direct(config: Dict[str, Any], kb_id: str) -> bool:
+    """DELETE a collection straight from the KB server.
+
+    The KB server's ``DELETE /collections/{id}`` removes the Chroma collection,
+    its files and its DB metadata (``routers/collections.py``), which is what
+    makes a retention promise meaningful. It is not ownership-checked by the KB
+    server, so callers must have established ownership themselves.
+    """
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.delete(
+            f"{config['url']}/collections/{kb_id}",
+            headers=_auth_headers(config),
+        )
+    if resp.status_code in (200, 202, 204):
+        return True
+    if resp.status_code == 404:
+        return True  # already gone — deletion is idempotent
+    raise RuntimeError(
+        f"KB server delete failed ({resp.status_code}): {resp.text}")
+
+
+async def delete_session_kb(
+    activity: Dict[str, Any], kb_id: str
+) -> Dict[str, Any]:
+    """Delete a session's KB collection, branching on how it was created (C15).
+
+    Two owners exist in practice:
+
+    * the activity owner's Creator id — the normal path, where the KB server
+      enforces ownership, so the request goes through ``KBServerManager``;
+    * ``workshop:{activity_id}`` — the fallback path taken when the owner has no
+      ``Creator_users`` row. ``KBServerManager.delete_knowledge_base`` compares
+      against the creator id and would answer **403** there, so that branch
+      deletes directly with the same KB token.
+
+    Returns ``{"deleted": bool, "detail": str}``. Deleting an already-deleted
+    collection counts as success: retention sweeps must be idempotent.
+    """
+    from fastapi import HTTPException
+
+    resolved = _resolve_kb_config(activity)
+    manager = resolved["manager"]
+    creator_user = resolved["creator_user"]
+    config = resolved["config"]
+
+    collection = await get_collection(config, kb_id)
+    if collection is None:
+        return {"deleted": True, "detail": "already deleted"}
+
+    owner = str(collection.get("owner") or "")
+    creator_id = str((creator_user or {}).get("id") or "")
+
+    if creator_user and owner and owner == creator_id:
+        try:
+            await manager.delete_knowledge_base(kb_id, creator_user)
+            return {"deleted": True, "detail": "deleted via creator identity"}
+        except HTTPException as e:
+            if e.status_code == 404:
+                return {"deleted": True, "detail": "already deleted"}
+            raise
+
+    logger.info(
+        "Workshop KB: deleting collection %s directly (owner=%r, creator=%r)",
+        kb_id, owner, creator_id)
+    await delete_collection_direct(config, kb_id)
+    return {"deleted": True, "detail": f"deleted directly (owner={owner or 'unknown'})"}
+
+
+async def list_collection_files(
+    activity: Dict[str, Any], kb_id: str
+) -> Dict[str, Any]:
+    """Read the KB server's file registry for a collection (D2 / C16).
+
+    The registry is *deterministic* evidence of what ingestion produced
+    (``document_count`` = number of chunks, ``plugin_params`` = chunk size and
+    overlap, ``file_size``, ``status``), unlike a probe query whose top-k hits
+    depend on ranking and on the index being ready.
+    """
+    config = _resolve_kb_config(activity)["config"]
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{config['url']}/collections/{kb_id}/files",
+            headers=_auth_headers(config),
+        )
+    if resp.status_code == 404:
+        raise RuntimeError("Collection not found")
+    if resp.status_code != 200:
+        raise RuntimeError(
+            f"KB server file list failed ({resp.status_code}): {resp.text}")
+
+    body = resp.json()
+    items = body.get("items") if isinstance(body, dict) else None
+    if items is None:
+        items = body if isinstance(body, list) else []
+    return {"items": items, "count": len(items)}
+
+
 # Synthetic student email domain (lti_activity_manager.generate_student_email).
 # Used as a cheap gate so the shared RAG path pays no DB query for the
 # overwhelming majority of assistants, which are not workshop-built.

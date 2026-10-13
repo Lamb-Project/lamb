@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ s.title }} — {{ activity_title or 'AI Workshop' }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-lg max-w-lg w-full p-8 text-center">
+        <div class="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">&#x23F3;</div>
+        <h1 class="text-xl font-bold text-gray-900 mb-2">{{ s.title }}</h1>
+        {% if activity_title %}
+        <p class="text-sm text-gray-500 mb-3">{{ activity_title }}</p>
+        {% endif %}
+        <p class="text-gray-600 mb-4">{{ s.body }}</p>
+        <p class="text-sm text-gray-500">{{ s.hint }}</p>
+    </div>
+</body>
+</html>
