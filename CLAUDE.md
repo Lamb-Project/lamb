@@ -131,6 +131,20 @@ A separate microservice (FastAPI, port 9091) that serves as a **document reposit
 
 **LAMB integration:** Creator Interface endpoints (`/creator/libraries/...`) validate ACL and proxy to the Library Manager. The `lamb-cli` commands (`lamb library ...`) are in `lamb-cli/src/lamb_cli/commands/library.py`. Svelte frontend at `/libraries` route with components in `frontend/svelte-app/src/lib/components/libraries/`.
 
+### AI Workshop (`backend/lamb/modules/workshop/`)
+
+An LTI activity type (`activity_type = 'workshop'`) in which students build their own assistant in a 5-step wizard (`frontend/svelte-app/src/routes/m/workshop/[activityId]/`). An observability panel shows what the LLM received on each turn. Design and decision record: `Documentation/workshop-design.md`. Operations: `Documentation/workshop-operations.md`.
+
+**Decision IDs:** comments and tests refer to `S1`, `W1`–`W3`, `D1`–`D7`, `C1`–`C22`. They are defined in `Documentation/workshop-design.md` §4. When you add or change such a decision, update that table too.
+
+**Key decisions / invariants:**
+- Students are **virtual principals**: no `Creator_users` row, a short-lived workshop token in the URL, and restricted routes on LAMB Core (`/lamb/v1/workshop/*`). Never route students through `/creator/*`.
+- `kb_id` always comes from the workshop session. A client-supplied value is a claim to verify (403 on mismatch). Every reader of `RAG_collections` must call `kb.restrict_collections_for_assistant` (S1).
+- Pipeline additions in `lamb/completions/` (observability / `tool_event` / `error` SSE frames, `ToolLoop`, `_workshop_disable_rag`) are generic and opt-in per request. Existing OpenAI-style consumers must keep working unchanged.
+- Formative feedback is a suggestion. Never write it to a gradebook.
+- `sandbox_exec` is an always-refusing stub on purpose (D7).
+- The module only borrows #277 `ActivityModule` method names; it does not subclass it. Workshop migrations 26–31 collide with upstream `dev` numbering, so renumber to 33+ before syncing (design doc §3).
+
 ### Database
 - **LAMB DB** — SQLite with WAL mode (`lamb_v4.db` at `LAMB_DB_PATH`). Schema managed in `backend/lamb/database_manager.py`.
 - **Open WebUI DB** — `open-webui/backend/data/webui.db`. For historical reasons, Open WebUI is still the authentication provider — LAMB delegates user auth and session management to OWI. This is a known coupling targeted for refactoring (see GitHub issues).

@@ -1,8 +1,9 @@
 """
 Sandbox execution tool stub — secure Python sandbox.
 
-DEFAULT DISABLED. Only available when `features.sandbox_enabled` is true.
-Requires separate security hardening before production use.
+Always refuses: no flag or setting enables execution. The definition is kept so
+the wizard can show the tool as unavailable. A real sandbox was deliberately
+not built (decision D7, see Documentation/workshop-design.md §5).
 """
 
 import logging

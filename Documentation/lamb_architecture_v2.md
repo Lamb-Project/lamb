@@ -707,6 +707,8 @@ data: [DONE]
 
 **Content-Type:** `text/event-stream`
 
+**Extra frames (opt-in):** if the request body has `"observability": true`, the stream also carries `{"type":"observability",...}` frames with what the LLM received (system prompt, retrieved sources, final messages, request body). When the request includes `tools`, it also carries `{"type":"tool_event",...}` frames from the `ToolLoop` and a `{"type":"error",...}` frame if generation fails mid-stream. Plain OpenAI clients ignore frames they don't recognise. These frames were added for the AI Workshop (§8.9); see [workshop-design.md](./workshop-design.md) §2.5 for their shapes.
+
 ### 6.7 Multimodal Support
 
 LAMB supports images via OpenAI's vision API format:
@@ -1121,6 +1123,34 @@ Tables created via Migration 15.
 | GET | `/creator/assistant/{id}/tests/evaluations` | List evaluations |
 
 **CLI:** `lamb test scenarios|add|run|runs|run-detail|evaluate|evaluations`
+
+### 8.9 AI Workshop (LTI Activity Type)
+
+**Purpose:** An LTI activity (`lti_activities.activity_type = 'workshop'`) in which students build their own small assistant in a five-step wizard: instructions → document → knowledge base → tool → chat and reflection. An observability panel shows what the assistant received on every turn. Teachers get a dashboard with progress and rubric-based formative feedback (suggested scores only; nothing is written to a gradebook).
+
+**Architecture:** A backend module (`backend/lamb/modules/workshop/`) registered via `lamb/modules/discover_modules()`. `lti_router.py` dispatches on `activity_type` for both student and instructor launches; chat activities are unchanged. The module only borrows the method names of the Activity Module System proposal (#277); it does not use that framework (see the design doc §3).
+
+**Key design points:**
+
+- **Students are virtual principals.** They have no `Creator_users` row. They get a short-lived workshop token (`scope: workshop_student`, bound to one session) and use restricted routes on **LAMB Core** (`/lamb/v1/workshop/*`) instead of the Creator Interface.
+- **KB per session.** The KB is created server-side under the activity owner's identity, as collection `ws-{activity_id}-{activity_user_id}`. The session row is the only source of truth for `kb_id`, and all `RAG_collections` readers restrict workshop assistants to their own collection.
+- **Pipeline additions are generic and opt-in:** observability frames, `tools` pass-through + `ToolLoop` (`lamb/completions/tools/`), and a per-request RAG switch for the with/without-KB comparison (§6.6).
+
+**Key Components:**
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| Launch + workspace | `modules/workshop/service.py` | Student identity, session row, workshop token, consent redirect |
+| Student routes | `modules/workshop/routers.py` | Assistant, document, KB, chat, submit, evaluate, consent, token refresh |
+| KB wiring | `modules/workshop/kb.py` | KB create/ingest/query as the activity owner; collection ownership guard |
+| Evaluation | `modules/workshop/evaluation.py` | Transcript → rubric engine → small-fast model → `workshop_evaluations` |
+| Dashboard | `modules/workshop/dashboard.py`, `templates/workshop_dashboard.html` | Teacher stats, students, pilot gate, retention warnings |
+| Retention | `modules/workshop/retention.py` | Per-category retention sweep, `erase` / `purge` |
+| Wizard UI | `frontend/svelte-app/src/routes/m/workshop/[activityId]/`, `lib/components/workshop/` | Wizard, `ObservabilityPanel`, A/B comparison, feedback |
+
+**Tables:** `lti_workshop_sessions`, `workshop_evaluations`; columns on `lti_activities` and `lti_activity_users` (migrations 26–31).
+
+**Documentation:** [workshop-design.md](./workshop-design.md) (architecture, decision record, known limitations) · [workshop-operations.md](./workshop-operations.md) (configuration, retention, deletion, testing).
 
 ---
 
@@ -1922,6 +1952,8 @@ API_LOG_LEVEL=DEBUG
 | [deployment.apache.md](./deployment.apache.md) | Apache deployment |
 | [deployment.nginx.md](./deployment.nginx.md) | Nginx deployment |
 | [svelte-refactoring.md](./svelte-refactoring.md) | Frontend refactoring guide |
+| [workshop-design.md](./workshop-design.md) | AI Workshop architecture and decision record |
+| [workshop-operations.md](./workshop-operations.md) | AI Workshop configuration, retention, deletion, testing |
 
 > Design docs, product requirements and detailed feature documentation
 > (`lamb_architecture.md`, `prd.md`, `lti_landscape.md`, `chat_analytics_project.md`,

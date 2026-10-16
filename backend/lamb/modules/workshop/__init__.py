@@ -1,8 +1,9 @@
 """Workshop module — an AI-building activity for students.
 
-Contract-aligned with the #277 ActivityModule design so it can be migrated
-into the module framework once that lands. Implements its own minimal
-activity_type dispatch on the current main/dev branch.
+Independent module with its own minimal activity_type dispatch. Method names
+follow the #277 ActivityModule contract, but the class does not subclass it and
+signatures, router prefix and migrations differ — see
+Documentation/workshop-design.md §3 before moving it into that framework.
 """
 
 from fastapi import APIRouter

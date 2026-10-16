@@ -1,7 +1,8 @@
 """LAMB modules package — pluggable LTI activity types.
 
-This package follows the contract of the #277 ActivityModule framework so
-modules can be migrated into `discover_modules()` once that lands on main.
+A minimal registry used until the #277 Activity Module System is available on
+this line (upstream it lives on `lamb-1.0-alpha`, not on main/dev). See
+Documentation/workshop-design.md §3.
 """
 
 

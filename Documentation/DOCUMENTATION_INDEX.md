@@ -53,6 +53,8 @@ This index helps you find exactly what you need in the LAMB documentation. Start
 | Implement LTI integration | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §8.2 LTI Integration |
 | Add assistant sharing | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §8.3 Assistant Sharing |
 | Operate the AI Workshop activity | [workshop-operations.md](./workshop-operations.md) | Full doc |
+| Understand the AI Workshop design | [workshop-design.md](./workshop-design.md) | §2 Architecture |
+| Look up a workshop decision ID (`S1`, `C13`, `D3`…) | [workshop-design.md](./workshop-design.md) | §4 Decision record |
 
 ---
 
@@ -70,6 +72,8 @@ Documentation/
 ├── deployment.apache.md        ← Apache reverse proxy config
 ├── deployment.nginx.md         ← Nginx reverse proxy config
 ├── svelte-refactoring.md       ← Frontend refactoring guide
+├── workshop-design.md          ← AI Workshop architecture + decision record
+├── workshop-operations.md      ← AI Workshop configuration, retention, testing
 │
 └── (all other docs moved to private enterprise repo)
 ```

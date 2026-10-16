@@ -7,8 +7,9 @@ Teachers see a dashboard with per-student progress and rubric-based formative
 feedback.
 
 This page covers the operational side: configuration, data lifecycle, deletion,
-the pilot gate and how to test the whole thing. The design rationale lives with
-the code (see the module docstrings in `backend/lamb/modules/workshop/`).
+the pilot gate and how to test the whole thing. Architecture, design rationale
+and the decision IDs used in code comments (`S1`, `C13`, `D3`…) are in
+[workshop-design.md](./workshop-design.md).
 
 ---
 
@@ -33,6 +34,24 @@ Per-organization overrides live in the organization config
 Legacy/optional: `WORKSHOP_TOKEN_TTL` remains as a module constant alias, but
 `WORKSHOP_TOKEN_TTL_SECONDS` is what the token issuer reads.
 
+The model the student's assistant chats with is set in the **frontend runtime
+config**, not in the backend environment:
+
+```js
+// frontend/svelte-app/static/config.js
+window.LAMB_CONFIG = {
+  // ...
+  workshop: { connector: 'ollama', llm: 'qwen3.5:9b' }
+};
+```
+
+The wizard pins these values into the assistant it creates. Without the block,
+it falls back to `ollama` / `qwen3.5:9b`. Student-owned assistants have no
+organization, so org model settings do **not** apply to the chat. The consent
+page and the formative evaluation still use the activity owner's organization.
+Keep both on the same model class (local vs external), or the consent notice
+will be wrong (see [workshop-design.md](./workshop-design.md) §6, item 2).
+
 ---
 
 ## 2. Data lifecycle (retention)
@@ -52,8 +71,9 @@ retried forever. If the KB server is unavailable, the failure is logged and
 idempotent).
 
 Ordering note: remote deletion happens **before** local erasure, deliberately.
-The plan's failure-mode table asks for "no half-delete", which is only true if a
-KB outage aborts the operation before anything local is removed.
+The requirement is "no half-delete" (decisions C9/C18 in
+[workshop-design.md](./workshop-design.md)), which is only true if a KB outage
+aborts the operation before anything local is removed.
 
 The teacher dashboard shows a permanent warning when student work goes to an
 **external** model provider but no retention window is configured.
@@ -254,14 +274,16 @@ assertion, not a choice, and the retrieval paths restrict workshop assistants to
 their own session collection), but any component holding that token can still
 read any collection whose id it knows.
 
-The risk is **accepted** for now and tracked outside the codebase (see the
-`Workshop-后续跟进` note, entry F1). Multi-org isolation via per-org KB
-instances or identity-bearing tokens is the medium-term fix.
+The risk is **accepted** for now (no GitHub issue has been opened). The
+fix options and other known limitations are listed in
+[workshop-design.md](./workshop-design.md) §6. Multi-org isolation via per-org
+KB instances or identity-bearing tokens is the medium-term fix.
 
 ---
 
 ## Related documentation
 
+* `Documentation/workshop-design.md` — architecture, decision record, known limitations
 * `Documentation/deployLocal.md` — running the stack locally
 * `testing/playwright/README.md` — the two workshop e2e tracks
 * `backend/lamb/modules/workshop/` — module docstrings: routers, KB wiring,
