@@ -592,6 +592,44 @@ async def attach_workshop_document(
     }
 
 
+@router.delete("/sessions/{session_id}/assistant/{assistant_id}/doc")
+async def remove_workshop_document(
+    session_id: str,
+    assistant_id: int,
+    token: str = Header(...),
+):
+    """Student removes the attached document so another can be uploaded (C22).
+
+    Upload is capped at one document per session, so removing it only in the
+    browser left the session still holding the old one and every later upload
+    answered 429. This deletes the session KB (collection and files), forgets
+    the document binding and unwires the assistant's RAG; the conversation,
+    reflection and wizard state are untouched (that is the ``erase`` level,
+    C18). The KB goes first: if the KB server is unavailable nothing local
+    changes, so the student can simply try again. Idempotent.
+    """
+    principal = _verify_workshop_principal(session_id, token)
+    _verify_assistant_ownership(assistant_id, principal)
+
+    session = _db_manager.get_workshop_session_by_id(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # kb_id is read from the session, never from the client (S1).
+    kb_id = session.get("kb_id")
+    if kb_id:
+        activity = _session_activity(session)
+        try:
+            await workshop_kb.delete_session_kb(activity, str(kb_id))
+        except Exception as e:
+            _raise_kb_error(e)
+
+    _db_manager.clear_workshop_session_document(session_id)
+    _db_manager.clear_assistant_rag_collections(assistant_id)
+
+    return {"success": True, "removed": bool(kb_id)}
+
+
 @router.get("/sessions/{session_id}/doc/status")
 async def get_workshop_document_status(
     session_id: str,

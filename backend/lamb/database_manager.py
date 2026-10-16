@@ -9198,6 +9198,35 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
+    def clear_workshop_session_document(self, session_id: str) -> bool:
+        """Forget the session's KB/document binding and nothing else.
+
+        Used when the student removes the attached document: the conversation,
+        reflection and wizard state stay, and the one-document quota is freed so
+        a replacement can be uploaded. The caller deletes the collection itself.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}lti_workshop_sessions
+                    SET kb_id = NULL,
+                        document_file_id = NULL,
+                        document_name = NULL,
+                        document_status = NULL,
+                        updated_at = ?
+                    WHERE id = ?
+                """, (int(time.time()), session_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error clearing workshop session document: {e}")
+            return False
+        finally:
+            connection.close()
+
     def detach_workshop_session_assistant(self, session_id: str) -> bool:
         """Null out ``assistant_id`` on a session before the assistant is deleted.
 
@@ -9245,16 +9274,30 @@ class LambDatabaseManager:
         try:
             with connection:
                 cursor = connection.cursor()
+                # The assistants table has no ``metadata`` column: the
+                # ``Assistant.metadata`` property is the ``api_callback`` JSON,
+                # which is where ``rag_processor`` lives.
+                row = cursor.execute(f"""
+                    SELECT api_callback FROM {self.table_prefix}assistants
+                    WHERE id = ?
+                """, (assistant_id,)).fetchone()
+                if row is None:
+                    return False
+
+                api_callback = row[0]
+                try:
+                    callback = json.loads(api_callback) if api_callback else {}
+                except (json.JSONDecodeError, TypeError):
+                    callback = None  # legacy non-JSON value: leave it alone
+                if isinstance(callback, dict):
+                    callback.pop("rag_processor", None)
+                    api_callback = json.dumps(callback)
+
                 cursor.execute(f"""
                     UPDATE {self.table_prefix}assistants
-                    SET RAG_collections = '',
-                        metadata = CASE
-                            WHEN metadata IS NULL OR TRIM(metadata) = ''
-                                THEN '{{}}'
-                            ELSE json_remove(metadata, '$.rag_processor')
-                        END
+                    SET RAG_collections = '', api_callback = ?, updated_at = ?
                     WHERE id = ?
-                """, (assistant_id,))
+                """, (api_callback, int(time.time()), assistant_id))
                 return cursor.rowcount > 0
         except sqlite3.Error as e:
             logger.error(f"Error clearing assistant RAG collections: {e}")
