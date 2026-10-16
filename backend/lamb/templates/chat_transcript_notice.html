@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAMB · Before you start</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }</style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4">
+<div class="bg-white rounded-xl shadow-lg max-w-2xl mx-auto p-8 space-y-5">
+    <h1 class="text-xl font-bold text-gray-900">Before you start · {{ title }}</h1>
+    <div id="transcript-notice" class="p-4 rounded-lg border-2 border-amber-500 bg-amber-50 space-y-2">
+        <p class="font-medium text-gray-900">Your teacher can read your conversations in this chat.</p>
+        <p class="text-gray-700">When this activity was set up, your teacher chose to review chat transcripts. Everything you write to the assistant here, and its answers, can be read by the teachers of this activity, with your name as your course sends it to LAMB.</p>
+        <p class="text-gray-700">By entering the chat you accept this. If you do not agree, do not enter, and talk to your teacher.</p>
+    </div>
+    <p class="text-sm text-gray-500">You see this notice only the first time you open this activity.</p>
+    <form method="post" action="{{ action }}">
+        <input type="hidden" name="token" value="{{ token }}">
+        <button type="submit" id="enter-chat" class="px-5 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700">Enter the chat</button>
+    </form>
+</div>
+</body>
+</html>

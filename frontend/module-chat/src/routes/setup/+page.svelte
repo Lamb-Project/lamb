@@ -359,7 +359,7 @@
                                         <div>
                                             <span class="font-medium text-gray-900">{f.label}</span>
                                             {#if f.name === 'chat_visibility_enabled'}
-                                                <p class="text-sm text-gray-500 mt-0.5">Students will be notified and must accept before using the tool. Chat content is always anonymized.</p>
+                                                <p class="text-sm text-gray-500 mt-0.5">Teachers of this activity can read students' conversations, with each student's name as your LMS sends it. Students are told the first time they open the chat; entering the chat means they accept. This choice cannot be changed after setup.</p>
                                             {/if}
                                         </div>
                                     </label>

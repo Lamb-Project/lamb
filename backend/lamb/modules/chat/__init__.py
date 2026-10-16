@@ -1,5 +1,6 @@
 from lamb.modules.base import ActivityModule, SetupField, LTIContext, module_public_base
 from lamb.modules.chat.service import ChatModuleService
+from lamb.modules.chat import notice
 from fastapi.responses import RedirectResponse
 from fastapi import HTTPException
 from lamb.database_manager import LambDatabaseManager
@@ -31,7 +32,7 @@ class ChatModule(ActivityModule):
         return []
 
     def get_routers(self):
-        return []
+        return [notice.router]
 
     def get_setup_fields(self):
         return [
@@ -68,6 +69,11 @@ class ChatModule(ActivityModule):
         activity = self.db_manager.get_lti_activity_by_resource_link(ctx.resource_link_id)
         if not activity:
              raise HTTPException(status_code=404, detail="Activity not found")
+
+        # Transcript review on: the first launch shows what the teacher can read; entering accepts.
+        email = self.service.generate_student_email(ctx.username, activity['resource_link_id'])
+        if notice.needs_notice(self.db_manager, activity, email):
+            return notice.notice_page(activity, ctx)
 
         owi_token = self.service.handle_student_launch(
             activity=activity,

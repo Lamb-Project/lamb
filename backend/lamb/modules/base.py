@@ -113,13 +113,13 @@ class ActivityModule(ABC):
     @abstractmethod
     def get_dashboard_chats(self, activity: Dict[str, Any], assistant_id: int = None,
                              page: int = 1, per_page: int = 20) -> Dict[str, Any]:
-        """Return anonymized chat list for the dashboard."""
+        """Return the chat list for the dashboard (students named as the LMS sends them)."""
         pass
 
     @abstractmethod
     def get_dashboard_chat_detail(self, activity: Dict[str, Any],
                                    chat_id: str) -> Optional[Dict[str, Any]]:
-        """Return a single chat transcript, anonymized."""
+        """Return a single chat transcript (students named as the LMS sends them)."""
         pass
 
     @abstractmethod

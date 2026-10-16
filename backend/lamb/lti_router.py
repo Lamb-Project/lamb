@@ -9,7 +9,8 @@ Single LTI endpoint that supports:
 
 Session management:
 - Instructor flows use LAMB JWTs (via lamb.auth) with lti_type claims
-- Students launch directly into the activity module (no consent gate)
+- Students launch directly into the activity module; a chat activity whose teachers can read
+  transcripts shows a one-time notice first (modules/chat/notice.py)
 
 Endpoint: POST /lamb/v1/lti/launch
 """

@@ -201,13 +201,12 @@
             <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="text-lg font-semibold text-gray-900">Student Access Log</h2>
-                    <span class="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">Anonymized</span>
-                </div>
+                                    </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">
                         <thead>
                             <tr class="border-b text-left text-gray-500 text-xs uppercase tracking-wider">
-                                <th class="pb-3 pr-4 font-medium">Student (Anonymous ID)</th>
+                                <th class="pb-3 pr-4 font-medium">Student</th>
                                 <th class="pb-3 pr-4 font-medium">First Access</th>
                                 <th class="pb-3 pr-4 font-medium">Last Access</th>
                                 <th class="pb-3 pl-4 text-center font-medium">Visits</th>
@@ -216,7 +215,7 @@
                         <tbody>
                             {#each (students.students || []) as s}
                                 <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                                    <td class="py-3 pr-4 font-medium text-gray-700 font-mono text-xs">{s.anonymous_id}</td>
+                                    <td class="py-3 pr-4 font-medium text-gray-700">{s.name}</td>
                                     <td class="py-3 pr-4 text-gray-600">{formatTime(s.first_access)}</td>
                                     <td class="py-3 pr-4 text-gray-600">{formatTime(s.last_access)}</td>
                                     <td class="py-3 pl-4 text-center text-gray-600 font-medium">{s.access_count}</td>
@@ -255,7 +254,7 @@
                     </div>
 
                     <p class="text-xs text-gray-500 mb-6 bg-blue-50 p-2 rounded text-blue-800">
-                        <strong>Privacy Notice:</strong> All student identities are anonymized. You cannot see who wrote each message.
+                        <strong>Privacy notice:</strong> students are named as your LMS sends them. Each student was told, the first time they opened this chat, that you can read their conversations.
                     </p>
 
                     <div class="space-y-3">
@@ -266,7 +265,7 @@
                                     <div>
                                         <span class="font-medium text-gray-900 text-sm group-hover:text-blue-700 transition-colors">{chat.title || 'Untitled Chat'}</span>
                                         <div class="text-xs text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
-                                            <span class="bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-mono">{chat.anonymous_student}</span> 
+                                            <span class="bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-mono">{chat.student_name}</span> 
                                             <span class="text-gray-400">→</span> 
                                             <span class="font-medium text-gray-700">{chat.assistant_name}</span>
                                             <span class="text-gray-300">|</span>
@@ -296,7 +295,7 @@
                                                 {#each (chatTranscripts[chat.chat_id]?.messages || []) as msg}
                                                     {@const isUser = msg.role === 'user'}
                                                     {@const bubbleClass = isUser ? 'bg-blue-50 border-l-4 border-blue-500' : 'bg-green-50 border-l-4 border-green-500'}
-                                                    {@const speaker = msg.speaker || (isUser ? chatTranscripts[chat.chat_id].anonymous_student : 'Assistant')}
+                                                    {@const speaker = msg.speaker || (isUser ? chatTranscripts[chat.chat_id].student_name : 'Assistant')}
                                                     <div class="{bubbleClass} rounded-r-lg p-3 shadow-sm">
                                                         <div class="text-xs font-semibold {isUser ? 'text-blue-800' : 'text-green-800'} mb-1.5">{speaker}</div>
                                                         <div class="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{msg.content}</div>
