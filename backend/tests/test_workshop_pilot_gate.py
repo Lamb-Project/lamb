@@ -283,6 +283,91 @@ class TestAuditTrail:
             lti_router._audit_pilot_skip(_activity(), "teacher@school.edu")
 
 
+class TestSkipPilotIsOwnerOnly:
+    """`?skip_pilot=1` is the owner's escape hatch, not any instructor's (C13)."""
+
+    @staticmethod
+    def _request(value=None):
+        request = MagicMock()
+        request.query_params = {} if value is None else {"skip_pilot": value}
+        return request
+
+    def test_owner_may_skip(self):
+        from lamb import lti_router
+
+        for value in ("1", "true", "YES", " on "):
+            assert lti_router._pilot_skip_granted(
+                self._request(value), True, _activity(), "teacher@school.edu"
+            ) is True
+
+    def test_non_owner_is_ignored_and_logged(self, caplog):
+        from lamb import lti_router
+
+        with caplog.at_level("WARNING"):
+            granted = lti_router._pilot_skip_granted(
+                self._request("1"), False, _activity(), "assistant@school.edu")
+
+        assert granted is False
+        assert "non-owner" in caplog.text
+        assert "assistant@school.edu" in caplog.text
+
+    def test_no_parameter_or_unrelated_value_never_skips(self):
+        from lamb import lti_router
+
+        for request in (self._request(), self._request("0"), self._request("")):
+            assert lti_router._pilot_skip_granted(
+                request, True, _activity(), "teacher@school.edu") is False
+
+    def _launch(self, lms_email, skip="1"):
+        """Run a full instructor launch against a blocking, configured activity."""
+        from lamb import lti_router
+        from lamb.modules.workshop import module as workshop_module
+
+        request = MagicMock()
+        request.query_params = {"skip_pilot": skip}
+        request.form = lambda: _async_form({
+            "oauth_consumer_key": "key",
+            "resource_link_id": "rl-1",
+            "roles": "Instructor",
+            "user_id": "u-1",
+            "lis_person_contact_email_primary": lms_email,
+        })
+
+        with patch.object(lti_router.manager, "get_lti_credentials",
+                          return_value=("key", "secret")),              patch.object(lti_router.manager, "validate_oauth_signature",
+                          return_value=True),              patch.object(lti_router.manager, "is_instructor",
+                          return_value=True),              patch.object(lti_router.db_manager,
+                          "get_lti_activity_by_resource_link",
+                          return_value=_activity()),              patch.object(lti_router.manager, "get_public_base_url",
+                          return_value="https://lamb.example"),              patch.object(dashboard, "is_teacher_pilot_blocking",
+                          return_value=True),              patch.object(lti_router, "is_teacher_pilot_required",
+                          return_value=True),              patch.object(lti_router, "_audit_pilot_skip") as audit,              patch.object(workshop_module, "on_student_launch",
+                          return_value={"redirect": "https://lamb.example/pilot"}
+                          ) as pilot,              patch.object(workshop_module, "on_instructor_launch",
+                          return_value={"redirect": "https://lamb.example/dash"}
+                          ) as dash:
+            import asyncio
+
+            response = asyncio.run(lti_router.lti_launch(request))
+        return response, pilot, dash, audit
+
+    def test_non_owner_with_skip_still_goes_through_the_pilot(self):
+        response, pilot, dash, audit = self._launch("assistant@school.edu")
+
+        assert response.headers["location"] == "https://lamb.example/pilot"
+        assert pilot.call_args.args[0]["pilot"] is True
+        dash.assert_not_called()
+        audit.assert_not_called()
+
+    def test_owner_with_skip_reaches_the_dashboard_and_is_audited(self):
+        response, pilot, dash, audit = self._launch("teacher@school.edu")
+
+        assert response.headers["location"] == "https://lamb.example/dash"
+        pilot.assert_not_called()
+        audit.assert_called_once()
+        assert audit.call_args.args[1] == "teacher@school.edu"
+
+
 class TestStudentWaitingPage:
     """Students are informed, and in their own language."""
 

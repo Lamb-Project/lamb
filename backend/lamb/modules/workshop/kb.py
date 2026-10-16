@@ -466,8 +466,11 @@ def restrict_collections_for_assistant(
 
     Defense in depth for S1: even if a foreign collection id was persisted on a
     workshop assistant (historical dirty data, or a write path that slipped
-    through), retrieval must never read another session's documents. Both the
-    ``kb_query`` tool and ``simple_rag`` call this before hitting the KB server.
+    through), retrieval must never read another session's documents. The
+    ``kb_query`` tool and every RAG processor that reads ``RAG_collections``
+    (``simple_rag``, ``context_aware_rag``, ``hierarchical_rag``) call this
+    before hitting the KB server — a student can choose the processor through
+    the assistant's ``api_callback``, so the guard cannot depend on which one.
 
     Non-workshop assistants are returned unchanged, and the synthetic-email
     domain gate means ordinary assistants cost no extra DB query.

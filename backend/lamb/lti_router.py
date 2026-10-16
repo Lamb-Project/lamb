@@ -130,6 +130,27 @@ def _audit_pilot_skip(activity: dict, lms_email: str) -> None:
         logger.warning(f"Could not write the pilot-skip audit entry: {e}")
 
 
+def _pilot_skip_granted(request: Request, is_owner: bool, activity: dict,
+                        lms_email: str) -> bool:
+    """Whether this launch may bypass the teacher-first gate with ``?skip_pilot=1``.
+
+    The escape hatch belongs to the activity owner only (decision C13): the
+    owner decides whether *they* need the walkthrough. Anyone else asking for
+    it is ignored — they go through the normal gate — and the attempt is logged
+    so a co-instructor cannot quietly lift a gate the owner switched on.
+    """
+    raw = str(request.query_params.get("skip_pilot", "")).strip().lower()
+    if raw not in ("1", "true", "yes", "on"):
+        return False
+    if is_owner:
+        return True
+    logger.warning(
+        "Ignoring skip_pilot from a non-owner instructor: "
+        f"activity={activity.get('id')} lms_email={lms_email} "
+        f"owner={activity.get('owner_email')}")
+    return False
+
+
 def _workshop_locale(request: Request, launch_locale: str) -> str:
     """Resolve the locale for a workshop HTML page."""
     from lamb.modules.workshop import i18n as workshop_i18n
@@ -234,10 +255,9 @@ async def lti_launch(request: Request):
                     # Teacher-first gate (C13): a teacher who has not run the
                     # workshop themselves is sent through it once instead of
                     # straight to the dashboard. `?skip_pilot=1` on the launch
-                    # URL is the owner's escape hatch and is audited.
-                    skip_pilot = str(
-                        request.query_params.get("skip_pilot", "")).strip().lower()
-                    wants_skip = skip_pilot in ("1", "true", "yes", "on")
+                    # URL is the *owner's* escape hatch and is audited.
+                    wants_skip = _pilot_skip_granted(
+                        request, bool(is_owner), activity, lms_email)
 
                     if is_teacher_pilot_blocking(activity) and not wants_skip:
                         pilot = workshop_module.on_student_launch({

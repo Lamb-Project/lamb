@@ -231,6 +231,21 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
     
     # Clean up collection IDs
     collections = [cid.strip() for cid in collections if cid.strip()]
+
+    # S1 defense in depth: workshop assistants may only retrieve from their own
+    # session KB, even if a foreign id was persisted on RAG_collections.
+    from lamb.modules.workshop.kb import restrict_collections_for_assistant
+
+    collections = restrict_collections_for_assistant(assistant, collections)
+    if not collections:
+        error_message = "No accessible knowledge base for this assistant"
+        logger.warning(f"RAG processing aborted: {error_message}")
+        return {
+            "context": error_message,
+            "sources": [],
+            "assistant_data": assistant_dict,
+        }
+
     logger.info(f"Found {len(collections)} collections: {collections}")
     
     # Get the top_k value or use a default

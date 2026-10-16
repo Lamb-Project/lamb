@@ -251,7 +251,7 @@ class TestInjectionPoints:
 
 
 class TestRestrictCollectionsForAssistant:
-    """Defense in depth on the retrieval paths (kb_query + simple_rag)."""
+    """Defense in depth on the retrieval paths (kb_query + every RAG processor)."""
 
     @patch("lamb.modules.workshop.kb._db")
     def test_non_workshop_assistant_untouched(self, mock_db):
@@ -374,3 +374,76 @@ class TestSimpleRagRestriction:
 
         assert result["sources"] == []
         assert "No accessible knowledge base" in result["context"]
+
+
+@pytest.mark.parametrize("module_name", ["context_aware_rag", "hierarchical_rag"])
+class TestOtherRagProcessorsRestriction:
+    """Every RAG processor narrows a workshop assistant, not just ``simple_rag``.
+
+    A student can pick ``rag_processor`` through the assistant's ``api_callback``
+    metadata, so the read-side guard must not depend on which one was chosen.
+    """
+
+    @staticmethod
+    def _processor(module_name):
+        import importlib
+
+        return importlib.import_module(f"lamb.completions.rag.{module_name}")
+
+    @pytest.mark.asyncio
+    async def test_foreign_collection_aborts_without_a_kb_request(self, module_name):
+        module = self._processor(module_name)
+
+        with patch.object(module, "_generate_optimal_query",
+                          AsyncMock(return_value="what is in the notes")),              patch("lamb.modules.workshop.kb._db") as mock_db,              patch("requests.post") as post:
+            mock_db.return_value.get_workshop_session_by_assistant.return_value = (
+                _session())
+            result = await module.rag_processor(
+                messages=[{"role": "user", "content": "hi"}],
+                assistant=_assistant(RAG_collections="kb-victim"),
+            )
+
+        assert result["sources"] == []
+        assert "No accessible knowledge base" in result["context"]
+        post.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mixed_collections_only_query_the_students_own(self, module_name):
+        module = self._processor(module_name)
+
+        kb_response = MagicMock(status_code=200)
+        kb_response.json.return_value = {"results": [], "documents": []}
+
+        with patch.object(module, "_generate_optimal_query",
+                          AsyncMock(return_value="what is in the notes")),              patch("lamb.modules.workshop.kb._db") as mock_db,              patch("requests.post", return_value=kb_response) as post:
+            mock_db.return_value.get_workshop_session_by_assistant.return_value = (
+                _session())
+            await module.rag_processor(
+                messages=[{"role": "user", "content": "hi"}],
+                assistant=_assistant(RAG_collections="kb-victim,kb-mine"),
+            )
+
+        urls = [call.args[0] for call in post.call_args_list]
+        assert urls, "the student's own collection should still be queried"
+        assert all("/collections/kb-mine/" in url for url in urls)
+        assert not any("kb-victim" in url for url in urls)
+
+    @pytest.mark.asyncio
+    async def test_ordinary_assistant_keeps_every_collection(self, module_name):
+        module = self._processor(module_name)
+
+        kb_response = MagicMock(status_code=200)
+        kb_response.json.return_value = {"results": [], "documents": []}
+
+        with patch.object(module, "_generate_optimal_query",
+                          AsyncMock(return_value="what is in the notes")),              patch("lamb.modules.workshop.kb._db") as mock_db,              patch("requests.post", return_value=kb_response) as post:
+            await module.rag_processor(
+                messages=[{"role": "user", "content": "hi"}],
+                assistant=_assistant(owner="teacher@school.edu",
+                                     RAG_collections="kb-1,kb-2"),
+            )
+
+        urls = [call.args[0] for call in post.call_args_list]
+        assert any("/collections/kb-1/" in url for url in urls)
+        assert any("/collections/kb-2/" in url for url in urls)
+        mock_db.return_value.get_workshop_session_by_assistant.assert_not_called()
