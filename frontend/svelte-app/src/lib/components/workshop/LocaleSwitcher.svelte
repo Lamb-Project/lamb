@@ -36,6 +36,10 @@
 	}
 
 	const current = $derived(matchLocale($locale) || 'en');
+	// Padding note: `@tailwindcss/forms` draws the dropdown chevron as a
+	// background image and reserves room for it with `padding-right`. A `px-*`
+	// utility overrides that, so the chevron lands on top of the language name.
+	// Keep the sides separate (`pl-*` / `pr-*`) and never set `px-*` here.
 </script>
 
 <div class="flex items-center gap-1.5">
@@ -46,8 +50,8 @@
 	<select
 		id="ws-locale"
 		data-testid="workshop-locale-switcher"
-		class="text-xs border rounded px-1.5 py-1 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-		class:px-1={compact}
+		class="text-xs border rounded py-1 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500
+			{compact ? 'pl-1 pr-6' : 'pl-1.5 pr-7'}"
 		value={current}
 		onchange={handleChange}
 	>

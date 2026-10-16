@@ -75,4 +75,17 @@ describe('LocaleSwitcher — the student language control (C19)', () => {
 		);
 		expect(select.value).toBe('eu');
 	});
+
+	test('L6: padding leaves room for the dropdown chevron', () => {
+		// jsdom has no layout, so pin the cause instead: `@tailwindcss/forms` draws
+		// the chevron in the select's right padding, and a `px-*` utility overrides
+		// that padding, which put the arrow on top of the language name.
+		for (const compact of [false, true]) {
+			const { unmount } = render(LocaleSwitcher, { props: { compact } });
+			const classes = screen.getByTestId('workshop-locale-switcher').className.split(/\s+/);
+			expect(classes.some((c) => /^px-/.test(c))).toBe(false);
+			expect(classes.some((c) => /^pr-([6-9]|\d{2})$/.test(c))).toBe(true);
+			unmount();
+		}
+	});
 });
