@@ -319,6 +319,59 @@ describe('ObservabilityPanel — D2 per-step views', () => {
 	});
 });
 
+describe('ObservabilityPanel — step 3 test retrieval', () => {
+	// What POST …/kb returns: `data` is the chunk text, `similarity` its score.
+	const probe = {
+		query: 'How do I simplify 6/8?',
+		count: 2,
+		results: [
+			{ similarity: 0.7008, data: 'Divide by the GCD. 6/8 = 3/4.', metadata: { embedding_model: 'nomic-embed-text' } },
+			{ similarity: 0.5123, data: 'Adding needs a common denominator.' },
+		],
+	};
+
+	test('P1: the retrieved excerpts, their similarity and the question are shown', () => {
+		render(ObservabilityPanel, { props: { obsData: null, step: 3, probe } });
+
+		expect(screen.getByTestId('panel-probe')).toBeInTheDocument();
+		expect(screen.getByText('Excerpts retrieved by this test question')).toBeInTheDocument();
+		expect(screen.getByText(/How do I simplify 6\/8\?/)).toBeInTheDocument();
+		expect(screen.getAllByTestId('panel-probe-hit')).toHaveLength(2);
+		expect(screen.getByText('0.701')).toBeInTheDocument();
+		expect(screen.getByText(/Divide by the GCD/)).toBeInTheDocument();
+		expect(screen.getByText(/common denominator/)).toBeInTheDocument();
+		// A probe is evidence, so the "nothing yet" placeholder must be gone.
+		expect(screen.queryByText(/Nothing to observe yet/)).not.toBeInTheDocument();
+	});
+
+	test('P2: a question that matched nothing says so instead of showing a blank panel', () => {
+		render(ObservabilityPanel, {
+			props: { obsData: null, step: 3, probe: { query: 'zebras', results: [], count: 0 } },
+		});
+		expect(screen.getByTestId('panel-probe-empty')).toBeInTheDocument();
+		expect(screen.getByText(/No excerpt matched this question/)).toBeInTheDocument();
+		expect(screen.queryByTestId('panel-probe-hit')).not.toBeInTheDocument();
+	});
+
+	test('P3: the probe belongs to step 3 only', () => {
+		render(ObservabilityPanel, { props: { obsData: null, step: 4, probe } });
+		expect(screen.queryByTestId('panel-probe')).not.toBeInTheDocument();
+	});
+
+	test('P4: no probe yet keeps the honest empty state', () => {
+		render(ObservabilityPanel, { props: { obsData: null, step: 3, probe: null } });
+		expect(screen.queryByTestId('panel-probe')).not.toBeInTheDocument();
+		expect(screen.getByText(/Nothing to observe yet/)).toBeInTheDocument();
+	});
+
+	test('P5: excerpts that use the chat-frame field name (content) still render', () => {
+		render(ObservabilityPanel, {
+			props: { obsData: null, step: 3, probe: { query: 'q', results: [{ similarity: 0.5, content: 'legacy shape' }] } },
+		});
+		expect(screen.getByText('legacy shape')).toBeInTheDocument();
+	});
+});
+
 describe('ObservabilityPanel — D3 rag mode badge', () => {
 	test('M1: an "on" turn is badged as on', () => {
 		render(ObservabilityPanel, {

@@ -75,7 +75,10 @@ const DOC_FILES = {
 /**
  * Intercept every workshop API call the page may make.
  * @param {import('@playwright/test').Page} page
- * @param {{buildState?: any, chatFrames?: string[]}} [options]
+ * @param {{buildState?: any, chatFrames?: string[], kbProbe?: any, calls?: string[]}} [options]
+ *   `kbProbe` is the body of `POST …/kb` (step 3's test retrieval); `calls`
+ *   collects `"METHOD /path"` for every non-GET request so a test can assert
+ *   what the page sent.
  */
 async function mockWorkshopApi(page, options = {}) {
   const buildState = options.buildState || BUILD_STATE;
@@ -83,6 +86,18 @@ async function mockWorkshopApi(page, options = {}) {
   await page.route('**/lamb/v1/workshop/**', async (route) => {
     const url = route.request().url();
     const method = route.request().method();
+    if (method !== 'GET' && options.calls) {
+      options.calls.push(`${method} ${new URL(url).pathname.replace(/^.*\/workshop/, '')}`);
+    }
+
+    if (method === 'POST' && options.kbProbe && new URL(url).pathname.endsWith('/kb')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(options.kbProbe)
+      });
+      return;
+    }
 
     if (url.includes('/chat')) {
       const frames = options.chatFrames || [];
@@ -147,7 +162,13 @@ async function mockWorkshopApi(page, options = {}) {
 async function openWizard(page, query = '') {
   const token = makeToken({});
   await page.goto(`/m/workshop/${ACTIVITY_ID}?token=${token}${query}`);
-  await expect(page.getByRole('heading', { name: 'AI Workshop' })).toBeVisible();
+  // With `?lang=` the title may already be translated on first paint (the
+  // bundle is cached once the dev server is warm), so match the heading by
+  // role rather than by its English text.
+  const title = query.includes('lang=')
+    ? page.getByRole('heading', { level: 1 })
+    : page.getByRole('heading', { name: 'AI Workshop' });
+  await expect(title).toBeVisible();
 }
 
 test.describe('Workshop student UI (route-mocked)', () => {
@@ -191,6 +212,50 @@ test.describe('Workshop student UI (route-mocked)', () => {
     await page.getByTestId('workshop-locale-switcher').selectOption('es');
     await expect(page.getByRole('button', { name: /Instrucciones/ }))
       .toBeVisible({ timeout: 30_000 });
+  });
+
+  test('step 3 shows what the test question retrieved in the panel', async ({ page }) => {
+    await mockWorkshopApi(page, {
+      buildState: { ...BUILD_STATE, currentStep: 3 },
+      kbProbe: {
+        success: true,
+        kb_id: 'kb-1',
+        query: 'How do I simplify 6/8?',
+        count: 1,
+        results: [
+          { similarity: 0.7008, data: 'Divide both numbers by their GCD: 6/8 = 3/4.' }
+        ]
+      }
+    });
+    await openWizard(page);
+
+    // Nothing has been asked yet, so there is no probe section.
+    await expect(page.getByTestId('panel-probe')).toHaveCount(0);
+
+    await page.locator('#ws-kb-query').fill('How do I simplify 6/8?');
+    await page.getByRole('button', { name: /test retrieval/i }).click();
+
+    // The response used to be stored but never rendered, so the panel stayed blank.
+    const probe = page.getByTestId('panel-probe');
+    await expect(probe).toBeVisible();
+    await expect(probe).toContainText('How do I simplify 6/8?');
+    await expect(probe).toContainText('0.701');
+    await expect(probe).toContainText('Divide both numbers by their GCD');
+  });
+
+  test('step 2 Remove deletes the document on the server before clearing it', async ({ page }) => {
+    /** @type {string[]} */
+    const calls = [];
+    await mockWorkshopApi(page, { calls });
+    await openWizard(page);
+
+    // The mocked session restores at step 2 with a document attached.
+    await page.getByRole('button', { name: 'Remove' }).click();
+
+    // Without this the session still holds the document and the next upload is
+    // refused (429), even though the browser looked empty.
+    await expect(page.locator('input[type=file]')).toBeVisible();
+    expect(calls).toContain('DELETE /sessions/' + SESSION_ID + '/assistant/42/doc');
   });
 
   test('step 5 renders the A/B switch and applies the chosen mode', async ({ page }) => {

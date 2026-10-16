@@ -9,6 +9,8 @@
 	//                   show what is *about to be* sent while the model is still
 	//                   generating
 	//   - documents   — step 2: the KB file registry (how the upload was chunked)
+	//   - probe       — step 3: the student's test question and the excerpts it
+	//                   retrieved ({query, results, count})
 	//   - toolDefinitions — step 4: the tool JSON that will be sent
 	//   - toolEvents  — accumulated tool timeline entries
 	// The parent page owns all of these; this component is pure rendering.
@@ -22,6 +24,7 @@
 	 *   obsRequest?: any | null,
 	 *   toolEvents?: Array<any>,
 	 *   documents?: Array<any>,
+	 *   probe?: {query?: string, results?: Array<any>, count?: number} | null,
 	 *   toolDefinitions?: Array<any> | null,
 	 *   step?: number,
 	 *   ragMode?: string
@@ -32,10 +35,14 @@
 		obsRequest = null,
 		toolEvents = [],
 		documents = [],
+		probe = null,
 		toolDefinitions = null,
 		step = 0,
 		ragMode = 'on'
 	} = $props();
+
+	/** Excerpts the step-3 test question retrieved. */
+	const probeHits = $derived(probe?.results || []);
 
 	/** @type {Array<{type: string, name?: string, success?: boolean, args?: string}>} */
 	let toolTimeline = $derived(toolEvents);
@@ -60,6 +67,7 @@
 			!!resultFrame ||
 			toolTimeline.length > 0 ||
 			documents.length > 0 ||
+			(step === 3 && !!probe) ||
 			(step === 4 && !!toolDefinitions)
 	);
 
@@ -143,6 +151,43 @@
 						</li>
 					{/each}
 				</ul>
+			</section>
+		{/if}
+
+		<!-- Step 3: what the student's test question retrieved -->
+		{#if step === 3 && probe}
+			<section class="border rounded p-3 bg-gray-50" data-testid="panel-probe">
+				<h4 class="text-xs font-semibold uppercase text-gray-500">
+					{$_('workshop.probeHitsTitle', { default: 'Excerpts retrieved by this test question' })}
+				</h4>
+				{#if probe.query}
+					<p class="text-xs mt-1 text-gray-600">
+						{$_('workshop.probeQuestion', {
+							values: { query: probe.query },
+							default: `Question: “${probe.query}”`
+						})}
+					</p>
+				{/if}
+				{#if probeHits.length === 0}
+					<p class="text-xs text-amber-700 mt-2" data-testid="panel-probe-empty">
+						{$_('workshop.probeNoHits', {
+							default: 'No excerpt matched this question. Try different words, or check that the document finished ingesting.'
+						})}
+					</p>
+				{:else}
+					<ol class="text-xs mt-2 space-y-2">
+						{#each probeHits as hit, i (i)}
+							<li class="border-t pt-2 first:border-t-0 first:pt-0" data-testid="panel-probe-hit">
+								<span class="font-mono text-gray-500">
+									{hit.similarity?.toFixed?.(3) ?? hit.similarity ?? '—'}
+								</span>
+								<p class="mt-1 whitespace-pre-wrap text-gray-700 max-h-40 overflow-y-auto">
+									{hit.data ?? hit.content ?? ''}
+								</p>
+							</li>
+						{/each}
+					</ol>
+				{/if}
 			</section>
 		{/if}
 

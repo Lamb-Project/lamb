@@ -9,7 +9,7 @@
  * "client" project; that is the convention every other component test uses.)
  */
 import { describe, test, expect, beforeAll, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { render, screen, fireEvent } from '@testing-library/svelte';
 import '@testing-library/jest-dom/vitest';
 import { waitLocale, locale } from 'svelte-i18n';
 import { setupI18n } from '$lib/i18n';
@@ -136,5 +136,111 @@ describe('WizardSteps — D2/D3/D5 affordances', () => {
 		render(WizardSteps, { props: { form } });
 		expect(screen.getByText(/Your earlier reflection is kept/)).toBeInTheDocument();
 		expect(screen.getByDisplayValue('my older reflection')).toBeInTheDocument();
+	});
+});
+
+describe('WizardSteps — step 2 document upload', () => {
+	const notes = () => new File(['# notes'], 'notes.md', { type: 'text/markdown' });
+
+	/** @param {Record<string, any>} [extra] */
+	function renderStep2(extra = {}) {
+		/** @type {File[]} */
+		const uploaded = [];
+		const { container } = render(WizardSteps, {
+			props: { form: formAt(2), onUploadDocument: (/** @type {File} */ f) => uploaded.push(f), ...extra }
+		});
+		const zone = /** @type {HTMLElement} */ (container.querySelector('.border-dashed'));
+		const input = /** @type {HTMLInputElement} */ (container.querySelector('input[type=file]'));
+		return { uploaded, zone, input };
+	}
+
+	test('choosing a file starts the upload', async () => {
+		const { uploaded, input } = renderStep2();
+		await fireEvent.change(input, { target: { files: [notes()] } });
+		expect(uploaded.map((f) => f.name)).toEqual(['notes.md']);
+	});
+
+	test('the input is reset so the same file can be chosen again after a failure', async () => {
+		const { input } = renderStep2();
+		// jsdom's file input has no selection state of its own; emulate the
+		// browser's "C:\fakepath\…" value so a missing reset is observable.
+		let value = 'C:\\fakepath\\notes.md';
+		Object.defineProperty(input, 'value', {
+			get: () => value,
+			set: (v) => { value = v; },
+			configurable: true
+		});
+		Object.defineProperty(input, 'files', { value: [notes()], configurable: true });
+		await fireEvent.change(input);
+		// A retained value would stop the browser from firing `change` on re-selection.
+		expect(value).toBe('');
+	});
+
+	test('dropping a file on the zone starts the upload', async () => {
+		const { uploaded, zone } = renderStep2();
+		await fireEvent.drop(zone, { dataTransfer: { files: [notes()] } });
+		expect(uploaded.map((f) => f.name)).toEqual(['notes.md']);
+	});
+
+	test('dragover is cancelled (otherwise the browser opens the file) and highlights the zone', async () => {
+		const { zone } = renderStep2();
+		const notCancelled = await fireEvent.dragOver(zone, { dataTransfer: { files: [] } });
+		expect(notCancelled).toBe(false);
+		expect(zone.className).toContain('border-blue-500');
+		await fireEvent.dragLeave(zone);
+		expect(zone.className).not.toContain('border-blue-500');
+	});
+
+	test('a drop while an upload is running is ignored', async () => {
+		const { uploaded, zone } = renderStep2({ uploading: true });
+		await fireEvent.drop(zone, { dataTransfer: { files: [notes()] } });
+		expect(uploaded).toEqual([]);
+	});
+
+	test('Remove hands over to the page, which deletes the document server-side', async () => {
+		let removed = 0;
+		const form = formAt(2);
+		form.attachedFilePath = 'file-1';
+		form.attachedFileMeta = { name: 'notes.md', path: 'file-1' };
+		form.documentStatus = 'completed';
+		render(WizardSteps, { props: { form, onRemoveDocument: () => (removed += 1) } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+		expect(removed).toBe(1);
+		// The page clears the state only once the server confirmed.
+		expect(form.attachedFileMeta).not.toBeNull();
+	});
+
+	test('Remove is disabled while a removal is in flight', () => {
+		const form = formAt(2);
+		form.attachedFileMeta = { name: 'notes.md', path: 'file-1' };
+		render(WizardSteps, { props: { form, onRemoveDocument: () => {}, removing: true } });
+		expect(screen.getByRole('button', { name: 'Remove' })).toBeDisabled();
+	});
+
+	test('without a handler Remove still clears the local state', async () => {
+		const form = formAt(2);
+		form.attachedFilePath = 'file-1';
+		form.attachedFileMeta = { name: 'notes.md', path: 'file-1' };
+		form.documentStatus = 'completed';
+		render(WizardSteps, { props: { form } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+		expect(form.attachedFileMeta).toBeNull();
+		expect(form.documentStatus).toBe('');
+	});
+
+	test('step 3 points at the excerpts, not at how the document was split', () => {
+		render(WizardSteps, { props: { form: formAt(3) } });
+		expect(screen.getByText(/the excerpts and how similar they are/)).toBeInTheDocument();
+		expect(screen.queryByText(/how it was split/)).not.toBeInTheDocument();
+	});
+
+	test('the drop hint is localized', async () => {
+		await useLocale('es');
+		renderStep2();
+		expect(screen.getByText(/arrastrar y soltar/)).toBeInTheDocument();
 	});
 });

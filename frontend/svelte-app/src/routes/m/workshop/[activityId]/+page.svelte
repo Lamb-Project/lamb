@@ -20,6 +20,8 @@
 	import LocaleSwitcher from '$lib/components/workshop/LocaleSwitcher.svelte';
 	import RagComparison from '$lib/components/workshop/RagComparison.svelte';
 	import {
+		dropObservations,
+		latestObservation,
 		recordObservation
 	} from '$lib/components/workshop/logic/workshopObservations.svelte.js';	import { sendWorkshopChat } from '$lib/services/workshopChatService.js';
 	import {
@@ -52,6 +54,13 @@
 	/** @type {boolean} */
 	let uploading = $state(false);
 	/** @type {boolean} */
+	let removingDocument = $state(false);
+	/**
+	 * Bumped whenever the attached document is removed, so an ingestion poll
+	 * that is still running for the old document stops instead of resurrecting it.
+	 */
+	let documentEpoch = 0;
+	/** @type {boolean} */
 	let probing = $state(false);
 	/** @type {boolean} */
 	let submitting = $state(false);
@@ -82,6 +91,11 @@
 	let toolEvents = $state([]);
 	/** @type {Array<any>} */
 	let documentFiles = $state([]);
+	/**
+	 * Step 3's test question and what it retrieved. Read back from the
+	 * observations so it survives navigating between steps and a page reload.
+	 */
+	const probe = $derived(latestObservation(form?.observations, 3, 'probe')?.data ?? null);
 
 	/** @type {number | null} */
 	let assistantId = $state(null);
@@ -355,6 +369,7 @@
 		error = '';
 		reentryRequired = false;
 		form.documentStatus = 'uploading';
+		const epoch = documentEpoch;
 		try {
 			const fd = new FormData();
 			fd.append('file', file);
@@ -380,6 +395,8 @@
 			} else {
 				form.documentStatus = 'completed';
 			}
+			// The student removed the document while it was still ingesting.
+			if (epoch !== documentEpoch) return;
 			// Step 2's observation: how the document was actually chunked. This
 			// is the KB file registry (deterministic facts), not a guess from a
 			// probe query's top-k hits (D2 / C16).
@@ -389,6 +406,49 @@
 			fail(e, 'Upload failed');
 		} finally {
 			uploading = false;
+		}
+	}
+
+	/**
+	 * Remove the attached document (step 2).
+	 *
+	 * The server deletes the session KB and frees the one-document quota; only
+	 * then is the browser state cleared. If the server refuses (e.g. the KB
+	 * server is down) the document stays listed and the student can try again —
+	 * clearing locally first would leave a session that still holds the old
+	 * document and rejects the next upload.
+	 */
+	async function handleRemoveDocument() {
+		if (!form || removingDocument) return;
+		removingDocument = true;
+		error = '';
+		reentryRequired = false;
+		try {
+			if (assistantId) {
+				const res = await api.fetchWithRenew(
+					`/sessions/${encodeURIComponent(sessionId)}/assistant/${assistantId}/doc`,
+					{ method: 'DELETE' }
+				);
+				if (!res.ok) {
+					const err = await res.json().catch(() => ({}));
+					throw new Error(err.detail || `Remove failed (${res.status})`);
+				}
+			}
+			documentEpoch += 1; // stop any ingestion poll still running
+			form.attachedFilePath = '';
+			form.attachedFileMeta = null;
+			form.documentStatus = '';
+			form.selectedKbId = '';
+			form.kbCollection = '';
+			form.kbVerificationResult = null;
+			documentFiles = [];
+			// Their evidence described a knowledge base that no longer exists.
+			form.observations = dropObservations(form.observations, ['document', 'probe']);
+			persistBuildState();
+		} catch (/** @type {any} */ e) {
+			fail(e, 'Failed to remove the document.');
+		} finally {
+			removingDocument = false;
 		}
 	}
 
@@ -417,8 +477,10 @@
 	 */
 	async function pollDocumentStatus(jobId) {
 		const maxAttempts = 60;
+		const epoch = documentEpoch;
 		for (let attempt = 0; attempt < maxAttempts; attempt++) {
 			await new Promise((r) => setTimeout(r, 3000));
+			if (epoch !== documentEpoch) return;
 			try {
 				const data = await api.request(
 					`/sessions/${encodeURIComponent(sessionId)}/doc/status?job_id=${encodeURIComponent(jobId)}`
@@ -791,9 +853,11 @@
 					onBack={handleBack}
 					onSubmit={form.currentStep === 5 ? handleSubmit : undefined}
 					onUploadDocument={handleUploadDocument}
+					onRemoveDocument={handleRemoveDocument}
 					onProbeKb={handleProbeKb}
 					submitting={submitting || assistantCreating}
 					uploading={uploading}
+					removing={removingDocument}
 					probing={probing}
 					nextDisabled={nextDisabled()}
 				/>
@@ -823,6 +887,7 @@
 							{obsRequest}
 							{toolEvents}
 							documents={documentFiles}
+							{probe}
 							toolDefinitions={form.currentStep === 4 ? toolsPayload : null}
 							step={form.currentStep}
 							ragMode={form.ragMode === 'off' ? 'off' : 'on'}

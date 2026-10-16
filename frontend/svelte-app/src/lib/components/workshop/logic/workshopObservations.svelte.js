@@ -39,6 +39,21 @@ export function recordObservation(observations, step, kind, data, now = Date.now
 }
 
 /**
+ * Remove every snapshot of the given kinds, returning the new list.
+ *
+ * Used when the document is removed: its chunking facts and the probe results
+ * describe a knowledge base that no longer exists, so keeping them would show
+ * the student evidence for something they just deleted.
+ *
+ * @param {Array<Observation>} observations
+ * @param {Array<string>} kinds
+ * @returns {Array<Observation>}
+ */
+export function dropObservations(observations, kinds) {
+	return (observations || []).filter((o) => !(o && kinds.includes(o.kind)));
+}
+
+/**
  * The most recent snapshot of a kind for a step, or null.
  *
  * @param {Array<Observation>} observations

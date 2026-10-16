@@ -22,9 +22,11 @@
 	 *   onBack?: () => void,
 	 *   onSubmit?: () => void,
 	 *   onUploadDocument?: (file: File) => void,
+	 *   onRemoveDocument?: () => void,
 	 *   onProbeKb?: () => void,
 	 *   submitting?: boolean,
 	 *   uploading?: boolean,
+	 *   removing?: boolean,
 	 *   probing?: boolean,
 	 *   nextDisabled?: boolean
 	 * }}
@@ -35,12 +37,29 @@
 		onBack,
 		onSubmit,
 		onUploadDocument,
+		onRemoveDocument,
 		onProbeKb,
 		submitting = false,
 		uploading = false,
+		removing = false,
 		probing = false,
 		nextDisabled = false
 	} = $props();
+
+	/**
+	 * Without a handler the document is only forgotten locally; the page wires
+	 * one that also deletes it server-side (otherwise the session keeps the old
+	 * document and the next upload is refused).
+	 */
+	function removeDocument() {
+		if (onRemoveDocument) {
+			onRemoveDocument();
+			return;
+		}
+		form.attachedFilePath = '';
+		form.attachedFileMeta = null;
+		form.documentStatus = '';
+	}
 
 	/** @param {string} field */
 	function bindField(field) {
@@ -49,11 +68,46 @@
 		};
 	}
 
+	/** True while a file is dragged over the step-2 drop zone. */
+	let dragging = $state(false);
+
+	/** @param {File | null | undefined} file */
+	function pickFile(file) {
+		if (file && !uploading && onUploadDocument) onUploadDocument(file);
+	}
+
 	/** @param {Event} e */
 	function handleFile(e) {
 		const input = /** @type {HTMLInputElement} */ (e.target);
 		const file = input.files && input.files[0];
-		if (file && onUploadDocument) onUploadDocument(file);
+		// Reset the input: browsers only fire `change` when the selection
+		// differs, so after a failed upload the same file could not be retried.
+		input.value = '';
+		pickFile(file);
+	}
+
+	/** @param {DragEvent} e */
+	function handleDragOver(e) {
+		// preventDefault is what makes the zone a valid drop target; without it
+		// the browser navigates to the dropped file and the wizard is lost.
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = uploading ? 'none' : 'copy';
+		dragging = !uploading;
+	}
+
+	/** @param {DragEvent} e */
+	function handleDragLeave(e) {
+		// dragleave also fires when moving onto a child element; ignore that.
+		const next = /** @type {Node | null} */ (e.relatedTarget);
+		if (next && /** @type {Node} */ (e.currentTarget).contains(next)) return;
+		dragging = false;
+	}
+
+	/** @param {DragEvent} e */
+	function handleDrop(e) {
+		e.preventDefault();
+		dragging = false;
+		pickFile(e.dataTransfer?.files?.[0]);
 	}
 
 	/** @param {string} toolId */
@@ -109,8 +163,9 @@
 					<div class="flex items-center justify-between">
 						<span class="text-sm truncate">📎 {form.attachedFileMeta.name}</span>
 						<button
-							class="text-xs text-red-600 hover:underline"
-							onclick={() => { form.attachedFilePath = ''; form.attachedFileMeta = null; form.documentStatus = ''; }}
+							class="text-xs text-red-600 hover:underline disabled:opacity-50"
+							disabled={removing}
+							onclick={removeDocument}
 						>{$_('workshop.remove', { default: 'Remove' })}</button>
 					</div>
 					{#if form.documentStatus === 'completed'}
@@ -128,7 +183,14 @@
 					{/if}
 				</div>
 			{:else}
-				<div class="border-2 border-dashed rounded p-6 text-center text-sm text-gray-500">
+				<div
+					role="group"
+					class="border-2 border-dashed rounded p-6 text-center text-sm text-gray-500 transition-colors
+					{dragging ? 'border-blue-500 bg-blue-50' : ''}"
+					ondragover={handleDragOver}
+					ondragleave={handleDragLeave}
+					ondrop={handleDrop}
+				>
 					<p>
 						{$_('workshop.attachDocHint', { default: 'Choose a file (PDF, text or markdown). It will be ingested into a knowledge base for your assistant.' })}
 					</p>
@@ -138,6 +200,9 @@
 						disabled={uploading}
 						onchange={handleFile}
 					/>
+					<p class="mt-2 text-xs text-gray-400">
+						{$_('workshop.dropHint', { default: 'You can also drag and drop the file here.' })}
+					</p>
 				</div>
 				{#if uploading}
 					<p class="text-xs text-blue-600">
@@ -182,7 +247,7 @@
 					: $_('workshop.verifyKb', { default: 'Test retrieval' })}</button>
 			<p class="text-xs text-gray-500">
 				{$_('workshop.probeHitsTitle', { default: 'Excerpts retrieved by this test question' })} —
-				{$_('workshop.panelHint', { default: 'see the panel for how it was split.' })}
+				{$_('workshop.probePanelHint', { default: 'see the panel for the excerpts and how similar they are.' })}
 			</p>
 		</div>
 	{:else if form.currentStep === 4}

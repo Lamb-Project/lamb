@@ -3,6 +3,7 @@ import { describe, test, expect } from 'vitest';
 import {
 	compareRagRuns,
 	describeDocument,
+	dropObservations,
 	formatBytes,
 	hasObservations,
 	latestObservation,
@@ -50,6 +51,18 @@ describe('recordObservation / lookups', () => {
 	test('tolerates null/garbage entries', () => {
 		expect(observationsForStep([null, { step: 2 }], 2)).toHaveLength(1);
 		expect(hasObservations([null], 2)).toBe(false);
+	});
+
+	test('dropObservations removes the given kinds without mutating the input', () => {
+		let obs = recordObservation([], 2, 'document', {});
+		obs = recordObservation(obs, 3, 'probe', {});
+		obs = recordObservation(obs, 5, 'chat_result', { n: 1 });
+
+		const after = dropObservations(obs, ['document', 'probe']);
+
+		expect(after.map((o) => o.kind)).toEqual(['chat_result']);
+		expect(obs).toHaveLength(3);
+		expect(dropObservations(undefined, ['probe'])).toEqual([]);
 	});
 });
 
