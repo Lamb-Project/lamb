@@ -29,6 +29,8 @@ def settings_view(config, is_system_admin, env=os.environ):
         'slot_minutes': s.slot_minutes,
         'timezone': s.timezone,
         'public_url': s.public_url,
+        # Both roles see whether the students' address is this organization's own or the default.
+        'public_url_from_environment': not raw.get('public_url') and bool(env.get('TOKEN_DEALER_PUBLIC_URL')),
         'proxy_configured': bool(s.proxy_url and s.proxy_admin_key),
         'can_edit_infrastructure': bool(is_system_admin),
     }

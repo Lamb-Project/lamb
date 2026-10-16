@@ -12,6 +12,9 @@
         {value:'per_student', label:'Allowance per student', help:'Each student gets their own limit per time slot and/or in total. No shared pot.'},
         {value:'both', label:'Both', help:'A shared pool caps the activity, and each student also has a personal limit, so a few heavy users cannot drain the pool.'}
     ];
+    // Existing activities keep their own models, slot window and time zone; the policy is checked
+    // on their next save (Marc, 2026-10-16: fine, but the org admin is told).
+    let existingActivities = $derived((usage?.teachers || []).reduce((n, t) => n + t.activities.length, 0));
     const fmt = n => (n === null || n === undefined) ? 'no limit' : Number(n).toLocaleString('en-US');
     function fill(s) {
         status = s;
@@ -37,8 +40,12 @@
             teacher_allowances:Object.fromEntries(exceptions.filter(x => x.email.trim()).map(x => [x.email.trim(), Number(x.tokens)]))};
         if (status.settings.can_edit_infrastructure) Object.assign(body, infra);
         try {
+            const pinned = status.settings.can_edit_infrastructure &&
+                Object.entries(status.settings.infrastructure_from_environment || {}).some(([k, fromEnv]) => fromEnv && k !== 'proxy_admin_key' && infra[k]);
             fill(await saveTokenDealerSettings(body, org));
-            notice = 'LLM access settings saved.';
+            notice = 'LLM access settings saved.' +
+                (existingActivities ? ` New activities follow them at once. The ${existingActivities} existing ${existingActivities === 1 ? 'activity keeps its' : 'activities keep their'} models, slot length and time zone, and ${existingActivities === 1 ? 'is' : 'are'} checked against the new policy, only when ${existingActivities === 1 ? 'its' : 'their'} teacher saves ${existingActivities === 1 ? 'it' : 'them'} again.` : '') +
+                (pinned ? ' The proxy addresses are now stored in this organization: it no longer follows the deployment\'s defaults. Clear a field and save to go back to the default.' : '');
         } catch (e) { error = e.message; } finally { busy = false; }
     }
 </script>
@@ -51,14 +58,14 @@
             <p>Teachers can add an <strong>LLM access</strong> activity to their course. Each student of that activity gets a personal API key for the organization's models, with token limits and a timetable set by the teacher inside the rules below.</p>
             <dl class="facts">
                 <dt>Proxy</dt><dd data-testid="proxy-status">{status.settings.proxy_configured ? `connected, ${status.proxy_status}` : 'not connected (ask the system administrator)'}</dd>
-                <dt>Address for students</dt><dd>{status.settings.public_url || 'not set'}</dd>
+                <dt>Address for students</dt><dd>{status.settings.public_url || 'not set'}{#if status.settings.public_url} <span class="help">({status.settings.public_url_from_environment ? "the deployment's default" : "this organization's own setting, set by the system administrator"})</span>{/if}</dd>
                 <dt>Models the proxy serves</dt><dd>{status.proxy_models ? status.proxy_models.join(', ') || 'none' : 'unknown'}</dd>
             </dl>
         </div>
         <form class="card" onsubmit={save}>
             {#if status.settings.can_edit_infrastructure}
                 <h3>Proxy connection <span class="tag">system administrator</span></h3>
-                <p class="help">Where LAMB creates the students' keys. Leave a field empty to use the deployment's default.</p>
+                <p class="help">Where LAMB creates the students' keys. Leave a field empty to use the deployment's default. The fields show the addresses in effect; saving stores what they hold in this organization, which then stops following the deployment's defaults. To keep a default, clear its field before saving.</p>
                 <label>Proxy admin URL<input name="proxy_url" bind:value={infra.proxy_url} placeholder="http://litellm:4000" disabled={busy} /></label>
                 <label>Public URL for students<input name="public_url" bind:value={infra.public_url} placeholder="https://llm.example.edu/v1" disabled={busy} /></label>
                 <label>Proxy admin key<input name="proxy_admin_key" type="password" autocomplete="new-password" bind:value={infra.proxy_admin_key}
@@ -94,6 +101,7 @@
                     <span class="help">Per-student slot limits refill at the start of each slot.</span></label>
                 <label>Time zone of timetables<input name="timezone" bind:value={form.timezone} placeholder="Europe/Madrid" disabled={busy} /></label>
             </div>
+            {#if existingActivities}<p class="help" data-testid="existing-activities-note">Changes apply to new activities at once. The {existingActivities} existing {existingActivities === 1 ? 'activity keeps its' : 'activities keep their'} models, slot length and time zone until {existingActivities === 1 ? 'its' : 'their'} teacher saves {existingActivities === 1 ? 'it' : 'them'} again; the new policy is checked at that save.</p>{/if}
             <button disabled={busy}>Save LLM access settings</button>
         </form>
         {#if usage}

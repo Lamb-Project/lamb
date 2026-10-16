@@ -28,6 +28,14 @@ def test_environment_fallback_is_reported_to_the_system_admin():
     assert view['infrastructure_from_environment']['proxy_admin_key'] and not view['enabled']
 
 
+def test_both_roles_see_whether_the_students_address_is_the_default():
+    env = {'TOKEN_DEALER_PUBLIC_URL': 'https://llm.default/v1'}
+    assert settings_view({}, is_system_admin=False, env=env)['public_url_from_environment'] is True
+    assert settings_view(CONNECTED, is_system_admin=False, env=env)['public_url_from_environment'] is False
+    pinned = apply_update({}, {'public_url': 'https://llm.default/v1'}, is_system_admin=True, env=env)
+    assert settings_view(pinned, is_system_admin=False, env=env)['public_url_from_environment'] is False
+
+
 def test_org_admin_cannot_touch_the_proxy_connection():
     with pytest.raises(PermissionError):
         apply_update(CONNECTED, {'proxy_url': 'http://evil'}, is_system_admin=False, env={})
