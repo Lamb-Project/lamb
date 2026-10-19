@@ -402,7 +402,7 @@ async def accept_ai_grades(activity_id: int, request: Request, token: str = ""):
 # ── Grade sync to Moodle ─────────────────────────────────────────────────
 
 @router.post("/activities/{activity_id}/grades/sync")
-async def sync_grades(activity_id: int, request: Request, token: str = ""):
+def sync_grades(activity_id: int, request: Request, token: str = ""):
     payload = _decode_jwt(request, token)
     _require_instructor(payload)
     _assert_activity(payload, activity_id)

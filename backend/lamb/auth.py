@@ -74,6 +74,8 @@ def create_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
         Encoded JWT string.
     """
     to_encode = data.copy()
+    from lamb.lti13.store import session_claims
+    to_encode.update(session_claims(data))
     expire = datetime.now(timezone.utc) + (expires_delta or DEFAULT_TOKEN_EXPIRY)
     to_encode["exp"] = expire
     to_encode["iat"] = datetime.now(timezone.utc)
@@ -103,4 +105,7 @@ def decode_token(token: str) -> Optional[dict]:
         if not isinstance(takeover, dict) or not is_active(str(takeover.get("id", ""))):
             logger.debug("Takeover token no longer active")
             return None
+    from lamb.lti13.store import session_active
+    if not session_active(payload):
+        return None
     return payload

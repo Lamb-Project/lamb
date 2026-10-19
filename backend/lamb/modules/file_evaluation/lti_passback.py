@@ -1,5 +1,5 @@
 """
-LTI 1.1 grade passback to Moodle.
+Grade passback through LTI 1.1 Outcomes or LTI 1.3 AGS.
 
 OAuth 1.0a signature generation + IMS LTI XML format ported **verbatim** from
 LAMBA ``lti_service.py``. Only the credential source changed: LAMB uses
@@ -177,9 +177,6 @@ class LTIGradePassback:
         manager = LtiActivityManager()
         consumer_key, consumer_secret = manager.get_lti_credentials()
 
-        if not consumer_key or not consumer_secret:
-            return {"success": False, "error": "LTI credentials not configured", "sent": 0, "failed": 0}
-
         conn = db.get_connection()
         if not conn:
             return {"success": False, "error": "No DB connection", "sent": 0, "failed": 0}
@@ -194,8 +191,12 @@ class LTIGradePassback:
             if not activity:
                 return {"success": False, "error": "Activity not found", "sent": 0, "failed": 0}
 
+            from lamb.lti13 import is_scoped
+            is_lti13 = is_scoped(activity.get("resource_link_id"))
+            if not is_lti13 and (not consumer_key or not consumer_secret):
+                return {"success": False, "error": "LTI credentials not configured", "sent": 0, "failed": 0}
             lis_outcome_url = activity.get("lis_outcome_service_url")
-            if not lis_outcome_url:
+            if not is_lti13 and not lis_outcome_url:
                 return {"success": False, "error": "No lis_outcome_service_url on activity", "sent": 0, "failed": 0}
 
             rows = conn.execute("""
@@ -205,25 +206,29 @@ class LTIGradePassback:
                   JOIN mod_file_eval_submissions fs ON ss.file_submission_id = fs.id
                   JOIN mod_file_eval_grades g ON fs.id = g.file_submission_id
                  WHERE ss.activity_id = ?
-                   AND ss.lis_result_sourcedid IS NOT NULL
-                   AND TRIM(ss.lis_result_sourcedid) != ''
+                   AND (? = 1 OR (ss.lis_result_sourcedid IS NOT NULL AND TRIM(ss.lis_result_sourcedid) != ''))
                    AND g.score IS NOT NULL
-            """, (activity_id,)).fetchall()
+            """, (activity_id, int(is_lti13))).fetchall()
 
             if not rows:
-                return {"success": False, "error": "No graded submissions with sourcedid", "sent": 0, "failed": 0}
+                return {"success": False, "error": "No graded submissions with a grade-return target", "sent": 0, "failed": 0}
 
             sent, failed, results = 0, 0, []
             now = int(_time.time())
             for row in rows:
-                res = LTIGradePassback.send_grade_to_moodle(
-                    lis_result_sourcedid=row["lis_result_sourcedid"],
-                    lis_outcome_service_url=lis_outcome_url,
-                    consumer_key=consumer_key,
-                    consumer_secret=consumer_secret,
-                    score=row["score"],
-                    comment=row["comment"] or "Grade sent automatically",
-                )
+                if is_lti13:
+                    from lamb.lti13.grades import send_score
+                    res = send_score(activity['resource_link_id'], row['student_id'],
+                                     row['score'], row['comment'] or 'Grade sent automatically')
+                else:
+                    res = LTIGradePassback.send_grade_to_moodle(
+                        lis_result_sourcedid=row["lis_result_sourcedid"],
+                        lis_outcome_service_url=lis_outcome_url,
+                        consumer_key=consumer_key,
+                        consumer_secret=consumer_secret,
+                        score=row["score"],
+                        comment=row["comment"] or "Grade sent automatically",
+                    )
                 err_detail = res.get("error_message")
                 results.append({
                     "student_id": row["student_id"],

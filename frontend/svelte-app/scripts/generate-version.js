@@ -44,7 +44,7 @@ function getGitCommitDate() {
 }
 
 const version = {
-  version: '0.8',
+  version: '0.9-dev',
   commit: getGitCommitHash(),
   branch: getGitBranch(),
   commitDate: getGitCommitDate(),

@@ -27,6 +27,7 @@
     import { takeoverText, fill } from '$lib/utils/takeoverText';
     import { locale as takeoverLocale } from 'svelte-i18n';
     import OrgForm from '$lib/components/admin/OrgForm.svelte';
+    import Lti13Settings from '$lib/components/admin/Lti13Settings.svelte';
 
     // --- State Management ---
     /** @type {'dashboard' | 'users' | 'organizations' | 'lti-settings' | 'user-detail' | 'cost-management'} */
@@ -3085,6 +3086,8 @@
                 </ol>
             </div>
         {/if}
+
+        <Lti13Settings />
 
     {:else if currentView === 'cost-management'}
         <!-- Cost Management View -->
