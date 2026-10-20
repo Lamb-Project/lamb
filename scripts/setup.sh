@@ -34,6 +34,16 @@ else
     echo "✅ KB server .env exists"
 fi
 
+# Root .env — required by docker-compose.next.yaml
+if [ ! -f "$PROJECT_ROOT/.env" ]; then
+    echo "⚠️  Root .env not found. Creating from .env.next.example..."
+    cp "$PROJECT_ROOT/.env.next.example" "$PROJECT_ROOT/.env"
+    echo "✅ Created .env"
+    echo "⚠️  IMPORTANT: edit .env and set your secrets/API keys!"
+else
+    echo "✅ Root .env exists"
+fi
+
 # 3. Validate .env files for common typos
 echo ""
 echo "🔍 Validating .env files for common issues..."
@@ -114,26 +124,20 @@ echo ""
 echo "✅ Setup complete!"
 echo ""
 echo "📋 Next steps:"
-echo "   1. Edit backend/.env and add your OpenAI API key (or other LLM keys)"
-echo "      nano $PROJECT_ROOT/backend/.env"
+echo "   1. Edit .env and set your secrets/API keys"
+echo "      nano $PROJECT_ROOT/.env"
 echo ""
-echo "   2. Set environment variable (current shell):"
-echo "      export LAMB_PROJECT_PATH=\"$PROJECT_ROOT\""
-echo ""
-echo "   3. Launch LAMB services:"
+echo "   2. Launch LAMB services:"
 echo "      cd $PROJECT_ROOT"
-echo "      docker-compose up -d"
+echo "      docker compose -f docker-compose.next.yaml up -d"
 echo ""
-echo "   4. Wait 2-3 minutes for builds to complete"
-echo "      Watch with: docker logs lamb-openwebui-build -f"
+echo "      Add local Ollama inference with:  --profile ollama"
+echo "      On a GPU host also add:           -f docker-compose.next.gpu.yaml"
 echo ""
-echo "   5. Restart OpenWebUI after build completes:"
-echo "      docker restart lamb-openwebui"
-echo ""
-echo "   6. Verify deployment:"
+echo "   3. Verify deployment:"
 echo "      $PROJECT_ROOT/scripts/verify-deployment.sh"
 echo ""
-echo "   7. Access LAMB at http://localhost:5173"
+echo "   4. Access LAMB at http://localhost:9099"
 echo "      Default login: admin@owi.com / admin"
 echo ""
 

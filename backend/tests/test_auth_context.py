@@ -468,3 +468,50 @@ class TestToDict:
         d = ctx.to_dict()
         serialized = json.dumps(d)
         assert isinstance(serialized, str)
+
+
+class TestAccountStatePerRequest:
+    """#256: disabling or demoting a user takes effect on the next request, not at logout."""
+
+    def _ctx(self, mock_decode, mock_db, token_role, db_user):
+        mock_decode.return_value = _make_jwt_payload(role=token_role)
+        mock_db.get_creator_user_by_email.return_value = db_user
+        mock_db.get_organization_by_id.return_value = _make_organization()
+        mock_db.get_user_organization_role.return_value = "member"
+        return _build_auth_context("still-valid-token")
+
+    @patch("lamb.auth_context._db")
+    @patch("lamb.auth.decode_token")
+    def test_disabled_user_with_valid_token_is_rejected(self, mock_decode, mock_db):
+        user = _make_user(role="admin"); user["enabled"] = False
+        assert self._ctx(mock_decode, mock_db, "admin", user) is None
+
+    @patch("lamb.auth_context._db")
+    @patch("lamb.auth.decode_token")
+    def test_demoted_admin_loses_admin_with_old_token(self, mock_decode, mock_db):
+        ctx = self._ctx(mock_decode, mock_db, "admin", _make_user(role="user"))
+        assert ctx is not None and ctx.is_system_admin is False and ctx.user["role"] == "user"
+
+    @patch("lamb.auth_context._db")
+    @patch("lamb.auth.decode_token")
+    def test_promoted_user_gets_stored_role_without_new_login(self, mock_decode, mock_db):
+        ctx = self._ctx(mock_decode, mock_db, "user", _make_user(role="admin"))
+        assert ctx.is_system_admin is True
+
+    @patch("lamb.auth_context._db")
+    @patch("lamb.auth.decode_token")
+    def test_token_role_used_only_when_no_role_is_stored(self, mock_decode, mock_db):
+        user = _make_user(); user["role"] = None
+        assert self._ctx(mock_decode, mock_db, "admin", user).is_system_admin is True
+
+
+def test_legacy_token_helper_applies_the_same_account_state():
+    from creator_interface.assistant_router import get_creator_user_from_token
+    user = _make_user(role="user"); user["enabled"] = False
+    with patch("lamb.auth.decode_token", return_value=_make_jwt_payload(role="admin")), \
+         patch("creator_interface.assistant_router.db_manager") as manager:
+        manager.get_creator_user_by_email.return_value = user
+        manager.get_organization_by_id.return_value = _make_organization()
+        assert get_creator_user_from_token("Bearer still-valid-token") is None
+        user["enabled"] = True
+        assert get_creator_user_from_token("Bearer still-valid-token")["role"] == "user"

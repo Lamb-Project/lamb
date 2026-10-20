@@ -41,7 +41,7 @@
     function getVisibleMessages() {
         if (!session) return [];
         return (session.conversation || []).filter(
-            m => (m.role === 'user' && !(m.content || '').startsWith('[System:'))
+            m => (m.role === 'user' && !(m.content || '').startsWith('[System:') && !(m.content || '').startsWith('[Application workflow instructions]'))
               || (m.role === 'assistant' && m.content && !m.tool_calls)
         );
     }

@@ -19,7 +19,7 @@ def rag_processor(
     The file path is relative to the project's static/public folder.
     """
     logger.debug(f"Starting single_file_rag processor with assistant: {assistant.id if assistant else 'None'}")
-    
+
     if not assistant:
         logger.warning("No assistant provided")
         return {
@@ -30,18 +30,18 @@ def rag_processor(
     try:
         # Parse the metadata to get the file path
         logger.debug(f"Full metadata content: {assistant.metadata}")
-        
+
         # Handle empty metadata
         if not assistant.metadata or assistant.metadata.strip() == '':
             logger.warning(f"Empty metadata for assistant {assistant.id if assistant else 'unknown'}")
             config = {}
         else:
             config = json.loads(assistant.metadata)
-            
+
         logger.debug(f"Parsed metadata config: {config}")
         file_path = config.get('file_path')
         logger.debug(f"Extracted file_path from metadata: {file_path}")
-        
+
         if not file_path:
             logger.warning("No file_path found in metadata")
             return {
@@ -49,25 +49,16 @@ def rag_processor(
                 "sources": []
             }
 
-        # Construct absolute path from project's static/public folder
-        base_path = os.path.join('static', 'public')
-        full_path = os.path.join(base_path, file_path)
-        logger.debug(f"Base path: {base_path}")
-        logger.debug(f"Full path: {full_path}")
-
-        # Ensure the path doesn't escape the static/public directory
-        if '..' in file_path or not os.path.abspath(full_path).startswith(os.path.abspath(base_path)):
-            logger.error(f"Security check failed - path attempts to escape base directory: {full_path}")
-            return {
-                "context": "Error: Invalid file path",
-                "sources": []
-            }
+        from lamb.uploaded_files import document_for_owner
+        # Use the assistant owner, including shared/student execution.
+        full_path = str(document_for_owner(file_path, assistant.owner))
 
         # Check if file exists
         if not os.path.exists(full_path):
             logger.error(f"File not found: {full_path}")
             return {
-                "context": f"Error: File not found: {file_path}",
+                "context": "",
+                "error": f"File not found: {file_path}",
                 "sources": []
             }
 
@@ -80,11 +71,16 @@ def rag_processor(
         with open(full_path, 'r', encoding='utf-8') as file:
             content = file.read()
             logger.debug(f"Successfully read {len(content)} characters from file")
-                
+
+        from lamb.document_provenance import single_provenance
+        provenance = single_provenance(file_path, content)
         return {
             "context": content,
             "sources": [{
                 "source": file_path,
+                "title": provenance.get("title", os.path.basename(file_path)),
+                "url": provenance.get("source_url"),
+                "moodle_provenance": provenance,
                 "content": content,
                 "score": 1.0
             }]
@@ -93,12 +89,16 @@ def rag_processor(
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse metadata JSON: {e}")
         return {
-            "context": f"Error processing file: Invalid metadata format",
+            "context": "",
+            "error": "Invalid metadata format",
             "sources": []
         }
     except Exception as e:
         logger.error(f"Error processing file: {str(e)}", exc_info=True)
         return {
-            "context": f"Error processing file: {str(e)}",
+            "context": "",
+            "error": f"Error processing file: {str(e)}",
             "sources": []
-        } 
+        }
+
+AAC_DESCRIPTION = 'Loads the assistant owner’s selected single file as grounding context.'

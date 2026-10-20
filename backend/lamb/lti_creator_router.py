@@ -16,6 +16,7 @@ from fastapi.responses import RedirectResponse, JSONResponse
 from lamb.database_manager import LambDatabaseManager
 from lamb.logging_config import get_logger
 import hmac
+from lamb.lti_oauth import signing_key as oauth_signing_key
 import hashlib
 import base64
 import urllib.parse
@@ -62,7 +63,7 @@ def generate_oauth_signature(params: dict, http_method: str, base_url: str,
     ])
 
     # Create signing key (consumer_secret&token_secret)
-    signing_key = f"{consumer_secret}&{token_secret}"
+    signing_key = oauth_signing_key(consumer_secret, token_secret)
 
     # Calculate HMAC-SHA1 signature
     hashed = hmac.new(signing_key.encode(), base_string.encode(), hashlib.sha1)

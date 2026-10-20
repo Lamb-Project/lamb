@@ -13,7 +13,7 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 # Server Configuration
-DEV_MODE = os.getenv('DEV_MODE', 'false').lower() == 'false'
+DEV_MODE = _env_bool("DEV_MODE", False)
 
 # LAMB Host Configuration
 # LAMB_WEB_HOST: External/public URL for browser-side requests (e.g., https://lamb.yourdomain.com in production)

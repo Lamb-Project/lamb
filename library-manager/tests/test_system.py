@@ -36,6 +36,13 @@ async def test_wrong_token_rejected(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_non_ascii_token_rejected_with_401(client: AsyncClient):
+    """A bearer token with non-ASCII characters is a wrong token, never a server error (#448)."""
+    resp = await client.get("/plugins", headers={"Authorization": "Bearer t\u00e9st-t\u00f6ken".encode("latin-1")})
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_list_plugins(client: AsyncClient):
     """Plugin listing should return all registered import plugins."""
     resp = await client.get("/plugins", headers=AUTH_HEADERS)

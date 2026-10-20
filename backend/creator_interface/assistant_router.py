@@ -12,6 +12,9 @@ from creator_interface.openai_connect import OpenAIConnector
 from lamb.database_manager import LambDatabaseManager
 # Replaced HTTP endpoint imports with service layer
 from lamb.services.assistant_service import AssistantService
+from lamb.services.rag_collections import RagCollectionsError, resolve_for_user
+from lamb.completions.org_config_resolver import OrganizationConfigResolver
+from lamb.services.assistant_config_rules import config_errors, rule_inputs
 from lamb.services.organization_service import OrganizationService
 from lamb.auth_context import AuthContext, get_auth_context
 from typing import Optional, List, Dict, Any, Tuple, Union
@@ -195,8 +198,11 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
                 logger.error(f"No creator user found for email: {user_email}")
                 return None
 
-            # Use role from JWT payload (authoritative)
-            creator_user['role'] = payload.get('role', creator_user.get('role', 'user'))
+            # Stored account state wins over the token's copy (#256)
+            from lamb.auth_context import apply_account_state
+            creator_user = apply_account_state(creator_user, payload.get('role'))
+            if not creator_user:
+                return None
         else:
             # --- OWI fallback for pre-migration tokens ---
             logger.debug("LAMB JWT decode failed, trying OWI fallback")
@@ -215,8 +221,11 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
                 logger.error(f"No creator user found for email: {user_email}")
                 return None
 
-            # Use OWI role during fallback
-            creator_user['role'] = user_auth.get('role', 'user')
+            # Stored account state wins over the OWI token's role (#256)
+            from lamb.auth_context import apply_account_state
+            creator_user = apply_account_state(creator_user, user_auth.get('role'))
+            if not creator_user:
+                return None
 
         # Fetch full organization data for access control
         organization_id = creator_user.get('organization_id')
@@ -316,10 +325,23 @@ def sanitize_filename(filename: str) -> str:
     return filename[:100] if filename else "assistant_export"
 
 
+@router.get("/capabilities")
+async def get_assistant_capabilities(auth: AuthContext = Depends(get_auth_context), request: Request = None):
+    """Use the same authenticated Creator instance for discovery and writes."""
+    from lamb.completions.main import list_processors_and_connectors
+    from lamb.assistant_model_config import model_configuration
+    from lamb.completions.org_config_resolver import OrganizationConfigResolver
+    capabilities = await list_processors_and_connectors(auth=auth)
+    configured = OrganizationConfigResolver(auth.user['email']).get_global_default_model_config()
+    defaults = (auth.organization.get('config') or {}).get('assistant_defaults') or {}
+    from lamb.aac.brief import capability_map
+    installation = await capability_map(auth, request.app.routes if request else ())
+    return {**capabilities, **model_configuration(capabilities, defaults, configured), 'capability_map':installation}
+
+
 REQUIRED_PLUGIN_METADATA_KEYS = (
     "prompt_processor",
     "connector",
-    "llm",
     "rag_processor",
 )
 
@@ -373,31 +395,66 @@ def validate_update_plugin_metadata(
     return normalized_metadata, None
 
 
-def _ensure_metadata_defaults(metadata_raw) -> str:
+def _ensure_metadata_defaults(metadata_raw, owner_email: Optional[str] = None):
     """Ensure essential fields have defaults in assistant metadata.
 
-    The completion pipeline requires a valid prompt_processor. If not set,
-    the pipeline fails with 'Prompt processor default not found'.
+    The completion pipeline requires a valid prompt_processor, and updates require
+    prompt_processor, connector, llm and rag_processor. An assistant created with
+    minimal metadata (CLI, AAC, API) gets all four, so its first partial edit does not
+    fail (#335). connector and llm come from the owner's organization, as completions do.
     """
-    if not metadata_raw:
-        return json.dumps({"prompt_processor": "simple_augment"})
-
-    if isinstance(metadata_raw, str):
-        try:
-            meta = json.loads(metadata_raw)
-        except (json.JSONDecodeError, TypeError):
-            return json.dumps({"prompt_processor": "simple_augment"})
-    elif isinstance(metadata_raw, dict):
+    as_string = not isinstance(metadata_raw, dict)
+    meta = {}
+    if isinstance(metadata_raw, dict):
         meta = metadata_raw
-    else:
-        return json.dumps({"prompt_processor": "simple_augment"})
+    elif isinstance(metadata_raw, str) and metadata_raw.strip():
+        try:
+            parsed = json.loads(metadata_raw)
+            meta = parsed if isinstance(parsed, dict) else {}
+        except (json.JSONDecodeError, TypeError):
+            meta = {}
 
     if not meta.get("prompt_processor"):
         meta["prompt_processor"] = "simple_augment"
+    if not meta.get("rag_processor"):
+        meta["rag_processor"] = "no_rag"
+    if owner_email and (not meta.get("connector") or not meta.get("llm")):
+        try:
+            resolved = OrganizationConfigResolver(owner_email).resolve_model_for_completion(
+                meta.get("llm") or None, meta.get("connector") or None)
+            if not meta.get("connector"):
+                meta["connector"] = resolved["provider"]
+            if not meta.get("llm") and meta["connector"] == resolved["provider"]:
+                meta["llm"] = resolved["model"]
+        except Exception as e:
+            logger.warning(f"Could not resolve the organization model for {owner_email}: {e}")
     if not meta.get("connector"):
         meta["connector"] = "openai"
 
-    return json.dumps(meta) if isinstance(metadata_raw, str) else meta
+    return json.dumps(meta) if as_string else meta
+
+
+def _merge_partial_metadata(stored_raw, incoming_raw):
+    """A metadata update missing required fields is a partial edit over the stored metadata (#335).
+
+    Complete metadata (what the assistant form sends) replaces the stored value, as before.
+    """
+    def as_dict(raw):
+        if isinstance(raw, dict):
+            return dict(raw)
+        try:
+            parsed = json.loads(raw) if isinstance(raw, str) and raw.strip() else {}
+        except (json.JSONDecodeError, TypeError):
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    incoming = as_dict(incoming_raw)
+    if incoming is None or all(isinstance(incoming.get(k), str) and incoming[k].strip()
+                               for k in REQUIRED_PLUGIN_METADATA_KEYS):
+        return incoming_raw
+    merged = as_dict(stored_raw) or {}
+    merged.update(incoming)
+    return json.dumps(merged) if isinstance(incoming_raw, str) else merged
 
 
 def prepare_assistant_body(
@@ -429,6 +486,18 @@ def prepare_assistant_body(
             # Fallback: create prefixed name (for backward compatibility)
             prefixed_name = f"{creator_user['id']}_{original_name}"
 
+        metadata = _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", "")),
+                                             creator_user.get('email'))
+        parsed_metadata = json.loads(metadata) if isinstance(metadata, str) else metadata
+        prompt_template = original_body.get("prompt_template", "")
+        # Only default new, omitted templates for the built-in augmentation path.
+        # Explicit templates (including empty ones) and custom processors retain their semantics.
+        if ("prompt_template" not in original_body
+                and parsed_metadata.get("prompt_processor") == "simple_augment"
+                and parsed_metadata.get("rag_processor") in {
+                    "simple_rag", "single_file_rag", "context_aware_rag", "hierarchical_rag", "rubric_rag"}):
+            prompt_template = "Context:\n{context}\n\nUser: {user_input}"
+
         # Build the body according to Assistant class structure
         new_body = {
             "name": prefixed_name,  # Use prefixed name
@@ -437,11 +506,11 @@ def prepare_assistant_body(
             "owner": creator_user['email'],
             # Handle metadata as source of truth, copy to api_callback for backward compatibility
             # Ensure essential defaults (prompt_processor) are set
-            "metadata": _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", ""))),
-            "api_callback": _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", ""))),
+            "metadata": metadata,
+            "api_callback": metadata,
             # Check for system_prompt first, then instructions as fallback
             "system_prompt": original_body.get("system_prompt", original_body.get("instructions", "")),
-            "prompt_template": original_body.get("prompt_template", ""),
+            "prompt_template": prompt_template,
             # Removed unused fields: pre_retrieval_endpoint, post_retrieval_endpoint, RAG_endpoint
             # These are still expected by the backend but we'll pass empty strings
             "pre_retrieval_endpoint": "",
@@ -582,7 +651,14 @@ async def create_assistant_directly(request: Request, auth: AuthContext = Depend
         
         assistant_name = sanitized_prefixed_name
 
-        # 5. Prepare assistant data with sanitized name
+        # 5. Resolve RAG collections to knowledge-base IDs the creator can use (#517)
+        try:
+            original_body["RAG_collections"] = resolve_for_user(
+                original_body.get("RAG_collections", ""), creator_user.get('id'), creator_user.get('organization_id'))
+        except RagCollectionsError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+        # 6. Prepare assistant data with sanitized name
         new_body, error = prepare_assistant_body(
             original_body, 
             creator_user, 
@@ -590,6 +666,14 @@ async def create_assistant_directly(request: Request, auth: AuthContext = Depend
         )
         if error:
             raise HTTPException(status_code=400, detail=error)
+
+        # What this RAG configuration needs to work (#335)
+        problems = config_errors(new_body["api_callback"], new_body.get("prompt_template"), new_body.get("RAG_collections"))
+        if problems:
+            raise HTTPException(status_code=400, detail=" ".join(problems))
+
+        from lamb.uploaded_files import validate_file_binding
+        validate_file_binding(new_body["api_callback"], creator_user["email"])
 
         # 6. Create Assistant in DB
         assistant_id = None
@@ -1245,9 +1329,23 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         for key, default_val in merge_defaults.items():
             if key not in original_body:
                 original_body[key] = default_val
+        for key in ("metadata", "api_callback"):
+            if original_body.get(key) is not current_metadata_str:
+                original_body[key] = _merge_partial_metadata(current_metadata_str, original_body[key])
+
+        # A changed RAG_collections must resolve against the assistant owner's knowledge bases (#517).
+        # An unchanged value is kept, so unrelated edits never fail on a KB that was later unshared.
+        if (original_body.get("RAG_collections") or "") != (current.RAG_collections or ""):
+            owner = LambDatabaseManager().get_creator_user_by_email(current.owner) or {}
+            try:
+                original_body["RAG_collections"] = resolve_for_user(
+                    original_body.get("RAG_collections", ""), owner.get('id'), owner.get('organization_id'))
+            except RagCollectionsError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
 
         # Ensure defaults before validation (fills missing prompt_processor, connector)
-        original_body["metadata"] = _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", "")))
+        original_body["metadata"] = _ensure_metadata_defaults(
+            original_body.get("metadata", original_body.get("api_callback", "")), current.owner)
         original_body["api_callback"] = original_body["metadata"]
 
         normalized_metadata, metadata_error = validate_update_plugin_metadata(original_body)
@@ -1274,6 +1372,16 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         # prepare_assistant_body() sets owner to the calling user (correct for
         # create, an ownership-takeover hole on update); preserve the existing owner.
         new_body["owner"] = current.owner
+        from lamb.uploaded_files import validate_file_binding
+        validate_file_binding(new_body["api_callback"], current.owner)
+
+        # Checked only when the configuration changes, so an unrelated edit never fails
+        # on settings saved before these rules existed (#335).
+        if rule_inputs(new_body["api_callback"], new_body.get("prompt_template"), new_body.get("RAG_collections")) != \
+                rule_inputs(current.api_callback, current.prompt_template, current.RAG_collections):
+            problems = config_errors(new_body["api_callback"], new_body.get("prompt_template"), new_body.get("RAG_collections"))
+            if problems:
+                raise HTTPException(status_code=400, detail=" ".join(problems))
 
         logger.info(f"Prepared body for update (Assistant ID {assistant_id}): {new_body}")
 

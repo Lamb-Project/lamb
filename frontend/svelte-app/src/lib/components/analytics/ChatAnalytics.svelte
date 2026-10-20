@@ -197,6 +197,10 @@
     }
 </script>
 
+{#if !loading && !error && assistant?.id}
+<span hidden data-aac-resource="assistant" data-aac-id={assistant.id} data-aac-tab="activity"></span>
+{/if}
+
 <div class="space-y-6">
     <!-- Header -->
     <div class="flex items-center justify-between">

@@ -1,4 +1,6 @@
 <script>
+    import MoodleSettings from '$lib/components/admin/MoodleSettings.svelte';
+    import AgentSettings from '$lib/components/aac/AgentSettings.svelte';
     import { onMount, onDestroy } from 'svelte';
     import { page } from '$app/stores';
     import { goto } from '$app/navigation';
@@ -11,6 +13,7 @@
     axios.isAxiosError = isAxiosError;
     import { user } from '$lib/stores/userStore';
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
+    import OrgApiAccessSettings from '$lib/components/admin/OrgApiAccessSettings.svelte';
     import Pagination from '$lib/components/common/Pagination.svelte';
     import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
     // BulkUserImport component not yet implemented
@@ -23,6 +26,9 @@
     import UserForm from '$lib/components/admin/shared/UserForm.svelte';
     import ChangePasswordModal from '$lib/components/admin/shared/ChangePasswordModal.svelte';
     import UserActionModal from '$lib/components/admin/shared/UserActionModal.svelte';
+    import { beginTakeover } from '$lib/session/takeover';
+    import { takeoverText, fill } from '$lib/utils/takeoverText';
+    import { locale as takeoverLocale } from 'svelte-i18n';
 
     // Get user data
     /** @type {any} */
@@ -1264,7 +1270,9 @@
                 'Content-Type': 'application/json'
             };
             
-            const response = await axios.get(`${API_BASE}/org-admin/assistants`, { headers });
+            // Scope to the organization a system admin opened, like the other tabs (#97).
+            const params = targetOrgSlug ? `?org=${encodeURIComponent(targetOrgSlug)}` : '';
+            const response = await axios.get(`${API_BASE}/org-admin/assistants${params}`, { headers });
             if (!isMounted) return;
             orgAssistants = response.data.assistants || [];
             assistantsLoaded = true; // Mark as loaded even if empty
@@ -2229,6 +2237,22 @@
             fetchSettings();
         }
     });
+    // The row variable shadows the user store inside the users table.
+    const ownEmail = $derived($user.email);
+
+    /**
+     * Act as a creator to give support (#523). The server decides who may act as whom.
+     * @param {any} target
+     */
+    async function actAs(target) {
+        const t = takeoverText($takeoverLocale);
+        if (!window.confirm(fill(t.confirm, { name: target.name || target.email }))) return;
+        try {
+            await beginTakeover(target.id);
+        } catch (err) {
+            window.alert(fill(t.failed, { reason: err instanceof Error ? err.message : String(err) }));
+        }
+    }
 </script>
 
 <svelte:head>
@@ -2864,6 +2888,20 @@
                                                             </button>
                                                         {/if}
 
+                                                        <!-- Act as this creator (#523) -->
+                                                        {#if user.email !== ownEmail}
+                                                            <button
+                                                                class="inline-flex items-center gap-1 text-orange-700 hover:text-orange-900"
+                                                                title={takeoverText($takeoverLocale).actAsTitle}
+                                                                aria-label={`${takeoverText($takeoverLocale).actAs} ${user.name || user.email}`}
+                                                                onclick={() => actAs(user)}
+                                                            >
+                                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4" aria-hidden="true">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+                                                                </svg>
+                                                                {takeoverText($takeoverLocale).actAs}
+                                                            </button>
+                                                        {/if}
                                                         <!-- Enable/Disable Toggle -->
                                                         {#if !(userData && userData.email === user.email)}
                                                             {#if user.enabled}
@@ -3303,7 +3341,7 @@
                         <!-- Settings Sub-Navigation -->
                         <div class="bg-white shadow-sm rounded-lg mb-4">
                             <div class="border-b border-gray-200">
-                                <nav class="flex -mb-px" aria-label="Settings Tabs">
+                                <nav class="flex flex-wrap -mb-px" aria-label="Settings Tabs">
                                     <button
                                         class="px-6 py-3 border-b-2 font-medium text-sm transition-colors duration-200 {settingsSubView === 'general' ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
                                         onclick={() => { settingsSubView = 'general'; }}
@@ -3366,10 +3404,14 @@
                                     >
                                         LTI Creator
                                     </button>
+                                    <button class="px-6 py-3 border-b-2 font-medium text-sm {settingsSubView === 'moodle' ? 'border-brand text-brand' : 'border-transparent text-gray-500'}" onclick={() => {settingsSubView='moodle';}}>Moodle</button>
                                 </nav>
                             </div>
                         </div>
 
+                        {#if settingsSubView === 'moodle'}
+                            {#key targetOrgSlug}<MoodleSettings org={targetOrgSlug} />{/key}
+                        {/if}
                         <!-- General Settings Tab -->
                         {#if settingsSubView === 'general'}
                         <!-- Signup Settings -->
@@ -3436,6 +3478,7 @@
                                 </div>
                             </div>
                         </div>
+                        <OrgApiAccessSettings orgSlug={targetOrgSlug} />
                         {/if}
 
                         <!-- API Configuration Tab -->
@@ -3767,6 +3810,8 @@
                                             </div>
                                         {/if}
                                     </div>
+
+                                    {#key targetOrgSlug}<AgentSettings org={targetOrgSlug} />{/key}
 
                                     <!-- Global Model Configurations -->
                                     <div class="mt-8 space-y-6">

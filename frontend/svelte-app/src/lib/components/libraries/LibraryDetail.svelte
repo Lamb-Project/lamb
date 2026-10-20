@@ -99,7 +99,9 @@
             // Session-expired errors are already redirecting elsewhere.
             if (err instanceof Error && err.message.startsWith('Session expired')) return;
             console.error('Error loading library:', err);
-            error = err instanceof Error ? err.message : 'Failed to load library';
+            // Prefer the server's reason, e.g. 'Unable to connect to Library Manager' on a 503 (#350).
+            const detail = /** @type {any} */ (err)?.response?.data?.detail;
+            error = typeof detail === 'string' ? detail : err instanceof Error ? err.message : 'Failed to load library';
         } finally {
             if (isMounted && myLoadId === currentLoadId) loading = false;
         }

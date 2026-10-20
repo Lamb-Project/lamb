@@ -313,6 +313,10 @@
   });
 </script>
 
+{#if !loading && !error && rubricStore.rubric}
+<span hidden data-aac-resource="rubric" data-aac-id={rubricId} data-aac-tab="view"></span>
+{/if}
+
 <div class="min-h-screen bg-gray-50">
   <!-- Success Toast -->
   {#if successMessage}

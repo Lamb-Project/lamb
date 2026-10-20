@@ -13,6 +13,7 @@ vi.mock('$lib/stores/assistantConfigStore', async () => {
 			prompt_processors: ['default_processor', 'template_validator_processor'],
 			connectors: {
 				openai: {
+					available_llms: ['gpt-4', 'gpt-3.5-turbo'],
 					models: [
 						{ id: 'gpt-4', forced_capabilities: {} },
 						{ id: 'gpt-3.5-turbo', forced_capabilities: {} }

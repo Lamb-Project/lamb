@@ -24,10 +24,13 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PORT=9099
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends curl git && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt ./requirements.txt
 RUN python -m pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -r requirements.txt
+# Fingerprint of the installed requirements; dev containers compare it against
+# the bind-mounted requirements.txt to detect dependencies newer than the image.
+RUN sha256sum requirements.txt | cut -d' ' -f1 > /usr/local/lib/lamb-requirements.sha256
 
 COPY backend/ ./
 COPY --from=frontend-build /frontend/build /app/frontend/build
@@ -35,7 +38,7 @@ RUN chmod +x /app/backend/docker-entrypoint.py
 
 EXPOSE 9099
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=5 CMD curl --fail http://127.0.0.1:${PORT}/status || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=5 CMD curl --fail --max-time 4 http://127.0.0.1:${PORT}/status || exit 1
 
 ENTRYPOINT ["python", "/app/backend/docker-entrypoint.py"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9099", "--forwarded-allow-ips", "*"]

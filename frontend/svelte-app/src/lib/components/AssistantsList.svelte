@@ -8,6 +8,7 @@
   import { base } from '$app/paths';
   import { browser } from '$app/environment';
   import { _, locale } from '$lib/i18n';
+  import { isKbBasedRag } from '$lib/utils/ragProcessorHelpers.js';
   
   // Import new components and utilities
   import Pagination from './common/Pagination.svelte';
@@ -308,6 +309,10 @@
   const IconExport = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>`;
 </script>
 
+{#if !loading && !error}
+<span hidden data-aac-resource="assistants" data-aac-id="" data-aac-tab=""></span>
+{/if}
+
 <!-- Container for the list -->
 <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
 
@@ -557,8 +562,8 @@
                                 <td class="px-6 py-2"></td> <!-- Empty cell to maintain table structure -->
                             </tr>
                             
-                            <!-- Conditional row for simple_rag details -->
-                            {#if callback.rag_processor === 'simple_rag'}
+                            <!-- Collection-based RAG details -->
+                            {#if isKbBasedRag(callback.rag_processor)}
                                 <tr class="bg-gray-50 border-b border-gray-200">
                                     <td colspan="2" class="px-6 py-2 text-sm">
                                         <div class="flex flex-wrap">

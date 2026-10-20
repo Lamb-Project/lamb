@@ -1,3 +1,5 @@
+# AAC disconnect cleanup depends on response/background ordering. Before upgrading
+# FastAPI/Starlette, run test_aac_router disconnect tests for both ASGI paths.
 fastapi==0.111.0
 uvicorn[standard]==0.31.1
 pydantic==2.11.0
@@ -74,3 +76,19 @@ llama-index-llms-ollama==0.2.2
 
 # migration script from v01 to v02
 python-dotenv>=1.2.1
+
+# Versioned AAC pack manifests and routing
+PyYAML==6.0.3
+
+# Moodle connector (#487): immutable upstream revision while release tag is pending.
+moodle-cli @ git+https://github.com/Lamb-Project/moodle-cli.git@969fdae186abc5b8a052879b3805c28772fe3b55
+cryptography==50.0.1
+
+# In-memory Moodle login QR image decoding (#489).
+zxing-cpp==3.0.0
+
+# Reading a Moodle document without importing it (#525); same converter as the KB server.
+markitdown[pdf,docx,pptx,xlsx]==0.1.5
+
+# Bounded server-side chart pilot (no browser/runtime in frontend)
+vl-convert-python==1.9.0

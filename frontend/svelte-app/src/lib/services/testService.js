@@ -3,7 +3,7 @@
 import { apiJson as apiFetch } from '$lib/services/apiClient';
 
 /**
- * List test scenarios for an assistant.
+ * List test cases for an assistant.
  * @param {number} assistantId
  * @returns {Promise<Array>}
  */
@@ -12,7 +12,7 @@ export async function getScenarios(assistantId) {
 }
 
 /**
- * Create a test scenario.
+ * Create a test case.
  * @param {number} assistantId
  * @param {Object} scenario
  * @returns {Promise<Object>}
@@ -25,7 +25,7 @@ export async function createScenario(assistantId, scenario) {
 }
 
 /**
- * Delete a test scenario.
+ * Delete a test case.
  * @param {number} assistantId
  * @param {string} scenarioId
  * @returns {Promise<Object>}
@@ -37,10 +37,10 @@ export async function deleteScenario(assistantId, scenarioId) {
 }
 
 /**
- * Run test scenarios.
+ * Run test cases.
  * @param {number} assistantId
  * @param {Object} [options]
- * @param {string} [options.scenarioId] - Run a specific scenario
+ * @param {string} [options.scenarioId] - Run a specific test case
  * @param {boolean} [options.bypass] - Debug bypass mode (zero tokens)
  * @returns {Promise<Object>}
  */

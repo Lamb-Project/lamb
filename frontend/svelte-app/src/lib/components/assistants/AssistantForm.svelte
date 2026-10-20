@@ -1,5 +1,6 @@
 <!-- src/lib/components/assistants/AssistantForm.svelte -->
 <script>
+ import { clearWorkspaceDirty } from '$lib/services/frontendManage';
 	import { _ } from '$lib/i18n';
 	import { assistantConfigStore } from '$lib/stores/assistantConfigStore';
 	import { tick } from 'svelte';
@@ -68,11 +69,17 @@
 		const assistantNullStatusChanged = (assistant === null && form.initialAssistantData !== null) || (assistant !== null && form.initialAssistantData === null);
 
 		// Check if the assistant data content has changed (not just ID)
-		const assistantDataChanged = assistant && form.initialAssistantData &&
-			(assistant.system_prompt !== form.initialAssistantData.system_prompt ||
+		// Use an explicit if guard so the minifier cannot break the short-circuit
+		// logic. A && B && (C || D || ...) can be rearranged by the bundler into
+		// (A && B && C) || D || ..., which crashes when assistant is null.
+		let assistantDataChanged = false;
+		if (assistant && form.initialAssistantData) {
+			assistantDataChanged =
+				assistant.system_prompt !== form.initialAssistantData.system_prompt ||
 				assistant.prompt_template !== form.initialAssistantData.prompt_template ||
 				assistant.name !== form.initialAssistantData.name ||
-				assistant.description !== form.initialAssistantData.description);
+				assistant.description !== form.initialAssistantData.description;
+		}
 
 		if (assistantIdChanged || assistantNullStatusChanged || assistantDataChanged) {
 			if (assistant) {
@@ -196,6 +203,7 @@
 	 */
 	async function handleSubmit(event) {
 		event.preventDefault();
+        const submittedForm = event.currentTarget;
 		form.formError = '';
 		form.successMessage = '';
 		form.formLoading = true;
@@ -207,17 +215,8 @@
 			return;
 		}
 
-		// In non-advanced mode, ensure defaults are used
-		if (form.formState === 'create' && !form.isAdvancedMode) {
-			const defaults = get(assistantConfigStore).configDefaults?.config || {};
-			form.selectedPromptProcessor = defaults.prompt_processor || (form.promptProcessors.length > 0 ? form.promptProcessors[0] : '');
-			form.selectedConnector = defaults.connector || (form.connectorsList.length > 0 ? form.connectorsList[0] : '');
-			await tick();
-			// Reset LLM if needed with the new models list
-			if (!availableModels.includes(form.selectedLlm)) {
-				form.selectedLlm = defaults.llm || (availableModels.length > 0 ? availableModels[0] : '');
-			}
-		}
+		// Model availability is resolved at completion time. Provider outages must
+		// not prevent editing assistant content or silently rewrite preferences.
 
 		const assistantDataPayload = buildAssistantPayload(form);
 
@@ -225,6 +224,7 @@
 			if (form.formState === 'edit' && form.initialAssistantData?.id) {
 				await updateAssistant(form.initialAssistantData.id.toString(), assistantDataPayload);
 				form.successMessage = 'Assistant updated successfully!';
+                clearWorkspaceDirty(submittedForm);
 				form.formDirty = false;
 
 				form.initialAssistantData = {
@@ -240,6 +240,7 @@
 					throw new Error('Create assistant response did not include an assistant_id.');
 				}
 				form.successMessage = 'Assistant created successfully!';
+                clearWorkspaceDirty(submittedForm);
 				form.formDirty = false;
 
 				onFormSuccess({ assistantId: createResponse.assistant_id });
@@ -385,6 +386,7 @@
 	{:else if !form.configInitialized}
 		<p class="text-center text-gray-600 py-10">{$_('assistants.initializingForm', { default: 'Initializing form...' })}</p>
 	{:else}
+		<span hidden data-aac-resource={assistant?.id ? "assistant" : "assistant-create"} data-aac-id={assistant?.id || ""} data-aac-tab={assistant?.id ? "edit" : ""}></span>
 		<!-- Form starts here -->
 		<form
 			onsubmit={handleSubmit}

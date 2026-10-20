@@ -5,7 +5,7 @@ This module defines the request and response models for the Collection API endpo
 """
 
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Literal
 
 from pydantic import BaseModel, Field
 
@@ -51,6 +51,16 @@ class CollectionUpdate(BaseModel):
         None, 
         description="New embeddings model configuration"
     )
+
+
+class CollectionPropertiesUpdate(BaseModel):
+    """Editable metadata only; owner and embedding credentials are not patchable."""
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    visibility: Optional[Literal["private", "public"]] = None
+
+    class Config:
+        extra = "forbid"
 
 
 class CollectionResponse(CollectionBase):

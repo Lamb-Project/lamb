@@ -272,3 +272,98 @@ def generate_rubric(
             # Wrap rubric in the same shape as a full rubric record for display
             display = {"rubric_data": rubric, "rubric_id": rubric.get("rubricId", "")}
             format_output(_enrich_rubric(display), RUBRIC_LIST_COLUMNS, fmt, detail_fields=RUBRIC_DETAIL_FIELDS)
+
+
+def _apply_weights(criteria, value):
+    """Change named weights without asking an agent to reproduce criteria/level IDs."""
+    import copy
+    import math
+    weights = json.loads(value)
+    if not isinstance(weights, dict) or not weights:
+        raise ValueError('weights must be a nonempty JSON object of exact criterion names and percentages')
+    result = copy.deepcopy(criteria)
+    for name, weight in weights.items():
+        matches = [c for c in result if c.get('name') == name]
+        if len(matches) != 1:
+            raise ValueError(f'Criterion name must match exactly one existing criterion: {name}')
+        if type(weight) not in (int, float) or not math.isfinite(weight) or not 0 <= weight <= 100:
+            raise ValueError('Weights must be finite numbers between 0 and 100')
+        matches[0]['weight'] = weight
+    all_weights = [c.get('weight', 0) for c in result]
+    if any(type(w) not in (int, float) or not math.isfinite(w) or not 0 <= w <= 100 for w in all_weights):
+        raise ValueError('Every resulting weight must be a finite percentage')
+    original_total = sum(c.get('weight', 0) for c in criteria)
+    incremental_repair = len(weights) == 1 and len(criteria) > 1 and not math.isclose(original_total, 100, abs_tol=0.000001)
+    if not incremental_repair and not math.isclose(sum(all_weights), 100, abs_tol=0.000001):
+        raise ValueError('Resulting criterion weights must total 100; provide all changed weights together')
+    return result
+
+
+def _authoring_form(current, changes):
+    current = current.get('rubric', current)
+    raw = current.get('rubric_data', current)
+    raw = json.loads(raw) if isinstance(raw, str) else raw
+    meta = raw.get('metadata', {})
+    form = {'title':raw.get('title',current.get('title','')), 'description':raw.get('description',''),
+            'subject':meta.get('subject',''), 'gradeLevel':meta.get('gradeLevel',''),
+            'scoringType':raw.get('scoringType','points'), 'maxScore':raw.get('maxScore',10),
+            'criteria':raw.get('criteria',[])}
+    form.update({k:v for k,v in changes.items() if v is not None and k != "weights"})
+    criteria = json.loads(form['criteria']) if isinstance(form['criteria'],str) else form['criteria']
+    if not isinstance(criteria,list) or not criteria or not all(isinstance(c,dict) for c in criteria):
+        raise ValueError('Criteria must be a nonempty JSON array of criterion objects')
+    if changes.get('weights') is not None:
+        if changes.get('criteria') is not None: raise ValueError('Use either --weights or --criteria, not both')
+        criteria = _apply_weights(criteria, changes['weights'])
+    if not form['title'].strip():raise ValueError('Title is required')
+    form['criteria']=json.dumps(criteria,ensure_ascii=False)
+    return form
+
+
+@app.command('create')
+def create_rubric(
+    title: str = typer.Argument(..., help='Rubric title.'),
+    criteria: str = typer.Option(..., '--criteria', help='JSON array of criteria with levels and weights.'),
+    description: str = typer.Option('', '--description'),
+    subject: str = typer.Option('', '--subject'),
+    grade_level: str = typer.Option('', '--grade-level'),
+    scoring_type: str = typer.Option('points', '--scoring-type'),
+    max_score: float = typer.Option(10, '--max-score'),
+    output: str = typer.Option(None, '-o', '--output'),
+):
+    """Create a rubric from explicit criteria; the API validates the rubric schema."""
+    try:
+        form=_authoring_form({},dict(title=title,criteria=criteria,description=description,subject=subject,
+                                    gradeLevel=grade_level,scoringType=scoring_type,maxScore=max_score))
+    except (ValueError,TypeError) as e:
+        print_error(str(e));raise typer.Exit(1)
+    with get_client() as client:
+        data=client.post('/creator/rubrics',data=form)
+    format_output(data.get('rubric',data),RUBRIC_LIST_COLUMNS,output or get_output_format())
+
+
+@app.command('update')
+def update_rubric(
+    rubric_id: str = typer.Argument(..., help='Rubric ID.'),
+    title: Optional[str] = typer.Option(None, '--title'),
+    criteria: Optional[str] = typer.Option(None, '--criteria', help='Replacement criteria JSON array.'),
+    weights: Optional[str] = typer.Option(None, '--weights', help='JSON object of exact criterion names and new percentage weights; preserves level and criterion IDs.'),
+    description: Optional[str] = typer.Option(None, '--description'),
+    subject: Optional[str] = typer.Option(None, '--subject'),
+    grade_level: Optional[str] = typer.Option(None, '--grade-level'),
+    scoring_type: Optional[str] = typer.Option(None, '--scoring-type'),
+    max_score: Optional[float] = typer.Option(None, '--max-score'),
+    output: str = typer.Option(None, '-o', '--output'),
+):
+    """Edit selected rubric fields, preserving unspecified criteria and settings."""
+    changes=dict(title=title,criteria=criteria,weights=weights,description=description,subject=subject,
+                 gradeLevel=grade_level,scoringType=scoring_type,maxScore=max_score)
+    if not any(v is not None for v in changes.values()):
+        print_error('Provide at least one field to update');raise typer.Exit(1)
+    with get_client() as client:
+        current=client.get('/creator/rubrics/'+rubric_id)
+        try:form=_authoring_form(current,changes)
+        except (ValueError,TypeError) as e:
+            print_error(str(e));raise typer.Exit(1)
+        data=client.put('/creator/rubrics/'+rubric_id,data=form)
+    format_output(data.get('rubric',data),RUBRIC_LIST_COLUMNS,output or get_output_format())

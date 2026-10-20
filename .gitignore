@@ -7,6 +7,7 @@ node_modules/
 .Python
 .cursor
 .cursorrules
+.pr-review/
 develop-eggs/
 dist/
 downloads/
@@ -196,3 +197,18 @@ aac_logs/
 .worktrees/
 .agents/
 skills-lock.json
+.aac-turn-locks/
+
+# Curated, synthetic AAC tutorial screenshots shipped with the frontend.
+!frontend/svelte-app/static/
+frontend/svelte-app/static/*
+!frontend/svelte-app/static/img/
+frontend/svelte-app/static/img/*
+!frontend/svelte-app/static/img/aac-tutorials/
+
+# Agent-readable illustrated end-user guides.
+!backend/lamb/aac/docs/
+!backend/lamb/aac/docs/ui-*.md
+
+
+developer-workflow-site/

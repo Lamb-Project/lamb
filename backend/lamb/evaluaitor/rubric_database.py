@@ -5,6 +5,7 @@ Handles all database operations for rubrics including CRUD, visibility, and show
 
 import sqlite3
 import json
+import copy
 import logging
 import uuid
 from typing import Dict, List, Optional, Any
@@ -391,12 +392,12 @@ class RubricDatabaseManager:
                 if cursor.rowcount == 0:
                     raise Exception("Rubric update failed")
 
-                # Get updated record
-                updated_rubric = self.get_rubric_by_id(rubric_id, owner_email)
-                if not updated_rubric:
-                    raise Exception("Failed to retrieve updated rubric")
-
-                return updated_rubric
+            # The read opens another connection, so commit the write transaction
+            # before fetching the response or it will return the previous version.
+            updated_rubric = self.get_rubric_by_id(rubric_id, owner_email)
+            if not updated_rubric:
+                raise Exception("Failed to retrieve updated rubric")
+            return updated_rubric
 
         except sqlite3.Error as e:
             logging.error(f"Error updating rubric {rubric_id}: {e}")
@@ -620,7 +621,7 @@ class RubricDatabaseManager:
             raise Exception("New owner not found in any organization")
 
         # Create duplicate
-        new_rubric_data = json.loads(source_rubric['rubric_data'])
+        new_rubric_data = copy.deepcopy(source_rubric['rubric_data'])
         new_rubric_data['title'] = f"{new_rubric_data['title']} (Copy)"
         new_rubric_data['rubricId'] = str(uuid.uuid4())  # Generate new ID
 

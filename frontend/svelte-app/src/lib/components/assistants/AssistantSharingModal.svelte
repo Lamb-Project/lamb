@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { _ } from 'svelte-i18n';
-	import { getLambApiUrl } from '$lib/config';
+	import { getApiUrl } from '$lib/config';
 
 	// Props
 	let { 
@@ -83,7 +83,7 @@
 
 	async function fetchCurrentShares() {
 		const response = await fetch(
-			getLambApiUrl(`/creator/lamb/assistant-sharing/shares/${assistant.id}`),
+			getApiUrl(`/lamb/assistant-sharing/shares/${assistant.id}`),
 			{
 				headers: {
 					'Authorization': `Bearer ${token}`
@@ -100,7 +100,7 @@
 
 	async function fetchOrganizationUsers() {
 		const response = await fetch(
-			getLambApiUrl('/creator/lamb/assistant-sharing/organization-users'),
+			getApiUrl('/lamb/assistant-sharing/organization-users'),
 			{
 				headers: {
 					'Authorization': `Bearer ${token}`
@@ -163,7 +163,7 @@
 			const userEmails = sharedUsers.map(u => u.email);
 			
 			const response = await fetch(
-				getLambApiUrl(`/creator/lamb/assistant-sharing/shares/${assistant.id}`),
+				getApiUrl(`/lamb/assistant-sharing/shares/${assistant.id}`),
 				{
 					method: 'PUT',
 					headers: {

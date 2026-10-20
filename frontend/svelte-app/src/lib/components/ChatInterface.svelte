@@ -788,7 +788,7 @@
 
         <!-- Input Area -->
         <div class="p-3 border-t border-gray-200 bg-gray-50">
-            <form onsubmit={(e) => { e.preventDefault(); handleSubmit(); return false; }} class="flex items-center space-x-2">
+            <form data-aac-transient onsubmit={(e) => { e.preventDefault(); handleSubmit(); return false; }} class="flex items-center space-x-2">
                 <input
                     type="text"
                     bind:value={input}

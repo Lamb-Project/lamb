@@ -1204,3 +1204,6 @@ def _extract_generation_config(body: Optional[Dict[str, Any]]) -> Dict[str, Any]
                 config["output_format"] = "JPEG"
 
     return config
+
+
+AAC_DESCRIPTION = 'Generates images through the configured image-generation connector.'

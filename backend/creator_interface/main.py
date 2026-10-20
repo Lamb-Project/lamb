@@ -1,3 +1,4 @@
+from lamb.moodle.connection import public_user_config
 from .chats_router import router as chats_router
 from .library_router import router as library_router
 from .analytics_router import router as analytics_router
@@ -23,6 +24,8 @@ from .user_creator import UserCreatorManager
 from lamb.database_manager import LambDatabaseManager
 from lamb.owi_bridge.owi_users import OwiUserManager
 from .assistant_router import router as assistant_router
+from .api_keys_router import router as api_keys_router
+from .takeover_router import router as takeover_router
 from .knowledges_router import router as knowledges_router
 from lamb.auth_context import AuthContext, get_auth_context, require_admin
 import json
@@ -111,6 +114,12 @@ async def stop_news_cache_refresh_loop():
 
 # Include the assistant router
 router.include_router(assistant_router, prefix="/assistant")
+
+# Include the creator API keys router
+router.include_router(api_keys_router, prefix="/api-keys")
+
+# Administrators acting as a creator (#523)
+router.include_router(takeover_router)
 
 # Include the knowledges router
 router.include_router(knowledges_router, prefix="/knowledgebases")
@@ -207,7 +216,10 @@ class SignupErrorResponse(BaseModel):
 
 class UserResponse(BaseModel):
     id: int
-    email: EmailStr
+    # Plain str, not EmailStr: response models must be able to serialise every
+    # address the write path accepted. EmailStr rejects reserved TLDs (.test,
+    # .local), which turned a stored address into an unhandled 500 (#460).
+    email: str
     name: str
     role: str
     user_config: dict
@@ -293,7 +305,7 @@ class RoleUpdateResponse(BaseModel):
 
 class CurrentUserResponse(BaseModel):
     id: int
-    email: EmailStr
+    email: str  # see UserResponse.email — #460
     name: str
 
 
@@ -647,7 +659,7 @@ async def list_users(credentials: HTTPAuthorizationCredentials = Depends(securit
                 "role": user.get("role", "user"),
                 "enabled": user.get("enabled", True),
                 "user_type": user.get("user_type", "creator"),
-                "user_config": user.get("user_config", {}),
+                "user_config": public_user_config(user.get("user_config", {})),
                 "organization": user.get("organization"),
                 "organization_role": user.get("organization_role"),
                 "auth_provider": user.get("auth_provider", "password"),
@@ -1405,6 +1417,9 @@ async def upload_file(
     try:
         creator_user = auth.user
 
+        filename = file.filename or ""
+        if not filename or Path(filename).name != filename or "\\" in filename or filename in {".", ".."}:
+            raise HTTPException(400, "Upload name must be a filename without path components")
         # Validate file extension
         file_extension = Path(file.filename).suffix.lower()
         if file_extension not in ALLOWED_EXTENSIONS:
@@ -1418,7 +1433,9 @@ async def upload_file(
         user_dir.mkdir(parents=True, exist_ok=True)
 
         # Create file path and save file
-        file_path = user_dir / file.filename
+        file_path = user_dir / filename
+        if user_dir.is_symlink() or file_path.is_symlink():
+            raise HTTPException(400, "Invalid upload path")
 
         # Save the uploaded file
         with file_path.open("wb") as buffer:
@@ -1470,16 +1487,13 @@ async def delete_file(request: Request, path: str, auth: AuthContext = Depends(g
         logger.debug(f"Received request to delete file: {path}")
         creator_user = auth.user
 
-        # Create user directory path
-        user_dir = STATIC_DIR / str(creator_user['id'])
-
-        # Full file path
-        file_path = user_dir / path
-
-        # Check if file exists
-        if not file_path.exists() or not file_path.is_file():
-            logger.error(f"File not found: {file_path}")
-            raise HTTPException(status_code=404, detail="File not found")
+        from lamb.uploaded_files import owned_document
+        # Accept a legacy bare filename or the returned owner-prefixed reference.
+        reference = path if "/" in path else f"{creator_user['id']}/{path}"
+        try:
+            file_path = owned_document(reference, creator_user['id'])
+        except ValueError:
+            raise HTTPException(404, "File not found")
 
         # Delete the file
         file_path.unlink()
@@ -2704,3 +2718,9 @@ async def update_user_sharing_permission_endpoint(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
+
+# Per-creator Moodle credentials are managed outside AAC messages.
+from lamb.moodle.router import router as moodle_router
+router.include_router(moodle_router)
+from lamb.storage_router import router as storage_router
+router.include_router(storage_router)

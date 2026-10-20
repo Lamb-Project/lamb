@@ -3,6 +3,7 @@ Organization management router for creator interface
 Provides admin endpoints to manage organizations through the creator interface
 """
 
+from lamb.moodle.connection import public_user_config
 from fastapi import APIRouter, HTTPException, Depends, Query, Request, File, UploadFile
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
@@ -1885,7 +1886,7 @@ async def list_organization_users(request: Request, org: Optional[str] = None):
                 user_type=user.get('user_type', 'creator'),
                 auth_provider=user.get('auth_provider', 'password'),
                 lti_user_id=user.get('lti_user_id'),
-                user_config=user_config
+                user_config=public_user_config(user_config)
             ))
         
         return user_responses
@@ -2730,6 +2731,59 @@ async def update_signup_settings(request: Request, settings: OrgAdminSignupSetti
     except Exception as e:
         logger.error(f"Error updating signup settings: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+class OrgAdminApiAccessSettings(BaseModel):
+    api_access: bool = Field(..., description="Allow creators of this organization to create personal API keys (#519)")
+
+
+@router.get(
+    "/org-admin/settings/api-access",
+    tags=["Organization Admin - Settings"],
+    summary="Get Creator API Access",
+    description="Whether creators of the organization may create personal API keys for the OpenAI-compatible API.",
+    dependencies=[Depends(security)]
+)
+async def get_api_access_settings(request: Request, org: Optional[str] = None):
+    target_org_id = None
+    if org:
+        target_organization = db_manager.get_organization_by_slug(org)
+        if not target_organization:
+            raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+        target_org_id = target_organization['id']
+    admin_info = await verify_organization_admin_access(request, target_org_id)
+    features = admin_info['organization'].get('config', {}).get('features', {})
+    return {"api_access": bool(features.get('api_access', False))}
+
+
+@router.put(
+    "/org-admin/settings/api-access",
+    tags=["Organization Admin - Settings"],
+    summary="Update Creator API Access",
+    description="""Enable or disable personal API keys for the organization's creators. Disabling stops every existing key of the organization at once; keys are not deleted.
+
+Example Request:
+```bash
+curl -X PUT 'http://localhost:8000/creator/admin/org-admin/settings/api-access' \\
+-H 'Authorization: Bearer <org_admin_token>' -H 'Content-Type: application/json' \\
+-d '{"api_access": true}'
+```
+""",
+    dependencies=[Depends(security)]
+)
+async def update_api_access_settings(request: Request, settings: OrgAdminApiAccessSettings, org: Optional[str] = None):
+    target_org_id = None
+    if org:
+        target_organization = db_manager.get_organization_by_slug(org)
+        if not target_organization:
+            raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+        target_org_id = target_organization['id']
+    admin_info = await verify_organization_admin_access(request, target_org_id)
+    config = admin_info['organization'].get('config', {})
+    config.setdefault('features', {})['api_access'] = settings.api_access
+    if not db_manager.update_organization_config(admin_info['organization_id'], config):
+        raise HTTPException(status_code=500, detail="Failed to update API access")
+    return {"api_access": settings.api_access}
+
 
 @router.get(
     "/org-admin/settings/api",
@@ -4909,3 +4963,107 @@ async def update_assistant_quota(assistant_id: int, body: QuotaUpdate, request: 
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
+
+async def _agent_settings_admin(request, org):
+    target = db_manager.get_organization_by_slug(org) if org else None
+    if org and not target:
+        raise HTTPException(404, 'Organization not found')
+    return await verify_organization_admin_access(request, target['id'] if target else None)
+
+
+@router.get('/org-admin/settings/aac', dependencies=[Depends(security)])
+async def get_agent_settings(request: Request, org: Optional[str] = None):
+    from lamb.aac.preferences import agent_settings, LANGUAGES
+    admin = await _agent_settings_admin(request, org)
+    config = admin['organization'].get('config', {})
+    setup = config.get('setups', {}).get('default', {})
+    providers = setup.get('providers', {})
+    choices = {name: list(dict.fromkeys((p.get('models') or []) + ([p['default_model']] if p.get('default_model') else [])))
+               for name, p in providers.items() if name in ('openai', 'ollama') and p.get('enabled') is not False}
+    from lamb.aac.pack_loader import load_pack, packs_root
+    warnings = []
+    try:
+        stored_settings = agent_settings(config)
+    except ValueError as exc:
+        stored_settings = {}
+        warnings.append(str(exc))
+    versions = set()
+    try:
+        versions.add(load_pack().version)
+    except (ValueError, OSError) as exc:
+        warnings.append(f'The default knowledge pack is unavailable: {exc}')
+    releases = packs_root() / 'releases' / 'lamb-default'
+    if releases.is_dir():
+        for directory in releases.iterdir():
+            if directory.is_dir():
+                try:
+                    versions.add(load_pack(version=directory.name).version)
+                except (ValueError, OSError):
+                    warnings.append(f'An installed knowledge pack could not be verified: {directory.name}')
+    return {'settings': stored_settings, 'warnings': warnings, 'models': choices,
+            'inherited_model': setup.get('global_default_model', {}), 'languages': LANGUAGES,
+            'pack_versions':sorted(versions), 'pack_channels':['stable','rc','beta']}
+
+
+@router.put('/org-admin/settings/aac', dependencies=[Depends(security)])
+async def update_agent_settings(request: Request, settings: Dict[str, Any], org: Optional[str] = None):
+    from copy import deepcopy
+    from lamb.aac.preferences import validate_settings
+    admin = await _agent_settings_admin(request, org)
+    config = deepcopy(admin['organization'].get('config', {}))
+    setup = config.setdefault('setups', {}).setdefault('default', {})
+    try:
+        validated = validate_settings(settings, setup.get('providers', {}))
+        from lamb.aac.pack_loader import load_pack
+        load_pack(validated)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    setup['aac'] = validated
+    if not db_manager.update_organization_config(admin['organization_id'], config):
+        raise HTTPException(500, 'Failed to save agent settings')
+    return {'settings': validated}
+
+
+@router.get('/org-admin/settings/moodle', dependencies=[Depends(security)])
+async def get_moodle_settings(request: Request, org: Optional[str] = None):
+    from lamb.moodle.policy import MoodlePolicy, MoodleConfigurationError
+    from lamb.moodle.router import settings_view, PRIVACY_NOTICE
+    admin = await _agent_settings_admin(request, org)
+    try:
+        settings = settings_view(MoodlePolicy.from_config(admin['organization'].get('config', {})))
+    except MoodleConfigurationError as exc:
+        raise HTTPException(503, str(exc)) from None
+    return {'settings': settings, 'privacy_notice': PRIVACY_NOTICE}
+
+
+@router.put('/org-admin/settings/moodle', dependencies=[Depends(security)])
+async def update_moodle_settings(request: Request, org: Optional[str] = None):
+    import json
+    import time
+    from pydantic import ValidationError
+    from lamb.moodle.policy import MoodlePolicy, MoodleConfigurationError
+    from lamb.moodle.router import SettingsBody, settings_view, PRIVACY_NOTICE
+    admin = await _agent_settings_admin(request, org)
+    try:
+        proposed = SettingsBody.model_validate(await request.json())
+        settings = settings_view(MoodlePolicy.from_config({'moodle': proposed.model_dump()}))
+    except (ValueError, ValidationError, MoodleConfigurationError):
+        raise HTTPException(400, 'Invalid Moodle settings') from None
+    connection = db_manager.get_connection()
+    if connection is None:
+        raise HTTPException(503, 'Organization settings storage is unavailable')
+    try:
+        with connection:
+            connection.execute('BEGIN IMMEDIATE')
+            row = connection.execute(f'SELECT config FROM {db_manager.table_prefix}organizations WHERE id=? AND status=?',
+                                     (admin['organization_id'], 'active')).fetchone()
+            if row is None:
+                raise HTTPException(404, 'Organization not found')
+            config = json.loads(row[0]) if row[0] else {}
+            config['moodle'] = settings
+            connection.execute(f'UPDATE {db_manager.table_prefix}organizations SET config=?, updated_at=? WHERE id=?',
+                               (json.dumps(config), int(time.time()), admin['organization_id']))
+    finally:
+        connection.close()
+    return {'settings': settings, 'privacy_notice': PRIVACY_NOTICE}

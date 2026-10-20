@@ -40,8 +40,7 @@
     "admin": "Administrazioa",
     "orgAdmin": "Erakunde Admin",
     "sources": "Ezagutza Iturriak",
-    "rubrics": "Ebaluazio-eskalak",
-    "agent": "Agentea"
+    "rubrics": "Ebaluazio-eskalak"
   },
   "assistants": {
     "title": "Ikaskuntza Laguntzaileak",
@@ -909,7 +908,7 @@
         "member": "Kidea"
       },
       "agent": {
-        "title": "LAMB Agentea",
+        "title": "LAMB LEGATUS",
         "description": "Hitz egin IA laguntzailearekin laguntza lortzeko, laguntzaileak sortzeko, LAMB ezagutzeko edo arazoak konpontzeko.",
         "cta": "Elkarrizketa hasi",
         "starting": "Abiatzen...",
@@ -1016,5 +1015,45 @@
       "zipTooLarge": "ZIP fitxategiak 500 MB-ko muga gainditzen du.",
       "importFailed": "Inportazioak huts egin du. Saiatu berriro."
     }
+  },
+  "aacSettings": {
+    "settingsTitle": "LAMB LEGATUS ezarpenak",
+    "settingsIntro": "Aukeratu LAMB LEGATUSen eredua laguntzaileen lehenetsietatik bereizita. Erakundeak zehazten ditu onartutako hizkuntzak. Ereduaren eta ordezko hizkuntzaren aldaketak hurrengo txandan aplikatzen dira. Saio bakoitzak hasierako interfazearen hizkuntza gordetzen du.",
+    "loadingSettings": "Ezarpenak kargatzen…",
+    "provider": "LAMB LEGATUSen hornitzailea",
+    "model": "LAMB LEGATUSen eredua",
+    "useDefault": "Erabili erakundearen lehenetsia",
+    "notEnabled": "une honetan desgaituta",
+    "selectModel": "Aukeratu eredua",
+    "orgDefault": "erakundearen lehenetsia",
+    "savedSelection": "gordetako hautaketa",
+    "knowledgePack": "Ezagutza-paketea",
+    "channel": "Bertsioen kanala",
+    "version": "Finkatutako bertsioa",
+    "stable": "Egonkorra",
+    "rc": "Hautagaia",
+    "beta": "Beta",
+    "followChannel": "Jarraitu kanalari",
+    "utilityTitle": "Itzulpen-eredu lagungarria (aukerakoa)",
+    "utilityIntro": "Glosarioan ez dagoen termino batek komandoa aukeratzea eragozten duenean edo dokumentazio-atala saioaren hizkuntzan ez dagoenean bakarrik. Eredu gabe, itzulpen automatikoa desgaituta dago.",
+    "utilityProvider": "Hornitzaile lagungarria",
+    "utilityModel": "Eredu lagungarria",
+    "disabled": "Desgaituta",
+    "languageSupport": "Onartutako interfazearen hizkuntzak",
+    "languageIntro": "«Onartua» aukerak saioaren hasierako interfazearen hizkuntza erabiltzen du. Bestela, aukeratu ordezko hizkuntza bat, adibidez Euskara → Español. Ez da ereduaren mugarik automatikoki onartzen.",
+    "fallback": "{name}: ordezko hizkuntza",
+    "supported": "Onartua: erantzun {name} hizkuntzan",
+    "unsupported": "Ez onartua: erabili {name}",
+    "saving": "Gordetzen…",
+    "saveSettings": "Gorde LAMB LEGATUSen ezarpenak",
+    "settingsSaved": "LAMB LEGATUSen ezarpenak gordeta.",
+    "policyLabel": "Erakundearen hizkuntza-politika"
+  },
+  "assistantTestCases": {
+    "title": "Proba-kasuak",
+    "add": "Gehitu proba-kasua",
+    "empty": "Oraindik ez dago proba-kasurik. Gehitu bat edo eskatu LAMB LEGATUSi sortzeko.",
+    "delete": "Ezabatu proba-kasua",
+    "confirmDelete": "Proba-kasu hau ezabatu nahi duzu? Ekintza hau ezin da desegin."
   }
 }

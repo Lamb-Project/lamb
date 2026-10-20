@@ -106,6 +106,15 @@ class SimpleIngestPlugin(IngestPlugin):
             "chunking_strategy": f"langchain_{splitter_type.lower()}"
         }
         
+        # Moodle imports carry a credential-free source link and provenance.
+        if kwargs.get('citation'):
+            base_metadata['citation'] = kwargs['citation']
+        if kwargs.get('moodle_provenance'):
+            provenance = kwargs['moodle_provenance']
+            if isinstance(provenance, str):
+                provenance = json.loads(provenance)
+            base_metadata['moodle_provenance'] = json.dumps(provenance, ensure_ascii=False, sort_keys=True)
+
         # Add chunking parameters to metadata if provided
         if chunk_size is not None:
             base_metadata["chunk_size"] = chunk_size

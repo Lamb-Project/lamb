@@ -30,9 +30,11 @@ else
     exit 1
 fi
 
-# Check if we're in a directory with docker-compose.yaml
-if [ ! -f "$PROJECT_DIR/docker-compose.yaml" ] && [ ! -f "$PROJECT_DIR/docker-compose.yml" ]; then
-    echo "Error: No docker-compose.yaml or docker-compose.yml found in $PROJECT_DIR"
+# Check if we're in a directory with a compose file
+if [ -f "$PROJECT_DIR/docker-compose.next.yaml" ]; then
+    COMPOSE_FILES="-f docker-compose.next.yaml"
+else
+    echo "Error: No docker-compose.next.yaml found in $PROJECT_DIR"
     exit 1
 fi
 
@@ -110,7 +112,7 @@ LOG_PIPE=$(mktemp -u)
 mkfifo "$LOG_PIPE"
 
 # Start docker compose logs in background, writing to pipe
-$DOCKER_COMPOSE logs -f --tail=0 > "$LOG_PIPE" 2>&1 &
+$DOCKER_COMPOSE $COMPOSE_FILES logs -f --tail=0 > "$LOG_PIPE" 2>&1 &
 DOCKER_PID=$!
 
 # Read from pipe and update timestamp on each line

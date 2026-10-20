@@ -1,0 +1,132 @@
+{
+  "language": "eu",
+  "ui": {
+    "nav.assistants": "Laguntzaileak",
+    "nav.rubrics": "Ebaluazio-eskalak",
+    "assistants.title": "Ikaskuntza Laguntzaileak",
+    "assistants.myAssistantsTab": "Nire Laguntzaileak",
+    "assistants.sharedWithMeTab": "Nirekin Partekatuak",
+    "assistants.createAssistantTab": "Sortu Laguntzailea",
+    "assistants.edit": "Editatu",
+    "assistants.configuration": "Konfigurazioa",
+    "assistants.promptProcessor": "Prompt Prozesatzailea",
+    "assistants.connector": "Konektorea",
+    "assistants.llm": "LLM",
+    "assistants.ragProcessor": "RAG Prozesatzailea",
+    "assistants.systemPrompt": "Sistema Prompta",
+    "assistants.publish": "Argitaratu",
+    "assistants.unpublish": "Argitaratzea kendu",
+    "assistants.detail.propertiesTab": "Propietateak",
+    "assistants.detail.editTab": "Editatu",
+    "assistants.detail.shareTab": "Partekatu",
+    "assistants.detail.chatTab": "Txata",
+    "assistants.detail.activityTab": "Jarduera",
+    "home.dashboard.knowledgeBases": "Ezagutza Baseak",
+    "home.dashboard.createKnowledgeBase": "Ezagutza Basea Sortu",
+    "home.dashboard.createRubric": "Errubrika Sortu",
+    "rubrics.form.criteria": "Ebaluazio Irizpideak",
+    "rubrics.form.weight": "Pisua (%)",
+    "rubrics.form.performanceLevels": "Errendimendu Mailak",
+    "rubrics.form.addCriterion": "Gehitu Irizpidea"
+  },
+  "terms": [
+    {
+      "english": "assistant",
+      "forms": [
+        "laguntzaile",
+        "laguntzailea",
+        "laguntzaileak"
+      ],
+      "stems": [
+        {
+          "stem": "laguntzaile",
+          "suffixes": [
+            "",
+            "a",
+            "ak",
+            "aren",
+            "ekin"
+          ]
+        }
+      ]
+    },
+    {
+      "english": "knowledge base",
+      "forms": [
+        "ezagutza-base",
+        "ezagutza-basea",
+        "ezagutza-baseak"
+      ]
+    },
+    {
+      "english": "rubric",
+      "forms": [
+        "errubrika",
+        "errubrikak"
+      ]
+    },
+    {
+      "english": "grounding",
+      "forms": [
+        "oinarritzea"
+      ]
+    },
+    {
+      "english": "retrieval",
+      "forms": [
+        "berreskuratzea"
+      ]
+    },
+    {
+      "english": "system prompt",
+      "forms": [
+        "sistemaren jarraibideak"
+      ]
+    },
+    {
+      "english": "prompt template",
+      "forms": [
+        "prompt-txantiloia"
+      ]
+    },
+    {
+      "english": "test scenario",
+      "forms": [
+        "proba-eszenarioa",
+        "proba-eszenarioak"
+      ]
+    },
+    {
+      "english": "evaluation",
+      "forms": [
+        "ebaluazioa"
+      ]
+    },
+    {
+      "english": "publish",
+      "forms": [
+        "argitaratu",
+        "argitalpena"
+      ]
+    },
+    {
+      "english": "context",
+      "forms": [
+        "testuingurua"
+      ]
+    },
+    {
+      "english": "language model",
+      "forms": [
+        "hizkuntza-eredua",
+        "hizkuntza-ereduak"
+      ]
+    }
+  ],
+  "negative_forms": [
+    "assistència",
+    "asistencia",
+    "publication_date",
+    "assistant_id"
+  ]
+}

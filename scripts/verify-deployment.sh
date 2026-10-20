@@ -31,16 +31,17 @@ if ! command -v curl &> /dev/null; then
     exit 1
 fi
 
-# Check containers
+# Check containers (docker-compose.next.yaml names them <project>-<service>-1)
 echo "📦 Checking containers..."
-REQUIRED_CONTAINERS=("lamb-frontend" "lamb-backend" "lamb-openwebui" "lamb-kb-server")
+REQUIRED_CONTAINERS=("-lamb-" "-openwebui-" "-kb-" "-library-manager-")
 for container in "${REQUIRED_CONTAINERS[@]}"; do
-    if docker ps --format "{{.Names}}" | grep -q "^${container}$"; then
-        STATUS=$(docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null)
+    MATCH=$(docker ps --format "{{.Names}}" | grep -- "${container}" | head -1 || true)
+    if [ -n "$MATCH" ]; then
+        STATUS=$(docker inspect -f '{{.State.Status}}' "$MATCH" 2>/dev/null)
         if [ "$STATUS" = "running" ]; then
-            echo "✅ $container: running"
+            echo "✅ $MATCH: running"
         else
-            echo "❌ $container: $STATUS"
+            echo "❌ $MATCH: $STATUS"
             ERRORS=$((ERRORS + 1))
         fi
     else
@@ -51,7 +52,7 @@ done
 
 echo ""
 echo "🌐 Checking endpoints..."
-check_endpoint "Frontend" "http://localhost:5173/" 200
+check_endpoint "Frontend (served by backend)" "http://localhost:9099/" 200
 check_endpoint "Backend Status" "http://localhost:9099/status" 200
 check_endpoint "OpenWebUI" "http://localhost:8080/" 200
 check_endpoint "KB Server Health" "http://localhost:9090/health" 200
@@ -74,8 +75,15 @@ fi
 echo ""
 echo "🔗 Checking inter-service communication..."
 
+# Resolve the lamb backend container name dynamically
+LAMB_CONTAINER=$(docker ps --format '{{.Names}}' | grep -- '-lamb-' | head -1)
+if [ -z "$LAMB_CONTAINER" ]; then
+    echo "❌ Cannot find lamb backend container"
+    exit 1
+fi
+
 # Backend to OpenWebUI
-if docker exec lamb-backend python -c "
+if docker exec "$LAMB_CONTAINER" python -c "
 import requests
 import sys
 try:
@@ -94,7 +102,7 @@ else
 fi
 
 # Backend to KB Server
-if docker exec lamb-backend python -c "
+if docker exec "$LAMB_CONTAINER" python -c "
 import requests
 import sys
 try:
@@ -112,15 +120,15 @@ else
     ERRORS=$((ERRORS + 1))
 fi
 
-# Check LAMB_PROJECT_PATH
+# Check root .env (required by docker-compose.next.yaml)
 echo ""
 echo "🔧 Checking environment..."
-if [ -z "$LAMB_PROJECT_PATH" ]; then
-    echo "⚠️  LAMB_PROJECT_PATH not set"
-    echo "   Run: export LAMB_PROJECT_PATH=$(pwd)"
-    ERRORS=$((ERRORS + 1))
+if [ -f ".env" ]; then
+    echo "✅ Root .env file present"
 else
-    echo "✅ LAMB_PROJECT_PATH=$LAMB_PROJECT_PATH"
+    echo "⚠️  No .env file in repo root (required by docker-compose.next.yaml)"
+    echo "   See: Documentation/deployLocal.md (Phase 3)"
+    ERRORS=$((ERRORS + 1))
 fi
 
 # Summary
@@ -130,7 +138,7 @@ if [ $ERRORS -eq 0 ]; then
     echo "✅ All checks passed! LAMB is ready to use."
     echo ""
     echo "🎉 Access LAMB:"
-    echo "   • Creator Interface: http://localhost:5173"
+    echo "   • Creator Interface: http://localhost:9099"
     echo "   • OpenWebUI Chat: http://localhost:8080"
     echo "   • Backend API: http://localhost:9099"
     echo "   • KB Server Docs: http://localhost:9090/docs"
@@ -143,11 +151,11 @@ else
     echo "❌ $ERRORS check(s) failed. Please review the errors above."
     echo ""
     echo "Common fixes:"
-    echo "  • OpenWebUI API-only: docker restart lamb-openwebui"
-    echo "  • Container not running: docker-compose up -d"
-    echo "  • Missing LAMB_PROJECT_PATH: export LAMB_PROJECT_PATH=\$(pwd)"
+    echo "  • OpenWebUI API-only: docker compose -f docker-compose.next.yaml restart openwebui"
+    echo "  • Container not running: docker compose -f docker-compose.next.yaml up -d"
+    echo "  • Missing .env: see Documentation/deployLocal.md (Phase 3)"
     echo ""
-    echo "For detailed troubleshooting, see: fix_launch.md"
+    echo "For detailed troubleshooting, see: Documentation/deployLocal.md"
     exit 1
 fi
 

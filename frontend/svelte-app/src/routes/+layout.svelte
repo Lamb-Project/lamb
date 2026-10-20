@@ -6,14 +6,36 @@
 	import { base } from '$app/paths';
 	import Nav from '$lib/components/Nav.svelte';
 	import Footer from '$lib/components/Footer.svelte';
-	import GlobalAacTabBar from '$lib/components/aac/GlobalAacTabBar.svelte';
+	import AacSidebar from '$lib/components/aac/AacSidebar.svelte';
+	import { sidebarOpen, sidebarWidth, sidebarMobile, frontendDestination } from '$lib/stores/aacStore.svelte';
+	import { afterNavigate } from '$app/navigation';
+	import { markWorkspaceDirty, clearWorkspaceDirty } from '$lib/services/frontendManage';
+	afterNavigate(() => { clearWorkspaceDirty(); frontendDestination.set(null); });
 	import { replaceSessionWithToken } from '$lib/session/sessionManager';
+	import { get } from 'svelte/store';
+	import { user } from '$lib/stores/userStore';
+	import { goto } from '$app/navigation';
+	import { needsLogin } from '$lib/utils/authGuard';
+	import TakeoverBar from '$lib/components/TakeoverBar.svelte';
+	import TakeoverNotices from '$lib/components/TakeoverNotices.svelte';
+	import { takeoverReturn, returnFromTakeover } from '$lib/session/takeover';
 
 	let { children } = $props();
 	let sessionReady = $state(!$page.url.searchParams.get('token'));
 	let processingToken = $state(false);
 	let processedToken = $state(/** @type {string | null} */ (null));
 	let sessionError = $state(/** @type {string | null} */ (null));
+	// Protected pages never render without a session; the landing page shows the login (#260, #218).
+	let loginRequired = $derived(needsLogin($page.url.pathname, !!$user.isLoggedIn, base));
+	$effect(() => {
+		if (browser && sessionReady && loginRequired) goto(`${base}/`, { replaceState: true });
+	});
+	// An administrator acting as a creator (#523); the page reloads on start and on return.
+	const acting = browser && !!takeoverReturn();
+	$effect(() => {
+		// The creator session ended or expired: restore the administrator's own session.
+		if (acting && sessionReady && !$user.isLoggedIn) returnFromTakeover(false);
+	});
 
 	/** @param {URL} url */
 	async function handleTokenLogin(url) {
@@ -59,15 +81,40 @@
 			void handleTokenLogin($page.url);
 		});
 
-		return unsubscribe;
+		// Cross-tab session reconciliation (#302). localStorage is shared across
+		// tabs of the same browser, but each tab keeps its own in-memory user
+		// store. If another tab logs in as a different user (or via an LTI
+		// activity launch) or logs out, this tab's in-memory session goes stale
+		// while the shared token changes underneath it — letting the previous
+		// user linger here and act with the new token. The `storage` event fires
+		// only in OTHER tabs, so when the auth token changes elsewhere we reload
+		// to re-bootstrap cleanly from the current localStorage. (e.key is null
+		// on a full localStorage.clear().)
+		const onStorage = (/** @type {StorageEvent} */ e) => {
+			if (e.key && e.key !== 'userToken') return;
+			const current = get(user).token || null;
+			const next = localStorage.getItem('userToken') || null;
+			if (next !== current) {
+				window.location.reload();
+			}
+		};
+		window.addEventListener('storage', onStorage);
+
+		return () => {
+			unsubscribe();
+			window.removeEventListener('storage', onStorage);
+		};
 	});
 </script>
 
 <div class="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
+	<div class="lamb-workspace" class:agent-open={$sidebarOpen && !!$user.token} style:--aac-width={$sidebarWidth + "px"} inert={$sidebarOpen && $sidebarMobile && !!$user.token}>
+	{#if acting && sessionReady && $user.token}<TakeoverBar />{/if}
 	<Nav />
-	<GlobalAacTabBar />
+	{#if !acting && sessionReady && $user.token}<TakeoverNotices />{/if}
 
-	<main class="w-full mx-auto py-6 sm:px-6 lg:px-8 flex-grow">
+
+	<main oninputcapture={markWorkspaceDirty} onchangecapture={markWorkspaceDirty} class="w-full mx-auto py-6 sm:px-6 lg:px-8 flex-grow" class:aac-workspace={$sidebarOpen && !!$user.token}>
 		{#if sessionError}
 			<div class="max-w-md mx-auto mt-12 bg-red-50 border border-red-200 rounded-lg p-6 text-center">
 				<h2 class="text-lg font-semibold text-red-800">Unable to start session</h2>
@@ -76,10 +123,18 @@
 					Return to login
 				</a>
 			</div>
-		{:else if sessionReady}
+		{:else if sessionReady && !loginRequired}
 			{@render children()}
 		{/if}
 	</main>
 
 	<Footer />
+	</div>
+	{#if sessionReady && $user.token}<AacSidebar hideFloatingLauncher={$page.url.pathname === `${base}/moodle` && ($page.url.searchParams.get('tab') === 'charts' || !!$page.url.searchParams.get('chart'))} />{/if}
 </div>
+
+<style>
+.lamb-workspace { min-height: 100vh; display: flex; flex-direction: column; min-width: 0; width: 100%; }
+.lamb-workspace main { min-width: 0; overflow-x: auto; }
+@media (min-width: 920px) { .lamb-workspace.agent-open { width: calc(100% - var(--aac-width)); } }
+</style>

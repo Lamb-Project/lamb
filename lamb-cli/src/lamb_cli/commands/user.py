@@ -84,9 +84,14 @@ def create_user(
     password: str = typer.Argument(..., help="User password."),
     user_type: str = typer.Option("creator", "--user-type", "-t", help="User type: creator or end_user."),
     enabled: bool = typer.Option(True, "--enabled/--disabled", help="Enable or disable the user."),
+    org: Optional[str] = typer.Option(None, "--org", help="Organization slug to create the user in (admin only). Defaults to your own organization."),
     output: str = typer.Option(None, "-o", "--output", help="Output format: table, json, plain."),
 ) -> None:
-    """Create a new user."""
+    """Create a new user.
+
+    Without --org the user is created in your own organization. Admins can
+    target another organization by slug (#461).
+    """
     fmt = output or get_output_format()
     body: dict = {
         "email": email,
@@ -95,9 +100,15 @@ def create_user(
         "user_type": user_type,
         "enabled": enabled,
     }
+    params: dict = {}
+    if org:
+        params["org"] = org
     with get_client() as client:
-        data = client.post("/creator/admin/org-admin/users", json=body)
-    print_success(f"User created: {data.get('email', data.get('id', ''))}")
+        data = client.post("/creator/admin/org-admin/users", json=body, params=params)
+    # Name the organization explicitly: silent placement in the caller's org was
+    # the actual defect behind #461, not just the missing flag.
+    if fmt != "json":
+        print_success(f"User created: {data.get('email', data.get('id', ''))} (organization: {org or 'your own'})")
     format_output(data, USER_LIST_COLUMNS, fmt)
 
 

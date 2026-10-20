@@ -11,6 +11,7 @@ import re
 import time
 import secrets
 import hmac
+from lamb.lti_oauth import signing_key as oauth_signing_key
 import hashlib
 import base64
 import urllib.parse
@@ -94,7 +95,7 @@ class LtiActivityManager:
             urllib.parse.quote(encoded_params, safe='')
         ])
 
-        signing_key = f"{consumer_secret}&{token_secret}"
+        signing_key = oauth_signing_key(consumer_secret, token_secret)
         hashed = hmac.new(signing_key.encode(), base_string.encode(), hashlib.sha1)
         return base64.b64encode(hashed.digest()).decode()
 
@@ -304,9 +305,12 @@ class LtiActivityManager:
         for aid in to_add:
             owi_model.add_group_to_model(f"lamb_assistant.{aid}", owi_group_id, "read")
 
-        # Remove group from old models
+        # Remove group from old models (check the result — it used to silently
+        # fail because remove_group_from_model was broken, #399)
         for aid in to_remove:
-            owi_model.remove_group_from_model(f"lamb_assistant.{aid}", owi_group_id, "read")
+            ok = owi_model.remove_group_from_model(f"lamb_assistant.{aid}", owi_group_id, "read")
+            if not ok:
+                logger.warning(f"Failed to remove group {owi_group_id} from model lamb_assistant.{aid} (access may persist)")
 
         # Update DB
         if to_remove:

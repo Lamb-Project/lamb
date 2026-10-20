@@ -25,11 +25,16 @@ from dotenv import load_dotenv
 from .owi_bridge.owi_users import OwiUserManager
 import jwt
 import config
+import threading
 from lamb.logging_config import get_logger
 
 
 # Set up logger for database operations
 logger = get_logger(__name__, component="DB")
+
+
+class LibraryStoreError(Exception):
+    """A library row could not be written for a reason other than a name conflict."""
 
 
 class LambDatabaseManager:
@@ -38,6 +43,8 @@ class LambDatabaseManager:
     # LambDatabaseManager() per-request; running sync on every instantiation would
     # overwrite user-saved provider config (e.g. custom base_url/api_key) with .env defaults.
     _system_org_initialized = False
+    _ready_databases = set()
+    _initialization_lock = threading.RLock()
 
     def __init__(self):
         try:
@@ -54,11 +61,15 @@ class LambDatabaseManager:
                 self.create_database_and_tables()
                 logger.info(f"Created database at: {self.db_path}")
 
-            # Configure database optimizations
-            self._configure_database_optimizations()
-            
-            # Always run migrations on initialization (handles existing databases)
-            self.run_migrations()
+            # Persistent schema setup runs once per database per worker, not on
+            # every session lookup. Replacing a database requires stopped workers.
+            key = (os.getpid(), os.path.realpath(self.db_path), self.table_prefix)
+            with self._initialization_lock:
+                if key not in self._ready_databases:
+                    self._configure_database_optimizations()
+                    from .migrations import MigrationRunner
+                    MigrationRunner(self).apply_all()
+                    self._ready_databases.add(key)
 
             # Initialize system organization AFTER migrations so that
             # Creator_users columns (enabled, password_hash, role) exist.
@@ -523,6 +534,34 @@ class LambDatabaseManager:
                 logger.info(
                     f"Table '{self.table_prefix}Creator_users' created successfully")
 
+                # Create the api_keys table (per-creator keys for the
+                # OpenAI-compatible facade). The plaintext key is never
+                # stored — only its SHA-256 hash. key_prefix is the first
+                # few visible chars, for display/identification.
+                logger.debug("Creating api_keys table")
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}api_keys (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        key_hash TEXT NOT NULL UNIQUE,
+                        key_prefix TEXT NOT NULL,
+                        creator_user_id INTEGER NOT NULL,
+                        organization_id INTEGER NOT NULL,
+                        label TEXT,
+                        status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'revoked')),
+                        created_at INTEGER NOT NULL,
+                        last_used_at INTEGER,
+                        expires_at INTEGER,
+                        FOREIGN KEY (creator_user_id) REFERENCES {self.table_prefix}Creator_users(id) ON DELETE CASCADE,
+                        FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE
+                    )
+                """)
+                cursor.execute(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{self.table_prefix}api_keys_hash ON {self.table_prefix}api_keys(key_hash)")
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}api_keys_user ON {self.table_prefix}api_keys(creator_user_id)")
+                logger.info(
+                    f"Table '{self.table_prefix}api_keys' created successfully")
+
                 # Create the collections table
                 logger.debug("Creating collections table")
                 cursor.execute(f"""
@@ -562,7 +601,7 @@ class LambDatabaseManager:
                     f"Table '{self.table_prefix}config' created successfully")
 
             # Note: initialize_system_organization() is now called from __init__
-            # AFTER run_migrations() to ensure all columns exist.
+            # AFTER migrations (MigrationRunner.apply_all()) to ensure all columns exist.
         except sqlite3.Error as e:
             logger.error(f"Database error occurred: {e}")
 
@@ -620,7 +659,15 @@ class LambDatabaseManager:
         self.ensure_system_admin(system_org_id)
 
     def ensure_system_admin(self, system_org_id: int):
-        """Ensure the system admin exists and has proper roles in both OWI and LAMB"""
+        """Ensure the system admin exists with system role 'admin' AND an 'admin'
+        organization role in the system org.
+
+        Idempotent and self-healing: runs on every startup, verifies the end state,
+        and repairs anything missing. Return values are checked and any incomplete
+        bootstrap is logged at WARNING (not swallowed), so a half-provisioned admin
+        — which silently hides the Admin menu — becomes visible and is fixed on the
+        next boot rather than persisting forever. (#405)
+        """
         # First, ensure OWI admin exists
         self.create_admin_user()
 
@@ -635,887 +682,56 @@ class LambDatabaseManager:
                 password=config.OWI_ADMIN_PASSWORD,
                 organization_id=system_org_id
             )
-            if admin_user_id:
-                logger.info(
-                    f"Created LAMB admin user: {config.OWI_ADMIN_EMAIL}")
-                # Assign admin role in organization
-                self.assign_organization_role(
-                    organization_id=system_org_id,
-                    user_id=admin_user_id,
-                    role="admin"
-                )
-                logger.info(
-                    f"Assigned admin role to user {admin_user_id} in system organization")
+            if not admin_user_id:
+                # First-boot races (e.g. migration/column visibility) can land here.
+                # Bail loudly; the next startup re-runs this and self-heals.
+                logger.warning(
+                    f"ensure_system_admin: could not create LAMB admin user "
+                    f"{config.OWI_ADMIN_EMAIL}; will retry on next startup")
+                return
+            logger.info(f"Created LAMB admin user: {config.OWI_ADMIN_EMAIL}")
+            # Re-fetch so we self-heal against the persisted row below.
+            admin_user = self.get_creator_user_by_email(config.OWI_ADMIN_EMAIL) or {}
+            admin_user_id = admin_user.get('id', admin_user_id)
         else:
-            # User exists, ensure they have correct organization and role
             admin_user_id = admin_user['id']
-
-            # Check and update organization if needed
+            # Ensure the admin sits in the system organization
             if admin_user.get('organization_id') != system_org_id:
                 self.update_user_organization(admin_user_id, system_org_id)
-                logger.info(f"Updated admin user organization to system org")
-
-            # Check and assign admin role if needed
-            current_role = self.get_user_organization_role(
-                admin_user_id, system_org_id)
-            if current_role != "admin":
-                self.assign_organization_role(
-                    organization_id=system_org_id,
-                    user_id=admin_user_id,
-                    role="admin"
-                )
-                logger.info(
-                    f"Updated admin user role to 'admin' in system organization")
-
-        # Ensure LAMB-side system role matches OWI (bootstrap admin should be system admin).
-        self.update_creator_user_role(config.OWI_ADMIN_EMAIL, 'admin')
-
-    def run_migrations(self):
-        """Run database migrations for schema updates"""
-        logger.info("Running database migrations")
-        connection = self.get_connection()
-        if not connection:
-            logger.error(
-                "Could not establish database connection for migrations")
-            return
-
-        try:
-            with connection:
-                cursor = connection.cursor()
-
-                # Migration 1: Add user_type column to Creator_users if it doesn't exist
-                cursor.execute(
-                    f"PRAGMA table_info({self.table_prefix}Creator_users)")
-                columns = [row[1] for row in cursor.fetchall()]
-
-                if 'user_type' not in columns:
-                    logger.info(
-                        "Adding user_type column to Creator_users table")
-                    cursor.execute(f"""
-                        ALTER TABLE {self.table_prefix}Creator_users 
-                        ADD COLUMN user_type TEXT NOT NULL DEFAULT 'creator' 
-                        CHECK(user_type IN ('creator', 'end_user'))
-                    """)
-                    # Create index for user_type
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_type ON {self.table_prefix}Creator_users(user_type)")
-                    logger.info(
-                        "Successfully added user_type column and index")
-                else:
-                    logger.debug(
-                        "user_type column already exists in Creator_users table")
-
-                # Migration 2: Create rubrics table if it doesn't exist
-                cursor.execute(
-                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}rubrics'")
-                rubrics_table_exists = cursor.fetchone()
-
-                if not rubrics_table_exists:
-                    logger.info("Creating rubrics table")
-                    cursor.execute(f"""
-                        CREATE TABLE {self.table_prefix}rubrics (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            rubric_id TEXT UNIQUE NOT NULL,
-                            organization_id INTEGER NOT NULL,
-                            owner_email TEXT NOT NULL,
-                            title TEXT NOT NULL,
-                            description TEXT,
-                            rubric_data JSON NOT NULL,
-                            is_public BOOLEAN DEFAULT FALSE,
-                            is_showcase BOOLEAN DEFAULT FALSE,
-                            parent_rubric_id TEXT,
-                            created_at INTEGER NOT NULL,
-                            updated_at INTEGER NOT NULL,
-                            FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE,
-                            FOREIGN KEY (parent_rubric_id) REFERENCES {self.table_prefix}rubrics(rubric_id) ON DELETE SET NULL
-                        )
-                    """)
-
-                    # Create indexes for performance
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_owner ON {self.table_prefix}rubrics(owner_email)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_org ON {self.table_prefix}rubrics(organization_id)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_rubric_id ON {self.table_prefix}rubrics(rubric_id)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_public ON {self.table_prefix}rubrics(is_public)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_showcase ON {self.table_prefix}rubrics(is_showcase)")
-
-                    logger.info(
-                        "Successfully created rubrics table and indexes")
-                else:
-                    logger.debug("rubrics table already exists")
-
-                # Migration 3: Create prompt_templates table if it doesn't exist
-                cursor.execute(
-                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}prompt_templates'")
-                prompt_templates_table_exists = cursor.fetchone()
-
-                if not prompt_templates_table_exists:
-                    logger.info("Creating prompt_templates table")
-                    cursor.execute(f"""
-                        CREATE TABLE {self.table_prefix}prompt_templates (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            organization_id INTEGER NOT NULL,
-                            owner_email TEXT NOT NULL,
-                            name TEXT NOT NULL,
-                            description TEXT,
-                            system_prompt TEXT,
-                            prompt_template TEXT,
-                            is_shared BOOLEAN DEFAULT FALSE,
-                            metadata JSON,
-                            created_at INTEGER NOT NULL,
-                            updated_at INTEGER NOT NULL,
-                            FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE,
-                            FOREIGN KEY (owner_email) REFERENCES {self.table_prefix}Creator_users(user_email) ON DELETE CASCADE,
-                            UNIQUE(organization_id, owner_email, name)
-                        )
-                    """)
-
-                    # Create indexes for performance
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}prompt_templates_org_shared ON {self.table_prefix}prompt_templates(organization_id, is_shared)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}prompt_templates_owner ON {self.table_prefix}prompt_templates(owner_email)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}prompt_templates_name ON {self.table_prefix}prompt_templates(name)")
-
-                    logger.info(
-                        "Successfully created prompt_templates table and indexes")
-                else:
-                    logger.debug("prompt_templates table already exists")
-
-                # Migration 4: Add enabled column to Creator_users if it doesn't exist
-                cursor.execute(
-                    f"PRAGMA table_info({self.table_prefix}Creator_users)")
-                columns = [row[1] for row in cursor.fetchall()]
-
-                if 'enabled' not in columns:
-                    logger.info("Adding enabled column to Creator_users table")
-                    cursor.execute(f"""
-                        ALTER TABLE {self.table_prefix}Creator_users 
-                        ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1
-                    """)
-                    # Create index for performance
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_enabled ON {self.table_prefix}Creator_users(enabled)")
-                    logger.info("Successfully added enabled column and index")
-                else:
-                    logger.debug(
-                        "enabled column already exists in Creator_users table")
-
-                # Migration 5: Create kb_registry table if it doesn't exist
-                cursor.execute(
-                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}kb_registry'")
-                kb_registry_table_exists = cursor.fetchone()
-
-                if not kb_registry_table_exists:
-                    logger.info("Creating kb_registry table")
-                    cursor.execute(f"""
-                        CREATE TABLE {self.table_prefix}kb_registry (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            kb_id TEXT NOT NULL UNIQUE,
-                            kb_name TEXT NOT NULL,
-                            owner_user_id INTEGER NOT NULL,
-                            organization_id INTEGER NOT NULL,
-                            is_shared BOOLEAN DEFAULT FALSE,
-                            metadata JSON,
-                            created_at INTEGER NOT NULL,
-                            updated_at INTEGER NOT NULL,
-                            FOREIGN KEY (owner_user_id) REFERENCES {self.table_prefix}Creator_users(id) ON DELETE CASCADE,
-                            FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE
-                        )
-                    """)
-
-                    # Create indexes for performance
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_registry_owner ON {self.table_prefix}kb_registry(owner_user_id)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_registry_org_shared ON {self.table_prefix}kb_registry(organization_id, is_shared)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_registry_kb_id ON {self.table_prefix}kb_registry(kb_id)")
-
-                    logger.info(
-                        "Successfully created kb_registry table and indexes")
-                else:
-                    logger.debug("kb_registry table already exists")
-
-                # Migration 6: Create bulk_import_logs table if it doesn't exist
-                cursor.execute(
-                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}bulk_import_logs'")
-                bulk_import_logs_table_exists = cursor.fetchone()
-
-                if not bulk_import_logs_table_exists:
-                    logger.info("Creating bulk_import_logs table")
-                    cursor.execute(f"""
-                        CREATE TABLE {self.table_prefix}bulk_import_logs (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            organization_id INTEGER NOT NULL,
-                            admin_user_id INTEGER,
-                            admin_email TEXT NOT NULL,
-                            operation_type TEXT NOT NULL CHECK(operation_type IN ('user_creation', 'user_activation', 'user_deactivation')),
-                            total_count INTEGER NOT NULL,
-                            success_count INTEGER NOT NULL,
-                            failure_count INTEGER NOT NULL,
-                            details JSON,
-                            created_at INTEGER NOT NULL,
-                            FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE,
-                            FOREIGN KEY (admin_user_id) REFERENCES {self.table_prefix}Creator_users(id) ON DELETE SET NULL
-                        )
-                    """)
-
-                    # Create indexes for performance
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_org ON {self.table_prefix}bulk_import_logs(organization_id)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_admin ON {self.table_prefix}bulk_import_logs(admin_user_id)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_created ON {self.table_prefix}bulk_import_logs(created_at)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_type ON {self.table_prefix}bulk_import_logs(operation_type)")
-
-                    logger.info(
-                        "Successfully created bulk_import_logs table and indexes")
-                else:
-                    logger.debug("bulk_import_logs table already exists")
-
-                # Migration: Check if assistant_shares table exists
-                cursor.execute(f"""
-                    SELECT name FROM sqlite_master 
-                    WHERE type='table' AND name='{self.table_prefix}assistant_shares'
-                """)
-                if not cursor.fetchone():
-                    logger.info("Creating assistant_shares table")
-                    cursor.execute(f"""
-                        CREATE TABLE IF NOT EXISTS {self.table_prefix}assistant_shares (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            assistant_id INTEGER NOT NULL,
-                            shared_with_user_id INTEGER NOT NULL,
-                            shared_by_user_id INTEGER NOT NULL,
-                            shared_at INTEGER NOT NULL,
-                            FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id) ON DELETE CASCADE,
-                            FOREIGN KEY (shared_with_user_id) REFERENCES {self.table_prefix}Creator_users(id) ON DELETE CASCADE,
-                            FOREIGN KEY (shared_by_user_id) REFERENCES {self.table_prefix}Creator_users(id) ON DELETE CASCADE,
-                            UNIQUE(assistant_id, shared_with_user_id)
-                        )
-                    """)
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_assistant ON {self.table_prefix}assistant_shares(assistant_id)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_shared_with ON {self.table_prefix}assistant_shares(shared_with_user_id)")
-                    logger.info(
-                        f"Table '{self.table_prefix}assistant_shares' created successfully")
-                else:
-                    logger.debug("assistant_shares table already exists")
-
-                # Migration 7: Create lamb_chats table for internal chat persistence
-                # This mirrors the OWI chat table structure for unified analytics
-                cursor.execute(
-                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}lamb_chats'")
-                lamb_chats_table_exists = cursor.fetchone()
-
-                if not lamb_chats_table_exists:
-                    logger.info(
-                        "Creating lamb_chats table for internal chat persistence")
-                    cursor.execute(f"""
-                        CREATE TABLE {self.table_prefix}lamb_chats (
-                            id TEXT PRIMARY KEY,
-                            user_id INTEGER NOT NULL,
-                            assistant_id INTEGER NOT NULL,
-                            title TEXT NOT NULL DEFAULT 'New Chat',
-                            created_at INTEGER NOT NULL,
-                            updated_at INTEGER NOT NULL,
-                            chat JSON NOT NULL DEFAULT '{{"history": {{"messages": {{}}}}}}',
-                            archived INTEGER DEFAULT 0,
-                            FOREIGN KEY (user_id) REFERENCES {self.table_prefix}Creator_users(id) ON DELETE CASCADE,
-                            FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id) ON DELETE CASCADE
-                        )
-                    """)
-
-                    # Create indexes for common query patterns
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lamb_chats_user ON {self.table_prefix}lamb_chats(user_id)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lamb_chats_assistant ON {self.table_prefix}lamb_chats(assistant_id)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lamb_chats_user_assistant ON {self.table_prefix}lamb_chats(user_id, assistant_id)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lamb_chats_updated ON {self.table_prefix}lamb_chats(updated_at)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lamb_chats_archived ON {self.table_prefix}lamb_chats(archived)")
-
-                    logger.info(
-                        "Successfully created lamb_chats table and indexes")
-                else:
-                    logger.debug("lamb_chats table already exists")
-
-                # Migration 8: Add LTI creator user fields to Creator_users
-                cursor.execute(
-                    f"PRAGMA table_info({self.table_prefix}Creator_users)")
-                columns = [row[1] for row in cursor.fetchall()]
-
-                if 'lti_user_id' not in columns:
-                    logger.info("Adding lti_user_id column to Creator_users table")
-                    cursor.execute(f"""
-                        ALTER TABLE {self.table_prefix}Creator_users 
-                        ADD COLUMN lti_user_id TEXT
-                    """)
-                    logger.info("Successfully added lti_user_id column")
-                else:
-                    logger.debug("lti_user_id column already exists in Creator_users table")
-
-                if 'auth_provider' not in columns:
-                    logger.info("Adding auth_provider column to Creator_users table")
-                    cursor.execute(f"""
-                        ALTER TABLE {self.table_prefix}Creator_users 
-                        ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'password'
-                    """)
-                    logger.info("Successfully added auth_provider column")
-                else:
-                    logger.debug("auth_provider column already exists in Creator_users table")
-
-                # Create unique index for (organization_id, lti_user_id) if not exists
-                # This ensures one LTI user per org
-                cursor.execute(f"""
-                    CREATE UNIQUE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_org_lti 
-                    ON {self.table_prefix}Creator_users(organization_id, lti_user_id)
-                    WHERE lti_user_id IS NOT NULL
-                """)
-                logger.debug("Ensured unique index on (organization_id, lti_user_id)")
-
-                # Create index on lti_user_id for fast lookups
-                cursor.execute(f"""
-                    CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_lti_user_id 
-                    ON {self.table_prefix}Creator_users(lti_user_id)
-                    WHERE lti_user_id IS NOT NULL
-                """)
-                logger.debug("Ensured index on lti_user_id")
-
-                # Migration 9: Create lti_creator_keys table for org LTI consumer keys
-                cursor.execute(
-                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}lti_creator_keys'")
-                lti_creator_keys_table_exists = cursor.fetchone()
-
-                if not lti_creator_keys_table_exists:
-                    logger.info("Creating lti_creator_keys table")
-                    cursor.execute(f"""
-                        CREATE TABLE {self.table_prefix}lti_creator_keys (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            organization_id INTEGER NOT NULL UNIQUE,
-                            oauth_consumer_key TEXT NOT NULL UNIQUE,
-                            oauth_consumer_secret TEXT NOT NULL,
-                            enabled BOOLEAN DEFAULT TRUE,
-                            created_at INTEGER NOT NULL,
-                            updated_at INTEGER NOT NULL,
-                            FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE
-                        )
-                    """)
-                    cursor.execute(
-                        f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_creator_keys_consumer_key ON {self.table_prefix}lti_creator_keys(oauth_consumer_key)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_creator_keys_org ON {self.table_prefix}lti_creator_keys(organization_id)")
-                    logger.info("Successfully created lti_creator_keys table and indexes")
-                else:
-                    logger.debug("lti_creator_keys table already exists")
-
-                # Migration 10: Create unified LTI activity tables
-                # lti_global_config — singleton for global LTI consumer key/secret
-                cursor.execute(
-                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}lti_global_config'")
-                if not cursor.fetchone():
-                    logger.info("Creating lti_global_config table")
-                    cursor.execute(f"""
-                        CREATE TABLE {self.table_prefix}lti_global_config (
-                            id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
-                            oauth_consumer_key TEXT NOT NULL,
-                            oauth_consumer_secret TEXT NOT NULL,
-                            updated_at INTEGER NOT NULL,
-                            updated_by TEXT
-                        )
-                    """)
-                    logger.info("Successfully created lti_global_config table")
-
-                # lti_activities — one row per LTI activity placement, bound to one org
-                cursor.execute(
-                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}lti_activities'")
-                if not cursor.fetchone():
-                    logger.info("Creating lti_activities table")
-                    cursor.execute(f"""
-                        CREATE TABLE {self.table_prefix}lti_activities (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            resource_link_id TEXT NOT NULL UNIQUE,
-                            organization_id INTEGER NOT NULL,
-                            context_id TEXT,
-                            context_title TEXT,
-                            activity_name TEXT,
-                            owi_group_id TEXT NOT NULL,
-                            owi_group_name TEXT NOT NULL,
-                            owner_email TEXT NOT NULL,
-                            owner_name TEXT,
-                            configured_by_email TEXT NOT NULL,
-                            configured_by_name TEXT,
-                            chat_visibility_enabled INTEGER NOT NULL DEFAULT 0,
-                            status TEXT NOT NULL DEFAULT 'active',
-                            created_at INTEGER NOT NULL,
-                            updated_at INTEGER NOT NULL,
-                            FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id)
-                        )
-                    """)
-                    cursor.execute(
-                        f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_activities_resource_link ON {self.table_prefix}lti_activities(resource_link_id)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_activities_org ON {self.table_prefix}lti_activities(organization_id)")
-                    logger.info("Successfully created lti_activities table and indexes")
-                else:
-                    # Migrate existing table: add new columns if missing
-                    cursor.execute(f"PRAGMA table_info({self.table_prefix}lti_activities)")
-                    existing_cols = {row[1] for row in cursor.fetchall()}
-                    if 'owner_email' not in existing_cols:
-                        logger.info("Migrating lti_activities: adding owner_email, owner_name, chat_visibility_enabled")
-                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activities ADD COLUMN owner_email TEXT NOT NULL DEFAULT ''")
-                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activities ADD COLUMN owner_name TEXT")
-                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activities ADD COLUMN chat_visibility_enabled INTEGER NOT NULL DEFAULT 0")
-                        # Backfill owner_email from configured_by_email
-                        cursor.execute(f"UPDATE {self.table_prefix}lti_activities SET owner_email = configured_by_email, owner_name = configured_by_name WHERE owner_email = ''")
-                        logger.info("Migrated lti_activities with owner and chat_visibility fields")
-
-                # lti_activity_assistants — junction: which assistants belong to which activity
-                cursor.execute(
-                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}lti_activity_assistants'")
-                if not cursor.fetchone():
-                    logger.info("Creating lti_activity_assistants table")
-                    cursor.execute(f"""
-                        CREATE TABLE {self.table_prefix}lti_activity_assistants (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            activity_id INTEGER NOT NULL,
-                            assistant_id INTEGER NOT NULL,
-                            added_at INTEGER NOT NULL,
-                            FOREIGN KEY (activity_id) REFERENCES {self.table_prefix}lti_activities(id) ON DELETE CASCADE,
-                            FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id) ON DELETE CASCADE,
-                            UNIQUE(activity_id, assistant_id)
-                        )
-                    """)
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_activity_assistants_activity ON {self.table_prefix}lti_activity_assistants(activity_id)")
-                    logger.info("Successfully created lti_activity_assistants table")
-
-                # lti_activity_users — track students who accessed via each activity
-                cursor.execute(
-                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}lti_activity_users'")
-                if not cursor.fetchone():
-                    logger.info("Creating lti_activity_users table")
-                    cursor.execute(f"""
-                        CREATE TABLE {self.table_prefix}lti_activity_users (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            activity_id INTEGER NOT NULL,
-                            user_email TEXT NOT NULL,
-                            user_name TEXT NOT NULL DEFAULT '',
-                            user_display_name TEXT NOT NULL DEFAULT '',
-                            lms_user_id TEXT,
-                            owi_user_id TEXT,
-                            consent_given_at INTEGER,
-                            last_access_at INTEGER,
-                            access_count INTEGER NOT NULL DEFAULT 0,
-                            created_at INTEGER NOT NULL,
-                            FOREIGN KEY (activity_id) REFERENCES {self.table_prefix}lti_activities(id) ON DELETE CASCADE,
-                            UNIQUE(user_email, activity_id)
-                        )
-                    """)
-                    logger.info("Successfully created lti_activity_users table")
-                else:
-                    # Migrate existing table: add new columns if missing
-                    cursor.execute(f"PRAGMA table_info({self.table_prefix}lti_activity_users)")
-                    existing_cols = {row[1] for row in cursor.fetchall()}
-                    if 'owi_user_id' not in existing_cols:
-                        logger.info("Migrating lti_activity_users: adding owi_user_id, consent_given_at, last_access_at, access_count")
-                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN owi_user_id TEXT")
-                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN consent_given_at INTEGER")
-                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN last_access_at INTEGER")
-                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0")
-                        logger.info("Migrated lti_activity_users with dashboard fields")
-
-                # lti_identity_links — map LMS identities to LAMB Creator users
-                cursor.execute(
-                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}lti_identity_links'")
-                if not cursor.fetchone():
-                    logger.info("Creating lti_identity_links table")
-                    cursor.execute(f"""
-                        CREATE TABLE {self.table_prefix}lti_identity_links (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            lms_user_id TEXT NOT NULL,
-                            lms_email TEXT,
-                            creator_user_id INTEGER NOT NULL,
-                            linked_at INTEGER NOT NULL,
-                            FOREIGN KEY (creator_user_id) REFERENCES {self.table_prefix}Creator_users(id) ON DELETE CASCADE
-                        )
-                    """)
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_identity_lms_user ON {self.table_prefix}lti_identity_links(lms_user_id)")
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_identity_lms_email ON {self.table_prefix}lti_identity_links(lms_email)")
-                    logger.info("Successfully created lti_identity_links table and indexes")
-
-                # ---- Migration 11: Add password_hash and role to Creator_users ----
-                cursor.execute(f"PRAGMA table_info({self.table_prefix}Creator_users)")
-                existing_cols = {row[1] for row in cursor.fetchall()}
-
-                if 'password_hash' not in existing_cols:
-                    logger.info("Migration 11: Adding password_hash column to Creator_users")
-                    cursor.execute(
-                        f"ALTER TABLE {self.table_prefix}Creator_users ADD COLUMN password_hash TEXT")
-
-                if 'role' not in existing_cols:
-                    logger.info("Migration 11: Adding role column to Creator_users")
-                    cursor.execute(
-                        f"ALTER TABLE {self.table_prefix}Creator_users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
-
-                connection.commit()
-                logger.info("Migration 11 complete")
-
-                # ---- Migration 11b: Copy password hashes and roles from OWI ----
-                try:
-                    cursor.execute(f"""
-                        SELECT id, user_email FROM {self.table_prefix}Creator_users
-                        WHERE auth_provider = 'password' AND password_hash IS NULL
-                    """)
-                    users_to_migrate = cursor.fetchall()
-
-                    if users_to_migrate:
-                        logger.info(f"Migration 11b: Migrating {len(users_to_migrate)} password hashes from OWI")
-                        try:
-                            from .owi_bridge.owi_database import OwiDatabaseManager
-                            owi_db = OwiDatabaseManager()
-                            owi_conn = owi_db.get_connection()
-
-                            if owi_conn:
-                                try:
-                                    owi_cursor = owi_conn.cursor()
-                                    for user_id, user_email in users_to_migrate:
-                                        try:
-                                            # Get password hash from OWI auth table
-                                            owi_cursor.execute(
-                                                "SELECT password FROM auth WHERE email = ?",
-                                                (user_email,))
-                                            auth_row = owi_cursor.fetchone()
-
-                                            # Get role from OWI user table
-                                            owi_cursor.execute(
-                                                "SELECT role FROM user WHERE email = ?",
-                                                (user_email,))
-                                            role_row = owi_cursor.fetchone()
-
-                                            pw_hash = auth_row[0] if auth_row else None
-                                            owi_role = role_row[0] if role_row else 'user'
-
-                                            if pw_hash:
-                                                cursor.execute(f"""
-                                                    UPDATE {self.table_prefix}Creator_users
-                                                    SET password_hash = ?, role = ?
-                                                    WHERE id = ?
-                                                """, (pw_hash, owi_role, user_id))
-                                                logger.debug(f"Migrated hash for {user_email}")
-                                        except Exception as row_err:
-                                            logger.warning(f"Migration 11b: Skipping {user_email}: {row_err}")
-
-                                    connection.commit()
-                                    logger.info("Migration 11b complete")
-                                finally:
-                                    owi_conn.close()
-                            else:
-                                logger.warning("Migration 11b: Could not connect to OWI DB, skipping hash migration")
-                        except Exception as owi_err:
-                            logger.warning(f"Migration 11b: OWI DB unavailable, skipping: {owi_err}")
-                    else:
-                        logger.info("Migration 11b: No users need hash migration")
-                except Exception as mig_err:
-                    logger.warning(f"Migration 11b error (non-fatal): {mig_err}")
-
-                # ---- Migration 12: Token quota tracking ----
-                # Add model_name + provider columns to usage_logs, plus assistant index
-                cursor.execute(f"PRAGMA table_info({self.table_prefix}usage_logs)")
-                usage_log_cols = {row[1] for row in cursor.fetchall()}
-
-                if 'model_name' not in usage_log_cols:
-                    logger.info("Migration 12: Adding model_name column to usage_logs")
-                    cursor.execute(f"ALTER TABLE {self.table_prefix}usage_logs ADD COLUMN model_name TEXT")
-
-                if 'provider' not in usage_log_cols:
-                    logger.info("Migration 12: Adding provider column to usage_logs")
-                    cursor.execute(f"ALTER TABLE {self.table_prefix}usage_logs ADD COLUMN provider TEXT")
-
-                # Index on assistant_id for fast per-assistant cost aggregation
-                cursor.execute(f"""
-                    CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}usage_logs_assistant
-                    ON {self.table_prefix}usage_logs(assistant_id)
-                """)
-
-                # model_pricing table — seed data kept up to date by operators
-                cursor.execute(
-                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}model_pricing'")
-                if not cursor.fetchone():
-                    logger.info("Migration 12: Creating model_pricing table")
-                    cursor.execute(f"""
-                        CREATE TABLE {self.table_prefix}model_pricing (
-                            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                            provider      TEXT NOT NULL,
-                            model_name    TEXT NOT NULL,
-                            input_per_1m  REAL NOT NULL DEFAULT 0,
-                            output_per_1m REAL NOT NULL DEFAULT 0,
-                            notes         TEXT,
-                            updated_at    INTEGER NOT NULL,
-                            UNIQUE(provider, model_name)
-                        )
-                    """)
-                    # Seed with known pricing (USD per 1M tokens, input / output)
-                    now = int(time.time())
-                    seed_rows = [
-                        ("openai", "gpt-4.1",                      2.00,  8.00),
-                        ("openai", "gpt-4.1-mini",                 0.40,  1.60),
-                        ("openai", "gpt-4.1-nano",                 0.10,  0.40),
-                        ("openai", "gpt-4o",                       2.50, 10.00),
-                        ("openai", "gpt-4o-mini",                  0.15,  0.60),
-                        ("openai", "gpt-4-turbo",                 10.00, 30.00),
-                        ("openai", "gpt-4",                       30.00, 60.00),
-                        ("openai", "o3-mini",                      1.10,  4.40),
-                        ("anthropic", "claude-3-5-sonnet-20241022", 3.00, 15.00),
-                        ("anthropic", "claude-3-5-haiku-20241022",  0.80,  4.00),
-                    ]
-                    cursor.executemany(
-                        f"""INSERT OR IGNORE INTO {self.table_prefix}model_pricing
-                            (provider, model_name, input_per_1m, output_per_1m, updated_at)
-                            VALUES (?, ?, ?, ?, ?)""",
-                        [(p, m, i, o, now) for p, m, i, o in seed_rows]
-                    )
-                    logger.info("Migration 12: model_pricing table created and seeded")
-
-                # Migration 13: Add token quota tracking tables
-                logger.info("Migration 13: Creating assistant_usage_totals table if not exists")
-                cursor.execute(f"""
-                    CREATE TABLE IF NOT EXISTS {self.table_prefix}assistant_usage_totals (
-                        assistant_id INTEGER PRIMARY KEY,
-                        prompt_tokens_total INTEGER DEFAULT 0,
-                        completion_tokens_total INTEGER DEFAULT 0,
-                        total_tokens_total INTEGER DEFAULT 0,
-                        cost_usd_total REAL DEFAULT 0.0,
-                        updated_at INTEGER NOT NULL,
-                        FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id) ON DELETE CASCADE
-                    )
-                """)
-
-                logger.info("Migration 13: Creating assistant_quota_alerts table if not exists")
-                cursor.execute(f"""
-                    CREATE TABLE IF NOT EXISTS {self.table_prefix}assistant_quota_alerts (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        assistant_id INTEGER UNIQUE NOT NULL,
-                        quota_limit_usd REAL,
-                        thresholds_config JSON,
-                        current_alert_level INTEGER DEFAULT 0,
-                        is_blocked BOOLEAN DEFAULT 0,
-                        updated_at INTEGER NOT NULL,
-                        FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id) ON DELETE CASCADE
-                    )
-                """)
-
-                # Backfill assistant_usage_totals from existing usage_logs if new
-                logger.info("Migration 13: Backfilling assistant_usage_totals from usage_logs")
-                cursor.execute(f"""
-                    INSERT INTO {self.table_prefix}assistant_usage_totals (
-                        assistant_id, prompt_tokens_total, completion_tokens_total, total_tokens_total, cost_usd_total, updated_at
-                    )
-                    SELECT
-                        a.id AS assistant_id,
-                        COALESCE(SUM(json_extract(ul.usage_data, '$.prompt_tokens')), 0) AS prompt_tokens_total,
-                        COALESCE(SUM(json_extract(ul.usage_data, '$.completion_tokens')), 0) AS completion_tokens_total,
-                        COALESCE(SUM(json_extract(ul.usage_data, '$.total_tokens')), 0) AS total_tokens_total,
-                        COALESCE(SUM(
-                            COALESCE(json_extract(ul.usage_data, '$.prompt_tokens'), 0) * COALESCE(mp.input_per_1m, 0) / 1000000.0
-                            + 
-                            COALESCE(json_extract(ul.usage_data, '$.completion_tokens'), 0) * COALESCE(mp.output_per_1m, 0) / 1000000.0
-                        ), 0.0) AS cost_usd_total,
-                        strftime('%s', 'now') AS updated_at
-                    FROM {self.table_prefix}assistants a
-                    JOIN {self.table_prefix}usage_logs ul ON ul.assistant_id = a.id
-                    LEFT JOIN {self.table_prefix}model_pricing mp ON ul.model_name = mp.model_name AND ul.provider = mp.provider
-                    GROUP BY a.id
-                    ON CONFLICT(assistant_id) DO UPDATE SET
-                        prompt_tokens_total = excluded.prompt_tokens_total,
-                        completion_tokens_total = excluded.completion_tokens_total,
-                        total_tokens_total = excluded.total_tokens_total,
-                        cost_usd_total = excluded.cost_usd_total,
-                        updated_at = excluded.updated_at
-                """)
-
-                connection.commit()
-                logger.info("Migration 12 and 13 complete")
-
-                # Migration 14: AAC (Agent-Assisted Creator) sessions table
-                cursor.execute(
-                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}aac_sessions'")
-                if not cursor.fetchone():
-                    logger.info("Migration 14: Creating aac_sessions table")
-                    cursor.execute(f"""
-                        CREATE TABLE {self.table_prefix}aac_sessions (
-                            id TEXT PRIMARY KEY,
-                            assistant_id INTEGER,
-                            user_email TEXT NOT NULL,
-                            organization_id INTEGER NOT NULL,
-                            status TEXT DEFAULT 'active',
-                            conversation TEXT DEFAULT '[]',
-                            created_at TIMESTAMP,
-                            updated_at TIMESTAMP
-                        )
-                    """)
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}aac_sessions_user "
-                        f"ON {self.table_prefix}aac_sessions(user_email)")
-                    connection.commit()
-                    logger.info("Migration 14: aac_sessions table created")
-
-                # Migration 14b: Add title column to aac_sessions if missing
-                cursor.execute(f"PRAGMA table_info({self.table_prefix}aac_sessions)")
-                aac_cols = [row[1] for row in cursor.fetchall()]
-                if 'title' not in aac_cols:
-                    logger.info("Migration 14b: Adding title column to aac_sessions")
-                    cursor.execute(
-                        f"ALTER TABLE {self.table_prefix}aac_sessions ADD COLUMN title TEXT DEFAULT ''")
-                    connection.commit()
-
-                # Migration 15: Assistant test scenarios, runs, and evaluations (#327)
-                cursor.execute(
-                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}assistant_test_scenarios'")
-                if not cursor.fetchone():
-                    logger.info("Migration 15: Creating test scenarios, runs, and evaluations tables")
-                    cursor.execute(f"""
-                        CREATE TABLE {self.table_prefix}assistant_test_scenarios (
-                            id TEXT PRIMARY KEY,
-                            assistant_id INTEGER NOT NULL,
-                            title TEXT NOT NULL,
-                            description TEXT DEFAULT '',
-                            scenario_type TEXT DEFAULT 'single_turn',
-                            messages TEXT NOT NULL,
-                            expected_behavior TEXT DEFAULT '',
-                            tags TEXT DEFAULT '[]',
-                            created_by TEXT NOT NULL,
-                            created_at TIMESTAMP,
-                            updated_at TIMESTAMP
-                        )
-                    """)
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}test_scenarios_assistant "
-                        f"ON {self.table_prefix}assistant_test_scenarios(assistant_id)")
-
-                    cursor.execute(f"""
-                        CREATE TABLE {self.table_prefix}assistant_test_runs (
-                            id TEXT PRIMARY KEY,
-                            assistant_id INTEGER NOT NULL,
-                            scenario_id TEXT,
-                            input_messages TEXT NOT NULL,
-                            output TEXT NOT NULL,
-                            token_usage TEXT,
-                            assistant_snapshot TEXT,
-                            model_used TEXT,
-                            elapsed_ms REAL,
-                            created_at TIMESTAMP
-                        )
-                    """)
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}test_runs_assistant "
-                        f"ON {self.table_prefix}assistant_test_runs(assistant_id)")
-
-                    cursor.execute(f"""
-                        CREATE TABLE {self.table_prefix}assistant_test_evaluations (
-                            id TEXT PRIMARY KEY,
-                            test_run_id TEXT NOT NULL,
-                            evaluator TEXT NOT NULL,
-                            verdict TEXT,
-                            notes TEXT DEFAULT '',
-                            dimensions TEXT,
-                            confirmed_by_user BOOLEAN,
-                            created_at TIMESTAMP
-                        )
-                    """)
-                    cursor.execute(
-                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}test_evals_run "
-                        f"ON {self.table_prefix}assistant_test_evaluations(test_run_id)")
-
-                    connection.commit()
-                    logger.info("Migration 15: Test tables created")
-
-                # Migration 16: Create library tables
-                logger.info("Migration 16: Creating library tables if not exist")
-                cursor.execute(f"""
-                    CREATE TABLE IF NOT EXISTS {self.table_prefix}libraries (
-                        id TEXT PRIMARY KEY,
-                        organization_id INTEGER NOT NULL,
-                        name TEXT NOT NULL,
-                        description TEXT,
-                        owner_user_id INTEGER NOT NULL,
-                        is_shared INTEGER DEFAULT 0,
-                        import_config TEXT,
-                        status TEXT DEFAULT 'active',
-                        created_at INTEGER NOT NULL,
-                        updated_at INTEGER NOT NULL,
-                        FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE,
-                        FOREIGN KEY (owner_user_id) REFERENCES {self.table_prefix}Creator_users(id),
-                        UNIQUE(organization_id, name)
-                    )
-                """)
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}libraries_owner ON {self.table_prefix}libraries(owner_user_id)")
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}libraries_org_shared ON {self.table_prefix}libraries(organization_id, is_shared)")
-
-                cursor.execute(f"""
-                    CREATE TABLE IF NOT EXISTS {self.table_prefix}library_items (
-                        id TEXT PRIMARY KEY,
-                        library_id TEXT NOT NULL,
-                        organization_id INTEGER NOT NULL,
-                        title TEXT NOT NULL,
-                        source_type TEXT NOT NULL,
-                        original_filename TEXT,
-                        content_type TEXT,
-                        file_size INTEGER,
-                        source_url TEXT,
-                        import_plugin TEXT NOT NULL,
-                        import_params TEXT,
-                        status TEXT NOT NULL DEFAULT 'pending',
-                        uploader_user_id INTEGER NOT NULL,
-                        metadata TEXT,
-                        created_at INTEGER NOT NULL,
-                        updated_at INTEGER NOT NULL,
-                        FOREIGN KEY (library_id) REFERENCES {self.table_prefix}libraries(id) ON DELETE CASCADE,
-                        FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE,
-                        FOREIGN KEY (uploader_user_id) REFERENCES {self.table_prefix}Creator_users(id)
-                    )
-                """)
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}library_items_library ON {self.table_prefix}library_items(library_id)")
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}library_items_org ON {self.table_prefix}library_items(organization_id)")
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}library_items_status ON {self.table_prefix}library_items(status)")
-
-                cursor.execute(f"""
-                    CREATE TABLE IF NOT EXISTS {self.table_prefix}audit_log (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        organization_id INTEGER NOT NULL,
-                        actor_user_id INTEGER NOT NULL,
-                        action TEXT NOT NULL,
-                        target_type TEXT NOT NULL,
-                        target_id TEXT NOT NULL,
-                        details TEXT,
-                        created_at INTEGER NOT NULL,
-                        FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id),
-                        FOREIGN KEY (actor_user_id) REFERENCES {self.table_prefix}Creator_users(id)
-                    )
-                """)
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}audit_log_org_date ON {self.table_prefix}audit_log(organization_id, created_at)")
-
-                connection.commit()
-                logger.info("Migration 16 complete")
-
-        except sqlite3.Error as e:
-            logger.error(f"Migration error: {e}")
-        finally:
-            if connection:
-                connection.close()
+                logger.info("ensure_system_admin: moved admin user to system org")
+
+        # Self-heal the organization role (the row found empty in #405).
+        if self.get_user_organization_role(admin_user_id, system_org_id) != "admin":
+            if self.assign_organization_role(
+                    organization_id=system_org_id, user_id=admin_user_id, role="admin"):
+                logger.info("ensure_system_admin: assigned admin org-role in system org")
+            else:
+                logger.warning(
+                    f"ensure_system_admin: FAILED to assign admin org-role to user "
+                    f"{admin_user_id} in org {system_org_id}")
+
+        # Self-heal the LAMB-side system role (bootstrap admin must be system admin).
+        if (admin_user or {}).get('role') != 'admin':
+            if not self.update_creator_user_role(config.OWI_ADMIN_EMAIL, 'admin'):
+                logger.warning(
+                    f"ensure_system_admin: FAILED to set system role 'admin' for "
+                    f"{config.OWI_ADMIN_EMAIL}")
+
+        # Final verification — loud if still incomplete, so the #405 silent-failure
+        # chain can't hide a non-admin admin (no Admin menu) again.
+        final = self.get_creator_user_by_email(config.OWI_ADMIN_EMAIL) or {}
+        final_org_role = (
+            self.get_user_organization_role(admin_user_id, system_org_id)
+            if admin_user_id else None)
+        if final.get('role') != 'admin' or final_org_role != 'admin':
+            logger.warning(
+                f"ensure_system_admin INCOMPLETE for {config.OWI_ADMIN_EMAIL}: "
+                f"system_role={final.get('role')!r}, org_role={final_org_role!r}. "
+                f"Admin menu will not appear; will retry on next startup.")
+        else:
+            logger.info(
+                f"ensure_system_admin: verified {config.OWI_ADMIN_EMAIL} has "
+                f"system role + org role = admin")
 
     def create_system_organization(self) -> Optional[int]:
         """Create the 'lamb' system organization from .env configuration"""
@@ -1579,8 +795,13 @@ class LambDatabaseManager:
         if os.getenv("OLLAMA_BASE_URL"):
             providers["ollama"] = {
                 "base_url": os.getenv("OLLAMA_BASE_URL"),
-                "models": [os.getenv("OLLAMA_MODEL", "llama3.1")]
             }
+            # Ollama models are discovered dynamically via the Ollama API
+            # (get_available_llms in connectors/ollama.py). Do NOT hardcode
+            # a models list here — it would override the live model list
+            # on every restart.
+            if os.getenv("OLLAMA_MODEL"):
+                providers["ollama"]["models"] = os.getenv("OLLAMA_MODEL").split(",")
 
         return providers
 
@@ -1600,7 +821,10 @@ class LambDatabaseManager:
             "dev_mode": os.getenv("DEV_MODE", "false").lower() == "true",
             "mcp_enabled": True,  # Always enabled for system org
             "lti_publishing": True,
-            "rag_enabled": True
+            "rag_enabled": True,
+            # Per-creator API keys for the OpenAI-compatible facade. Default
+            # off — an org owner/admin turns it on explicitly.
+            "api_access": os.getenv("API_ACCESS_ENABLED", "false").lower() == "true"
         }
 
         # Add signup key if signup is enabled and key is available
@@ -3022,12 +2246,26 @@ class LambDatabaseManager:
             return False
 
         try:
+            connection.execute("BEGIN IMMEDIATE")
             with connection:
                 cursor = connection.cursor()
                 now = int(time.time())
 
-                # Convert dict to JSON string
-                config_json = json_lib.dumps(user_config)
+                # Connector credentials are updated only by ConnectionStore. An older
+                # sharing-settings snapshot must never resurrect a disconnected token.
+                row = cursor.execute(
+                    f"SELECT user_config FROM {self.table_prefix}Creator_users WHERE id=?",
+                    (user_id,),
+                ).fetchone()
+                if row is None:
+                    return False
+                current = json_lib.loads(row[0]) if row[0] else {}
+                updated = dict(user_config)
+                for key in ('moodle_connection', 'moodle_connection_generation', 'aac_approval_preferences'):
+                    updated.pop(key, None)
+                    if key in current:
+                        updated[key] = current[key]
+                config_json = json_lib.dumps(updated)
 
                 cursor.execute(f"""
                     UPDATE {self.table_prefix}Creator_users
@@ -7257,11 +6495,14 @@ class LambDatabaseManager:
             status: Initial status ('active' or 'provisional').
 
         Returns:
-            The library_id if successful, None on failure.
+            The library_id if successful, None when the name is already used in the organization.
+
+        Raises:
+            LibraryStoreError: any other database failure.
         """
         connection = self.get_connection()
         if not connection:
-            return None
+            raise LibraryStoreError("no database connection")
         try:
             with connection:
                 cursor = connection.cursor()
@@ -7276,11 +6517,15 @@ class LambDatabaseManager:
                 logger.info(f"Created library '{name}' (ID: {library_id}) for user {owner_user_id}")
                 return library_id
         except sqlite3.IntegrityError as e:
-            logger.error(f"Integrity error creating library: {e}")
+            if "UNIQUE" not in str(e).upper():
+                logger.error(f"Integrity error creating library: {e}")
+                raise LibraryStoreError(str(e)) from e
+            logger.info(f"Library name '{name}' already used in organization {organization_id}")
             return None
         except sqlite3.Error as e:
+            # A missing table or a locked database is not a name conflict (#466).
             logger.error(f"Database error creating library: {e}")
-            return None
+            raise LibraryStoreError(str(e)) from e
         finally:
             connection.close()
 
@@ -9125,6 +8370,120 @@ class LambDatabaseManager:
         except sqlite3.Error as e:
             logger.error(f"Error getting published assistants for org user: {e}")
             return []
+        finally:
+            connection.close()
+
+    # ------------------------------------------------------------------ #
+    #  API keys — per-creator keys for the OpenAI-compatible facade       #
+    # ------------------------------------------------------------------ #
+
+    def create_api_key(self, key_hash: str, key_prefix: str,
+                       creator_user_id: int, organization_id: int,
+                       label: Optional[str] = None,
+                       expires_at: Optional[int] = None) -> Optional[int]:
+        """Store a new API key (hash only). Returns the new row id, or None."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}api_keys
+                        (key_hash, key_prefix, creator_user_id, organization_id,
+                         label, status, created_at, expires_at)
+                    VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+                """, (key_hash, key_prefix, creator_user_id, organization_id,
+                      label, now, expires_at))
+                return cursor.lastrowid
+        except sqlite3.Error as e:
+            logger.error(f"Error creating api key: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_api_key_by_hash(self, key_hash: str) -> Optional[Dict[str, Any]]:
+        """Look up an API key by its hash. Returns the full row (incl. status
+        and expiry) or None; callers must check status/expiry themselves."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT id, key_hash, key_prefix, creator_user_id, organization_id,
+                           label, status, created_at, last_used_at, expires_at
+                    FROM {self.table_prefix}api_keys
+                    WHERE key_hash = ?
+                """, (key_hash,))
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                cols = [c[0] for c in cursor.description]
+                return dict(zip(cols, row))
+        except sqlite3.Error as e:
+            logger.error(f"Error looking up api key: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def list_api_keys_for_user(self, creator_user_id: int) -> List[Dict[str, Any]]:
+        """List a user's API keys — metadata only, never the hash."""
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT id, key_prefix, label, status, created_at, last_used_at, expires_at
+                    FROM {self.table_prefix}api_keys
+                    WHERE creator_user_id = ?
+                    ORDER BY created_at DESC
+                """, (creator_user_id,))
+                cols = [c[0] for c in cursor.description]
+                return [dict(zip(cols, row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error(f"Error listing api keys: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def revoke_api_key(self, key_id: int, creator_user_id: int) -> bool:
+        """Revoke a key, scoped to its owner (so a user can't revoke another's)."""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}api_keys
+                    SET status = 'revoked'
+                    WHERE id = ? AND creator_user_id = ?
+                """, (key_id, creator_user_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error revoking api key: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def touch_api_key(self, key_id: int) -> None:
+        """Record last-used time. Best-effort; failures are non-fatal."""
+        connection = self.get_connection()
+        if not connection:
+            return
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}api_keys SET last_used_at = ? WHERE id = ?
+                """, (int(time.time()), key_id))
+        except sqlite3.Error as e:
+            logger.error(f"Error touching api key: {e}")
         finally:
             connection.close()
 

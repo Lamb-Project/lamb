@@ -1,4 +1,4 @@
-import { getApiUrl, getConfig } from '$lib/config';
+import { getApiUrl } from '$lib/config';
 import { browser } from '$app/environment';
 // Shared axios instance with global 401 handling (#352, M1/M2/M3).
 import { apiAxios as axios } from '$lib/services/apiClient';
@@ -564,9 +564,7 @@ export async function getSharedAssistants() {
 	}
 
 	try {
-		const config = getConfig();
-		const baseUrl = config.api.lambServer || 'http://localhost:9099';
-		const apiUrl = `${baseUrl}/creator/lamb/assistant-sharing/shared-with-me`;
+		const apiUrl = getApiUrl('/lamb/assistant-sharing/shared-with-me');
 
 		const response = await fetch(apiUrl, {
 			headers: {

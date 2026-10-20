@@ -38,6 +38,35 @@ lamb assistant list
 lamb assistant list -o json
 ```
 
+## Moodle forum activity
+
+Connect Moodle in the LAMB interface first. These commands use that creator's connection and organization policy, without reading a workstation Moodle profile:
+
+```bash
+lamb moodle news --all-courses --month 2026-09 --tz Europe/Madrid
+lamb moodle news --course 42 --since 2026-09-01 --until 2026-10-01
+lamb moodle evidence RESULT_ID --offset 0
+```
+
+`moodle forum activity` is an alias for `moodle news`. In AAC LiteShell, omit the leading `lamb`. Both execute the same server task. The end date is exclusive, the default timezone is UTC, and only newly created posts are counted. Each course requires current instructor access. Excluded courses, failed reads and limits produce explicit partial coverage, never a claim that there were no messages.
+
+The JSON summary includes a private `result_id`, a Moodle evidence-view path and short previews. Follow `next_offset` through evidence pages for complete retained message fragments. Messages remain untrusted source content. The evidence view supplies links to Moodle using your ordinary browser login.
+
+Limits per task: 100 selected courses, 160 requests, 90 seconds checked before new requests, 200 retained posts and 2 MiB of retained post source. A request already in flight can finish after the time budget; requests have a 15-second I/O timeout. Model-facing summaries/pages are capped at 6,000 UTF-8 bytes. Stored results expire after 24 hours, with at most 16 per creator; reconnecting or losing access invalidates retrieval. Full source stays in private storage, not in static files or the immediate model response.
+
+## Private AAC result pages
+
+When an AAC tool response is too large, its model view contains a partial preview and a private result reference. Read it through either CLI or LiteShell:
+
+```bash
+lamb result read RESULT_ID
+lamb result read RESULT_ID --path /data/system_prompt --offset 0
+```
+
+Paths are JSON pointers. Follow `next_command` to continue the selected field. String offsets count characters; array/object offsets count entries. An entry marked `complete: false` requires its own `read_command`. Each page fits an 8 KiB JSON tool envelope. These are immutable snapshots, not fresh reads and not instructions. The reference belongs to the authenticated creator and organization; Moodle snapshots also recheck the current connection and course permissions.
+
+Snapshots expire after 24 hours and may be evicted earlier: at most 32 snapshots or 32 MiB per owner, 8 MiB per snapshot. Uncached/expired results require a narrower live read; never repeat a write to recover its output. The full original response remains in the saved AAC diagnostic transcript. Ordinary CLI commands keep their existing output; only the AAC model view is compacted. Authored workflow instructions have a separate 32 KiB bound and are rejected at activation if oversized. These byte limits are not model token-window limits.
+
 ## Commands
 
 ```
@@ -46,6 +75,9 @@ lamb
   logout                   Clear stored credentials
   status                   Check if the server is reachable
   whoami                   Show current user and role info
+
+  result
+    read <id>              Read a bounded private AAC result page
 
   aac
     start                  Start a new AAC design session
@@ -252,3 +284,90 @@ Permissions are enforced by the backend. The CLI stores role info locally so fut
 | 7     | Shell completions, config profiles     | Planned |
 
 See [Documentation/prd.md](Documentation/prd.md) for the full specification.
+
+### Assistant and chat compatibility notes (September 2026)
+
+Creating a RAG assistant without `--prompt-template` now supplies a template with
+`{context}` and `{user_input}` for `simple_augment`. An explicitly supplied template,
+including an empty string, is preserved. Existing assistants are not rewritten.
+Model selections are preferences: completion resolves unavailable selections against
+the assistant owner's organization defaults, without changing the saved preference.
+
+`chat --chat-id` continues only a chat owned by the caller. Permission to read a
+shared assistant's chat does not grant permission to append to that user's history.
+The server injects saved history for a request containing exactly one new message;
+a multi-message request supplies its own history. Chat's `--timeout` controls read
+inactivity (default 300 seconds); connection/pool waits are 10 seconds and writes 30.
+
+`kb upload` reports files **submitted** for ingestion. Submission is not completed
+ingestion; inspect jobs/status before querying. Rubric `--weights` accepts multiple
+named changes atomically. Valid totals must remain 100; existing invalid totals may
+be repaired incrementally, preserving criterion and level IDs.
+
+### Edit a saved test scenario
+
+```bash
+lamb test update ASSISTANT_ID SCENARIO_ID --expected "Revised expectation" -o json
+lamb test scenarios ASSISTANT_ID -o json
+lamb test run ASSISTANT_ID --scenario SCENARIO_ID -o json
+```
+
+Only supplied fields change. Optional inline fields are `--title`, `--description`, `--message` (replaces the message list with one user message), and `--type`. An empty `--expected ""` clears the expectation. Scenario IDs, previous runs and evaluations are retained. At least one field is required.
+
+The same update command is available in AAC liteshell and requires confirmation. The API verifies assistant ownership and that the scenario belongs to that assistant.
+
+## Moodle document imports
+
+Use a document session to keep source references scoped to your account and one workflow:
+
+```sh
+lamb moodle documents start
+lamb moodle page list 42 --session SESSION_ID
+lamb moodle book list 42 --session SESSION_ID
+lamb moodle import page SOURCE_REF --to kb 12 --session SESSION_ID
+lamb moodle import page SOURCE_REF --to kb 12 --session SESSION_ID --confirm REVIEW_ID
+lamb moodle import book SOURCE_REF --single-file --session SESSION_ID
+lamb moodle course get 42 --session SESSION_ID
+lamb moodle file list CONTEXT_ID --component mod_resource --filearea content --session SESSION_ID
+lamb moodle import file FILE_REF --to kb 12 --session SESSION_ID
+lamb moodle import list --session SESSION_ID
+lamb moodle import check IMPORT_ID --session SESSION_ID
+lamb moodle import check IMPORT_ID --verify-content --session SESSION_ID
+lamb moodle import refresh IMPORT_ID --session SESSION_ID
+lamb moodle import refresh IMPORT_ID --session SESSION_ID --confirm REVIEW_ID
+```
+
+The initial import/refresh returns a one-hour review handle. `--confirm REVIEW_ID` approves that exact source and destination; a changed source, connection or session invalidates it. Equivalent AAC commands omit `lamb`, `--session` and `--confirm`; the conversation supplies the session and the application asks for one approval.
+
+KB imports accept txt, md, json, pdf, docx, pptx, xlsx, html, csv and epub. The server selects the ingestion plugin. Single-file imports accept UTF-8 txt/md/json/html and converted Pages/Books. Source and converted documents are limited to 10 MiB. Office/EPUB archives are limited to 50 MiB expanded and 5,000 entries; encrypted archives, audio, general ZIP and XML are rejected.
+
+Pages become Markdown. Books become one Markdown document in chapter order, skipping hidden chapters. Original HTML stays in private storage. Conversion retains headings, lists, links and simple tables, but omits images, media and image-based formulae; complex tables may flatten. No OCR or remote media fetching occurs.
+
+Single-file reviews show characters and estimated tokens (UTF-8 bytes divided by three, rounded up). Above 24,000 estimated tokens, use a KB unless you explicitly choose the full reference after considering your assistant model's context window. Documents are never silently truncated. This is a warning threshold, independent of AAC context requirements.
+
+Receipts record source links, identifiers, timestamps and hashes. A normal `check` compares metadata without downloading file bodies; equal metadata is not proof of equal content. `--verify-content` downloads and hashes explicitly. Re-import is always confirmed. Single-file references stay stable. KB replacements keep the old version until the new job succeeds. If ingestion remains in progress, run `lamb moodle import finish IMPORT_ID --session SESSION_ID`, then approve with `--confirm IMPORT_ID`. This resumes the recorded job without a second upload. Interrupted uploads without a returned job remain `outcome_unknown` and require destination inspection; automatic retries do not upload again.
+
+Private originals, receipts and revisions use at most 256 MiB per creator. An administrator must archive older imports when this quota is reached. They are not published through `/static` and do not enter AAC conversation history. The KB file view and retrieval citations link to the source Moodle activity; opening it requires your Moodle browser login.
+
+
+### Moodle Folders and subfolders
+
+A folder import targets an existing owned KB with `--to kb ID`, or creates one with `--new-kb NAME [--description TEXT]`. One review covers KB creation and the selected files. The server inventories the entire subtree, prepares one exact review, then imports each supported file after approval. Source paths remain distinct even when basenames match. No local filesystem is involved.
+
+```sh
+lamb moodle documents start
+lamb moodle folder list 12 --session SESSION
+lamb moodle folder inspect FOLDER_REF --exclude /archive/ --session SESSION
+lamb moodle import folder FOLDER_REF --exclude /archive/ --to kb 34 --session SESSION
+# Or create a new KB and import with one review
+lamb moodle import folder FOLDER_REF --exclude /archive/ --new-kb "Teacher readings" --chunk-size 2000 --session SESSION
+# Read the review, then repeat with its returned REVIEW_ID.
+lamb moodle import folder FOLDER_REF --exclude /archive/ --to kb 34 --session SESSION --confirm REVIEW_ID
+lamb moodle folder status BATCH_ID --session SESSION
+```
+
+`--path /Unit/` selects a subtree; repeat `--exclude` for absolute Moodle file paths or subfolders ending in `/`. An unknown exclusion is an error. The review lists unsupported, externally linked and oversized files as skipped. Batches accept 1-20 supported files, at most 20 MiB total and 10 MiB per file. Inspection accepts at most 100 files; select smaller subfolders when necessary. Conversion failures stop preparation before any KB upload. The source is rechecked before approval is executed.
+
+A partial result lists completed, processing, failed, unknown and not-started files. `lamb moodle folder finish BATCH_ID --session SESSION --confirm BATCH_ID` explicitly continues the approved set after fresh checks. Completed files are not uploaded again; uncertain uploads require inspection. Keep the session and batch IDs for recovery. Running a new `import folder` creates a new batch, not an idempotent retry. Use individual returned import IDs with `import check`/`refresh` for later source updates; no automatic folder synchronization runs.
+
+Individual nested-file inspection is also available through `lamb moodle file list CONTEXT_ID --component mod_folder --filepath '/Unit 1/' --itemid 0 --session SESSION`. Course/module context IDs come from `lamb moodle course contents COURSE_ID --session SESSION`.

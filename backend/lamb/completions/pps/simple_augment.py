@@ -6,6 +6,21 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="MAIN")
 
 
+def _format_sources(sources: List[Dict[str, Any]]) -> str:
+    """Keep source metadata distinct from document text; do not invent links or scores."""
+    if not sources:
+        return ""
+    lines = ["\n\n## Available Sources\n"]
+    for i, source in enumerate(sources, 1):
+        title = source.get("title") or source.get("source") or "Untitled source"
+        url = source.get("url")
+        label = f"[{title}]({url})" if url else str(title)
+        similarity = source.get("similarity")
+        score = f" (similarity: {similarity:.3f})" if isinstance(similarity, (int, float)) else ""
+        lines.append(f"{i}. {label}{score}")
+    return "\n".join(lines) + "\n"
+
+
 def _has_vision_capability(assistant: Assistant) -> bool:
     """
     Check if the assistant has vision capabilities enabled.
@@ -84,10 +99,10 @@ def prompt_processor(
                 "role": "system",
                 "content": assistant.system_prompt
             })
-        
+
         # Add previous messages except the last one
         processed_messages.extend(messages[:-1])
-        
+
         # Process the last message using the prompt template
         if assistant.prompt_template:
             # Check if assistant has vision capabilities
@@ -113,19 +128,14 @@ def prompt_processor(
                 # Add RAG context if available
                 if rag_context:
                     context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
-                    
+
                     # Format sources if available
                     sources_text = ""
                     if isinstance(rag_context, dict) and "sources" in rag_context:
                         sources = rag_context["sources"]
                         if sources:
-                            sources_text = "\n\n## Available Sources\n\n"
-                            for i, source in enumerate(sources, 1):
-                                title = source.get("title", "Unknown")
-                                url = source.get("url", "")
-                                similarity = source.get("similarity", 0)
-                                sources_text += f"{i}. [{title}]({url}) (similarity: {similarity:.3f})\n"
-                    
+                            sources_text = _format_sources(sources)
+
                     # Combine context with sources
                     full_context = context + sources_text
                     augmented_text = augmented_text.replace("{context}", "\n\n" + full_context + "\n\n")
@@ -169,19 +179,14 @@ def prompt_processor(
                 # Add RAG context if available
                 if rag_context:
                     context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
-                    
+
                     # Format sources if available
                     sources_text = ""
                     if isinstance(rag_context, dict) and "sources" in rag_context:
                         sources = rag_context["sources"]
                         if sources:
-                            sources_text = "\n\n## Available Sources\n\n"
-                            for i, source in enumerate(sources, 1):
-                                title = source.get("title", "Unknown")
-                                url = source.get("url", "")
-                                similarity = source.get("similarity", 0)
-                                sources_text += f"{i}. [{title}]({url}) (similarity: {similarity:.3f})\n"
-                    
+                            sources_text = _format_sources(sources)
+
                     # Combine context with sources
                     full_context = context + sources_text
                     prompt = prompt.replace("{context}", "\n\n" + full_context + "\n\n")
@@ -196,8 +201,10 @@ def prompt_processor(
         else:
             # If no template, use original message
             processed_messages.append(messages[-1])
-            
+
         return processed_messages
-    
+
     # If no assistant provided, return original messages
-    return messages 
+    return messages
+
+AAC_DESCRIPTION = 'Assembles system instructions and a prompt template with user input and retrieved context.'

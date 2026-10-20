@@ -9,11 +9,9 @@
 import { apiAxios as axios } from '$lib/services/apiClient';
 import { isAxiosError } from 'axios';
 axios.isAxiosError = isAxiosError;
-import { getConfig } from '../config';
+import { getApiUrl } from '../config';
 
-const config = getConfig();
-const API_BASE = config.api.lambServer;
-const TEMPLATES_BASE = `${API_BASE}/creator/prompt-templates`;
+const TEMPLATES_BASE = getApiUrl('/prompt-templates');
 
 /**
  * Get authorization headers with JWT token

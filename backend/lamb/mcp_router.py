@@ -369,6 +369,11 @@ async def call_tool(
                 "RAG_collections": ""
             }
             
+            # Same configuration rules as the Creator Interface (#335)
+            from lamb.services.assistant_config_rules import config_errors
+            problems = config_errors(assistant_data["api_callback"], assistant_data["prompt_template"], assistant_data["RAG_collections"])
+            if problems:
+                raise HTTPException(status_code=400, detail=" ".join(problems))
             assistant_id = db_manager.add_assistant(assistant_data)
             
             result = {

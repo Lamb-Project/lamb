@@ -5,6 +5,7 @@ This module provides services for ingesting documents into collections using var
 """
 
 import os
+from static_urls import static_url_prefix
 import shutil
 import uuid
 import json
@@ -30,7 +31,7 @@ class IngestionService:
     STATIC_DIR = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / "static"
     
     # URL prefix for accessing static files
-    STATIC_URL_PREFIX = os.getenv("HOME_URL", "http://localhost:9090") + "/static"
+    STATIC_URL_PREFIX = static_url_prefix(os.getenv("HOME_URL", "http://localhost:9090"))
     
     @classmethod
     def _ensure_dirs(cls):

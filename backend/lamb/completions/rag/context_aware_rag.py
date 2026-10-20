@@ -5,6 +5,7 @@ from typing import Dict, Any, List
 from lamb.lamb_classes import Assistant
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
 from lamb.logging_config import get_logger
+from lamb.completions.source_urls import kb_file_url
 
 logger = get_logger(__name__, component="RAG")
 
@@ -219,7 +220,8 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
         error_message = "No RAG collections specified in the assistant configuration"
         logger.error(f"RAG processing failed: {error_message}")
         return {
-            "context": error_message,
+            "context": "",
+            "error": error_message,
             "sources": [],
             "assistant_data": assistant_dict
         }
@@ -228,7 +230,8 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
         error_message = "No query could be generated from the conversation"
         logger.error(f"RAG processing failed: {error_message}")
         return {
-            "context": error_message,
+            "context": "",
+            "error": error_message,
             "sources": [],
             "assistant_data": assistant_dict
         }
@@ -239,7 +242,8 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
         error_message = "RAG_collections is empty or improperly formatted"
         logger.error(f"RAG processing failed: {error_message}")
         return {
-            "context": error_message,
+            "context": "",
+            "error": error_message,
             "sources": [],
             "assistant_data": assistant_dict
         }
@@ -392,20 +396,25 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
                         if "source_url" in metadata:
                             remote_source_url = metadata["source_url"]
 
+                        # Citation URL (external canonical URL for the source document)
+                        citation_url = None
+                        if "citation" in metadata:
+                            citation_url = metadata["citation"]
+
                         # New metadata fields from markitdown_plus_ingest plugin
                         if "original_file_url" in metadata:
-                            original_url = f"{KB_SERVER_URL}{metadata['original_file_url']}"
+                            original_url = kb_file_url(KB_SERVER_URL, metadata['original_file_url'])
                         if "markdown_file_url" in metadata:
-                            markdown_url = f"{KB_SERVER_URL}{metadata['markdown_file_url']}"
+                            markdown_url = kb_file_url(KB_SERVER_URL, metadata['markdown_file_url'])
                         if "images_folder_url" in metadata:
-                            images_folder = f"{KB_SERVER_URL}{metadata['images_folder_url']}"
+                            images_folder = kb_file_url(KB_SERVER_URL, metadata['images_folder_url'])
 
                         # Legacy file_url field
                         if "file_url" in metadata:
-                            source_url = f"{KB_SERVER_URL}{metadata['file_url']}"
+                            source_url = kb_file_url(KB_SERVER_URL, metadata['file_url'])
 
-                        # Priority: remote_source_url (YouTube) > original_file_url > file_url
-                        main_url = remote_source_url or original_url or source_url
+                        # Priority: citation > remote_source_url (YouTube) > original_file_url > file_url
+                        main_url = citation_url or remote_source_url or original_url or source_url
 
                         if main_url:
                             source_entry = {
@@ -454,8 +463,12 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
         logger.error(error_message)
         print(f"Error: {error_message}")
         return {
-            "context": error_message,
+            "context": "",
+            "error": error_message,
             "sources": [],
             "assistant_data": assistant_dict,
             "raw_responses": all_responses if all_responses else None
         }
+
+
+AAC_DESCRIPTION = 'Uses conversation context and a model to reformulate the retrieval query.'

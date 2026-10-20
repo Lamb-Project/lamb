@@ -349,8 +349,39 @@ class AssistantSharingService:
         )
         group_id = result.get('id')
 
-        # Add all users to the assistant_X group
+        # Add all entitled users to the assistant_X group
         self._add_users_to_owi_group(group_id, user_emails)
+
+        # Reconcile: remove members who are no longer entitled (#399). Previously
+        # the sync only ever added, so unsharing left the revoked user in the OWI
+        # group and they kept runtime access. Diff current members (by OWI user_id)
+        # against the desired set and remove the difference. We reconcile by id and
+        # use only the working group primitives (get_group_by_id + update_group via
+        # remove_user_from_group); get_group_users_by_emails relies on a broken
+        # OwiDatabaseManager.get_group_by_id call and silently returns nothing.
+        desired_ids = set()
+        for email in user_emails:
+            if not email:
+                continue
+            u = self.user_manager.get_user_by_email(email)
+            if u and u.get('id'):
+                desired_ids.add(u['id'])
+
+        import json as json_lib
+        group = self.group_manager.get_group_by_id(group_id)
+        current_ids = (group or {}).get('user_ids', []) or []
+        if isinstance(current_ids, str):
+            try:
+                current_ids = json_lib.loads(current_ids)
+            except Exception:
+                current_ids = []
+        to_remove_ids = [uid for uid in current_ids if uid not in desired_ids]
+        # Safety: never reconcile against an empty desired set (e.g. owner OWI
+        # lookup failed) — that would strip every member.
+        if to_remove_ids and desired_ids:
+            logger.info(f"Unshare reconcile: removing {len(to_remove_ids)} user_id(s) from group {group_id}")
+            for uid in to_remove_ids:
+                self.group_manager.remove_user_from_group(group_id, uid)
 
     def _add_users_to_owi_group(self, group_id: str, user_emails: List[str]):
         """Add users to OWI group by email"""

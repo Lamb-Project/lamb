@@ -107,3 +107,18 @@ class TestGetClient:
         client = get_client()
         assert client._http.headers["authorization"] == "Bearer test-token-abc123"
         client.close()
+
+class TestStreamingNetworkErrors:
+    def test_read_timeout_after_partial_response_is_typed_without_retry(self, httpx_mock):
+        class Interrupted(httpx.SyncByteStream):
+            def __iter__(self):
+                yield b'data: partial\n\n'
+                raise httpx.ReadTimeout('slow stream')
+        httpx_mock.add_response(stream=Interrupted(), headers={'X-Chat-Id':'saved-chat'})
+        with LambClient('http://localhost:9099') as client:
+            stream=client.stream_post('/chat', json={})
+            assert next(stream)=='data: partial\n\n'
+            with pytest.raises(NetworkError, match='inspect saved state'):
+                next(stream)
+            assert client.last_response_headers['x-chat-id']=='saved-chat'
+        assert len(httpx_mock.get_requests())==1

@@ -19,6 +19,29 @@ describe('validateSubmission', () => {
 		expect(result).toContain('rubric');
 	});
 
+	test('RAG configurations need their placeholders and sources (#335)', () => {
+		const base = { name: 'test', selectedRubricId: '', selectedPromptProcessor: 'simple_augment' };
+		const full = 'Context: {context}\n\nUser: {user_input}';
+		expect(validateSubmission({ ...base, selectedRagProcessor: 'no_rag', prompt_template: '' })).toBeNull();
+		expect(validateSubmission({ ...base, selectedRagProcessor: 'no_rag', prompt_template: 'Answer: {user_input}' })).toBeNull();
+		expect(validateSubmission({ ...base, selectedRagProcessor: 'no_rag', prompt_template: 'Be kind.' })).toContain('{user_input}');
+		expect(validateSubmission({ ...base, selectedRagProcessor: 'simple_rag', prompt_template: full, selectedKnowledgeBases: ['3'] })).toBeNull();
+		expect(validateSubmission({ ...base, selectedRagProcessor: 'simple_rag', prompt_template: full, selectedKnowledgeBases: [] })).toContain('knowledge base');
+		expect(validateSubmission({ ...base, selectedRagProcessor: 'context_aware_rag', prompt_template: 'User: {user_input}', selectedKnowledgeBases: ['3'] })).toContain('{context}');
+		expect(validateSubmission({ ...base, selectedRagProcessor: 'single_file_rag', prompt_template: full, selectedFilePath: '' })).toContain('needs a file');
+		expect(validateSubmission({ ...base, selectedRagProcessor: 'simple_rag', prompt_template: '', selectedKnowledgeBases: ['3'], selectedPromptProcessor: 'custom' })).toBeNull();
+	});
+
+	test('an edit that keeps the stored configuration is not blocked (#335)', () => {
+		const stored = { id: 5, prompt_template: '', RAG_collections: '',
+			metadata: JSON.stringify({ prompt_processor: 'simple_augment', rag_processor: 'simple_rag', connector: 'openai', llm: 'm', file_path: '' }) };
+		const form = { name: 'renamed', description: '', system_prompt: '', RAG_Top_k: 3, formState: 'edit', initialAssistantData: stored,
+			selectedPromptProcessor: 'simple_augment', selectedConnector: 'openai', selectedLlm: 'm', selectedRagProcessor: 'simple_rag',
+			prompt_template: '', selectedKnowledgeBases: [], selectedRubricId: '', selectedFilePath: '' };
+		expect(validateSubmission(form)).toBeNull();
+		expect(validateSubmission({ ...form, prompt_template: 'User: {user_input}' })).toContain('{context}');
+	});
+
 	test('returns null when valid', () => {
 		const result = validateSubmission({ name: 'test', selectedRagProcessor: 'no_rag', selectedRubricId: '' });
 		expect(result).toBeNull();

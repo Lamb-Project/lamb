@@ -4,7 +4,7 @@ import { browser } from '$app/environment';
 const defaultConfig = {
 	api: {
 		baseUrl: '/creator', // Default or fallback base URL
-		lambServer: 'http://localhost:9099' // Default LAMB server URL
+		lambServer: '' // Default LAMB server URL
 		// Note: lambApiKey removed for security - now using user authentication
 	},
 	// Static assets configuration
@@ -24,11 +24,13 @@ const defaultConfig = {
  * @returns {typeof defaultConfig} The configuration object.
  */
 export function getConfig() {
-	if (browser && window.LAMB_CONFIG) {
-		return window.LAMB_CONFIG;
-	}
-	console.warn('LAMB_CONFIG not found on window, using default.');
-	return defaultConfig;
+	const runtime = browser ? window.LAMB_CONFIG || {} : {};
+	const api = { ...defaultConfig.api, ...runtime.api };
+	// An omitted server follows Creator, including a reverse-proxy path prefix.
+	api.lambServer = runtime.api?.lambServer ?? api.baseUrl.replace(/\/creator\/?$/, '');
+	return { ...defaultConfig, ...runtime, api,
+		assets: { ...defaultConfig.assets, ...runtime.assets },
+		features: { ...defaultConfig.features, ...runtime.features } };
 }
 
 /**

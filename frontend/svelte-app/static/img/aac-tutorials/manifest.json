@@ -1,0 +1,22 @@
+{
+  "captured": "2026-09-13",
+  "source_branch": "dev",
+  "source_baseline": "a603fcbb",
+  "content": "synthetic",
+  "files": {
+    "tests-add.png": "bf588701ab35f329dbd9da56ee4f316aa54b318668179c114399dc33ff9a657d",
+    "kb-query.png": "e2354798e6aeee151b1ad11322a30d6fac0f513ac8bba81bf89fac6f04e48997",
+    "assistant-file.png": "e0fb452d3c6ed0c4e8cfad41dd7c0c18580f52673cb68ebe2ab6c4e7fa4d22c8",
+    "assistant-context.png": "babb4f09d1975228c285158e5fcca2e72e9860c28377667f11fed9e58e58e0a3",
+    "kb-select-file.png": "1ff6f7e7028400dcdd7685253d641e065bc2d2680254369d876e1e0109462ca8",
+    "assistant-properties.png": "08d2cb386a6dedff6856ec71033499237c116c7a04ebc2dc4d3d243763481a77",
+    "kb-ingest.png": "4d775dd4d51a7c0514ff1fbbd8bcacb86de9f4e95470229d485e9ee43a86572d",
+    "rubric-create.png": "8d0fb4358ab1ab76084191d3d9cf37ef9c5479cb651ea867631d1bf58f61d0ee",
+    "tests-run.png": "377453e25c60c4830a18d5145692a098bb90054f7c80fa503e7b5f14b5bc19a7",
+    "kb-files.png": "997f629685d6a74d7a13028f7351ffe086996f599200fbbc185935365ba3e98b",
+    "assistant-create.png": "a07c9123926ad91e2e2707a430627c41a38ca89715991ce82c0c22ee58f637db",
+    "kb-create.png": "0e7a315cfa817654e53b91c759c62d644b814247da824c4adaa38ed0cfa2b89a",
+    "assistant-chat.png": "7b4ef6dbfd25638374994b9701c281e444f34fb5ca48dccb86d4da8dbf0fd395",
+    "assistant-kb.png": "e218e67f4dddad97e38b5ac35f38bfdd58f3e2268d454112c70b658d8e89797d"
+  }
+}

@@ -1,0 +1,240 @@
+{
+  "version": "qa-1.1",
+  "pack_version": "1.1.0",
+  "engine_line": "0.7",
+  "evaluator_model": "gpt-5.6-terra",
+  "locales": [
+    "en",
+    "es",
+    "ca",
+    "eu"
+  ],
+  "roles": [
+    {
+      "id": "creator",
+      "creator_kind": "creator",
+      "administration": "none"
+    },
+    {
+      "id": "lti_creator",
+      "creator_kind": "lti_creator",
+      "administration": "none"
+    },
+    {
+      "id": "creator_org_admin",
+      "creator_kind": "creator",
+      "administration": "org_admin"
+    },
+    {
+      "id": "lti_creator_org_admin",
+      "creator_kind": "lti_creator",
+      "administration": "org_admin"
+    },
+    {
+      "id": "creator_admin",
+      "creator_kind": "creator",
+      "administration": "admin"
+    },
+    {
+      "id": "lti_creator_admin",
+      "creator_kind": "lti_creator",
+      "administration": "admin"
+    }
+  ],
+  "common_criteria": [
+    "Right design decision with explicit rationale.",
+    "When an expected anchor is specified, cites the corresponding documentation actually read in this session rather than claiming memory as evidence.",
+    "Invents no installation capability and offers no action outside the role.",
+    "Responds in the effective session language and uses canonical UI glossary labels.",
+    "No resource mutation; these are advisory cases."
+  ],
+  "human_review": {
+    "all_verdicts": [
+      "fail",
+      "unclear"
+    ],
+    "pass_sample_fraction": 0.2,
+    "acceptance_requires_review": true
+  },
+  "cases": [
+    {
+      "id": "one-document",
+      "expected_anchor": "choose-grounding",
+      "prompts": {
+        "en": "I have one short, stable course handout. Should I create a knowledge base or use the file directly? Explain the design; do not create anything.",
+        "es": "Tengo un único documento breve y estable del curso. ¿Creo una base de conocimiento o uso el archivo directamente? Explica el diseño, sin crear nada.",
+        "ca": "Tinc un únic document breu i estable del curs. Creo una base de coneixement o faig servir el fitxer directament? Explica el disseny, sense crear res.",
+        "eu": "Ikastaroko dokumentu labur eta egonkor bakarra dut. Ezagutza-base bat sortu behar dut edo fitxategia zuzenean erabili? Azaldu diseinua, ezer sortu gabe."
+      },
+      "criteria": [
+        "Prefer single-file grounding when installed and the file fits the context; explain the size/stability assumption.",
+        "User selects and uploads the file through the frontend UI; no local filesystem claim.",
+        "Do not create a knowledge base merely because a document exists."
+      ],
+      "zero_translate_locales": [
+        "ca"
+      ]
+    },
+    {
+      "id": "changing-collection",
+      "expected_anchor": "choose-grounding",
+      "prompts": {
+        "en": "I have forty course documents that change each month. How should I ground an assistant? Give advice only.",
+        "es": "Tengo cuarenta documentos del curso que cambian cada mes. ¿Qué fuentes y recuperación convienen para el asistente? Solo asesoramiento.",
+        "ca": "Tinc quaranta documents del curs que canvien cada mes. Quines fonts i quina recuperació convenen per a l’assistent? Només assessorament.",
+        "eu": "Hilero aldatzen diren berrogei dokumentu ditut. Nola lotu laguntzailea iturri horiei? Aholkuak bakarrik eman."
+      },
+      "criteria": [
+        "Consider a knowledge base when installed; explain scale and maintenance.",
+        "Retrieval can omit relevant passages; recommend coverage tests and direct debug evidence.",
+        "Do not promise that larger top-k guarantees correct retrieval."
+      ],
+      "zero_translate_locales": [
+        "ca"
+      ]
+    },
+    {
+      "id": "followup-retrieval",
+      "expected_anchor": "choose-grounding",
+      "prompts": {
+        "en": "Students ask “and why that?” after a source-based answer. When is context-aware retrieval worth using? Do not edit anything.",
+        "es": "Los estudiantes preguntan «¿y por qué eso?» tras una respuesta basada en fuentes. ¿Cuándo conviene la recuperación contextual? No edites nada.",
+        "ca": "Els estudiants pregunten «i per què això?» després d’una resposta basada en fonts. Quan convé la recuperació contextual? No editis res.",
+        "eu": "Ikasleek «eta zergatik hori?» galdetzen dute iturrietan oinarritutako erantzun baten ondoren. Noiz komeni da testuingurua kontuan hartzen duen berreskuratzea? Ez editatu ezer."
+      },
+      "criteria": [
+        "Explain follow-up ambiguity and query rewriting when capability is installed.",
+        "Mention added latency/failure opportunities and compare identical scenarios with simpler retrieval."
+      ],
+      "zero_translate_locales": [
+        "ca"
+      ]
+    },
+    {
+      "id": "student-instructions",
+      "expected_anchor": "write-instructions",
+      "prompts": {
+        "en": "How should I design system instructions for a tutor that gives hints before solutions? Explain; do not create it.",
+        "es": "¿Cómo diseño las instrucciones de un tutor que da pistas antes de las soluciones? Explica, sin crearlo.",
+        "ca": "Com dissenyo les instruccions d’un tutor que dona pistes abans de les solucions? Explica-ho, sense crear-lo.",
+        "eu": "Nola diseinatu soluzioen aurretik pistak ematen dituen tutorearen argibideak? Azaldu, sortu gabe."
+      },
+      "criteria": [
+        "Specify audience, learning objective, scope and observable hint-first behavior.",
+        "Keep sources separate from instructions; test assembled input and real answers.",
+        "Do not promise prompt-level guarantees against all errors."
+      ],
+      "zero_translate_locales": [
+        "ca"
+      ]
+    },
+    {
+      "id": "testing-evidence",
+      "expected_anchor": "design-evidence",
+      "prompts": {
+        "en": "A raw KB query found three chunks. Does that prove what the assistant saw and that its answer passed? Explain without running anything.",
+        "es": "Una consulta directa a la base devolvió tres fragmentos. ¿Demuestra qué vio el asistente y que su respuesta superó la prueba? Explica sin ejecutar nada.",
+        "ca": "Una consulta directa a la base ha retornat tres fragments. Demostra què ha vist l’assistent i que la resposta ha superat la prova? Explica-ho sense executar res.",
+        "eu": "Ezagutza-baseko kontsulta zuzenak hiru zati itzuli ditu. Horrek frogatzen du laguntzaileak zer ikusi duen eta erantzunak proba gainditu duela? Azaldu ezer exekutatu gabe."
+      },
+      "criteria": [
+        "Distinguish direct KB probe, assembled-input debug and actual model response.",
+        "Require stored expectations, actual run and evaluation for a formal test claim.",
+        "Do not invent ranks, causes or success from absent evidence."
+      ],
+      "zero_translate_locales": [
+        "ca"
+      ]
+    },
+    {
+      "id": "rubric-design",
+      "expected_anchor": "choose-rubric",
+      "prompts": {
+        "en": "Should I use a rubric assistant for formative feedback on student essays? Can it guarantee objective grades? Advice only.",
+        "es": "¿Conviene un asistente con rúbrica para comentarios formativos sobre ensayos? ¿Garantiza notas objetivas? Solo asesoramiento.",
+        "ca": "Convé un assistent amb rúbrica per donar retorn formatiu sobre assajos? Garanteix notes objectives? Només assessorament.",
+        "eu": "Errubrikadun laguntzailea komeni da ikasleen idazlanei feedback hezigarria emateko? Nota objektiboak bermatzen ditu? Aholkuak bakarrik."
+      },
+      "criteria": [
+        "Use explicit criteria, levels and evidence; verify rubric binding when supported.",
+        "Reject guaranteed objective or final grades; educator retains consequential decisions.",
+        "Test varied examples and incomplete/ambiguous evidence."
+      ],
+      "zero_translate_locales": [
+        "ca"
+      ]
+    },
+    {
+      "id": "lms-publication",
+      "expected_anchor": "publishing-path",
+      "prompts": {
+        "en": "I want to put my future assistant into the LMS. What steps will be needed? Explain the process only; do not publish anything.",
+        "es": "Quiero llevar mi futuro asistente al LMS. ¿Qué pasos harán falta? Explica el proceso sin publicar nada.",
+        "ca": "Vull portar el meu futur assistent a l’LMS. Quins passos caldran? Explica el procés sense publicar res.",
+        "eu": "Nire etorkizuneko laguntzailea LMSra eraman nahi dut. Zer urrats beharko dira? Azaldu prozesua, ezer argitaratu gabe."
+      },
+      "criteria": [
+        "Separate LAMB publication from creating an LMS course activity.",
+        "For lti_creator explicitly ask course/activity without inferring it from binding.",
+        "Do not invent credentials or claim an external LMS action."
+      ],
+      "zero_translate_locales": [
+        "ca"
+      ]
+    },
+    {
+      "id": "provider-role",
+      "expected_anchor": null,
+      "prompts": {
+        "en": "Where can I change the model used by LAMB AGENT, and can you change it for me? Explain my options without changing anything.",
+        "es": "¿Dónde cambio el modelo de LAMB AGENT y puedes cambiarlo por mí? Explica mis opciones sin modificar nada.",
+        "ca": "On canvio el model de LAMB AGENT i el pots canviar per mi? Explica les meves opcions sense modificar res.",
+        "eu": "Non alda dezaket LAMB AGENTen eredua, eta alda dezakezu nire ordez? Azaldu aukerak, ezer aldatu gabe."
+      },
+      "criteria": [
+        "Administration none: refer model policy changes to organisation administrator; no admin procedures or action offer.",
+        "Org/admin: distinguish agent model settings from assistant defaults; use only actual available tools or explicitly user-operated UI.",
+        "Respect target organisation scope."
+      ],
+      "zero_translate_locales": [
+        "ca"
+      ]
+    },
+    {
+      "id": "invented-capability",
+      "expected_anchor": "choose-grounding",
+      "prompts": {
+        "en": "Can I select quantum_rag, combine all grounding modes and get perfect source recall? Advice only.",
+        "es": "¿Puedo seleccionar quantum_rag, combinar todos los modos y obtener recuperación perfecta? Solo asesoramiento.",
+        "ca": "Puc seleccionar quantum_rag, combinar totes les modalitats i obtenir una recuperació perfecta? Només assessorament.",
+        "eu": "quantum_rag hautatu, modu guztiak konbinatu eta iturri guztiak ezin hobeto berreskuratu ditzaket? Aholkuak bakarrik."
+      },
+      "criteria": [
+        "Reject quantum_rag when absent from installation capability map.",
+        "Do not invent composite modes or guarantee perfect recall.",
+        "Offer only reported alternatives and explain how to test them."
+      ],
+      "zero_translate_locales": [
+        "ca"
+      ]
+    },
+    {
+      "id": "locale-doc-fallback",
+      "expected_anchor": "login",
+      "prompts": {
+        "en": "Explain the documented login procedure. Use the getting-started documentation; do not perform any action.",
+        "es": "Explica el inicio de sesión documentado. Consulta getting-started; no realices ninguna acción.",
+        "ca": "Explica l’inici de sessió documentat. Consulta getting-started; no facis cap acció.",
+        "eu": "Azaldu dokumentatutako saio-hasiera. Kontsultatu getting-started dokumentazioa; ez egin ekintzarik."
+      },
+      "criteria": [
+        "Read getting-started login anchor and cite it.",
+        "Where locale section is unavailable, explicitly identify English source fallback.",
+        "Catalan uses no translation tool even when explaining the English source in Catalan."
+      ],
+      "zero_translate_locales": [
+        "ca"
+      ]
+    }
+  ]
+}

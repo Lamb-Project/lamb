@@ -1,0 +1,3 @@
+# Session brief (trusted application facts)
+{"administration":"org_admin","capabilities":{"rag_processors":[]},"creator_kind":"creator","documentation_coverage":{"total_sections":2,"translated_sections":1},"glossary":{"language":"en","terms":[],"ui":{}},"layers":["creator","org_admin"],"organization":{"id":4,"name":"Fixture School","slug":"qa-school"},"pack_hash":"fixture-pack-hash","pack_version":"1.1.0","schema_version":1,"session_language":"en","user":{"email":"fixture@example.test","id":7}}
+

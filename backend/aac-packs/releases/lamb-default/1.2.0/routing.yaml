@@ -1,0 +1,276 @@
+{
+  "BOOTSTRAP": [
+    "assistant.config",
+    "assistant.list",
+    "assistant.list-published",
+    "assistant.list-shared",
+    "docs.index",
+    "docs.read",
+    "frontend-manage.current",
+    "frontend-manage.open",
+    "help",
+    "kb.list",
+    "kb.list-shared",
+    "kb.plugins",
+    "kb.query-plugins",
+    "rubric.list",
+    "rubric.list-public",
+    "session.rename",
+    "skill.list",
+    "skill.load",
+    "template.get",
+    "template.list",
+    "template.list-shared",
+    "whoami",
+    "glossary",
+    "translate",
+    "learning-scenario.list",
+    "learning-scenario.get",
+    "learning-scenario.selected"
+  ],
+  "CAPABILITIES": {
+    "create-assistant": [
+      "assistant.create",
+      "assistant.debug",
+      "assistant.get"
+    ],
+    "publish-assistant": [
+      "assistant.debug",
+      "assistant.get",
+      "assistant.publish",
+      "assistant.unpublish"
+    ],
+    "improve-assistant": [
+      "assistant.debug",
+      "assistant.delete",
+      "assistant.get",
+      "assistant.update"
+    ],
+    "explain-assistant": [
+      "assistant.debug",
+      "assistant.export",
+      "assistant.get"
+    ],
+    "chat-with-assistant": [
+      "assistant.chat",
+      "assistant.debug",
+      "assistant.get"
+    ],
+    "test-and-evaluate": [
+      "assistant.chat",
+      "assistant.debug",
+      "assistant.get",
+      "test.add",
+      "test.delete-scenario",
+      "test.evaluate",
+      "test.evaluations",
+      "test.run",
+      "test.run-detail",
+      "test.runs",
+      "test.scenario-detail",
+      "test.scenarios",
+      "test.update"
+    ],
+    "manage-knowledge-base": [
+      "job.cancel",
+      "job.get",
+      "job.retry",
+      "kb.create",
+      "kb.delete",
+      "kb.delete-file",
+      "kb.get",
+      "kb.ingest",
+      "kb.jobs",
+      "kb.query",
+      "kb.share",
+      "kb.status",
+      "kb.update"
+    ],
+    "manage-rubric": [
+      "rubric.create",
+      "rubric.delete",
+      "rubric.duplicate",
+      "rubric.export",
+      "rubric.generate",
+      "rubric.get",
+      "rubric.share",
+      "rubric.update"
+    ],
+    "inspect-activity": [
+      "analytics.chat-detail",
+      "analytics.chats",
+      "analytics.stats",
+      "analytics.timeline",
+      "assistant.debug",
+      "assistant.get"
+    ],
+    "manage-templates": [
+      "template.create",
+      "template.delete",
+      "template.duplicate",
+      "template.export",
+      "template.share",
+      "template.update"
+    ],
+    "configure-agent": [],
+    "manage-learning-scenarios": [
+      "learning-scenario.list",
+      "learning-scenario.get",
+      "learning-scenario.create",
+      "learning-scenario.update",
+      "learning-scenario.remove",
+      "learning-scenario.duplicate",
+      "learning-scenario.default",
+      "learning-scenario.selected",
+      "learning-scenario.select"
+    ]
+  },
+  "DEFAULT_SKILL": {
+    "assistant.debug": "explain-assistant",
+    "assistant.create": "create-assistant",
+    "assistant.get": "explain-assistant",
+    "assistant.publish": "publish-assistant",
+    "assistant.unpublish": "publish-assistant",
+    "assistant.update": "improve-assistant",
+    "assistant.export": "explain-assistant",
+    "assistant.chat": "chat-with-assistant",
+    "test.evaluate": "test-and-evaluate",
+    "test.add": "test-and-evaluate",
+    "test.run-detail": "test-and-evaluate",
+    "test.evaluations": "test-and-evaluate",
+    "test.scenarios": "test-and-evaluate",
+    "test.runs": "test-and-evaluate",
+    "test.scenario-detail": "test-and-evaluate",
+    "test.run": "test-and-evaluate",
+    "test.delete-scenario": "test-and-evaluate",
+    "test.update": "test-and-evaluate",
+    "job.retry": "manage-knowledge-base",
+    "kb.query": "manage-knowledge-base",
+    "kb.ingest": "manage-knowledge-base",
+    "kb.create": "manage-knowledge-base",
+    "kb.jobs": "manage-knowledge-base",
+    "job.get": "manage-knowledge-base",
+    "job.cancel": "manage-knowledge-base",
+    "kb.share": "manage-knowledge-base",
+    "kb.get": "manage-knowledge-base",
+    "kb.delete": "manage-knowledge-base",
+    "kb.update": "manage-knowledge-base",
+    "kb.delete-file": "manage-knowledge-base",
+    "kb.status": "manage-knowledge-base",
+    "rubric.export": "manage-rubric",
+    "rubric.get": "manage-rubric",
+    "rubric.update": "manage-rubric",
+    "rubric.delete": "manage-rubric",
+    "rubric.create": "manage-rubric",
+    "rubric.duplicate": "manage-rubric",
+    "rubric.generate": "manage-rubric",
+    "rubric.share": "manage-rubric",
+    "analytics.timeline": "inspect-activity",
+    "analytics.chat-detail": "inspect-activity",
+    "analytics.chats": "inspect-activity",
+    "analytics.stats": "inspect-activity",
+    "template.update": "manage-templates",
+    "template.delete": "manage-templates",
+    "template.share": "manage-templates",
+    "template.create": "manage-templates",
+    "template.export": "manage-templates",
+    "template.duplicate": "manage-templates",
+    "assistant.delete": "improve-assistant",
+    "learning-scenario.create": "manage-learning-scenarios",
+    "learning-scenario.update": "manage-learning-scenarios",
+    "learning-scenario.remove": "manage-learning-scenarios",
+    "learning-scenario.duplicate": "manage-learning-scenarios",
+    "learning-scenario.default": "manage-learning-scenarios",
+    "learning-scenario.select": "manage-learning-scenarios"
+  },
+  "USER_ROUTING": {
+    "negative": "\\b(don't|do not|no|not|never|another|different|otro|otra|altre|altra)\\b",
+    "read_only_constraints": [
+      "\\b(do not|never) (create|edit|upload|delete|change|modify)[^.]*[.]?",
+      "\\b(no writes|no changes|sin cambios|sense canvis)\\b"
+    ],
+    "assistant_id": "\\b(?:assistant|asistente|assistent)\\s+(\\d+)\\b",
+    "facts": {
+      "assistant": "\\b(assistant|asistente|assistent)\\b",
+      "scenario": "\\b(scenarios?|escenarios?|escenaris?)\\b"
+    },
+    "rules": [
+      {
+        "skill": "manage-learning-scenarios",
+        "pattern": "\\b(learning scenarios?|escenarios? de aprendizaje|escenaris? d.aprenentatge|ikaskuntza.eszenatoki\\w*)\\b",
+        "priority": 2
+      },
+      {
+        "skill": "manage-knowledge-base",
+        "pattern": "\\b(knowledge bases?|kb|base de conocimiento|base de coneixement)\\b"
+      },
+      {
+        "skill": "inspect-activity",
+        "pattern": "\\b(activity|analytics|statistics|timeline|actividad|activitat|estadisticas|estadistiques)\\b",
+        "requires_context": true
+      },
+      {
+        "skill": "manage-rubric",
+        "pattern": "\\b(rubric|rubrica|rubrics|rubriques)\\b"
+      },
+      {
+        "skill": "create-assistant",
+        "pattern": "\\b(create|crear|crea)\\b",
+        "all_facts": [
+          "assistant"
+        ]
+      },
+      {
+        "skill": "explain-assistant",
+        "pattern": "\\b(explain|explica|properties|propiedades|propietats)\\b",
+        "all_facts": [
+          "assistant"
+        ],
+        "requires_context": true
+      },
+      {
+        "skill": "improve-assistant",
+        "pattern": "\\b(improve|edit|update|mejora|mejorar|editar|millora|millorar)\\b",
+        "all_facts": [
+          "assistant"
+        ],
+        "exclude_facts": [
+          "scenario"
+        ],
+        "requires_context": true
+      },
+      {
+        "skill": "test-and-evaluate",
+        "pattern": "\\b(tests?|pruebas|proves|evaluate|evaluar|scenarios?|escenarios?|escenaris?)\\b",
+        "any_facts": [
+          "assistant",
+          "linked_assistant"
+        ],
+        "requires_context": true
+      },
+      {
+        "skill": "chat-with-assistant",
+        "pattern": "\\b(chat with|talk to|hablar con|conversar)\\b",
+        "all_facts": [
+          "assistant"
+        ],
+        "requires_context": true
+      },
+      {
+        "skill": "publish-assistant",
+        "pattern": "\\b(publish|unpublish|publicar|publica|despublicar)\\b",
+        "requires_context": true
+      },
+      {
+        "skill": "about-lamb",
+        "pattern": "\\b(how should i design|when should i use|single file or|should i use a rubric|como disenar|cuando usar|fitxer o|com dissenyar|quan conv[eé]|quin tipus de)\\b",
+        "priority": 1
+      },
+      {
+        "skill": "configure-agent",
+        "pattern": "\\b(provider|providers|proveedor|proveedores|proveidor|proveidors|agent model|modelo del agente|model de l.agent|language fallback|idioma alternativo|llengua alternativa)\\b",
+        "priority": 1
+      }
+    ]
+  }
+}

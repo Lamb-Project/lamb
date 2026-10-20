@@ -13,4 +13,6 @@ def rag_processor(
     return {
         "context": "",
         "sources": []
-    } 
+    }
+
+AAC_DESCRIPTION = 'Uses no external grounding context.'

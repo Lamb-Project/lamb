@@ -23,6 +23,9 @@
     import UserForm from '$lib/components/admin/shared/UserForm.svelte';
     import ChangePasswordModal from '$lib/components/admin/shared/ChangePasswordModal.svelte';
     import UserActionModal from '$lib/components/admin/shared/UserActionModal.svelte';
+    import { beginTakeover } from '$lib/session/takeover';
+    import { takeoverText, fill } from '$lib/utils/takeoverText';
+    import { locale as takeoverLocale } from 'svelte-i18n';
     import OrgForm from '$lib/components/admin/OrgForm.svelte';
 
     // --- State Management ---
@@ -1764,6 +1767,19 @@
         }
     }
 
+    /**
+     * Act as a creator to give support (#523). The server decides who may act as whom.
+     * @param {any} target
+     */
+    async function actAs(target) {
+        const t = takeoverText($takeoverLocale);
+        if (!window.confirm(fill(t.confirm, { name: target.name || target.email }))) return;
+        try {
+            await beginTakeover(target.id);
+        } catch (err) {
+            window.alert(fill(t.failed, { reason: err instanceof Error ? err.message : String(err) }));
+        }
+    }
 </script>
 
 <div class="container mx-auto px-4 py-8">
@@ -2135,6 +2151,20 @@
                                                   <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
                                                 </svg>
                                                 {localeLoaded ? $_('admin.users.actions.changePassword', { default: 'Password' }) : 'Password'}
+                                            </button>
+                                        {/if}
+                                        <!-- Act as this creator (#523) -->
+                                        {#if !(currentUserData && currentUserData.email === user.email) && user.role !== 'admin'}
+                                            <button
+                                                class="inline-flex items-center gap-1 text-orange-700 hover:text-orange-900"
+                                                title={takeoverText($takeoverLocale).actAsTitle}
+                                                aria-label={`${takeoverText($takeoverLocale).actAs} ${user.name || user.email}`}
+                                                onclick={() => actAs(user)}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4" aria-hidden="true">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+                                                </svg>
+                                                {takeoverText($takeoverLocale).actAs}
                                             </button>
                                         {/if}
                                         <!-- Enable/Disable Toggle -->

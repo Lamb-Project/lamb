@@ -6,6 +6,8 @@ Direct business logic layer - no HTTP proxying.
 import logging
 import json
 import io
+import re
+from urllib.parse import quote
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
@@ -35,6 +37,13 @@ logger = logging.getLogger(__name__)
 async def get_current_creator_user(auth: AuthContext = Depends(get_auth_context)) -> Dict[str, Any]:
     """Get current authenticated creator user via AuthContext"""
     return auth.user
+
+
+def _rubric_download_disposition(filename: str) -> str:
+    """Keep Unicode in RFC 5987 form and a safe ASCII fallback for older clients."""
+    fallback = re.sub(r'[^A-Za-z0-9._-]', '_', filename)
+    # Keep filename last for the existing frontend download helper's parser.
+    return f"attachment; filename*=UTF-8''{quote(filename, safe='')}; filename=\"{fallback}\""
 
 
 # Rubric CRUD Endpoints
@@ -311,11 +320,13 @@ async def update_rubric(
             existing_metadata = rubric_data_obj.get('metadata', {})
 
         # Prepare metadata, preserving createdAt
-        metadata = {
-            "subject": subject,
-            "gradeLevel": gradeLevel,
-            "createdAt": existing_metadata.get("createdAt", datetime.now().isoformat())
-        }
+        submitted = await request.form()
+        metadata = dict(existing_metadata)
+        metadata.setdefault("createdAt", datetime.now().isoformat())
+        if "subject" in submitted:
+            metadata["subject"] = subject
+        if "gradeLevel" in submitted:
+            metadata["gradeLevel"] = gradeLevel
 
         # Call business logic
         result = rubric_service.update_rubric_logic(
@@ -520,7 +531,7 @@ async def export_rubric_json(
         return JSONResponse(
             content=rubric_data,
             headers={
-                "Content-Disposition": f"attachment; filename={filename}",
+                "Content-Disposition": _rubric_download_disposition(filename),
                 "Content-Type": "application/json"
             }
         )
@@ -555,7 +566,7 @@ async def export_rubric_markdown(
             content=markdown_content,
             media_type="text/markdown",
             headers={
-                "Content-Disposition": f"attachment; filename={filename}",
+                "Content-Disposition": _rubric_download_disposition(filename),
                 "Content-Type": "text/markdown"
             }
         )

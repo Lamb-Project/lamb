@@ -28,7 +28,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from lamb.database_manager import LambDatabaseManager
@@ -289,6 +289,20 @@ class AuthContext:
 # Internal builder
 # ---------------------------------------------------------------------------
 
+def apply_account_state(creator_user: Optional[Dict[str, Any]], token_role: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Apply the stored account state on every request (#256).
+
+    A token carries the role and account state from its issue time. A disabled
+    account is rejected immediately, and the stored role wins over the token's
+    copy, so disabling or demoting a user takes effect without waiting for logout
+    or token expiry. The token role is used only when the account has none stored.
+    """
+    if not creator_user or creator_user.get("enabled") is False:
+        return None
+    creator_user["role"] = creator_user.get("role") or token_role or "user"
+    return creator_user
+
+
 def _build_auth_context(token: str) -> Optional[AuthContext]:
     """Authenticate user from a Bearer token and build a full AuthContext.
 
@@ -312,6 +326,13 @@ def _build_auth_context(token: str) -> Optional[AuthContext]:
             return None
         logger.debug(f"LAMB JWT authenticated: {user_email}")
     else:
+        # An ended or expired takeover token (#523) must not fall through to OWI.
+        try:
+            import jwt as _jwt
+            if "takeover" in _jwt.decode(token, options={"verify_signature": False}):
+                return None
+        except Exception:
+            pass
         # OWI fallback
         try:
             from lamb.owi_bridge.owi_users import OwiUserManager
@@ -333,14 +354,11 @@ def _build_auth_context(token: str) -> Optional[AuthContext]:
             return None
 
     # --- 2. Load creator user from DB ---
-    creator_user = _db.get_creator_user_by_email(user_email)
+    creator_user = apply_account_state(_db.get_creator_user_by_email(user_email), jwt_role)
     if not creator_user:
-        logger.error(f"No creator user found for email: {user_email}")
+        logger.warning(f"Rejected token for missing or disabled creator user: {user_email}")
         return None
-
-    # Use JWT role as authoritative; fall back to DB role
-    effective_role = jwt_role or creator_user.get("role", "user")
-    creator_user["role"] = effective_role
+    effective_role = creator_user["role"]
 
     is_system_admin = effective_role == "admin"
 
@@ -408,20 +426,26 @@ async def get_auth_context(
 
 
 async def get_optional_auth_context(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_optional),
 ) -> Optional[AuthContext]:
     """Optional auth dependency — endpoints that work with or without auth.
 
-    Returns ``AuthContext`` if a valid token is provided, ``None`` otherwise.
+    Only an absent Authorization header permits anonymous access. Supplied
+    invalid credentials must fail, including malformed schemes which HTTPBearer
+    with auto_error=False otherwise treats as absent (#472).
     """
-    if credentials is None:
+    authorization = request.headers.getlist("authorization")
+    if not authorization:
         return None
+    if len(authorization) != 1 or credentials is None:
+        raise HTTPException(status_code=401, detail="Invalid authentication credentials",
+                            headers={"WWW-Authenticate": "Bearer"})
 
     ctx = _build_auth_context(credentials.credentials)
     if ctx is None:
-        # Token was provided but invalid — log but don't block
-        logger.warning("Invalid token provided to optional-auth endpoint")
-        return None
+        raise HTTPException(status_code=401, detail="Invalid or expired authentication token",
+                            headers={"WWW-Authenticate": "Bearer"})
     return ctx
 
 
