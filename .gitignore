@@ -212,3 +212,21 @@ frontend/svelte-app/static/img/*
 
 
 developer-workflow-site/
+
+# lamb-0.8: LTI module apps (from 1.0-alpha), built next to svelte-app into frontend/build/m/
+!frontend/module-chat/svelte.config.js
+!frontend/module-chat/vite.config.js
+!frontend/module-chat/static/
+frontend/module-chat/static/config.js
+!frontend/module-file-eval/svelte.config.js
+!frontend/module-file-eval/vite.config.js
+!frontend/module-file-eval/static/
+frontend/module-file-eval/static/config.js
+frontend/module-*/node_modules
+frontend/module-*/.svelte-kit
+frontend/module-*/src/lib/version.js
+frontend/module-*/package-lock.json
+
+# LLM access: the operator's proxy configuration
+token-dealer/config.yaml
+token-dealer/proxy.env

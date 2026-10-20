@@ -1,0 +1,23 @@
+# LiteLLM proxy configuration for LAMB's LLM access. Copy to token-dealer/config.yaml and list your models.
+#
+# Budgets are counted in tokens: LAMB prices one token at 0.000001. Give EVERY model all three prices
+# below. A model without a price skips the budget check entirely; unpriced cached tokens are free.
+model_list:
+  - model_name: course-model                    # the name students put in their tools
+    litellm_params:
+      model: openai/gpt-4o-mini                  # provider/model, see https://docs.litellm.ai/docs/providers
+      api_key: os.environ/OPENAI_API_KEY         # read from the proxy's environment, never written here
+      input_cost_per_token: 0.000001
+      output_cost_per_token: 0.000001
+      cache_read_input_token_cost: 0.000001
+
+general_settings:
+  store_prompts_in_spend_logs: false             # LAMB's notice to students: prompts are not stored
+  # More than one proxy instance: run Redis and share spend counters and budget windows
+  # coordination_redis: {host: redis, port: 6379}
+
+litellm_settings:
+  telemetry: false
+  callbacks: lamb_token_messages.proxy_handler_instance   # refusals in tokens, not dollars
+  # More than one proxy instance: share the key and team cache, so a block applies everywhere at once
+  # enable_redis_auth_cache: true

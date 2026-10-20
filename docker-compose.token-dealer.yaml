@@ -1,0 +1,87 @@
+# LLM access (token dealer): the LiteLLM proxy, its Postgres and LAMB's worker. Off unless you add this file:
+#
+#   docker compose -f docker-compose.next.yaml -f docker-compose.token-dealer.yaml up -d
+#   (production: add -f docker-compose.next.prod.yaml -f docker-compose.token-dealer.prod.yaml)
+#
+# Before the first start:
+#   cp token-dealer/config.example.yaml token-dealer/config.yaml     # then list your models in it
+#   set TOKEN_DEALER_MASTER_KEY, TOKEN_DEALER_DB_PASSWORD and TOKEN_DEALER_PUBLIC_URL in .env
+# Guide: Documentation/installation/token-dealer.md
+services:
+  token-dealer-db:
+    image: postgres:16.10-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_DB: litellm
+      POSTGRES_PASSWORD: ${TOKEN_DEALER_DB_PASSWORD?Set TOKEN_DEALER_DB_PASSWORD}
+    volumes:
+      - token-dealer-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  token-dealer-proxy:
+    # LiteLLM v1.102.1 (amd64 and arm64), the version LAMB's token dealer was load-tested against.
+    image: ghcr.io/berriai/litellm:v1.102.1@sha256:87f34979b9f8cb274fac90ca8a4fdda07d8480de22755562a26adeb95ce20d02
+    restart: unless-stopped
+    depends_on:
+      token-dealer-db:
+        condition: service_healthy
+    # Provider keys the models in config.yaml read with os.environ/… (e.g. OPENAI_API_KEY=…).
+    env_file:
+      - path: ./token-dealer/proxy.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://litellm:${TOKEN_DEALER_DB_PASSWORD}@token-dealer-db:5432/litellm
+      LITELLM_MASTER_KEY: ${TOKEN_DEALER_MASTER_KEY?Set TOKEN_DEALER_MASTER_KEY}
+      LITELLM_TELEMETRY: "False"
+      # Per-slot budgets must refill within seconds of the slot boundary (default tick: about 10 minutes).
+      PROXY_BUDGET_RESCHEDULER_MIN_TIME: "10"
+      PROXY_BUDGET_RESCHEDULER_MAX_TIME: "15"
+    volumes:
+      - ${TOKEN_DEALER_CONFIG:-./token-dealer/config.yaml}:/app/config.yaml:ro
+      # Words budget refusals in tokens instead of dollars; loaded by config.yaml (callbacks).
+      - ./backend/lamb/token_dealer/proxy/lamb_token_messages.py:/app/lamb_token_messages.py:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
+    # Students reach the proxy through the web front, which must forward /v1/ only
+    # (docker-compose.token-dealer.prod.yaml does it with Caddy). The admin API (/key, /team, /user,
+    # /spend, /ui) stays on this host: LAMB reaches it inside the Compose network.
+    ports:
+      - "127.0.0.1:${TOKEN_DEALER_PORT:-4000}:4000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 5
+
+  # LAMB's worker: applies timetables and blocks to the keys (every 10 s) and reads usage from the
+  # proxy into the ledger (every 20 s). One per deployment; it shares LAMB's data volume.
+  token-dealer-worker:
+    extends:
+      file: docker-compose.next.yaml
+      service: lamb
+    entrypoint: ["python", "-m", "lamb.token_dealer.worker"]
+    command: []
+    ports: !reset []
+    healthcheck:
+      disable: true
+    depends_on: !override
+      token-dealer-proxy:
+        condition: service_healthy
+    environment:
+      TOKEN_DEALER_PROXY_URL: ${TOKEN_DEALER_PROXY_URL:-http://token-dealer-proxy:4000}
+      TOKEN_DEALER_PROXY_ADMIN_KEY: ${TOKEN_DEALER_MASTER_KEY}
+      TOKEN_DEALER_PUBLIC_URL: ${TOKEN_DEALER_PUBLIC_URL}
+
+  lamb:
+    environment:
+      TOKEN_DEALER_PROXY_URL: ${TOKEN_DEALER_PROXY_URL:-http://token-dealer-proxy:4000}
+      TOKEN_DEALER_PROXY_ADMIN_KEY: ${TOKEN_DEALER_MASTER_KEY}
+      TOKEN_DEALER_PUBLIC_URL: ${TOKEN_DEALER_PUBLIC_URL?Set TOKEN_DEALER_PUBLIC_URL (the address students paste, ending in /v1)}
+
+volumes:
+  token-dealer-db:

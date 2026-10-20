@@ -1,0 +1,15 @@
+# LLM access: only the client API is public. Admin routes (/key, /team, /user, /spend, /ui …)
+# answer 404 here; LAMB reaches them inside the Compose network.
+{$LLM_PUBLIC_HOST} {
+    encode gzip
+
+    handle /v1/* {
+        reverse_proxy token-dealer-proxy:4000 {
+            flush_interval -1
+        }
+    }
+
+    handle {
+        respond "Not found" 404
+    }
+}

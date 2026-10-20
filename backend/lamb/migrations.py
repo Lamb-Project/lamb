@@ -21,17 +21,16 @@ logger = get_logger(__name__, component="MIGRATIONS")
 
 # Increment this when adding a new migration method below.
 # Migration numbers are shared with the lamb-1.0-alpha line (#465). 1-25 are common, 26 is
-# api_keys (this line; alpha keeps 26 free for it), 27-31 are taken on alpha, and 32 is
+# api_keys (this line; alpha keeps 26 free for it), 27-31 are taken on alpha; lamb-0.8 carries
+# alpha's LTI migrations 28 and 31 verbatim (same number, same docstring), 33 is token-dealer, and 32 is
 # account_takeovers (this line, #523). The next migration here is 33. tests/test_migration_runner.py enforces this.
-LATEST_VERSION = 32
+LATEST_VERSION = 33
 
 # Numbers another line has applied to real databases; this line must never define them.
 RESERVED_ON_OTHER_LINES = {
     27: 'Create knowledge_stores and kb_content_links tables. (1.0-alpha)',
-    28: 'LTI activity_type, setup_config, lis_outcome_service_url (1.0-alpha)',
     29: 'Cache-aware pricing columns (1.0-alpha)',
     30: 'Cache write and immutable cost columns (1.0-alpha)',
-    31: 'LTI activity-user role flag, #468 (1.0-alpha)',
 }
 
 # Versions that collided across branches before names were recorded, with the table this
@@ -1214,6 +1213,40 @@ class MigrationRunner:
             f"CREATE INDEX IF NOT EXISTS idx_{tp}api_keys_user "
             f"ON {tp}api_keys(creator_user_id)")
 
+    def _migration_28(self, cursor):
+        """Add activity_type, setup_config, lis_outcome_service_url to lti_activities
+        for databases created before the file-eval module."""
+        tp = self.db.table_prefix
+        if not self._table_exists(cursor, 'lti_activities'):
+            return
+        if not self._column_exists(cursor, 'lti_activities', 'activity_type'):
+            logger.info("Migrating lti_activities: adding activity_type")
+            cursor.execute(
+                f"ALTER TABLE {tp}lti_activities "
+                f"ADD COLUMN activity_type TEXT NOT NULL DEFAULT 'chat'")
+        if not self._column_exists(cursor, 'lti_activities', 'setup_config'):
+            logger.info("Migrating lti_activities: adding setup_config")
+            cursor.execute(
+                f"ALTER TABLE {tp}lti_activities "
+                f"ADD COLUMN setup_config TEXT DEFAULT '{{}}'")
+        if not self._column_exists(cursor, 'lti_activities', 'lis_outcome_service_url'):
+            logger.info("Migrating lti_activities: adding lis_outcome_service_url")
+            cursor.execute(
+                f"ALTER TABLE {tp}lti_activities "
+                f"ADD COLUMN lis_outcome_service_url TEXT")
+
+    def _migration_31(self, cursor):
+        """Add the role flag required by LTI activity-user registration (#468)."""
+        # lamb-0.8: guard for a database without the table (as alpha's 28 does); same docstring.
+        if not self._table_exists(cursor, 'lti_activity_users'):
+            return
+        if self._column_exists(cursor, 'lti_activity_users', 'is_instructor'):
+            return
+        cursor.execute(f"""
+            ALTER TABLE {self.db.table_prefix}lti_activity_users
+            ADD COLUMN is_instructor INTEGER NOT NULL DEFAULT 0
+        """)
+
     def _migration_32(self, cursor):
         """Create account_takeovers table (administrators acting as a creator, #523)."""
         if self._table_exists(cursor, 'account_takeovers'):
@@ -1237,3 +1270,73 @@ class MigrationRunner:
         cursor.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{tp}account_takeovers_target "
             f"ON {tp}account_takeovers(target_user_id, acknowledged_at)")
+
+    def _migration_33(self, cursor):
+        """Create token-dealer tables: LLM-access activities, student keys, proxy sync state (#536, #541)."""
+        tp = self.db.table_prefix
+        if not self._table_exists(cursor, 'token_dealer_activities'):
+            # One LTI resource link of type "LLM access". Its own table, so lti_activities is untouched
+            # (the 1.0-alpha line types activities in migration 28; the two meet when forward-ported).
+            cursor.execute(f"""
+                CREATE TABLE {tp}token_dealer_activities (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    resource_link_id TEXT NOT NULL UNIQUE,
+                    organization_id INTEGER NOT NULL,
+                    context_id TEXT,
+                    context_title TEXT,
+                    activity_name TEXT,
+                    owner_email TEXT NOT NULL,
+                    owner_name TEXT,
+                    models_json TEXT NOT NULL DEFAULT '[]',
+                    pool_tokens INTEGER,
+                    slot_tokens INTEGER,
+                    total_tokens INTEGER,
+                    schedule_json TEXT NOT NULL DEFAULT '{{}}',
+                    override TEXT NOT NULL DEFAULT 'auto' CHECK(override IN ('auto', 'open', 'closed')),
+                    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'archived')),
+                    proxy_team_id TEXT UNIQUE,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    FOREIGN KEY (organization_id) REFERENCES {tp}organizations(id) ON DELETE CASCADE
+                )
+            """)
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{tp}token_dealer_activities_owner "
+                           f"ON {tp}token_dealer_activities(organization_id, owner_email)")
+        if not self._table_exists(cursor, 'token_dealer_keys'):
+            # One key per (LTI user, activity). The secret is never stored; proxy_token is the proxy's
+            # hash of it, which spend logs carry, so usage is attributed through this table.
+            cursor.execute(f"""
+                CREATE TABLE {tp}token_dealer_keys (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    activity_id INTEGER NOT NULL,
+                    organization_id INTEGER NOT NULL,
+                    lms_user_id TEXT NOT NULL,
+                    user_ref TEXT NOT NULL,
+                    user_email TEXT,
+                    user_name TEXT,
+                    key_prefix TEXT NOT NULL,
+                    proxy_token TEXT NOT NULL UNIQUE,
+                    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'blocked', 'revoked')),
+                    status_reason TEXT,
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER,
+                    revoked_at INTEGER,
+                    notice_version TEXT,
+                    notice_accepted_at INTEGER,
+                    FOREIGN KEY (activity_id) REFERENCES {tp}token_dealer_activities(id) ON DELETE CASCADE
+                )
+            """)
+            cursor.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{tp}token_dealer_keys_current "
+                           f"ON {tp}token_dealer_keys(activity_id, lms_user_id) WHERE status != 'revoked'")
+        if not self._table_exists(cursor, 'token_dealer_sync_state'):
+            # What the proxy was last told about each object ("key:<id>"), and the last failure.
+            cursor.execute(f"""
+                CREATE TABLE {tp}token_dealer_sync_state (
+                    object TEXT PRIMARY KEY,
+                    desired TEXT,
+                    applied TEXT,
+                    applied_at INTEGER,
+                    last_error TEXT,
+                    last_error_at INTEGER
+                )
+            """)

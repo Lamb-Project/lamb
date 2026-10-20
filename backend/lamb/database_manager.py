@@ -2329,6 +2329,9 @@ class LambDatabaseManager:
         # Deep copy the system config and modify it for new organizations
         import copy
         baseline_config = copy.deepcopy(system_org['config'])
+        # lamb-0.8: LLM access is decided per organization (its admin sets the policy, the system
+        # admin the proxy connection); never inherit the system org's switch, policy or admin key.
+        baseline_config.pop('token_dealer', None)
 
         # Modify for non-system organizations
         baseline_config['metadata'] = {
@@ -7931,7 +7934,8 @@ class LambDatabaseManager:
                             configured_by_email: str, configured_by_name: str = None,
                             context_id: str = None, context_title: str = None,
                             activity_name: str = None,
-                            chat_visibility_enabled: bool = False) -> Optional[int]:
+                            chat_visibility_enabled: bool = False,
+                            activity_type: str = 'chat') -> Optional[int]:
         """Create a new LTI activity. Returns the activity id."""
         connection = self.get_connection()
         if not connection:
@@ -7945,17 +7949,34 @@ class LambDatabaseManager:
                     (resource_link_id, organization_id, context_id, context_title, activity_name,
                      owi_group_id, owi_group_name, owner_email, owner_name,
                      configured_by_email, configured_by_name,
-                     chat_visibility_enabled, status, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                     chat_visibility_enabled, activity_type, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
                 """, (resource_link_id, organization_id, context_id, context_title,
                       activity_name, owi_group_id, owi_group_name,
                       configured_by_email, configured_by_name,
                       configured_by_email, configured_by_name,
-                      1 if chat_visibility_enabled else 0, now, now))
+                      1 if chat_visibility_enabled else 0, activity_type, now, now))
                 return cursor.lastrowid
         except sqlite3.Error as e:
             logger.error(f"Error creating LTI activity: {e}")
             return None
+        finally:
+            connection.close()
+
+    def delete_lti_activity(self, activity_id: int) -> bool:
+        """Remove an LTI activity record and, through ON DELETE CASCADE, its assistant and user links
+        (lamb-0.8: used when a module's setup fails, so the link can be configured again)."""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                connection.execute("PRAGMA foreign_keys = ON")
+                cur = connection.execute(f"DELETE FROM {self.table_prefix}lti_activities WHERE id = ?", (activity_id,))
+                return cur.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error deleting LTI activity {activity_id}: {e}")
+            return False
         finally:
             connection.close()
 
@@ -7982,7 +8003,7 @@ class LambDatabaseManager:
 
     def update_lti_activity(self, activity_id: int, **kwargs) -> bool:
         """Update an LTI activity. Pass fields to update as keyword arguments."""
-        allowed_fields = {'activity_name', 'status', 'context_title', 'chat_visibility_enabled', 'owner_email', 'owner_name'}
+        allowed_fields = {'activity_name', 'status', 'context_title', 'chat_visibility_enabled', 'owner_email', 'owner_name', 'owi_group_id', 'owi_group_name', 'lis_outcome_service_url'}
         updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
         if not updates:
             return False
@@ -8060,10 +8081,12 @@ class LambDatabaseManager:
                 cursor.execute(f"""
                     SELECT a.id, a.name, a.owner, a.description,
                            aa.added_at,
-                           ap.oauth_consumer_name
+                           ap.oauth_consumer_name,
+                           u.user_name AS owner_name
                     FROM {self.table_prefix}lti_activity_assistants aa
                     JOIN {self.table_prefix}assistants a ON aa.assistant_id = a.id
                     LEFT JOIN {self.table_prefix}assistant_publish ap ON a.id = ap.assistant_id
+                    LEFT JOIN {self.table_prefix}Creator_users u ON u.user_email = a.owner
                     WHERE aa.activity_id = ?
                     ORDER BY a.name
                 """, (activity_id,))
@@ -8078,7 +8101,8 @@ class LambDatabaseManager:
     def create_lti_activity_user(self, activity_id: int, user_email: str,
                                   user_name: str = '', user_display_name: str = '',
                                   lms_user_id: str = None,
-                                  owi_user_id: str = None) -> Optional[int]:
+                                  owi_user_id: str = None,
+                                  is_instructor: bool = False) -> Optional[int]:
         """Create or get an LTI activity user record. Updates access tracking on each call. Returns the user record id."""
         connection = self.get_connection()
         if not connection:
@@ -8107,15 +8131,22 @@ class LambDatabaseManager:
                             SET owi_user_id = ?
                             WHERE id = ? AND (owi_user_id IS NULL OR owi_user_id = '')
                         """, (owi_user_id, existing[0]))
+                    # Promote to instructor if needed (never demote)
+                    if is_instructor:
+                        cursor.execute(f"""
+                            UPDATE {self.table_prefix}lti_activity_users
+                            SET is_instructor = 1
+                            WHERE id = ? AND is_instructor = 0
+                        """, (existing[0],))
                     return existing[0]
                 # Create
                 cursor.execute(f"""
                     INSERT INTO {self.table_prefix}lti_activity_users
                     (activity_id, user_email, user_name, user_display_name,
-                     lms_user_id, owi_user_id, last_access_at, access_count, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+                     lms_user_id, owi_user_id, is_instructor, last_access_at, access_count, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
                 """, (activity_id, user_email, user_name, user_display_name,
-                      lms_user_id, owi_user_id, now, now))
+                      lms_user_id, owi_user_id, 1 if is_instructor else 0, now, now))
                 return cursor.lastrowid
         except sqlite3.Error as e:
             logger.error(f"Error creating LTI activity user: {e}")
@@ -8332,9 +8363,12 @@ class LambDatabaseManager:
                 cursor.execute(f"""
                     SELECT a.id, a.name, a.description, a.owner,
                            ap.oauth_consumer_name, ap.group_id, ap.group_name,
-                           'owned' as access_type
+                           'owned' as access_type,
+                           a.api_callback,
+                           u.user_name AS owner_name
                     FROM {self.table_prefix}assistants a
                     JOIN {self.table_prefix}assistant_publish ap ON a.id = ap.assistant_id
+                    LEFT JOIN {self.table_prefix}Creator_users u ON u.user_email = a.owner
                     WHERE a.owner = ? AND a.organization_id = ?
                           AND ap.oauth_consumer_name IS NOT NULL
                           AND ap.oauth_consumer_name != 'null'
@@ -8347,10 +8381,13 @@ class LambDatabaseManager:
                 cursor.execute(f"""
                     SELECT a.id, a.name, a.description, a.owner,
                            ap.oauth_consumer_name, ap.group_id, ap.group_name,
-                           'shared' as access_type
+                           'shared' as access_type,
+                           a.api_callback,
+                           u.user_name AS owner_name
                     FROM {self.table_prefix}assistant_shares s
                     JOIN {self.table_prefix}assistants a ON s.assistant_id = a.id
                     JOIN {self.table_prefix}assistant_publish ap ON a.id = ap.assistant_id
+                    LEFT JOIN {self.table_prefix}Creator_users u ON u.user_email = a.owner
                     WHERE s.shared_with_user_id = ? AND a.organization_id = ?
                           AND ap.oauth_consumer_name IS NOT NULL
                           AND ap.oauth_consumer_name != 'null'
@@ -8359,11 +8396,14 @@ class LambDatabaseManager:
                 columns = [col[0] for col in cursor.description]
                 shared = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-                # Deduplicate (in case somehow both owned and shared)
+                # Deduplicate and add rubric_eval_ready flag (strip raw api_callback)
                 seen = set()
                 result = []
                 for a in owned + shared:
                     if a['id'] not in seen:
+                        a['rubric_eval_ready'] = self.assistant_has_rubric_for_eval(
+                            a.pop('api_callback', None)
+                        )
                         result.append(a)
                         seen.add(a['id'])
                 return result
@@ -8372,6 +8412,24 @@ class LambDatabaseManager:
             return []
         finally:
             connection.close()
+
+    @staticmethod
+    def assistant_has_rubric_for_eval(api_callback: Optional[str]) -> bool:
+        """Check if an assistant's metadata indicates it is ready for rubric-based evaluation.
+
+        Requires both ``rubric_id`` (non-empty) **and** ``rag_processor == "rubric_rag"``
+        so the completions pipeline will actually inject the rubric as context.
+        """
+        if not api_callback:
+            return False
+        try:
+            meta = json.loads(api_callback)
+        except (json.JSONDecodeError, TypeError):
+            return False
+        rubric_id = meta.get("rubric_id")
+        if not rubric_id or not str(rubric_id).strip():
+            return False
+        return meta.get("rag_processor") == "rubric_rag"
 
     # ------------------------------------------------------------------ #
     #  API keys — per-creator keys for the OpenAI-compatible facade       #

@@ -40,3 +40,6 @@
     encode gzip
     reverse_proxy openwebui:8080
 }
+
+# Optional sites (LLM access adds token-dealer/Caddyfile.llm here); no file, no site.
+import /etc/caddy/extra/*.caddy

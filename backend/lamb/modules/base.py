@@ -1,0 +1,128 @@
+from abc import ABC, abstractmethod
+from pydantic import BaseModel
+from fastapi import APIRouter
+from fastapi.responses import RedirectResponse
+from typing import List, Dict, Any, Optional
+
+class LTIContext(BaseModel):
+    """Normalized context passed from the Router to the Module"""
+    resource_link_id: str
+    lms_user_id: str
+    lms_email: str
+    username: str
+    display_name: str
+    roles: str
+    is_instructor: bool
+    context_id: str
+    context_title: str
+    # LTI 1.1: per-user grade line id for Outcomes passback (from launch POST)
+    lis_result_sourcedid: Optional[str] = None
+
+def module_public_base() -> str:
+    """Public base URL for module redirects made without a request at hand (student launches).
+    lamb-0.8: alpha read only LAMB_PUBLIC_BASE_URL and fell back to http://localhost:9099, which
+    sends students to a dead address on any deployment that sets LAMB_WEB_HOST instead."""
+    import os
+    import config
+    return (os.getenv("LAMB_PUBLIC_BASE_URL") or config.LAMB_WEB_HOST or "http://localhost:9099").rstrip("/")
+
+
+class SetupField(BaseModel):
+    """Defines extra fields the module needs on the setup page"""
+    name: str           # e.g., 'rubric_pdf' or 'chat_visibility_enabled'
+    label: str          # "Upload Rubric"
+    field_type: str     # 'file', 'checkbox', 'select', 'number'
+    required: bool = False
+    options: List[Dict[str, str]] = []  # For select fields
+
+class ActivityModule(ABC):
+    """The Contract every module must fulfill."""
+    name: str            # Unique identifier (e.g., "chat", "file_evaluation")
+    display_name: str    # Human readable ("AI Chat Activity")
+    description: str     # Shown to instructors in the setup dropdown
+    requires_assistants: bool = True   # lamb-0.8: False lets setup skip assistant selection
+
+    def enabled_for_org(self, organization_id: int) -> bool:
+        """lamb-0.8: offer this module to instructors of this organization (default: always)."""
+        return True
+
+    def configured_redirect(self, public_base: str, activity: Dict[str, Any],
+                            lms_user_id: str, lms_email: str) -> Optional[str]:
+        """lamb-0.8: where to send the instructor after setup; None keeps the router's default."""
+        return None
+    
+    @abstractmethod
+    def get_migrations(self) -> List[str]:
+        """SQL statements to create module-specific tables."""
+        pass
+
+    @abstractmethod
+    def get_routers(self) -> List[APIRouter]:
+        """FastAPI routers with module endpoints, mounted under /lamb/v1/modules/{name}/"""
+        pass
+        
+    @abstractmethod
+    def get_setup_fields(self) -> List[SetupField]:
+        """Extra configuration fields for the activity setup page."""
+        pass
+        
+    @abstractmethod
+    def on_activity_configured(self, activity_id: int, setup_data: Dict[str, Any]) -> None:
+        """Called after the router saves the activity DB record.
+        The module should set up any external resources (e.g. OWI groups).
+        Raise an HTTPException(status_code=400, detail="...") if the configuration is invalid.
+        """
+        pass
+
+    @abstractmethod
+    def on_activity_reconfigured(self, activity: Dict[str, Any],
+                                  added_ids: List[int], removed_ids: List[int]) -> None:
+        """Called when assistants change. Update external resources (e.g. OWI model permissions)."""
+        pass
+
+    @abstractmethod
+    def on_student_launch(self, ctx: LTIContext) -> RedirectResponse:
+        """Called when a student launches an activity of this type."""
+        pass
+        
+    @abstractmethod
+    def on_instructor_launch(self, ctx: LTIContext) -> RedirectResponse:
+        """Called when an instructor launches an activity of this type."""
+        pass
+
+    @abstractmethod
+    def launch_user(
+        self,
+        activity: Dict[str, Any],
+        username: str,
+        display_name: str,
+        lms_user_id: str,
+        is_instructor: bool = False,
+        lis_result_sourcedid: Optional[str] = None,
+    ) -> Optional[str]:
+        """Launch a user into this activity. Returns redirect URL or None on failure.
+        Used by the router for post-consent and enter-chat flows.
+        """
+        pass
+
+    @abstractmethod
+    def get_dashboard_stats(self, activity: Dict[str, Any]) -> Dict[str, Any]:
+        """Return dashboard statistics for this activity type."""
+        pass
+
+    @abstractmethod
+    def get_dashboard_chats(self, activity: Dict[str, Any], assistant_id: int = None,
+                             page: int = 1, per_page: int = 20) -> Dict[str, Any]:
+        """Return the chat list for the dashboard (students named as the LMS sends them)."""
+        pass
+
+    @abstractmethod
+    def get_dashboard_chat_detail(self, activity: Dict[str, Any],
+                                   chat_id: str) -> Optional[Dict[str, Any]]:
+        """Return a single chat transcript (students named as the LMS sends them)."""
+        pass
+
+    @abstractmethod
+    def get_frontend_build_path(self) -> Optional[str]:
+        """Path to built SvelteKit SPA for this module (served at /m/{name}/)."""
+        pass

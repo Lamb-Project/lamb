@@ -1,5 +1,6 @@
 <script>
     import MoodleSettings from '$lib/components/admin/MoodleSettings.svelte';
+    import TokenDealerSettings from '$lib/components/admin/TokenDealerSettings.svelte';
     import AgentSettings from '$lib/components/aac/AgentSettings.svelte';
     import { onMount, onDestroy } from 'svelte';
     import { page } from '$app/stores';
@@ -3405,12 +3406,16 @@
                                         LTI Creator
                                     </button>
                                     <button class="px-6 py-3 border-b-2 font-medium text-sm {settingsSubView === 'moodle' ? 'border-brand text-brand' : 'border-transparent text-gray-500'}" onclick={() => {settingsSubView='moodle';}}>Moodle</button>
+                                    <button class="px-6 py-3 border-b-2 font-medium text-sm {settingsSubView === 'token-dealer' ? 'border-brand text-brand' : 'border-transparent text-gray-500'}" onclick={() => {settingsSubView='token-dealer';}}>LLM access</button>
                                 </nav>
                             </div>
                         </div>
 
                         {#if settingsSubView === 'moodle'}
                             {#key targetOrgSlug}<MoodleSettings org={targetOrgSlug} />{/key}
+                        {/if}
+                        {#if settingsSubView === 'token-dealer'}
+                            {#key targetOrgSlug}<TokenDealerSettings org={targetOrgSlug} />{/key}
                         {/if}
                         <!-- General Settings Tab -->
                         {#if settingsSubView === 'general'}

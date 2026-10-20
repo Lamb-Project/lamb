@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAMB — LLM access</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }</style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4">
+<div class="bg-white rounded-xl shadow-lg max-w-4xl mx-auto p-8 space-y-6">
+    <div>
+        <h1 class="text-xl font-bold text-gray-900">LLM access · {{ a.activity_name or a.resource_link_id }}</h1>
+        <p class="text-gray-600">Models: {{ a.models | join(', ') }} · endpoint <code class="bg-gray-100 px-1 rounded">{{ endpoint }}</code></p>
+    </div>
+    {% if error %}<div class="p-3 rounded bg-red-50 text-red-700 text-sm">{{ error }}</div>{% endif %}
+    {% for w in warnings %}<div class="p-3 rounded bg-amber-50 text-amber-800 text-sm">{{ w }}</div>{% endfor %}
+    <div class="flex flex-wrap items-center gap-4">
+        <span class="px-3 py-1 rounded-full text-sm font-medium {{ 'bg-green-100 text-green-800' if state.open else 'bg-gray-200 text-gray-700' }}">
+            {{ 'Open' if state.open else 'Closed' }}{% if state.next_change %} · {{ 'closes' if state.open else 'opens' }} {{ state.next_change }} ({{ state.timezone }}){% endif %}
+        </span>
+        <form method="POST" action="override" class="flex gap-2 text-sm">
+            <input type="hidden" name="token" value="{{ token }}">
+            {% for v, label in [('auto', 'Follow timetable'), ('open', 'Open now'), ('closed', 'Close now')] %}
+            <button name="override" value="{{ v }}" class="px-3 py-1 rounded border {{ 'bg-blue-600 text-white border-blue-600' if a.override == v else 'hover:bg-gray-50' }}">{{ label }}</button>
+            {% endfor %}
+        </form>
+    </div>
+    <dl class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+        <div><dt class="text-gray-500">Pool</dt><dd class="font-medium">{{ '{:,}'.format(a.pool_tokens) if a.pool_tokens else '—' }}</dd></div>
+        <div><dt class="text-gray-500">Per student, {{ slot_minutes }} min</dt><dd class="font-medium">{{ '{:,}'.format(a.slot_tokens) if a.slot_tokens else '—' }}</dd></div>
+        <div><dt class="text-gray-500">Per student, total</dt><dd class="font-medium">{{ '{:,}'.format(a.total_tokens) if a.total_tokens else '—' }}</dd></div>
+        <div><dt class="text-gray-500">Used so far</dt><dd class="font-medium">{{ '{:,}'.format(used) }}</dd></div>
+    </dl>
+    {% set w = (a.schedule.weekly or [{}])[0] %}
+    <details class="border rounded-lg p-4">
+        <summary class="cursor-pointer font-medium">Change limits and timetable</summary>
+        <form method="POST" action="configure" class="space-y-4 mt-4 text-sm">
+            <input type="hidden" name="token" value="{{ token }}">
+            <div>Models: {% for m in models %}<label class="ml-3"><input type="checkbox" name="models" value="{{ m }}" {% if m in a.models %}checked{% endif %}> {{ m }}</label>{% endfor %}</div>
+            <label class="block"><input type="radio" name="mode" value="always" {% if a.schedule.mode != 'weekly' %}checked{% endif %}> Open all the time</label>
+            <label class="block"><input type="radio" name="mode" value="weekly" {% if a.schedule.mode == 'weekly' %}checked{% endif %}> Open on these days, from
+                <input type="time" name="start" step="600" value="{{ w.start or '15:00' }}" class="border rounded px-1"> to
+                <input type="time" name="end" step="600" value="{{ w.end or '17:00' }}" class="border rounded px-1"></label>
+            <div class="flex flex-wrap gap-3">{% for i, d in days %}<label><input type="checkbox" name="days" value="{{ i }}" {% if i in (w.days or []) %}checked{% endif %}> {{ d }}</label>{% endfor %}</div>
+            <div class="flex flex-wrap gap-4">
+                <label>From <input type="date" name="from" value="{{ a.schedule.get('from', '') }}" class="border rounded px-1"></label>
+                <label>Until <input type="date" name="until" value="{{ a.schedule.get('until', '') }}" class="border rounded px-1"></label>
+                <label>Time zone <input type="text" name="timezone" value="{{ a.schedule.timezone }}" class="border rounded px-1 w-40"></label>
+            </div>
+            <div class="flex flex-wrap gap-4">
+                <label>Pool <input type="number" name="pool_tokens" min="1" value="{{ a.pool_tokens or '' }}" class="border rounded px-1 w-32"></label>
+                <label>Per student, {{ slot_minutes }} min <input type="number" name="slot_tokens" min="1" value="{{ a.slot_tokens or '' }}" class="border rounded px-1 w-32"></label>
+                <label>Per student, total <input type="number" name="total_tokens" min="1" value="{{ a.total_tokens or '' }}" class="border rounded px-1 w-32"></label>
+            </div>
+            <p class="text-xs text-gray-500">Changes reach every student's key at once. Policy of this organization: {{ policy }}.</p>
+            <button class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-1.5 px-4 rounded-lg">Save</button>
+        </form>
+    </details>
+    <table class="w-full text-sm">
+        <thead><tr class="text-left text-gray-500 border-b"><th class="py-2">Student</th><th>Key</th><th>Status</th><th class="text-right">This slot</th><th class="text-right">Total</th><th class="text-right">Refused</th><th></th></tr></thead>
+        <tbody>
+        {% for r in rows %}
+        <tr class="border-b">
+            <td class="py-2">{{ r.user_name or r.user_email or r.lms_user_id }}</td>
+            <td><code>{{ r.key_prefix }}…</code></td>
+            <td>{{ r.status }}{% if r.status_reason %} ({{ r.status_reason }}){% endif %}</td>
+            <td class="text-right tabular-nums">{{ '{:,}'.format(r.slot.get('tokens', 0)) }}</td>
+            <td class="text-right tabular-nums">{{ '{:,}'.format(r.total.get('tokens', 0)) }}</td>
+            <td class="text-right tabular-nums">{{ r.total.get('requests_refused', 0) }}</td>
+            <td class="text-right">
+                <form method="POST" action="student-action" class="inline">
+                    <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="key_id" value="{{ r.id }}">
+                    {% if r.status == 'active' %}<button name="action" value="block" class="text-amber-700 hover:underline">Block</button>
+                    {% else %}<button name="action" value="unblock" class="text-green-700 hover:underline">Unblock</button>{% endif %}
+                    <button name="action" value="revoke" class="ml-2 text-red-700 hover:underline">Revoke</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="py-4 text-gray-500">No student has taken a key yet.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <p class="text-xs text-gray-500">Usage reaches this page 20 to 40 seconds after the request. Blocking takes effect within 10 seconds.</p>
+</div>
+</body>
+</html>

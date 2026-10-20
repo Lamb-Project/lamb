@@ -5067,3 +5067,90 @@ async def update_moodle_settings(request: Request, org: Optional[str] = None):
     finally:
         connection.close()
     return {'settings': settings, 'privacy_notice': PRIVACY_NOTICE}
+
+
+# ── token-dealer (LLM access): organization policy and usage ──
+# The org admin sets the policy; the system admin also sets the proxy connection.
+def _token_dealer_proxy_models(config):
+    from lamb.token_dealer.proxy_client import ProxyClient, ProxyError
+    from lamb.token_dealer.settings import from_org_config, SettingsError
+    try:
+        s = from_org_config(config)
+    except SettingsError:
+        return None, 'invalid settings'
+    if not (s.proxy_url and s.proxy_admin_key):
+        return None, 'not connected'
+    client = ProxyClient(s.proxy_url, s.proxy_admin_key, timeout=5.0)
+    try:
+        return client.list_models(), 'reachable'
+    except ProxyError:
+        return None, 'unreachable'
+    finally:
+        client.close()
+
+
+def _token_dealer_response(organization, role):
+    from lamb.token_dealer.admin import settings_view
+    from lamb.token_dealer.settings import SettingsError
+    config = organization.get('config') or {}
+    try:
+        view = settings_view(config, role == 'system_admin')
+    except SettingsError as exc:
+        raise HTTPException(500, f'Stored LLM access settings are invalid: {exc}') from None
+    models, status = _token_dealer_proxy_models(config)
+    return {'settings': view, 'proxy_status': status, 'proxy_models': models,
+            'organization': {'slug': organization.get('slug'), 'name': organization.get('name')}}
+
+
+@router.get('/org-admin/settings/token-dealer', dependencies=[Depends(security)])
+async def get_token_dealer_settings(request: Request, org: Optional[str] = None):
+    admin = await _agent_settings_admin(request, org)
+    return _token_dealer_response(admin['organization'], admin.get('role'))
+
+
+@router.put('/org-admin/settings/token-dealer', dependencies=[Depends(security)])
+async def update_token_dealer_settings(request: Request, org: Optional[str] = None):
+    from lamb.token_dealer.admin import apply_update
+    from lamb.token_dealer.settings import SettingsError
+    admin = await _agent_settings_admin(request, org)
+    try:
+        body = await request.json()
+    except ValueError:
+        raise HTTPException(400, 'Invalid JSON') from None
+    connection = db_manager.get_connection()
+    if connection is None:
+        raise HTTPException(503, 'Organization settings storage is unavailable')
+    try:
+        with connection:
+            connection.execute('BEGIN IMMEDIATE')
+            row = connection.execute(f'SELECT config FROM {db_manager.table_prefix}organizations WHERE id=? AND status=?',
+                                     (admin['organization_id'], 'active')).fetchone()
+            if row is None:
+                raise HTTPException(404, 'Organization not found')
+            config = json.loads(row[0]) if row[0] else {}
+            try:
+                config = apply_update(config, body, admin.get('role') == 'system_admin')
+            except PermissionError as exc:
+                raise HTTPException(403, str(exc)) from None
+            except SettingsError as exc:
+                raise HTTPException(400, str(exc)) from None
+            connection.execute(f'UPDATE {db_manager.table_prefix}organizations SET config=?, updated_at=? WHERE id=?',
+                               (json.dumps(config), int(time.time()), admin['organization_id']))
+    finally:
+        connection.close()
+    organization = db_manager.get_organization_by_id(admin['organization_id'])
+    return _token_dealer_response(organization, admin.get('role'))
+
+
+@router.get('/org-admin/token-dealer/usage', dependencies=[Depends(security)])
+async def get_token_dealer_usage(request: Request, org: Optional[str] = None):
+    from lamb.token_dealer import wiring
+    from lamb.token_dealer.admin import usage_overview
+    from lamb.token_dealer.settings import from_org_config, SettingsError
+    admin = await _agent_settings_admin(request, org)
+    try:
+        settings = from_org_config(admin['organization'].get('config') or {})
+    except SettingsError as exc:
+        raise HTTPException(500, f'Stored LLM access settings are invalid: {exc}') from None
+    teachers = usage_overview(wiring.service(), wiring.ledger(), admin['organization_id'], settings)
+    return {'teachers': teachers, 'slot_minutes': settings.slot_minutes}
