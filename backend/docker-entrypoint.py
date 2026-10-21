@@ -9,13 +9,13 @@ import config
 
 
 def replace_string(text: str, key: str, value: str) -> tuple[str, int]:
-    pattern = rf"({re.escape(key)}\s*:\s*)(?:'[^']*'|\"[^\"]*\")"
+    pattern = rf"([\"']?{re.escape(key)}[\"']?\s*:\s*)(?:'[^']*'|\"[^\"]*\")"
     replacement = rf"\1{json.dumps(value)}"
     return re.subn(pattern, replacement, text, count=1)
 
 
 def replace_bool(text: str, key: str, value: bool) -> tuple[str, int]:
-    pattern = rf"({re.escape(key)}\s*:\s*)(?:true|false)"
+    pattern = rf"([\"']?{re.escape(key)}[\"']?\s*:\s*)(?:true|false)"
     replacement = rf"\1{'true' if value else 'false'}"
     return re.subn(pattern, replacement, text, count=1)
 

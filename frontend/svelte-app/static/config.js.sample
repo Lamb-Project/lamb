@@ -40,6 +40,6 @@ window.LAMB_CONFIG = {
     // Enable/disable features as needed
     enableOpenWebUi: true,
     enableDebugMode: true,
-    enableLibraries: true
+    enableLibraries: false
   }
 };

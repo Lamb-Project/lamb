@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 LAMB_LIBRARY_SERVER = os.getenv("LAMB_LIBRARY_SERVER", "")
 LAMB_LIBRARY_TOKEN = os.getenv("LAMB_LIBRARY_TOKEN", "")
 LAMB_LIBRARY_SERVER_ENABLE = os.getenv(
-    "LAMB_LIBRARY_SERVER_ENABLE", "ENABLE").upper().strip()
+    "LAMB_LIBRARY_SERVER_ENABLE", "DISABLE").upper().strip()
 
 
 class LibraryManagerClient:
