@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -16,6 +17,7 @@ from lamb import auth as lamb_auth
 from lamb.logging_config import get_logger
 
 from . import schedule as sched
+from . import timing
 from . import wiring
 from .proxy_client import ProxyError
 from .service import AllocationError, KeyExists
@@ -120,7 +122,8 @@ async def manage_page(request: Request, token: str = ''):
         'request': request, 'token': token, 'a': a, 'state': _state(a), 'rows': rows, 'policy': s.policy,
         'warnings': svc.warnings(a['id']), 'endpoint': s.public_url, 'days': list(enumerate(DAYS)),
         'used': sum(v.get('tokens', 0) for v in totals.values()), 'models': s.models,
-        'slot_minutes': s.slot_minutes, 'error': request.query_params.get('error')})
+        'slot_minutes': s.slot_minutes, 'usage_delay': timing.usage_delay_seconds(),
+        'error': request.query_params.get('error')})
 
 
 @router.post('/override')
@@ -129,7 +132,8 @@ async def override(request: Request):
     data = read_token(form.get('token', ''), 'manage')
     if not data:
         return expired()
-    wiring.service().set_override(data['activity_id'], form.get('override', 'auto'))
+    # Blocking proxy calls, one per key that changes: off the event loop.
+    await run_in_threadpool(wiring.service().set_override, data['activity_id'], form.get('override', 'auto'))
     return RedirectResponse(f"manage?token={form.get('token')}", status_code=303)
 
 
@@ -145,11 +149,11 @@ async def student_action(request: Request):
         return HTMLResponse('<h2>Error</h2><p>Unknown student key.</p>', status_code=404)
     action = form.get('action')
     if action == 'block':
-        svc.block_student(k['id'])
+        await run_in_threadpool(svc.block_student, k['id'])
     elif action == 'unblock':
-        svc.unblock_student(k['id'])
+        await run_in_threadpool(svc.unblock_student, k['id'])
     elif action == 'revoke':
-        svc.revoke_key(k['id'])
+        await run_in_threadpool(svc.revoke_key, k['id'])
     return RedirectResponse(f"manage?token={form.get('token')}", status_code=303)
 
 

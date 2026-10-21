@@ -110,6 +110,7 @@ def test_instructor_pages_need_the_manage_token_and_change_every_key(env):
     assert 'Change limits and timetable' in env.client.get(PREFIX + '/manage', params={'token': mt}).text
     env.client.post(PREFIX + '/student-action', data={'token': mt, 'key_id': key['id'], 'action': 'block'})
     assert env.store.get_key(key['id'])['status'] == 'blocked'
+    assert ('block_key', (key['proxy_token'],), {}) in env.proxy.calls      # at once, not at the worker's next cycle
     r = env.client.post(PREFIX + '/configure', follow_redirects=False, data={
         'token': mt, 'models': 'course-model', 'mode': 'weekly', 'days': ['0'], 'start': '15:00', 'end': '17:00',
         'timezone': 'Europe/Madrid', 'pool_tokens': '60000', 'slot_tokens': '3000'})

@@ -43,6 +43,10 @@ Add to `.env`:
 | `TOKEN_DEALER_PORT` | no | Host port of the proxy, bound to 127.0.0.1 only. Default `4000`. |
 | `TOKEN_DEALER_CONFIG` | no | Another path for the proxy configuration. Default `./token-dealer/config.yaml`. |
 | `LLM_PUBLIC_HOST` | production | Host name of the students' endpoint, for Caddy, for example `llm.lamb.example.com`. |
+| `TOKEN_DEALER_RECONCILE_SECONDS` | no | How often the worker re-checks every live key against timetables, default `30`. It also runs right after each minute mark, so timetables open and close on time whatever this is. Teachers' Block, Unblock, Close and Open reach the proxy at once and do not wait for it. |
+| `TOKEN_DEALER_INGEST_SECONDS` | no | How often the worker copies usage from the proxy into LAMB, default `60`. Only the freshness of the usage figures depends on it; the proxy enforces every limit itself. |
+| `TOKEN_DEALER_INGEST_OVERLAP_SECONDS` | no | How far back each copy re-reads, default `600`. Spend logs carry the start time of their request, so it must exceed your longest request (long agent requests with large contexts). Larger values re-read more rows. |
+| `TOKEN_DEALER_BUDGET_RESET_MIN_SECONDS`, `…_MAX_SECONDS` | no | How often LiteLLM refills expired slot budgets, default `10` and `15`. Longer means students wait longer after a slot boundary. |
 
 These variables are the default connection of every organization. The system administrator can override them per organization in Org Admin → Settings → LLM access.
 
@@ -78,7 +82,8 @@ Then the organization admin switches LLM access on and chooses models. See the u
 ## 5. Operation
 
 - **One worker per deployment.** It holds a lock on the ledger; a second worker exits at once. For a single pass by hand (after a restore, for example), stop it first: `docker compose … stop token-dealer-worker`, `docker compose … run --rm --no-deps token-dealer-worker --once`, `docker compose … start token-dealer-worker`.
-- **Usage figures** reach the teacher's page 20 to 40 seconds after a request: the proxy writes spend logs in batches, and the worker reads them every 20 seconds.
+- **Timing.** Defaults are production values. Development and test rigs may set `TOKEN_DEALER_RECONCILE_SECONDS=10` and `TOKEN_DEALER_INGEST_SECONDS=20` for quick results. **Usage figures** reach the teacher's page up to the ingest interval plus 30 seconds after a request (90 s by default): the proxy writes spend logs in batches, 10 to 30 s after the request. The teacher's page states the delay from the same setting.
+- **Cost of a worker cycle.** One query reads the live keys of active activities and the keys of archived activities not yet closed; the proxy is called only for keys whose state must change. Measured on synthetic data (21 October 2026): 34 ms per quiet cycle with 60,000 keys, of which 6,000 in active activities.
 - **The ledger** is `token_dealer_usage.db` in LAMB's data volume, next to LAMB's database. Back it up with it.
 - **More than one proxy instance** needs Redis, or each instance keeps its own view of budgets and blocks. Uncomment `coordination_redis` and `enable_redis_auth_cache` in `config.yaml` and add a Redis service.
 - **Slot budgets** refill within seconds of the slot boundary because the Compose file sets `PROXY_BUDGET_RESCHEDULER_MIN_TIME=10` and `MAX_TIME=15`. Without them the proxy checks about every ten minutes.
