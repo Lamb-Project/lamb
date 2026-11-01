@@ -79,6 +79,20 @@
     "errorConfig": "Error al cargar configuracion:",
     "initializingForm": "Inicializando formulario...",
     "form": {
+      "filters": {
+        "title": "Filtros del prompt",
+        "description": "Se aplica al prompt de sistema una sola vez, al iniciar una conversación. Los valores se mantienen durante toda la conversación.",
+        "random": "Enteros aleatorios",
+        "up": "Subir",
+        "down": "Bajar",
+        "remove": "Eliminar",
+        "add": "Añadir enteros aleatorios",
+        "preview": "Ver ejemplo",
+        "sampleOnly": "Solo es un ejemplo. El prompt original y las conversaciones reales no cambian.",
+        "previewError": "No se ha podido generar un ejemplo.",
+        "unsupported": "Definición de filtros no compatible. Se conserva; actualízala mediante la API antes de editar los filtros.",
+        "active": "{count} filtros del prompt activos. Abre el modo avanzado para configurarlos."
+      },
       "advancedMode": "Modo Avanzado",
       "insert_placeholder": "Insertar marcador",
       "titleCreate": "Crear Nuevo Asistente",

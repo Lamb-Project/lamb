@@ -79,6 +79,20 @@
     "errorConfig": "Error en carregar configuracio:",
     "initializingForm": "Inicialitzant formulari...",
     "form": {
+      "filters": {
+        "title": "Filtres del prompt",
+        "description": "S’aplica al prompt de sistema un sol cop, quan comença una conversa. Els valors es mantenen durant tota la conversa.",
+        "random": "Enters aleatoris",
+        "up": "Mou amunt",
+        "down": "Mou avall",
+        "remove": "Elimina",
+        "add": "Afegeix enters aleatoris",
+        "preview": "Mostra un exemple",
+        "sampleOnly": "Només és un exemple. El prompt original i les converses reals no canvien.",
+        "previewError": "No s’ha pogut generar cap exemple.",
+        "unsupported": "Definició de filtres no compatible. Es conserva; actualitza-la mitjançant l’API abans d’editar els filtres.",
+        "active": "{count} filtres del prompt actius. Obre el mode avançat per configurar-los."
+      },
       "advancedMode": "Mode Avançat",
       "insert_placeholder": "Inserir marcador",
       "titleCreate": "Crear Nou Assistent",

@@ -229,6 +229,20 @@
     "errorTitle": "Errorea:",
     "notSet": "Ez ezarrita",
     "form": {
+      "filters": {
+        "title": "Prompt-iragazkiak",
+        "description": "Sistemaren promptari behin aplikatzen zaio, elkarrizketa hastean. Balioak berdin mantentzen dira elkarrizketa osoan.",
+        "random": "Ausazko zenbaki osoak",
+        "up": "Gora mugitu",
+        "down": "Behera mugitu",
+        "remove": "Kendu",
+        "add": "Gehitu ausazko zenbaki osoak",
+        "preview": "Ikusi adibidea",
+        "sampleOnly": "Adibidea baino ez da. Jatorrizko prompta eta benetako elkarrizketak ez dira aldatzen.",
+        "previewError": "Ezin izan da adibidea sortu.",
+        "unsupported": "Iragazkien definizioa ez da bateragarria. Mantendu egin da; eguneratu API bidez iragazkiak editatu aurretik.",
+        "active": "{count} prompt-iragazki aktibo. Ireki modu aurreratua konfiguratzeko."
+      },
       "advancedMode": "Modu Aurreratua",
       "insert_placeholder": "Txertatu markatzailea",
       "titleCreate": "Laguntzaile Berria Sortu",

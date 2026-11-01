@@ -20,6 +20,7 @@ from utils.main_helpers import completions_get_form_data, helper_get_assistant_i
 
 from lamb.main import app as lamb_app
 from lamb.completions.main import run_lamb_assistant
+import config
 
 
 from contextlib import asynccontextmanager
@@ -507,7 +508,8 @@ async def get_models(request: Request):
                 "created": int(time.time()),
                 "owned_by": "lamb_v4",
                 "parent": None,
-                "capabilities": _get_assistant_capabilities(assistant)
+                "capabilities": _get_assistant_capabilities(assistant),
+                "pipeline": {"type": "pipe"}
             }
             for assistant in assistants
         ]
@@ -617,7 +619,43 @@ async def reload_pipelines(user: str = Depends(get_current_user)):
 
 
 
-## LAMB: REMOVED FILTERS FROM API FOR NOW
+# Standard OWI pipeline hooks carry identity; prompt transforms run inside LAMB.
+@app.post("/v1/{pipeline_id}/filter/inlet")
+@app.post("/{pipeline_id}/filter/inlet")
+async def conversation_inlet(pipeline_id: str, form_data: FilterForm, request: Request):
+    identity = _resolve_facade_identity(request)
+    if not identity or identity["kind"] != "system":
+        raise HTTPException(403, "Only the authenticated chat service may forward conversation identity.")
+    from lamb.completions.conversation_bridge import seal
+    body = dict(form_data.body)
+    body.pop("lamb_conversation", None)
+    metadata = body.get("metadata") or {}
+    chat_id = metadata.get("chat_id")
+    user = form_data.user or {}
+    if chat_id and user.get("id") and not metadata.get("task"):
+        assistant_id = helper_get_assistant_id(body["model"])
+        body["lamb_conversation"] = seal(user["id"], chat_id, assistant_id, config.API_KEY)
+    # OWI strips metadata at its OpenAI transport boundary; retain only task classification.
+    if metadata.get("task"):
+        body["lamb_task"] = metadata["task"]
+    else:
+        body.pop("lamb_task", None)
+    return body
+
+
+@app.post("/v1/{pipeline_id}/filter/outlet")
+@app.post("/{pipeline_id}/filter/outlet")
+async def conversation_outlet(pipeline_id: str, form_data: FilterForm, request: Request):
+    identity = _resolve_facade_identity(request)
+    if not identity or identity["kind"] != "system":
+        raise HTTPException(403, "Only the authenticated chat service may use this hook.")
+    body = dict(form_data.body)
+    body.pop("lamb_conversation", None)
+    body.pop("lamb_task", None)
+    return body
+
+
+# Legacy, unregistered pipeline-plugin implementation.
 #@app.post("/v1/{pipeline_id}/filter/inlet")
 #@app.post("/{pipeline_id}/filter/inlet")
 async def filter_inlet(pipeline_id: str, form_data: FilterForm):
@@ -683,6 +721,40 @@ async def filter_outlet(pipeline_id: str, form_data: FilterForm):
         )
 
 
+
+
+@app.post("/v1/conversations")
+async def create_api_conversation(request: Request):
+    """Create a private persisted chat for a creator API key; pass its id on completions."""
+    identity = _resolve_facade_identity(request)
+    if not identity or identity["kind"] != "creator":
+        raise HTTPException(401, "A creator API key is required.")
+    body = await request.json()
+    assistant_id = helper_get_assistant_id(str(body.get("model", "")))
+    if int(assistant_id) not in _creator_published_assistant_ids(identity):
+        raise HTTPException(403, "This API key is not authorized for the requested assistant.")
+    from lamb.database_manager import LambDatabaseManager
+    db = LambDatabaseManager()
+    chat_id = str(uuid.uuid4())
+    chat = db.create_lamb_chat(chat_id, identity["user_id"], int(assistant_id))
+    if not chat:
+        raise HTTPException(503, "Could not persist a conversation.")
+    return {"id": chat_id, "model": body["model"]}
+
+
+@app.delete("/v1/conversations/{conversation_id}")
+async def delete_api_conversation(conversation_id: str, request: Request):
+    identity = _resolve_facade_identity(request)
+    if not identity or identity["kind"] != "creator":
+        raise HTTPException(401, "A creator API key is required.")
+    from lamb.database_manager import LambDatabaseManager
+    db = LambDatabaseManager()
+    chat = db.get_lamb_chat(conversation_id)
+    if not chat or chat["user_id"] != identity["user_id"]:
+        raise HTTPException(404, "Conversation not found.")
+    if not db.delete_lamb_chat(conversation_id):
+        raise HTTPException(503, "Could not delete the conversation.")
+    return {"deleted": True, "id": conversation_id}
 
 
 @app.post("/v1/chat/completions")
@@ -933,6 +1005,7 @@ async def generate_openai_chat_completion(request: Request):
                 "stream": self.stream
             }
 
+    transport_data = form_data
     form_data = DummyFormData(model, messages, stream)
 
     try:
@@ -971,12 +1044,17 @@ async def generate_openai_chat_completion(request: Request):
         # Directly call and await run_lamb_assistant
         multimodal_logger.info(f"Calling run_lamb_assistant with assistant_id={assistant_id}")
         request_data = form_data.model_dump()
+        from lamb.completions.conversation_bridge import facade_conversation
+        conversation = facade_conversation(facade_identity, transport_data, assistant_id, config.API_KEY)
+        if facade_identity["kind"] == "system" and transport_data.get("lamb_task"):
+            request_data["metadata"] = {"task": transport_data["lamb_task"]}
         multimodal_logger.debug(f"Request data being sent: {json.dumps(request_data, indent=2)[:1000]}...")
 
         response = await run_lamb_assistant(
             request=request_data,
             assistant=assistant_id,
-            headers=common_headers # Pass headers to the assistant runner
+            headers=common_headers,
+            conversation=conversation,
         )
 
         multimodal_logger.info(f"Assistant returned response, type: {type(response)}")

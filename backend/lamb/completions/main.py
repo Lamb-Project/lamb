@@ -9,6 +9,7 @@ import glob
 from lamb.database_manager import LambDatabaseManager
 import json
 from lamb.logging_config import get_logger
+import config
 from lamb.auth_context import AuthContext, get_optional_auth_context
 from lamb.completions.task_routing import maybe_route_non_streaming_task
 from utils.langsmith_config import traceable_llm_call, add_trace_metadata, is_tracing_enabled
@@ -165,6 +166,11 @@ async def create_completion(
             logger.info("Returning routed task response without RAG")
             return task_response
         
+        from .filter_state import prepare_assistant
+        from .conversation_bridge import unseal
+        conversation = unseal(request['lamb_conversation'], assistant, config.API_KEY) if request.get('lamb_conversation') else None
+        if not request.get("metadata", {}).get("task"):
+            assistant_details = prepare_assistant(assistant_details, plugin_config, request, conversation)
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
         logger.debug(f"Plugins loaded: {pps}, {connectors}, {rag_processors}")
         rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
@@ -229,6 +235,8 @@ async def create_completion(
                     usage_data=result["usage"]
                 )
             return result
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in create_completion: {str(e)}", exc_info=True)
         logger.debug(f"Error in create_completion: {str(e)}")
@@ -471,7 +479,8 @@ def load_plugins(plugin_type: str) -> Dict[str, Any]:
 async def run_lamb_assistant(
     request: Dict[str, Any],
     assistant: int,  # now expect only an assistant id as int
-    headers: Optional[Dict[str, str]] = None # Add optional headers argument
+    headers: Optional[Dict[str, str]] = None,
+    conversation=None,
 ):
     """
     Implements a non WS version of create completion.
@@ -508,6 +517,9 @@ async def run_lamb_assistant(
                 media_type="application/json",
                 headers=final_headers
             )
+        from .filter_state import prepare_assistant
+        if not request.get("metadata", {}).get("task"):
+            assistant_details = prepare_assistant(assistant_details, plugin_config, request, conversation)
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
         rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
         messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps)

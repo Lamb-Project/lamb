@@ -5,7 +5,7 @@
 	import { assistantConfigStore } from '$lib/stores/assistantConfigStore';
 	import { tick } from 'svelte';
 	import { get } from 'svelte/store';
-	import { createAssistant, updateAssistant } from '$lib/services/assistantService';
+	import { createAssistant, updateAssistant, validatePromptFilters } from '$lib/services/assistantService';
 	import { extractModelsFromConnectorData, selectModel } from './logic/assistantFormUtils.svelte.js';
 	import { isKbBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
 	import { validateImportedAssistant } from './logic/importAssistantValidator.js';
@@ -294,6 +294,9 @@
 
 					if (!hasErrors && parsedData && callbackData) {
 						try {
+							if (callbackData.prompt_filters != null) {
+								await validatePromptFilters(parsedData.system_prompt || '', callbackData);
+							}
 							validationLog.push('ℹ️ Populating form fields...');
 
 							// Populate basic fields
@@ -304,6 +307,7 @@
 							form.RAG_Top_k = parsedData.RAG_Top_k ?? 3;
 
 							// Populate selections from metadata
+							form.promptFilters = callbackData.prompt_filters ? JSON.parse(JSON.stringify(callbackData.prompt_filters)) : null;
 							form.selectedPromptProcessor = callbackData.prompt_processor || (form.promptProcessors.length > 0 ? form.promptProcessors[0] : '');
 							form.selectedConnector = callbackData.connector || (form.connectorsList.length > 0 ? form.connectorsList[0] : '');
 							form.selectedRagProcessor = callbackData.rag_processor || (form.ragProcessors.length > 0 ? form.ragProcessors[0] : '');
@@ -437,6 +441,8 @@
 			<!-- Right Column: Configuration -->
 			<div class="md:w-1/3">
 				<ConfigurationPanel
+					bind:promptFilters={form.promptFilters}
+					systemPrompt={form.system_prompt}
 					formState={form.formState}
 					{availableModels}
 					bind:isAdvancedMode={form.isAdvancedMode}

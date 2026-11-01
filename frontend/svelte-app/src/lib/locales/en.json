@@ -218,6 +218,20 @@
     "error_fetching_assistant": "Error fetching assistant details",
     "errorTitle": "Error:",
     "form": {
+      "filters": {
+        "title": "Prompt filters",
+        "description": "Applies to the system prompt once, when a conversation starts. Values stay the same throughout that conversation.",
+        "random": "Random integers",
+        "up": "Move up",
+        "down": "Move down",
+        "remove": "Remove",
+        "add": "Add random integers",
+        "preview": "Preview sample",
+        "sampleOnly": "Sample only. The authored prompt and real conversations are unchanged.",
+        "previewError": "Could not generate a sample.",
+        "unsupported": "Unsupported filter definition. It is preserved; update it through the API before editing filters.",
+        "active": "{count} active prompt filters. Open Advanced Mode to configure."
+      },
       "advancedMode": "Advanced Mode",
       "insert_placeholder": "Insert placeholder",
       "titleCreate": "Create New Assistant",

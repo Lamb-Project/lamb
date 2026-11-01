@@ -38,6 +38,8 @@ export function createAssistantFormState() {
 		prompt_template: '',
 		RAG_Top_k: 3,
 		isAdvancedMode: false,
+		/** @type {any} */
+		promptFilters: null,
 
 		// --- Dynamic options (populated from config) ---
 		promptProcessors: [],
@@ -118,6 +120,7 @@ export function handleFieldChange(form) {
  * @param {() => string[]} getAvailableModels - getter function (evaluated after connector is set)
  */
 export function resetFormFieldsToDefaults(form, getAvailableModels) {
+	form.promptFilters = null;
 	const defaults = get(assistantConfigStore).configDefaults?.config || {};
 	form.system_prompt = defaults.system_prompt || '';
 	form.prompt_template = defaults.prompt_template || '';
@@ -147,6 +150,7 @@ export function populateFormFields(form, data, getAvailableModels, preserveDescr
 	if (!data) return;
 
 	const metadata = getAssistantMetadataObject(data);
+	form.promptFilters = metadata.prompt_filters ? JSON.parse(JSON.stringify(metadata.prompt_filters)) : null;
 
 	form.name = data.name?.replace(/^\d+_/, '') || '';
 	if (!preserveDescription) {

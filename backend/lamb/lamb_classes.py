@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -49,6 +49,18 @@ class Assistant(BaseModel):
     RAG_endpoint: str  # DEPRECATED: Mostly unused, always empty string, kept for DB compatibility
     RAG_Top_k: int
     RAG_collections: str
+
+    @model_validator(mode='after')
+    def validate_prompt_filters(self):
+        import json
+        from lamb.completions.prompt_filters import validate_definition
+        try:
+            metadata = json.loads(self.api_callback or '{}')
+        except (ValueError, TypeError):
+            return self  # Legacy plugin parsing handles invalid metadata separately.
+        if isinstance(metadata, dict):
+            validate_definition(metadata, self.system_prompt)
+        return self
 
     class Config:
         from_attributes = True

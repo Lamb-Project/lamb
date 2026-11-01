@@ -85,6 +85,7 @@ export function ragConfigErrors(form) {
  * @returns {Record<string, any>}
  */
 export function buildAssistantPayload(form) {
+	/** @type {Record<string, any>} */
 	const metadataObj = {
 		prompt_processor: form.selectedPromptProcessor,
 		connector: form.selectedConnector,
@@ -96,6 +97,7 @@ export function buildAssistantPayload(form) {
 			image_generation: form.imageGenerationEnabled
 		}
 	};
+	if (form.promptFilters != null) metadataObj.prompt_filters = form.promptFilters;
 
 	if (isRubricRag(form.selectedRagProcessor)) {
 		metadataObj.rubric_id = form.selectedRubricId;
