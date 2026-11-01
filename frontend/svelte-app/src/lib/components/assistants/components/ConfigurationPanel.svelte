@@ -92,7 +92,7 @@
 
 <PromptFiltersPanel bind:definition={promptFilters} {isAdvancedMode} {systemPrompt} processor={selectedPromptProcessor} {onchange} />
 
-<fieldset class="border p-4 rounded-md space-y-4 h-full">
+<fieldset class="border p-4 rounded-md space-y-4">
 	<legend class="text-lg font-medium text-brand px-1">{$_('assistants.form.configSection.title', { default: 'Configuration' })}</legend>
 
 	{#if isAdvancedMode || formState === 'edit'}
