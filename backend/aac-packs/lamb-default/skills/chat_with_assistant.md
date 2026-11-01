@@ -24,3 +24,8 @@ Only continue a chat the caller is allowed to continue; a shared assistant does 
 When the user wants to try the assistant in the UI, run `frontend-manage open assistant ASSISTANT_ID --tab chat`. Opening chat does not send a message. After an AAC-run chat, offer this view for the user to try it; do not claim the frontend has loaded the CLI conversation or its chat_id.
 
 Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.
+
+
+## System prompt filters
+
+Random filters resolve {{RANDOM:minimum-maximum}} in the system prompt once at conversation start. Values remain fixed across turns, reloads and forks. Preview with `lamb assistant preview-filters ASSISTANT_ID`: this is a sample only, with no model call or saved realization. A filtered chat requires `lamb assistant chat ASSISTANT_ID --message "Hello" --persist`; reuse the returned --chat-id and --persist for follow-ups. Stateless debug and saved tests without conversation identity are unsupported for enabled filters. Use create-assistant or improve-assistant to configure filters through normal application approval, or Advanced Mode > Prompt filters in the UI. Configuration edits affect new conversations. Privacy sanitization is not implemented.

@@ -204,6 +204,7 @@ async def assistant_create(ctx: "CommandContext", args: list[str], kwargs: dict)
         await ctx.http.get('/creator/aac/files/validate', params={'reference': kwargs['file_reference']})
         metadata['file_path'] = kwargs['file_reference']
     _capabilities(metadata, kwargs)
+    _prompt_filters(metadata, kwargs)
     body: dict[str, Any] = {"name": name}
     if kwargs.get("system_prompt"):
         body["system_prompt"] = kwargs["system_prompt"]
@@ -278,6 +279,7 @@ async def assistant_update(ctx: "CommandContext", args: list[str], kwargs: dict)
         await ctx.http.get('/creator/aac/files/validate', params={'reference': kwargs['file_reference']})
         existing_meta['file_path'] = kwargs['file_reference']
     _capabilities(existing_meta, kwargs)
+    _prompt_filters(existing_meta, kwargs)
     body["metadata"] = json.dumps(existing_meta)
 
     return _unwrap(await ctx.http.put(f"/creator/assistant/update_assistant/{assistant_id}", json=body))
@@ -1211,3 +1213,23 @@ async def notebook_write(ctx, args, kwargs):
     body = {'name': args[0], 'content': kwargs['content'], 'revision': int(kwargs['revision']),
             'references': [v.strip() for v in kwargs.get('references', '').split(',') if v.strip()]}
     return await ctx.http.post(_workspace_url(ctx) + '/notebook', json=body)
+
+
+def _prompt_filters(metadata, kwargs):
+    from .prompt_filters import apply_prompt_filter_options
+    enabled = None
+    if "random_filter" in kwargs:
+        enabled = kwargs["random_filter"] in (True, "true")
+    elif "no_random_filter" in kwargs:
+        enabled = kwargs["no_random_filter"] not in (True, "true")
+    apply_prompt_filter_options(metadata, definition=kwargs.get("prompt_filters"), random_filter=enabled)
+
+
+@register("assistant.preview-filters")
+async def assistant_preview_filters(ctx, args, kwargs):
+    """Sample the saved system-prompt filters without a model call or stored realization."""
+    current = _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{args[0]}"))
+    md = current.get("metadata") or current.get("api_callback") or {}
+    md = json.loads(md) if isinstance(md, str) else md
+    return _unwrap(await ctx.http.post("/creator/assistant/prompt-filters/preview", json={
+        "system_prompt": current.get("system_prompt", ""), "metadata": md}))

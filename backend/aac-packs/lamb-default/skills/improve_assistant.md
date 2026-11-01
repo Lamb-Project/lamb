@@ -107,3 +107,18 @@ For an existing owned single-file import, use the returned reference directly an
 lamb assistant update ASSISTANT_ID --rag-processor single_file_rag --file-reference OWNED_REFERENCE
 ```
 Do not omit the reference and then claim single-file assistants require browser creation. Validate by reading the saved metadata and actually chatting with the assistant.
+
+
+## Conversation-start random values
+
+For simulated clients or varied interviews, use a random prompt filter with simple_augment. Put markers such as {{RANDOM:25-70}}, {{RANDOM:3000-40000}} and {{RANDOM:2-24}} in the system prompt. LAMB samples inclusive integers once when a persisted conversation starts, before prompt processing. Follow-ups, reloads and forks retain those values. A new conversation draws again; different conversations can coincidentally match. Never ask the model itself to supply the randomness.
+
+Use --random-filter to enable the random filter or --no-random-filter to disable it for new conversations. Existing filter IDs and other filters survive this toggle. For an ordered chain, --prompt-filters accepts the complete JSON object {"version":1,"items":[...]}; each item needs a unique stable id, type, enabled, target, run_on and options. Currently the supported enabled type is random, target system_prompt, run_on conversation_start, options {}. Use --prompt-filters null to clear the definition. Do not combine the JSON option with a random toggle. Ordinary edits must preserve unrelated metadata. Check available filters with lamb assistant config.
+
+```aac-command
+lamb assistant update ASSISTANT_ID --random-filter
+lamb assistant update ASSISTANT_ID --no-random-filter
+lamb assistant preview-filters ASSISTANT_ID
+```
+
+Create/update retain the normal application approval. Preview is read-only: it draws one illustrative sample without a model call, chat or stored conversation values. Do not present it as the student's actual future profile. To test a filtered assistant with assistant chat, pass --persist on the first and every later turn, and --chat-id with the returned ID on follow-ups. Stateless debug/bypass and saved-test paths without a conversation ID cannot run enabled conversation-start filters; use preview-filters for a no-model sample. If filters were added after a chat began, start a new chat. Editing or disabling filters never rerolls existing interviews. In the UI, use Advanced Mode > Prompt filters. The separate privacy sanitizer is future work, not an available filter.

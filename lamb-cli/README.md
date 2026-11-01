@@ -371,3 +371,18 @@ lamb moodle folder status BATCH_ID --session SESSION
 A partial result lists completed, processing, failed, unknown and not-started files. `lamb moodle folder finish BATCH_ID --session SESSION --confirm BATCH_ID` explicitly continues the approved set after fresh checks. Completed files are not uploaded again; uncertain uploads require inspection. Keep the session and batch IDs for recovery. Running a new `import folder` creates a new batch, not an idempotent retry. Use individual returned import IDs with `import check`/`refresh` for later source updates; no automatic folder synchronization runs.
 
 Individual nested-file inspection is also available through `lamb moodle file list CONTEXT_ID --component mod_folder --filepath '/Unit 1/' --itemid 0 --session SESSION`. Course/module context IDs come from `lamb moodle course contents COURSE_ID --session SESSION`.
+
+
+### Random system-prompt values (LAMB 0.9)
+
+Use `--random-filter` on `lamb assistant create` or `update`, with markers such as `{{RANDOM:25-70}}` in the system prompt and `--prompt-processor simple_augment`. Each new persisted conversation samples once; follow-ups and forks keep the same values.
+
+```sh
+lamb assistant update 42 --system-prompt 'Client age: {{RANDOM:25-70}}' --random-filter
+lamb assistant preview-filters 42
+lamb chat 42 --message 'Hello'
+lamb chat 42 --chat-id RETURNED_CHAT_ID --message 'What is your age?'
+lamb assistant update 42 --no-random-filter
+```
+
+Preview draws a sample without calling a model or saving conversation values. Normal `lamb chat` persists by default; do not use `--no-persist` or stateless `--bypass` with active filters. Changes apply to new conversations. The full ordered definition is available as `--prompt-filters '{"version":1,"items":[...]}'`; use `null` to clear it. Each item needs `id`, `type`, `enabled`, `target`, `run_on`, `options`; the supported enabled type is `random`, target `system_prompt`, run_on `conversation_start`, options `{}`. `lamb assistant get` displays filters and `lamb assistant config` reports supported types.

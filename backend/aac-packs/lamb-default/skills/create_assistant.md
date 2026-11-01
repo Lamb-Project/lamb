@@ -105,3 +105,17 @@ Do not omit the reference and then claim single-file assistants require browser 
 ## One prepared proposal, one decision
 
 If the user selects “create with your proposal”, prepare the create command immediately. Never answer with another “shall I create it?” menu. The application shows a plain-language review and Create / Edit proposal / Cancel controls. The command is only queued at this point. A Create click runs that exact saved action once. An edit makes a new proposal; it is not approval of the old one. After a successful creation, verify and open the assistant, without asking for creation again. Do not display commands, processor names or full configuration in chat unless the user asks for technical details.
+
+
+## Conversation-start random values
+
+For simulated clients or varied interviews, use a random prompt filter with simple_augment. Put markers such as {{RANDOM:25-70}}, {{RANDOM:3000-40000}} and {{RANDOM:2-24}} in the system prompt. LAMB samples inclusive integers once when a persisted conversation starts, before prompt processing. Follow-ups, reloads and forks retain those values. A new conversation draws again; different conversations can coincidentally match. Never ask the model itself to supply the randomness.
+
+Use --random-filter to enable the random filter or --no-random-filter to disable it for new conversations. Existing filter IDs and other filters survive this toggle. For an ordered chain, --prompt-filters accepts the complete JSON object {"version":1,"items":[...]}; each item needs a unique stable id, type, enabled, target, run_on and options. Currently the supported enabled type is random, target system_prompt, run_on conversation_start, options {}. Use --prompt-filters null to clear the definition. Do not combine the JSON option with a random toggle. Ordinary edits must preserve unrelated metadata. Check available filters with lamb assistant config.
+
+```aac-command
+lamb assistant create Interview --description "Practice a requirements interview" --system-prompt "You are a renovation client. Age: {{RANDOM:25-70}}. Budget: {{RANDOM:3000-40000}} euros. Deadline: {{RANDOM:2-24}} weeks. Reveal these details only when asked." --connector PROVIDER --llm MODEL --prompt-processor simple_augment --rag-processor no_rag --prompt-template "{user_input}" --random-filter
+lamb assistant preview-filters ASSISTANT_ID
+```
+
+Create/update retain the normal application approval. Preview is read-only: it draws one illustrative sample without a model call, chat or stored conversation values. Do not present it as the student's actual future profile. To test a filtered assistant with assistant chat, pass --persist on the first and every later turn, and --chat-id with the returned ID on follow-ups. Stateless debug/bypass and saved-test paths without a conversation ID cannot run enabled conversation-start filters; use preview-filters for a no-model sample. If filters were added after a chat began, start a new chat. Editing or disabling filters never rerolls existing interviews. In the UI, use Advanced Mode > Prompt filters. The separate privacy sanitizer is future work, not an available filter.

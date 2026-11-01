@@ -81,8 +81,9 @@ COMMAND_CONTRACTS = {
     "assistant.list": (0, 0, "limit l offset"), "assistant.list-shared": (0, 0, ""),
     "assistant.get": (1, 1, ""), "assistant.config": (0, 0, ""),
     "assistant.debug": (1, 1, "message m"),
-    "assistant.create": (1, 1, "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor file_reference rubric_id rubric_format vision no_vision image_generation no_image_generation"),
-    "assistant.update": (1, 1, "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor file_reference rubric_id rubric_format vision no_vision image_generation no_image_generation"),
+    "assistant.preview-filters": (1, 1, ""),
+    "assistant.create": (1, 1, "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor file_reference rubric_id rubric_format vision no_vision image_generation no_image_generation random_filter no_random_filter prompt_filters"),
+    "assistant.update": (1, 1, "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor file_reference rubric_id rubric_format vision no_vision image_generation no_image_generation random_filter no_random_filter prompt_filters"),
     "assistant.publish": (1, 1, ""), "assistant.unpublish": (1, 1, ""),
     "assistant.delete": (1, 1, ""), "assistant.list-published": (0, 0, ""),
     "assistant.chat": (1, 1, "message m bypass b chat_id persist"),
@@ -138,9 +139,11 @@ def validate_command(key, args, kwargs):
     minimum, maximum, options = COMMAND_CONTRACTS[key]
     if not minimum <= len(args) <= maximum:
         raise ValueError(f"{key} expects {minimum}..{maximum} positional arguments")
-    for positive, negative in [('enable', 'disable'), ('vision', 'no_vision'), ('image_generation', 'no_image_generation')]:
+    for positive, negative in [('enable', 'disable'), ('vision', 'no_vision'), ('image_generation', 'no_image_generation'), ('random_filter', 'no_random_filter')]:
         if positive in kwargs and negative in kwargs:
             raise ValueError(f'Use only one of --{positive} or --{negative.replace("_", "-")}')
+    if 'prompt_filters' in kwargs and ({'random_filter', 'no_random_filter'} & kwargs.keys()):
+        raise ValueError('Use either --prompt-filters or --random-filter/--no-random-filter.')
     if 'timeout' in kwargs:
         import math
         if not math.isfinite(float(kwargs['timeout'])) or float(kwargs['timeout']) < 1:
@@ -476,7 +479,7 @@ class CommandContext:
     knowledge: dict = field(default_factory=dict)
 
 
-BOOLEAN_OPTIONS = {'bypass', 'b', 'persist', 'enable', 'disable', 'vision', 'no_vision',
+BOOLEAN_OPTIONS = {'random_filter', 'no_random_filter', 'bypass', 'b', 'persist', 'enable', 'disable', 'vision', 'no_vision',
                    'image_generation', 'no_image_generation', 'shared', 'help', 'h'}
 
 

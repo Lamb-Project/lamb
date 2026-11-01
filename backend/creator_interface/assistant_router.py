@@ -349,7 +349,9 @@ async def get_assistant_capabilities(auth: AuthContext = Depends(get_auth_contex
     defaults = (auth.organization.get('config') or {}).get('assistant_defaults') or {}
     from lamb.aac.brief import capability_map
     installation = await capability_map(auth, request.app.routes if request else ())
-    return {**capabilities, **model_configuration(capabilities, defaults, configured), 'capability_map':installation}
+    return {**capabilities, **model_configuration(capabilities, defaults, configured), 'capability_map':installation,
+            'prompt_filters': [{'type': 'random', 'target': 'system_prompt', 'run_on': 'conversation_start',
+                                'compatible_prompt_processors': ['simple_augment']}]}
 
 
 REQUIRED_PLUGIN_METADATA_KEYS = (

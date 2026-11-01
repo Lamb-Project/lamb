@@ -150,3 +150,8 @@ Navigate once at the useful handover point, unless the user asked to stay on the
 ## Test case detail and multi-turn input
 
 `lamb test case-detail CASE_ID ASSISTANT_ID` reads a saved test case. `lamb test delete-case CASE_ID ASSISTANT_ID` requires explicit deletion approval; never delete to simulate editing. `lamb test add ASSISTANT_ID TITLE --messages '[{"role":"user","content":"first question"},{"role":"user","content":"follow-up"}]' --type multi_turn --expected TEXT` accepts inline JSON without local files. Do not combine --messages and --message. `lamb test run ASSISTANT_ID --timeout 900` bounds waiting; on timeout inspect `lamb test runs ASSISTANT_ID` before retrying because some runs may have completed.
+
+
+## System prompt filters
+
+Random filters resolve {{RANDOM:minimum-maximum}} in the system prompt once at conversation start. Values remain fixed across turns, reloads and forks. Preview with `lamb assistant preview-filters ASSISTANT_ID`: this is a sample only, with no model call or saved realization. A filtered chat requires `lamb assistant chat ASSISTANT_ID --message "Hello" --persist`; reuse the returned --chat-id and --persist for follow-ups. Stateless debug and saved tests without conversation identity are unsupported for enabled filters. Use create-assistant or improve-assistant to configure filters through normal application approval, or Advanced Mode > Prompt filters in the UI. Configuration edits affect new conversations. Privacy sanitization is not implemented.

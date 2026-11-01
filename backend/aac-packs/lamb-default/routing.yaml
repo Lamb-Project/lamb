@@ -39,7 +39,8 @@
     "create-assistant": [
       "assistant.create",
       "assistant.debug",
-      "assistant.get"
+      "assistant.get",
+      "assistant.preview-filters"
     ],
     "publish-assistant": [
       "assistant.debug",
@@ -51,17 +52,20 @@
       "assistant.debug",
       "assistant.delete",
       "assistant.get",
-      "assistant.update"
+      "assistant.update",
+      "assistant.preview-filters"
     ],
     "explain-assistant": [
       "assistant.debug",
       "assistant.export",
-      "assistant.get"
+      "assistant.get",
+      "assistant.preview-filters"
     ],
     "chat-with-assistant": [
       "assistant.chat",
       "assistant.debug",
-      "assistant.get"
+      "assistant.get",
+      "assistant.preview-filters"
     ],
     "test-and-evaluate": [
       "assistant.chat",
@@ -79,7 +83,8 @@
       "test.update",
       "test.cases",
       "test.case-detail",
-      "test.delete-case"
+      "test.delete-case",
+      "assistant.preview-filters"
     ],
     "manage-knowledge-base": [
       "job.cancel",
@@ -591,7 +596,8 @@
     "moodle.read.verbatim": "moodle-course-documents",
     "moodle.chart.submissions": "moodle-triage",
     "moodle.chart.list": "moodle-triage",
-    "moodle.chart.read": "moodle-triage"
+    "moodle.chart.read": "moodle-triage",
+    "assistant.preview-filters": "explain-assistant"
   },
   "USER_ROUTING": {
     "negative": "\\b(don't|do not|no|not|never|another|different|otro|otra|altre|altra)\\b",

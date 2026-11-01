@@ -113,6 +113,7 @@ DEFAULT_POLICY: dict[str, str] = {
     "test.evaluate": "auto",
     # Debug — auto (read-only, zero tokens for bypass)
     "assistant.debug": "auto",
+    "assistant.preview-filters": "auto",
     # Writes — ask by default
     "assistant.create": "ask",
     "assistant.update": "ask",
