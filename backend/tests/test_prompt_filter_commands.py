@@ -42,7 +42,7 @@ class FilterCommands(unittest.IsolatedAsyncioTestCase):
     def test_new_pack_teaches_filters_and_persistence(self):
         from lamb.aac.pack_loader import load_pack
         p = load_pack()
-        self.assertEqual(p.version, '1.11.18')
+        self.assertEqual(p.version, '1.11.19')
         for name in ['create_assistant', 'improve_assistant']:
             text = p.text('skills/'+name+'.md')
             for required in ['{{RANDOM:25-70}}', '--random-filter', '--no-random-filter', 'preview-filters', '--persist', '--chat-id']:

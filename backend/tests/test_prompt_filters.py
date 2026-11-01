@@ -70,10 +70,9 @@ def test_reject_invalid_definitions(changes):
         filters.validate_definition(config(**changes), "plain")
 
 
-def test_disabled_unknown_filter_preserved_and_incompatible_processor_rejected():
+def test_disabled_unknown_filter_preserved_and_processors_share_lifecycle():
     assert filters.validate_definition(config(type="future", enabled=False), "plain")
-    with pytest.raises(ValueError):
-        filters.validate_definition({**config(), "prompt_processor": "ignores_system"}, "plain")
+    assert filters.validate_definition({**config(), "prompt_processor": "ignores_system"}, "plain")
     assert filters.validate_definition({}, "{{RANDOM:broken}}") == []
 
 
@@ -166,14 +165,12 @@ def test_shared_fork_inherits_only_a_current_public_share(tmp_path):
         execute(path, prefix, Conversation('owi', 'forged', '8'))
 
 
-def test_unfiltered_assistants_retain_edit_behavior(tmp_path):
+def test_unfiltered_assistants_retain_initial_system_prompt(tmp_path):
     path = tmp_path / "chat.db"
     prefix, context = database(path)
     assert execute(path, prefix, context, metadata={}).system_prompt == assistant().system_prompt
-    assert execute(path, prefix, context, assistant(system_prompt="new"), {}).system_prompt == "new"
-    with pytest.raises(HTTPException) as error:
-        execute(path, prefix, context)
-    assert error.value.status_code == 409
+    assert execute(path, prefix, context, assistant(system_prompt="new"), {}).system_prompt == assistant().system_prompt
+    assert execute(path, prefix, context).system_prompt == assistant().system_prompt
 
 
 def test_empty_owi_assistant_placeholder_is_a_new_chat(tmp_path):

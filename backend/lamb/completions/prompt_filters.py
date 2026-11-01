@@ -31,7 +31,6 @@ def random_integers(text, options):
 
 
 REGISTRY = {"random": random_integers}
-COMPATIBLE_PROCESSORS = {"simple_augment"}
 
 
 def validate_definition(metadata, system_prompt):
@@ -63,8 +62,6 @@ def validate_definition(metadata, system_prompt):
             raise ValueError("Supported prompt filters target system_prompt and run on conversation_start.")
         if item["options"]:
             raise ValueError("Random integers does not accept options.")
-        if metadata.get("prompt_processor", "simple_augment") not in COMPATIBLE_PROCESSORS:
-            raise ValueError("This prompt processor does not declare support for system prompt filters.")
         if item["type"] == "random":
             validate_random(system_prompt or "")
     return items

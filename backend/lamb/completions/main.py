@@ -15,6 +15,8 @@ from lamb.completions.task_routing import maybe_route_non_streaming_task
 from utils.langsmith_config import traceable_llm_call, add_trace_metadata, is_tracing_enabled
 import traceback
 import asyncio
+import time
+import uuid
 
 # Set up logger for completions module
 logger = get_logger('lamb.completions', component="API")
@@ -166,7 +168,7 @@ async def create_completion(
             logger.info("Returning routed task response without RAG")
             return task_response
         
-        from .filter_state import prepare_assistant
+        from .conversation_state import prepare_assistant
         from .conversation_bridge import unseal
         conversation = unseal(request['lamb_conversation'], assistant, config.API_KEY) if request.get('lamb_conversation') else None
         if not request.get("metadata", {}).get("task"):
@@ -408,6 +410,15 @@ def process_completion_request(request: Dict[str, Any], assistant_details: Any, 
     """
     logger.info("Processing completion request")
     messages = pps[plugin_config["prompt_processor"]](request=request, assistant=assistant_details, rag_context=rag_context)
+    # The workflow owns the base instruction message for every processor. Legacy
+    # processors may still emit it; collapse exact duplicates and preserve their
+    # separate, turn-specific system messages. No filter runs on assembled content.
+    base = assistant_details.system_prompt or ""
+    if base:
+        messages = [{"role": "system", "content": base}] + [
+            message for message in messages
+            if not (message.get("role") == "system" and message.get("content") == base)
+        ]
     logger.debug(f"Processed messages: {messages}")
     return messages
 
@@ -481,6 +492,8 @@ async def run_lamb_assistant(
     assistant: int,  # now expect only an assistant id as int
     headers: Optional[Dict[str, str]] = None,
     conversation=None,
+    prompt_context=None,
+    return_prompt_context=False,
 ):
     """
     Implements a non WS version of create completion.
@@ -517,9 +530,18 @@ async def run_lamb_assistant(
                 media_type="application/json",
                 headers=final_headers
             )
-        from .filter_state import prepare_assistant
+        from .conversation_state import prepare_assistant, PromptContext
         if not request.get("metadata", {}).get("task"):
-            assistant_details = prepare_assistant(assistant_details, plugin_config, request, conversation)
+            if return_prompt_context and prompt_context is None and conversation is None:
+                from .conversation_state import has_prior_answer
+                if has_prior_answer(request.get("messages", [])):
+                    raise HTTPException(409, "Continuation requires initialized prompt context or a saved conversation.")
+                prompt_context = PromptContext()
+            assistant_details = prepare_assistant(assistant_details, plugin_config, request, conversation,
+                                                  prompt_context=prompt_context)
+            if return_prompt_context and prompt_context is not None:
+                # Ensure an exported context can be accepted again before any provider call.
+                PromptContext.from_payload(prompt_context.export())
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
         rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
         messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps)
@@ -549,6 +571,11 @@ async def run_lamb_assistant(
                 generator, usage_out = llm_response, None
 
             async def _tracked_stream():
+                if return_prompt_context and prompt_context is not None:
+                    yield "data: " + json.dumps({"id": "chatcmpl-" + uuid.uuid4().hex,
+                                                "object": "chat.completion.chunk", "created": int(time.time()),
+                                                "model": request.get("model", f"lamb_assistant.{assistant}"), "choices": [],
+                                                "prompt_context": prompt_context.export()}) + "\n\n"
                 async for chunk in generator:
                     yield chunk
                 # Log usage when stream completes for tracked connectors
@@ -587,6 +614,8 @@ async def run_lamb_assistant(
                     usage_data=llm_response["usage"]
                 )
 
+            if return_prompt_context and prompt_context is not None:
+                llm_response = {**llm_response, "prompt_context": prompt_context.export()}
             return Response(
                 content=json.dumps(llm_response, indent=2), # Ensure pretty printing if desired
                 media_type="application/json",

@@ -155,3 +155,8 @@ Navigate once at the useful handover point, unless the user asked to stay on the
 ## System prompt filters
 
 Random filters resolve {{RANDOM:minimum-maximum}} in the system prompt once at conversation start. Values remain fixed across turns, reloads and forks. Preview with `lamb assistant preview-filters ASSISTANT_ID`: this is a sample only, with no model call or saved realization. A filtered chat requires `lamb assistant chat ASSISTANT_ID --message "Hello" --persist`; reuse the returned --chat-id and --persist for follow-ups. Stateless debug and saved tests without conversation identity are unsupported for enabled filters. Use create-assistant or improve-assistant to configure filters through normal application approval, or Advanced Mode > Prompt filters in the UI. Configuration edits affect new conversations. Privacy sanitization is not implemented.
+
+
+## Conversation initialization
+
+Saved evaluations initialize the assistant system prompt, including conversation-start random filters, in temporary context without creating a chat. A fixture containing several turns is one fresh evaluation case. Normal persisted chats retain their initialized prompt across turns; teacher edits apply to new conversations. Do not confuse a prompt preview with a model test.

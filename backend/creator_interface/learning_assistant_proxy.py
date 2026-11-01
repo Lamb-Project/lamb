@@ -17,7 +17,7 @@ from fastapi.responses import StreamingResponse, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from lamb.auth_context import AuthContext, get_auth_context
 from lamb.completions.main import run_lamb_assistant
-from lamb.completions.filter_state import Conversation
+from lamb.completions.conversation_state import Conversation
 from lamb.database_manager import LambDatabaseManager
 from lamb.services.lamb_chats_service import LambChatsService
 import json
@@ -234,8 +234,7 @@ async def proxy_assistant_chat(
                 logger.debug(f"Saved user message to chat {chat_id}")
             except Exception as e:
                 logger.error(f"Failed to save user message: {e}")
-                # Continue with completion even if chat persistence fails
-                chat_id = None
+                raise HTTPException(status_code=503, detail="Could not save the conversation. Please retry.") from e
         
         # 8. Log the request for audit trail
         stream_mode = body.get("stream", False)

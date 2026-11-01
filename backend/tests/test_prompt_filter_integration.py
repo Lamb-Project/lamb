@@ -55,13 +55,13 @@ def test_runner_reuses_scenario_and_preserves_multimodal_request(scenario):
     asyncio.run(run())
 
 
-def test_missing_identity_and_failed_storage_never_contact_connector(scenario):
+def test_missing_continuation_and_failed_storage_never_contact_connector(scenario):
     _, _, connector, manager, _ = scenario
-    body = {'messages': [{'role': 'user', 'content': 'Hi'}]}
+    body = {'messages': [{'role': 'assistant', 'content': 'Previous answer'}, {'role': 'user', 'content': 'Hi'}]}
     async def run():
         with pytest.raises(HTTPException) as missing:
             await runner.run_lamb_assistant(body, 5)
-        assert missing.value.status_code == 400
+        assert missing.value.status_code == 409
         manager.get_connection = lambda: None
         with pytest.raises(HTTPException) as unavailable:
             await runner.run_lamb_assistant(body, 5, conversation=Conversation('creator', 'chat', '7'))

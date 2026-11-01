@@ -1349,5 +1349,5 @@ class MigrationRunner:
 
     def _migration_35(self, cursor):
         """Persist conversation-start system prompt filters (#553)."""
-        from lamb.completions.filter_state import migrate
+        from lamb.completions.conversation_state import migrate
         migrate(cursor, self.db.table_prefix)

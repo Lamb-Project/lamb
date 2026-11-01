@@ -191,6 +191,11 @@ class TestService:
                 plugin_config["llm"] = "debug-bypass"
 
             plugin_config = resolve_completion_config(assistant_details, plugin_config)
+            from lamb.completions.conversation_state import PromptContext, prepare_assistant
+            # A saved scenario is an explicit fresh evaluation, even when its
+            # fixture includes several turns. It never creates a durable chat.
+            assistant_details = prepare_assistant(assistant_details, plugin_config, request_body,
+                                                  prompt_context=PromptContext())
             pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
             rag_context = await get_rag_context(
                 request_body, rag_processors,

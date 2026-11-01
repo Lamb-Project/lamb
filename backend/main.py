@@ -629,6 +629,8 @@ async def conversation_inlet(pipeline_id: str, form_data: FilterForm, request: R
     from lamb.completions.conversation_bridge import seal
     body = dict(form_data.body)
     body.pop("lamb_conversation", None)
+    body.pop("prompt_context", None)
+    body.pop("return_prompt_context", None)
     metadata = body.get("metadata") or {}
     chat_id = metadata.get("chat_id")
     user = form_data.user or {}
@@ -1044,8 +1046,11 @@ async def generate_openai_chat_completion(request: Request):
         # Directly call and await run_lamb_assistant
         multimodal_logger.info(f"Calling run_lamb_assistant with assistant_id={assistant_id}")
         request_data = form_data.model_dump()
-        from lamb.completions.conversation_bridge import facade_conversation
+        from lamb.completions.conversation_bridge import facade_conversation, facade_prompt_context
         conversation = facade_conversation(facade_identity, transport_data, assistant_id, config.API_KEY)
+        prompt_context, return_prompt_context, context_messages = facade_prompt_context(
+            transport_data, assistant_id, conversation)
+        request_data["messages"] = context_messages
         if facade_identity["kind"] == "system" and transport_data.get("lamb_task"):
             request_data["metadata"] = {"task": transport_data["lamb_task"]}
         multimodal_logger.debug(f"Request data being sent: {json.dumps(request_data, indent=2)[:1000]}...")
@@ -1055,6 +1060,8 @@ async def generate_openai_chat_completion(request: Request):
             assistant=assistant_id,
             headers=common_headers,
             conversation=conversation,
+            prompt_context=prompt_context,
+            return_prompt_context=return_prompt_context,
         )
 
         multimodal_logger.info(f"Assistant returned response, type: {type(response)}")
