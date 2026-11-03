@@ -145,3 +145,15 @@ def test_inventory_counts_beyond_100_and_reports_unavailable_source(tmp_path):
     assert partial['total'] == 130
     assert not partial['sources_complete']
     assert partial['source_status']['owi'] == 'unavailable'
+
+
+def test_system_admin_reports_belong_to_assistant_org(fixture):
+    store, owner, service = fixture
+    admin = SimpleNamespace(user={'id': 10}, organization={'id': 99}, is_system_admin=True)
+    store.db.get_assistant_by_id_with_publication = lambda _: {'organization_id': owner.organization['id']}
+    receipt = store.prepare(admin, 7, service)
+    store.save_report(admin, 7, receipt['id'], 'Admin analysis', 'Findings', [])
+    assert store.list(owner, 7)[0]['title'] == 'Admin analysis'
+    assert store.list(admin, 7)[0]['title'] == 'Admin analysis'
+    foreign = SimpleNamespace(user={'id': 11}, organization={'id': 99}, is_system_admin=False)
+    assert store.list(foreign, 7) == []
