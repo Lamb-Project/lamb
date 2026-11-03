@@ -15,7 +15,7 @@ Privacy:
 Created: December 27, 2025
 """
 
-from fastapi import APIRouter, HTTPException, Request, Query, Depends
+from fastapi import APIRouter, HTTPException, Request, Query, Depends, Response
 from fastapi.security import HTTPBearer
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
@@ -50,6 +50,7 @@ class ChatSummary(BaseModel):
     message_count: int
     created_at: str
     updated_at: str
+    source: str = 'unknown'
 
 
 class ChatListResponse(BaseModel):
@@ -162,6 +163,56 @@ def get_anonymize_setting(user: Dict[str, Any]) -> bool:
 
 
 # --- Endpoints ---
+
+def require_analysis_access(auth, assistant_id):
+    if check_assistant_access_for_analytics(auth, assistant_id) != 'full':
+        raise HTTPException(403, 'Analysis reports require access to conversation content')
+
+
+class AnalysisReportInput(BaseModel):
+    title: str = Field(min_length=1, max_length=250)
+    content: str = Field(min_length=1, max_length=100000)
+    reviewed_chat_ids: List[str]
+
+
+@router.get('/assistant/{assistant_id}/analysis-context')
+def analysis_context(assistant_id: int, response: Response, start_date: Optional[str] = None,
+                     end_date: Optional[str] = None, dimensions: str = 'full',
+                     limit: int = Query(20, ge=1, le=50), scenario_id: Optional[str] = None,
+                     auth: AuthContext = Depends(get_auth_context)):
+    from lamb.services.activity_analysis import AnalysisStore, DIMENSIONS
+    from lamb.aac.learning_scenarios import ScenarioStore
+    require_analysis_access(auth, assistant_id)
+    scenario = ScenarioStore(auth).get(scenario_id) if scenario_id else None
+    response.headers['Cache-Control'] = 'private, no-store'
+    return AnalysisStore().prepare(auth, assistant_id, analytics_service, start=start_date, end=end_date,
+        dimensions=DIMENSIONS if dimensions == 'full' else dimensions.split(','), limit=limit, scenario=scenario)
+
+
+@router.get('/assistant/{assistant_id}/analysis-reports')
+def analysis_reports(assistant_id: int, response: Response, auth: AuthContext = Depends(get_auth_context)):
+    from lamb.services.activity_analysis import AnalysisStore
+    require_analysis_access(auth, assistant_id)
+    response.headers['Cache-Control'] = 'private, no-store'
+    return AnalysisStore().list(auth, assistant_id)
+
+
+@router.get('/assistant/{assistant_id}/analysis-reports/{report_id}')
+def analysis_report(assistant_id: int, report_id: str, response: Response, draft: bool = False,
+                    auth: AuthContext = Depends(get_auth_context)):
+    from lamb.services.activity_analysis import AnalysisStore
+    require_analysis_access(auth, assistant_id)
+    response.headers['Cache-Control'] = 'private, no-store'
+    return AnalysisStore().get(auth, assistant_id, report_id, draft=draft)
+
+
+@router.post('/assistant/{assistant_id}/analysis-reports/{report_id}')
+def save_analysis_report(assistant_id: int, report_id: str, body: AnalysisReportInput, response: Response,
+                         auth: AuthContext = Depends(get_auth_context)):
+    from lamb.services.activity_analysis import AnalysisStore
+    require_analysis_access(auth, assistant_id)
+    response.headers['Cache-Control'] = 'private, no-store'
+    return AnalysisStore().save_report(auth, assistant_id, report_id, body.title, body.content, body.reviewed_chat_ids)
 
 @router.get(
     "/assistant/{assistant_id}/chats",
@@ -358,4 +409,3 @@ async def get_assistant_timeline(
         raise HTTPException(status_code=500, detail=result["error"])
     
     return result
-

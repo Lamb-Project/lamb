@@ -25,5 +25,6 @@
   "rubrics.form.criteria",
   "rubrics.form.weight",
   "rubrics.form.performanceLevels",
-  "rubrics.form.addCriterion"
+  "rubrics.form.addCriterion",
+  "assistants.detail.analysisTab"
 ]

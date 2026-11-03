@@ -152,6 +152,7 @@
       "editTab": "Edit",
       "shareTab": "Share",
       "chatTab": "Chat",
+      "analysisTab": "Activity analysis",
       "activityTab": "Activity",
       "chatWith": "with",
       "readOnlyBanner": "Read-only view — This assistant belongs to {owner}",

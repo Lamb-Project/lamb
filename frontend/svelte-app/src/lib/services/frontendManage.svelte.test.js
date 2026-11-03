@@ -94,3 +94,11 @@ describe('frontend navigation contract', () => {
         expect((await applyFrontendAction({ operation: 'open', resource: 'kb', id: '15', tab: 'files' })).status).toBe('failed');
     });
 });
+
+it('opens an activity report in its assistant tab after current access verification', async () => {
+    clearWorkspaceDirty(); vi.clearAllMocks();
+    const id = '11111111-1111-4111-8111-111111111111';
+    vi.mocked(apiJson).mockResolvedValue({id, destination: {resource:'assistant',id:'7',tab:'analysis'}});
+    expect((await openSavedResult(id,id)).status).toBe('opened');
+    expect(goto).toHaveBeenCalledWith('/assistants?view=detail&id=7&aacTab=analysis&analysisReport='+id, {keepFocus:true});
+});

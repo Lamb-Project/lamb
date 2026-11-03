@@ -27,7 +27,8 @@
     "rubrics.form.criteria": "Assessment Criteria",
     "rubrics.form.weight": "Weight (%)",
     "rubrics.form.performanceLevels": "Performance Levels",
-    "rubrics.form.addCriterion": "Add Criterion"
+    "rubrics.form.addCriterion": "Add Criterion",
+    "assistants.detail.analysisTab": "Activity analysis"
   },
   "terms": [
     {

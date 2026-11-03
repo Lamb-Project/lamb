@@ -217,10 +217,13 @@ class AutoWork:
         if type(evaluate) is not bool:
             raise ValueError('evaluate must be boolean; it covers only runs created by this plan')
         if report is not None:
-            if not isinstance(report, dict) or set(report) != {'title', 'assistant_id'} or not isinstance(report['title'], str) or not 1 <= len(report['title']) <= 250:
+            if not isinstance(report, dict) or set(report) - {'title', 'assistant_id', 'analysis_id'} or not {'title', 'assistant_id'} <= set(report) or not isinstance(report['title'], str) or not 1 <= len(report['title']) <= 250:
                 raise ValueError('report requires title and a verified assistant_id')
             report = dict(report)
             report['assistant_id'] = await self._assistant(report['assistant_id'])
+            if report.get('analysis_id'):
+                report['analysis_id'] = str(uuid.UUID(report['analysis_id']))
+                await self.agent.shell._get_http().get(f"/creator/analytics/assistant/{report['assistant_id']}/analysis-reports/{report['analysis_id']}", params={'draft': True})
         estimate = payload.get('tool_estimate', len(steps))
         if type(estimate) is not int or not 1 <= estimate <= MAX_TOOLS:
             raise ValueError('tool_estimate must be 1..250')
@@ -513,6 +516,12 @@ class AutoWork:
                       'destination': {'resource': 'assistant', 'id': assistant_id, 'tab': 'tests'},
                       'run_ids': [r['id'] for s in plan['steps'] for r in runs(s.get('result'))],
                       'calls': self.task['calls'], 'tools': self.task['tools']}
+            if spec.get('analysis_id'):
+                reviewed = json.loads(kwargs.get('reviewed', '[]'))
+                report = await self.agent.shell._get_http().post(
+                    f"/creator/analytics/assistant/{assistant_id}/analysis-reports/{spec['analysis_id']}",
+                    json={'title': spec['title'], 'content': content, 'reviewed_chat_ids': reviewed})
+                report = {**report, 'task_id': self.task['id'], 'kind': 'activity-analysis'}
             self.state['reports'].append(report)
             plan['report_id'] = report['id']
             self.save()
@@ -523,6 +532,8 @@ class AutoWork:
             if not report:
                 raise ValueError('Report not found in this session')
             await self._assistant(report['destination']['id'])
+            if report.get('kind') == 'activity-analysis':
+                return await self.agent.shell._get_http().get(f"/creator/analytics/assistant/{report['assistant_id']}/analysis-reports/{report['id']}")
             return report
         raise ValueError('Unsupported task command')
 

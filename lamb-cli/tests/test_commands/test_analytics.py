@@ -200,3 +200,23 @@ class TestAnalyticsTimeline:
         assert result.exit_code == 0
         req = httpx_mock.get_request()
         assert "start_date=2024-01-01" in str(req.url)
+
+
+def test_analysis_receipt_report_cli(httpx_mock, mock_token, tmp_path):
+    identifier = '11111111-1111-4111-8111-111111111111'
+    httpx_mock.add_response(json={'id': identifier, 'coverage': {'total_conversations': 4}})
+    result = runner.invoke(app, ['analytics', 'analysis-context', '7', '--dimensions', 'learning', '--limit', '12', '--scenario', 'none'])
+    assert result.exit_code == 0, result.output
+    assert identifier in result.output
+    assert httpx_mock.get_requests()[0].url.params['dimensions'] == 'learning'
+    assert 'scenario_id' not in httpx_mock.get_requests()[0].url.params
+    body = {'title': 'Analysis', 'content': 'Evidence and actions', 'reviewed_chat_ids': ['chat-a']}
+    path = tmp_path / 'report.json'; path.write_text(json.dumps(body))
+    httpx_mock.add_response(json={'id': identifier, **body})
+    result = runner.invoke(app, ['analytics', 'report-save', '7', identifier, '--file', str(path)])
+    assert result.exit_code == 0, result.output
+    assert json.loads(httpx_mock.get_requests()[1].content) == body
+    httpx_mock.add_response(json=[{'id': identifier, 'title': 'Analysis', 'created_at': 1}])
+    assert runner.invoke(app, ['analytics', 'reports', '7', '-o', 'json']).exit_code == 0
+    httpx_mock.add_response(json=body)
+    assert runner.invoke(app, ['analytics', 'report', '7', identifier]).exit_code == 0

@@ -155,3 +155,56 @@ def timeline(
         return
     data = resp.get("data", [])
     format_output(data, TIMELINE_COLUMNS, fmt)
+
+
+@app.command('analysis-context')
+def analysis_context(
+    assistant_id: int = typer.Argument(...),
+    dimensions: str = typer.Option('full', '--dimensions'),
+    limit: int = typer.Option(20, '--limit', min=1, max=50),
+    start_date: Optional[str] = typer.Option(None, '--start-date'),
+    end_date: Optional[str] = typer.Option(None, '--end-date'),
+    scenario: Optional[str] = typer.Option(None, '--scenario'),
+) -> None:
+    """Read bounded evidence and retain a scenario/scope receipt; no model calls."""
+    import json
+    params = {'dimensions': dimensions, 'limit': limit}
+    for key, value in [('start_date', start_date), ('end_date', end_date), ('scenario_id', scenario)]:
+        if value is not None and value != 'none':
+            params[key] = value
+    with get_client() as client:
+        data = client.get(f'/creator/analytics/assistant/{assistant_id}/analysis-context', params=params)
+    typer.echo(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+@app.command('reports')
+def analysis_reports(assistant_id: int = typer.Argument(...), output: str = typer.Option(None, '-o', '--output')) -> None:
+    """List saved activity analyses across LEGATUS sessions, newest first."""
+    with get_client() as client:
+        data = client.get(f'/creator/analytics/assistant/{assistant_id}/analysis-reports')
+    format_output(data, [('id', 'ID'), ('title', 'Title'), ('created_at', 'Created')], output or get_output_format())
+
+
+@app.command('report')
+def analysis_report(assistant_id: int = typer.Argument(...), report_id: str = typer.Argument(...)) -> None:
+    """Read a saved activity analysis with its original learning context."""
+    import json
+    from uuid import UUID
+    identifier = str(UUID(report_id))
+    with get_client() as client:
+        data = client.get(f'/creator/analytics/assistant/{assistant_id}/analysis-reports/{identifier}')
+    typer.echo(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+@app.command('report-save')
+def save_analysis_report(assistant_id: int = typer.Argument(...), receipt_id: str = typer.Argument(...),
+                         file: str = typer.Option(..., '--file', help='JSON object: title, content, reviewed_chat_ids.')) -> None:
+    """Publish one immutable report from an existing evidence receipt."""
+    import json
+    from pathlib import Path
+    from uuid import UUID
+    body = json.loads(Path(file).read_text())
+    identifier = str(UUID(receipt_id))
+    with get_client() as client:
+        data = client.post(f'/creator/analytics/assistant/{assistant_id}/analysis-reports/{identifier}', json=body)
+    typer.echo(json.dumps(data, ensure_ascii=False, indent=2))

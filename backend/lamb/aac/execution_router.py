@@ -67,6 +67,11 @@ async def read_report(session_id: str, report_id: str, response: Response, auth:
     if not report:
         raise HTTPException(404, 'Report not found')
     auth.require_assistant_access(int(report['destination']['id']))
+    if report.get('kind') == 'activity-analysis':
+        from creator_interface.analytics_router import require_analysis_access
+        from lamb.services.activity_analysis import AnalysisStore
+        require_analysis_access(auth, int(report['assistant_id']))
+        report = AnalysisStore().get(auth, int(report['assistant_id']), report['id'])
     response.headers['Cache-Control'] = 'private, no-store'
     return report
 

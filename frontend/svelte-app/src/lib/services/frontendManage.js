@@ -3,7 +3,7 @@ import { frontendDestination } from '$lib/stores/aacStore.svelte';
 import { goto } from '$app/navigation';
 import { base } from '$app/paths';
 import { apiJson } from '$lib/services/apiClient';
-export const tabs = { assistant: ['properties', 'tests', 'chat', 'activity', 'edit'], kb: ['files', 'ingest', 'query'], rubric: ['view'] };
+export const tabs = { assistant: ['properties', 'tests', 'chat', 'activity', 'analysis', 'edit'], kb: ['files', 'ingest', 'query'], rubric: ['view'] };
 const dirtyForms = new Set();
 let manualDirty = false;
 export function markWorkspaceDirty(event) {
@@ -33,7 +33,11 @@ export async function openSavedResult(sessionId, reportId) {
     const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
     if (!uuid.test(sessionId) || !uuid.test(reportId)) return {status: 'failed', reason: 'Invalid result reference'};
     try {
-        await apiJson(`/aac/sessions/${sessionId}/reports/${reportId}`);
+        const report = await apiJson(`/aac/sessions/${sessionId}/reports/${reportId}`);
+        if (report.destination?.tab === 'analysis') {
+            await goto(destinationUrl(report.destination) + `&analysisReport=${reportId}`, {keepFocus: true});
+            return {status: 'opened'};
+        }
         await goto(`${base}/agent/reports/${sessionId}/${reportId}`, {keepFocus: true});
         return {status: 'opened'};
     } catch (e) { return {status: 'failed', reason: e instanceof Error ? e.message : String(e)}; }

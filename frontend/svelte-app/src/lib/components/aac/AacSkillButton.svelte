@@ -3,8 +3,8 @@
 	import { showSession, sidebarBusy } from '$lib/stores/aacStore.svelte';
 	import { _ } from 'svelte-i18n';
 
-	/** @type {{ skill: string, label?: string, icon?: string, assistantId?: number|null, language?: string, onSessionCreated?: (session: {id: string, title: string, firstMessage: string}) => void }} */
-	let { skill, label = '', icon = '🤖', assistantId = null, language = 'English', onSessionCreated = () => {} } = $props();
+	/** @type {{ skill: string, context?: Record<string, string>, label?: string, icon?: string, assistantId?: number|null, language?: string, onSessionCreated?: (session: {id: string, title: string, firstMessage: string}) => void }} */
+	let { skill, context = {}, label = '', icon = '🤖', assistantId = null, language = 'English', onSessionCreated = () => {} } = $props();
 
 	/** @type {boolean} */
 	let launching = $state(false);
@@ -20,7 +20,7 @@
 			const session = await createSession({
 				assistantId,
 				skill,
-				context: { language },
+				context: { ...context, language },
 			});
 			const title = session.title || `${skill}`;
 			showSession(session.id, title, assistantId, skill, true);

@@ -150,11 +150,18 @@ class UserTurnSelection(unittest.TestCase):
         from lamb.aac.skill_routing import select_workflow
         state={'skill_id':'manage-knowledge-base','context':{},'active_snapshot':'old'}
         for text in ['Try again','Create an assistant and a rubric','Do not inspect activity for assistant 30',
-                     'Show activity for another assistant','Show activity']:
+                     'Show activity for another assistant']:
             self.assertIsNone(select_workflow(text,state),text)
 
 
 class SelectedActivityContext(unittest.TestCase):
+    def test_unlinked_analysis_request_routes_without_inventing_an_assistant(self):
+        from lamb.aac.skill_routing import select_workflow
+        for text in ['Show activity', 'Analyse conversations in prova carles', 'Full audit']:
+            selected = select_workflow(text, {'context': {}})
+            self.assertEqual(selected[0], 'inspect-activity')
+            self.assertNotIn('assistant_id', selected[1])
+
     def test_recipe_names_selected_assistant(self):
         prompt=load_skill('inspect-activity', {'assistant_id':77})['prompt']
         self.assertIn('selected assistant ID is `77`',prompt)

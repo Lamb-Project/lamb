@@ -669,6 +669,32 @@ def _analytics_params(kwargs, defaults=None):
     return params
 
 
+@register('analytics.analysis-context')
+async def analytics_analysis_context(ctx, args, kwargs):
+    """Read bounded activity evidence and retain its scope/scenario receipt. --dimensions full or comma-separated dimensions."""
+    params = {key: value for key, value in kwargs.items() if key in ('start_date', 'end_date', 'dimensions', 'limit')}
+    scenario = kwargs.get('scenario')
+    if scenario is None and ctx.session_id:
+        selection = await ctx.http.get(f'/creator/aac/sessions/{ctx.session_id}/learning-scenario')
+        scenario = (selection.get('scenario') or {}).get('id')
+    if scenario and scenario != 'none':
+        params['scenario_id'] = scenario
+    return await ctx.http.get(f'/creator/analytics/assistant/{args[0]}/analysis-context', params=params)
+
+
+@register('analytics.reports')
+async def analytics_reports(ctx, args, kwargs):
+    """List saved activity reports, newest first, across LEGATUS sessions."""
+    return await ctx.http.get(f'/creator/analytics/assistant/{args[0]}/analysis-reports')
+
+
+@register('analytics.report')
+async def analytics_report(ctx, args, kwargs):
+    """Read an assistant's saved activity report."""
+    from uuid import UUID
+    return await ctx.http.get(f'/creator/analytics/assistant/{args[0]}/analysis-reports/{UUID(args[1])}')
+
+
 @register("analytics.chats")
 async def analytics_chats(ctx, args, kwargs):
     """List assistant chats with CLI-compatible filters."""

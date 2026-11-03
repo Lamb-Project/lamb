@@ -1,4 +1,5 @@
 <script>
+    import { analysisText } from '$lib/utils/activityAnalysisText';
     import { apiJson } from '$lib/services/apiClient';
     import { openSavedResult, openTaskResult } from '$lib/services/frontendManage';
     import { executionText } from '$lib/utils/aacExecutionText';
@@ -50,7 +51,7 @@
         <ol>{#each execution.steps || [] as step}<li>{step.title} <span>{labels[step.status] || step.status}</span></li>{/each}</ol>
     {/if}
     {#if (report || execution.result) && execution.status === 'completed'}
-        <div class="result"><strong>{resultTitle}</strong> <button class="primary" onclick={show}>{labels.showMe}</button></div>
+        <div class="result"><strong>{resultTitle}</strong> <button class="primary" onclick={show}>{report?.destination?.tab === 'analysis' ? analysisText(language).showReport : labels.showMe}</button></div>
     {/if}
     {#if changes}
         <div class="changes">

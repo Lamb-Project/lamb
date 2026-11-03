@@ -366,3 +366,32 @@ async def test_revoked_history_is_not_exposed_by_model_tools_or_restore_card():
     assert not result['success'] and 'secret' not in json.dumps(result)
     result = await a._execute_tool(tool('lamb change restore old'))
     assert not result['success'] and not a.pending_action and 'secret' not in json.dumps(result)
+
+
+@pytest.mark.asyncio
+async def test_auto_analysis_approval_save_and_readback():
+    a, http, snapshots = agent()
+    receipt_id = '11111111-1111-4111-8111-111111111111'
+    old_get, old_post = http.get, http.post
+    saved = []
+    async def read(path, **kwargs):
+        if '/analysis-reports/' in path:
+            return saved[0] if saved else {'id': receipt_id}
+        return await old_get(path, **kwargs)
+    async def write(path, json=None, **kwargs):
+        if '/analysis-reports/' in path:
+            result = {'id': receipt_id, 'assistant_id': 7, 'title': json['title'], 'content': json['content'], 'created_at': 1,
+                      'destination': {'resource': 'assistant', 'id': '7', 'tab': 'analysis'}}
+            saved.append(result)
+            return result
+        return await old_post(path, json=json, **kwargs)
+    http.get, http.post = read, write
+    plan = await a.auto_work.prepare(proposal(steps=[{'id': 'read', 'title': 'Read', 'command': 'lamb assistant get 7'}],
+        evaluate=False, report={'title': 'Analysis', 'assistant_id': '7', 'analysis_id': receipt_id}))
+    assert plan['needs_approval']
+    plan['status'] = 'approved'
+    a.auto_work.task['plan'] = plan
+    await a.auto_work.execute_plan()
+    report = await a.auto_work.handle('report.save', [], {'content': 'Evidence and actions', 'reviewed': '[]'})
+    assert report['destination']['tab'] == 'analysis'
+    assert len(saved) == 1

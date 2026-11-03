@@ -27,7 +27,8 @@
     "rubrics.form.criteria": "Criterios de Evaluación",
     "rubrics.form.weight": "Peso (%)",
     "rubrics.form.performanceLevels": "Niveles de Desempeño",
-    "rubrics.form.addCriterion": "Añadir Criterio"
+    "rubrics.form.addCriterion": "Añadir Criterio",
+    "assistants.detail.analysisTab": "Análisis de actividad"
   },
   "terms": [
     {
