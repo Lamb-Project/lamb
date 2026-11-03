@@ -37,6 +37,7 @@ def test_receipt_and_report_survive_another_store(fixture):
     assert not receipt['coverage']['exhaustive']
     assert receipt['full_audit']
     assert receipt['metrics']['messages_by_role'] == {'user': 2, 'assistant': 2}
+    assert receipt['metrics']['messages_per_conversation']['histogram'] == {2: 2}
     assert store.list(auth, 7) == []
     scenario['content'] = 'Edited later'
     saved = store.save_report(auth, 7, receipt['id'], 'Report', 'Observation; interpretation; action.', ['chat-a'])
@@ -46,6 +47,17 @@ def test_receipt_and_report_survive_another_store(fixture):
     assert 'conversations' not in saved
     assert saved['reviewed_chat_ids'] == ['chat-a']
     assert saved['destination']['tab'] == 'analysis'
+
+
+def test_conversation_histogram_reconciles_with_message_totals(fixture):
+    store, auth, service = fixture
+    service.get_chat_detail.side_effect = lambda identifier, *args, **kwargs: {'messages': [
+        {'id': identifier + str(i), 'role': 'user' if i % 2 == 0 else 'assistant', 'content': 'Synthetic message'}
+        for i in range(3 if identifier == 'chat-a' else 2)]}
+    metrics = store.prepare(auth, 7, service)['metrics']
+    histogram = metrics['messages_per_conversation']['histogram']
+    assert histogram == {2: 1, 3: 1}
+    assert sum(length * count for length, count in histogram.items()) == sum(metrics['messages_by_role'].values())
 
 
 def test_idempotence_immutability_and_evidence(fixture):
