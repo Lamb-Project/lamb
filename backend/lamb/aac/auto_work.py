@@ -127,6 +127,10 @@ class AutoWork:
         if help_requested:
             return command
         from lamb.aac.resource_names import resolve
+        if key == 'change.restore':
+            entries = await self.agent.shell._get_http().get(f'/creator/aac/sessions/{self.agent.session_id}/changes')
+            if not any(e['id'] == args[0] and e.get('restorable') for e in entries):
+                raise ValueError('No currently accessible restorable change has that ID')
         index, kind = None, None
         if key.startswith(('assistant.', 'test.', 'analytics.')) and args and key not in {'assistant.create'}:
             kind, index = 'assistant', 0
@@ -472,13 +476,16 @@ class AutoWork:
             await self.progress()
             return self.public()
         if key in {'change.list', 'change.get'}:
-            entries = self.state['journal']
+            # Historical values use the same current resource checks as the UI.
+            visible = await self.agent.shell._get_http().get(f'/creator/aac/sessions/{self.agent.session_id}/changes')
+            allowed = {e['id'] for e in visible}
+            entries = [e for e in self.state['journal'] if e['id'] in allowed]
             if key == 'change.get':
                 entry = next((e for e in entries if e['id'] == args[0]), None)
                 if entry is None:
                     raise ValueError('Change not found in this session')
                 return entry
-            return [{k: e[k] for k in ('id', 'command', 'status', 'created_at')} for e in entries]
+            return [{k: e[k] for k in ('id', 'action', 'status', 'created_at')} for e in visible]
         if key == 'change.restore':
             entry = next((e for e in self.state['journal'] if e['id'] == args[0]), None)
             if not entry or entry['status'] != 'completed' or not entry.get('before') or not entry.get('after'):

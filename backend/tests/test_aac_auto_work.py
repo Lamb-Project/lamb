@@ -349,3 +349,20 @@ async def test_attached_kb_name_is_frozen_before_plan_approval():
     h.get = get
     await prepare(a, proposal(steps=[{'id': 'attach', 'command': 'lamb assistant update 7 --rag-collections "prova carles"'}]))
     assert a.pending_action['plan']['steps'][0]['command'] == 'lamb assistant update 7 --rag-collections 9'
+
+
+@pytest.mark.asyncio
+async def test_revoked_history_is_not_exposed_by_model_tools_or_restore_card():
+    a, h, _ = agent()
+    a.auto_work.state['journal'] = [{'id': 'old', 'command': 'lamb assistant update 7 --system-prompt secret',
+                                    'status': 'completed', 'created_at': 1, 'before': {'fields': {'system_prompt': 'secret'}}}]
+    original = h.get
+    async def get(path, **kwargs):
+        if path.endswith('/changes'): return []  # Current resource permission was revoked.
+        return await original(path, **kwargs)
+    h.get = get
+    assert (await a._execute_tool(tool('lamb change list')))['data'] == []
+    result = await a._execute_tool(tool('lamb change get old'))
+    assert not result['success'] and 'secret' not in json.dumps(result)
+    result = await a._execute_tool(tool('lamb change restore old'))
+    assert not result['success'] and not a.pending_action and 'secret' not in json.dumps(result)
