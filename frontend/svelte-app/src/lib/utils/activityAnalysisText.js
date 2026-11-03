@@ -7,4 +7,15 @@ const words = {
     eu: ['Jardueraren analisia', 'Analisi berria', 'Auditoria osoa', 'Ikaskuntza agertoki batek jarduera irakaskuntzaren helburuen arabera interpretatzen laguntzen dio LEGATUSi. Aukeratu edo definitu bat LEGATUSekin, edo jarraitu analisi orokorrarekin.', 'Oraindik ez dago gordetako analisirik.', 'Eguneratu txostenak', 'Kargatzen…', 'Epea', 'Eskuragarri dauden data guztiak', 'Ikaskuntza agertokia', 'Analisi orokorra: ikaskuntza agertokirik gabe', 'Datuen estaldura', 'Emandakoak', 'Berrikusitzat adierazitakoak', 'Eskuragarri dauden elkarrizketak', 'Ebidentzia partziala edo lagina', 'Eskuragarri dauden elkarrizketa guztiak osorik emanda', 'Elkarrizketen ebidentzia', 'Mugak', 'Itxi', 'Mezuak elkarrizketako', 'Erabiltzailearen mezuaren luzera (karaktereak)', 'Erantzunaren luzera (karaktereak)', 'Mediana', 'Parte-hartzea', 'Erabilera ereduak', 'Ulermen kontzeptuala', 'Laguntzailearen jarduna', 'Zailtasunak eta sentimendua', 'Laguntzailea birbideratzeko saiakerak', 'Erakutsi txostena']
 };
 /** @param {string|null|undefined} language */
-export function analysisText(language) { return Object.fromEntries(keys.map((key, i) => [key, (words[language || 'en'] || words.en)[i]])); }
+const sources = {
+    en: ['Open WebUI chats', 'Creator chats', 'available', 'unavailable'],
+    es: ['Conversaciones de Open WebUI', 'Conversaciones de creadores', 'disponible', 'no disponible'],
+    ca: ['Converses d’Open WebUI', 'Converses de creadors', 'disponible', 'no disponible'],
+    eu: ['Open WebUI elkarrizketak', 'Sortzaileen elkarrizketak', 'eskuragarri', 'ez dago eskuragarri']
+};
+/** @param {string|null|undefined} language */
+export function analysisText(language) {
+    const code = /** @type {keyof typeof sources} */ (language || 'en');
+    return {...Object.fromEntries(keys.map((key, i) => [key, (words[code] || words.en)[i]])),
+        ...Object.fromEntries(['owi','lamb_internal','available','unavailable'].map((key,i)=>[key,(sources[code] || sources.en)[i]]))};
+}

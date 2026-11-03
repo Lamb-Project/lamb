@@ -86,8 +86,8 @@
                 <div class="coverage"><h4>{labels.coverage}</h4>
                     <p>{labels.total}: {selected.coverage.total_conversations} · {labels.provided}: {selected.coverage.provided_conversations} · {labels.reviewed}: {selected.reviewed_chat_ids.length}</p>
                     <p>{selected.coverage.exhaustive ? labels.exhaustive : labels.sample}</p>
-                    <p>{Object.entries(selected.coverage.source_status || {}).map(([source, status]) => `${source}: ${status}`).join(' · ')}</p>
-                    <p>{Object.entries(selected.coverage.provided_by_source).map(([source, count]) => `${source}: ${count}`).join(' · ')}</p>
+                    <p>{Object.entries(selected.coverage.source_status || {}).map(([source, status]) => `${labels[source] || source}: ${labels[String(status)] || status}`).join(' · ')}</p>
+                    <p>{Object.entries(selected.coverage.provided_by_source).map(([source, count]) => `${labels[source] || source}: ${count}`).join(' · ')}</p>
                     <table><thead><tr><th></th><th>{labels.median}</th></tr></thead><tbody>
                         {#each [['messages_per_conversation', labels.messages], ['user_prompt_characters', labels.userLength], ['assistant_response_characters', labels.responseLength]] as [key, label]}
                             <tr><td>{label}</td><td>{selected.metrics[key].median ?? '…'}</td></tr>

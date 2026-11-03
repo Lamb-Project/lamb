@@ -320,7 +320,7 @@
                 selectedAssistantData = fullAssistantData;
                 console.log("Assigned selectedAssistantData:", selectedAssistantData);
                 // Update URL (remove startInEdit param if it was there) - this is fine now
-                goto(`${base}/assistants?view=detail&id=${id}&aacTab=${$page.url.searchParams.get("aacTab") || "properties"}&aacRequest=${$page.url.searchParams.get("aacRequest") || ""}`, { replaceState: true, noScroll: true });
+                goto(`${base}/assistants?view=detail&id=${id}&aacTab=${$page.url.searchParams.get("aacTab") || "properties"}&aacRequest=${$page.url.searchParams.get("aacRequest") || ""}&analysisReport=${encodeURIComponent($page.url.searchParams.get("analysisReport") || "")}`, { replaceState: true, noScroll: true });
             } else {
                 detailError = $_('assistant_not_found', { values: { id } });
                 console.error(detailError);
