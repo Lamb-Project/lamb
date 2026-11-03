@@ -20,6 +20,11 @@ logger = get_logger(__name__, component="AAC")
 
 # Default policy: which commands need confirmation
 DEFAULT_POLICY: dict[str, str] = {
+    'plan.prepare': 'ask', 'plan.execute': 'auto', 'plan.status': 'auto', 'plan.finish': 'auto',
+    'plan.allow-calls': 'ask', 'report.save': 'ask', 'report.get': 'auto',
+    'plan.cancel': 'auto', 'plan.reconcile': 'auto',
+    'plan.extend': 'ask',
+    'change.list': 'auto', 'change.get': 'auto', 'change.restore': 'ask',
     'document.list': "auto",
     'document.open': "auto",
     'document.read': "auto",
@@ -103,14 +108,14 @@ DEFAULT_POLICY: dict[str, str] = {
     "docs.read": "auto",
     # Chat — auto (user explicitly requests it, uses tokens but that's expected)
     "assistant.chat": "auto",
-    # Test commands — auto (low risk, user explicitly requests tests)
+    # Test resources: reads are automatic; saved cases, runs and judgments need approval.
     "test.scenarios": "auto",
-    "test.add": "auto",
+    "test.add": "ask",
     "test.update": "ask",
-    "test.run": "auto",
+    "test.run": "ask",
     "test.runs": "auto",
     "test.run-detail": "auto",
-    "test.evaluate": "auto",
+    "test.evaluate": "ask",
     # Debug — auto (read-only, zero tokens for bypass)
     "assistant.debug": "auto",
     "assistant.preview-filters": "auto",

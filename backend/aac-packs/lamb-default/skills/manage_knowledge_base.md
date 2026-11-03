@@ -42,7 +42,7 @@ After creating the KB, use `frontend-manage open kb KB_ID --tab ingest` before e
 
 After creating and reading back a KB, run `frontend-manage open kb KB_ID --tab files`. If the next requested action is file ingestion, open `frontend-manage open kb KB_ID --tab ingest` instead and use the illustrated tutorial for the user-operated file selection and ingestion. For user-operated querying open `frontend-manage open kb KB_ID --tab query`. Opening Query does not execute a query.
 
-Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.
+At completion, expose the verified destination through lamb plan finish --resource TYPE --id ID --tab TAB, or the saved report. The Show me button navigates only when clicked and respects unsaved edits. Use frontend-manage open only when the user explicitly asks to open a view now; wait for status=opened before claiming it opened. A failed navigation never justifies repeating a successful write.
 
 ## Additional educator operations
 

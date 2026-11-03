@@ -4,10 +4,28 @@ vi.mock('$app/paths', () => ({ base: '' }));
 vi.mock('$lib/services/apiClient', () => ({ apiJson: vi.fn() }));
 import { apiJson } from '$lib/services/apiClient';
 import { goto } from '$app/navigation';
-import { destinationUrl, applyFrontendAction, serveFrontendAction, markWorkspaceDirty, clearWorkspaceDirty } from './frontendManage';
+import { destinationUrl, applyFrontendAction, serveFrontendAction, markWorkspaceDirty, clearWorkspaceDirty, openTaskResult, openSavedResult } from './frontendManage';
 
 describe('frontend navigation contract', () => {
     beforeEach(() => { document.body.innerHTML = ''; clearWorkspaceDirty(); vi.clearAllMocks(); });
+    it('opens persisted results without a model, after checking access and unsaved edits', async () => {
+        const target = {resource: 'assistant', id: '7', tab: 'properties'};
+        markWorkspaceDirty();
+        expect((await openTaskResult(target)).status).toBe('blocked');
+        expect(apiJson).not.toHaveBeenCalled();
+        clearWorkspaceDirty();
+        apiJson.mockRejectedValueOnce(new Error('403 revoked'));
+        expect((await openTaskResult(target)).status).toBe('failed');
+        expect(goto).not.toHaveBeenCalled();
+        apiJson.mockResolvedValueOnce({id: 7});
+        expect((await openTaskResult(target)).status).toBe('opened');
+        expect(apiJson).toHaveBeenLastCalledWith('/assistant/get_assistant/7');
+        expect(goto).toHaveBeenLastCalledWith('/assistants?view=detail&id=7&aacTab=properties', {keepFocus: true});
+        const id = '11111111-1111-4111-8111-111111111111';
+        apiJson.mockResolvedValueOnce({id});
+        expect((await openSavedResult(id, id)).status).toBe('opened');
+        expect(goto).toHaveBeenLastCalledWith(`/agent/reports/${id}/${id}`, {keepFocus: true});
+    });
     it('maps only valid resource IDs and tabs, never arbitrary URLs', () => {
         expect(destinationUrl({ resource: 'assistant', id: '80', tab: 'tests' })).toBe('/assistants?view=detail&id=80&aacTab=tests');
         expect(destinationUrl({ resource: 'kb', id: '15', tab: 'ingest' })).toBe('/knowledgebases?view=detail&id=15&aacTab=ingest');

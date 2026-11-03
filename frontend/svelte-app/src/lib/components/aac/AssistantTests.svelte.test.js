@@ -1,7 +1,7 @@
 import { describe, test, expect, vi } from 'vitest';
 import { render, waitFor } from '@testing-library/svelte';
 
-import { init, register } from 'svelte-i18n';
+import { init, register, waitLocale } from 'svelte-i18n';
 register('en', () => import('$lib/locales/en.json'));
 init({ fallbackLocale: 'en', initialLocale: 'en' });
 const calls = { runs: 0 };
@@ -15,6 +15,7 @@ import AssistantTests from './AssistantTests.svelte';
 
 describe('AssistantTests', () => {
 	test('reloads when LAMB LEGATUS changes this assistant’s tests, and only this one', async () => {
+		await waitLocale('en');
 		render(AssistantTests, { assistantId: 9 });
 		await waitFor(() => expect(calls.runs).toBe(1));
 		window.dispatchEvent(new CustomEvent('lamb-tests-changed', { detail: { assistantId: 12 } }));

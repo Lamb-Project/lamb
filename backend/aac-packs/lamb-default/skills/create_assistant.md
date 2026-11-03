@@ -92,7 +92,7 @@ After successful creation and readback, use `frontend-manage open assistant ASSI
 
 If the user asks to open the creation form, run `frontend-manage open assistant-create` immediately, then explain fields only as needed. Do not start the creation interview or issue a create command for a navigation-only request. For the assistant list run `frontend-manage open assistants`. After an approved creation, read back the saved assistant and run `frontend-manage open assistant ASSISTANT_ID --tab properties`.
 
-Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.
+At completion, expose the verified destination through lamb plan finish --resource TYPE --id ID --tab TAB, or the saved report. The Show me button navigates only when clicked and respects unsaved edits. Use frontend-manage open only when the user explicitly asks to open a view now; wait for status=opened before claiming it opened. A failed navigation never justifies repeating a successful write.
 
 
 For an existing owned single-file import, use the returned reference directly and request the normal application confirmation once:

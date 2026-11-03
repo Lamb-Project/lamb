@@ -282,8 +282,9 @@ class MoodleRuntime:
                 from .reads import plain
                 result=plain(list(MoodleScope(client,record['moodle_user_id']).own_courses().values()))
                 if key=='course.search':
-                    query=params['query'].casefold()
-                    result=[c for c in result if query in c['fullname'].casefold() or query in c['shortname'].casefold()]
+                    from lamb.aac.resource_names import normalized
+                    query=normalized(params['query'])
+                    result=[c for c in result if query in normalized(c['fullname']) or query in normalized(c['shortname'])]
                 from .course_roles import with_my_roles
                 result=with_my_roles(client,result,record['moodle_user_id'])
             else:

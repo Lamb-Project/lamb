@@ -23,6 +23,46 @@ function hasUnsavedChanges() {
     }
     return manualDirty || dirtyForms.size > 0;
 }
+
+/** Saved results are validated on click; no model or expiring mailbox action.
+ * @param {string} sessionId
+ * @param {string} reportId
+ */
+export async function openSavedResult(sessionId, reportId) {
+    if (hasUnsavedChanges()) return {status: 'blocked', reason: 'Save your current edits before opening the result.'};
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    if (!uuid.test(sessionId) || !uuid.test(reportId)) return {status: 'failed', reason: 'Invalid result reference'};
+    try {
+        await apiJson(`/aac/sessions/${sessionId}/reports/${reportId}`);
+        await goto(`${base}/agent/reports/${sessionId}/${reportId}`, {keepFocus: true});
+        return {status: 'opened'};
+    } catch (e) { return {status: 'failed', reason: e instanceof Error ? e.message : String(e)}; }
+}
+
+/** @param {any} report */
+export async function openReportTests(report) {
+    if (hasUnsavedChanges()) return {status: 'blocked', reason: 'Save your current edits before opening the result.'};
+    try {
+        const url = destinationUrl(report.destination);
+        const selected = report.run_ids?.[0];
+        await goto(url + (selected ? `&aacRun=${encodeURIComponent(selected)}` : ''), {keepFocus: true});
+        return {status: 'opened'};
+    } catch (e) { return {status: 'failed', reason: e instanceof Error ? e.message : String(e)}; }
+}
+/** @param {any} target Saved finite destination; verify current access on every click. */
+export async function openTaskResult(target) {
+    if (hasUnsavedChanges()) return {status: 'blocked', reason: 'Save your current edits before opening the result.'};
+    /** @type {Record<string,string>} */
+    const paths = {assistant: '/assistant/get_assistant/', kb: '/knowledgebases/kb/', rubric: '/rubrics/',
+        'learning-scenario': '/aac/learning-scenarios/', 'moodle-result': '/moodle/results/'};
+    try {
+        const url = destinationUrl(target);
+        if (!paths[target.resource]) throw new Error('Unsupported result destination');
+        await apiJson(paths[target.resource] + target.id);
+        await goto(url, {keepFocus: true});
+        return {status: 'opened'};
+    } catch (e) { return {status: 'failed', reason: e instanceof Error ? e.message : String(e)}; }
+}
 export function destinationUrl(target) {
     if (target.resource === 'moodle-result' && target.tab === 'view' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(target.id)) return `${base}/moodle?result=${target.id}`;
     if (target.resource === 'learning-scenarios' && target.id === '' && target.tab === '') return `${base}/learning-scenarios?view=list`;

@@ -22,9 +22,13 @@ def _busy():
     return HTTPException(status_code=409, detail='Another turn is running for this session or a session sharing its lock slot. Wait for it to finish before retrying.')
 
 class TurnLock:
-    def __init__(self, session_id):
+    def __init__(self, session_id, namespace='session'):
         LOCK_ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
         name = hashlib.sha256(session_id.encode()).hexdigest()[:3]
+        if namespace == 'test':
+            name = 'test-' + name
+        elif namespace != 'session':
+            raise ValueError('Unknown turn-lock namespace')
         # Some mounted filesystems treat flock as process-scoped. Reserve the
         # session locally as well as across workers; neither guard alone suffices.
         self.key = (os.getpid(), str(LOCK_ROOT.resolve()), name)

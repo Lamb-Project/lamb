@@ -33,7 +33,7 @@ For W13 activate create-assistant with the saved rubric ID and its rubric_rag re
 
 After a rubric create/edit and readback, or a request to view it, run `frontend-manage open rubric RUBRIC_ID`. Use the exact returned UUID. This opens the actual rubric editor without changing it. After binding a rubric to an assistant, read back the assistant and open `frontend-manage open assistant ASSISTANT_ID --tab properties`.
 
-Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.
+At completion, expose the verified destination through lamb plan finish --resource TYPE --id ID --tab TAB, or the saved report. The Show me button navigates only when clicked and respects unsaved edits. Use frontend-manage open only when the user explicitly asks to open a view now; wait for status=opened before claiming it opened. A failed navigation never justifies repeating a successful write.
 
 ## Additional rubric operations
 

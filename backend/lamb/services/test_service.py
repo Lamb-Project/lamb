@@ -153,6 +153,7 @@ class TestService:
         messages: list[dict],
         user_email: str,
         debug_bypass: bool = False,
+        request_id: str | None = None,
     ) -> dict:
         """Run a test completion through the real pipeline.
 
@@ -238,7 +239,7 @@ class TestService:
         }
 
         # Save test run
-        run_id = str(uuid.uuid4())
+        run_id = request_id or str(uuid.uuid4())
         now = datetime.utcnow().isoformat()
         conn = self.db.get_connection()
         try:

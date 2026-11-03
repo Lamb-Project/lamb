@@ -49,6 +49,24 @@ def _unwrap(response: Any) -> Any:
     return response
 
 
+@register('plan.prepare')
+@register('plan.extend')
+@register('plan.execute')
+@register('plan.status')
+@register('plan.finish')
+@register('plan.cancel')
+@register('plan.reconcile')
+@register('plan.allow-calls')
+@register('report.save')
+@register('report.get')
+@register('change.list')
+@register('change.get')
+@register('change.restore')
+async def execution_command(ctx, args, kwargs):
+    """Manage a bounded task, concrete approved plan, saved report or change history."""
+    raise ValueError('Task commands require the LEGATUS execution controller')
+
+
 async def _resolve_kb_ids(ctx: "CommandContext", collections: str) -> str:
     """Resolve KB names to numeric IDs. Numeric IDs pass through unchanged."""
     if not collections or not collections.strip():
@@ -58,16 +76,8 @@ async def _resolve_kb_ids(ctx: "CommandContext", collections: str) -> str:
     if all(item.isdigit() for item in items):
         return collections
 
-    # Fetch KB list and build name→id map, falling back to pass-through on error
-    try:
-        kbs = _unwrap(await ctx.http.get("/creator/knowledgebases/user"))
-        kbs = kbs if isinstance(kbs, list) else kbs.get("knowledge_bases", [])
-    except Exception:
-        return collections
-
-    kb_map = {kb["name"].lower(): str(kb["id"]) for kb in kbs if kb.get("id") is not None and kb.get("name")}
-    resolved = [kb_map.get(item.lower(), item) for item in items]
-    return ",".join(resolved)
+    from lamb.aac.resource_names import resolve
+    return ",".join([await resolve(ctx.http, 'kb', item) for item in items])
 
 
 # ---------------------------------------------------------------------------
@@ -103,36 +113,9 @@ async def assistant_get(ctx: "CommandContext", args: list[str], kwargs: dict) ->
         raise ValueError("Usage: lamb assistant get <id_or_name>")
     identifier = args[0]
 
-    # If it's a number, get by ID
-    if identifier.isdigit():
-        return _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{identifier}"))
-
-    # Otherwise, search by name in owned + shared assistants
-    owned = _unwrap(await ctx.http.get("/creator/assistant/get_assistants", params={"limit": 100}))
-    assistants = owned.get("assistants", owned) if isinstance(owned, dict) else owned
-    if isinstance(assistants, list):
-        for a in assistants:
-            name = a.get("name", "")
-            # Match exact or without user prefix (e.g., "1_rock_the_60s" matches "rock_the_60s")
-            bare_name = name.split("_", 1)[1] if "_" in name and name.split("_")[0].isdigit() else name
-            if name == identifier or bare_name == identifier:
-                aid = a.get("id") or a.get("assistant_id")
-                return _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{aid}"))
-
-    # Try shared assistants too
-    try:
-        shared = _unwrap(await ctx.http.get("/creator/lamb/assistant-sharing/shared-with-me"))
-        shared_list = shared if isinstance(shared, list) else shared.get("assistants", [])
-        for a in shared_list:
-            name = a.get("name", "")
-            bare_name = name.split("_", 1)[1] if "_" in name and name.split("_")[0].isdigit() else name
-            if name == identifier or bare_name == identifier:
-                aid = a.get("id") or a.get("assistant_id")
-                return _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{aid}"))
-    except Exception:
-        pass
-
-    raise ValueError(f"Assistant '{identifier}' not found by name. Use numeric ID or exact name.")
+    from lamb.aac.resource_names import resolve
+    identifier = await resolve(ctx.http, 'assistant', identifier)
+    return _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{identifier}"))
 
 
 @register("assistant.config")
@@ -465,6 +448,8 @@ async def test_run(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     scenario_id = kwargs.get("case", kwargs.get("scenario", kwargs.get("s")))
     if scenario_id:
         body["scenario_id"] = scenario_id
+        if ctx.knowledge.get('test_request_id'):
+            body['request_id'] = ctx.knowledge['test_request_id']
     import asyncio
     try:
         return _unwrap(await asyncio.wait_for(ctx.http.post(f"/creator/assistant/{assistant_id}/tests/run", json=body), float(kwargs.get('timeout', 900))))
@@ -509,6 +494,7 @@ async def test_evaluate(ctx: "CommandContext", args: list[str], kwargs: dict) ->
     return _unwrap(await ctx.http.post(
         f"/creator/assistant/{assistant_id}/tests/runs/{run_id}/evaluate",
         json={
+            "evaluator": "legatus",
             "verdict": verdict,
             "notes": kwargs.get("notes", kwargs.get("n", "")),
         },

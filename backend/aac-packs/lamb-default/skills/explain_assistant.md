@@ -26,7 +26,7 @@ Summarize in 3-4 short lines:
 
 For simple_augment: an empty template with no_rag is valid and passes the user message through. A nonempty template without {user_input} omits the question. RAG requires {context}, including when a default template was used. Inspect custom processors before applying these rules. A configured model preference may fall back to an enabled organization model at completion; distinguish saved preference from the effective model reported by a run.
 
-Then offer options. Do NOT explain everything unprompted.
+Answer the requested question fully. Offer optional further topics only after it is satisfied; avoid unrelated exposition.
 
 ## If user asks for detail
 
@@ -58,7 +58,7 @@ Debug shows assembled input, not an assistant answer or a quality evaluation. On
 
 After inspecting the selected assistant, run `frontend-manage open assistant ASSISTANT_ID --tab properties` and explain the saved properties beside that view.
 
-Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.
+At completion, expose the verified destination through lamb plan finish --resource TYPE --id ID --tab TAB, or the saved report. The Show me button navigates only when clicked and respects unsaved edits. Use frontend-manage open only when the user explicitly asks to open a view now; wait for status=opened before claiming it opened. A failed navigation never justifies repeating a successful write.
 
 For the complete saved configuration as inline JSON use `lamb assistant export ASSISTANT_ID`. This reads the existing resource and does not write a local file. For caller identity use `lamb whoami`; do not infer roles from resource names.
 
@@ -77,4 +77,4 @@ a bypass inspection alone does not evaluate answer quality.
 
 ## System prompt filters
 
-Random filters resolve {{RANDOM:minimum-maximum}} in the system prompt once at conversation start. Values remain fixed across turns, reloads and forks. Preview with `lamb assistant preview-filters ASSISTANT_ID`: this is a sample only, with no model call or saved realization. A filtered chat requires `lamb assistant chat ASSISTANT_ID --message "Hello" --persist`; reuse the returned --chat-id and --persist for follow-ups. Stateless debug and saved tests without conversation identity are unsupported for enabled filters. Use create-assistant or improve-assistant to configure filters through normal application approval, or Advanced Mode > Prompt filters in the UI. Configuration edits affect new conversations. Privacy sanitization is not implemented.
+Random filters resolve {{RANDOM:minimum-maximum}} in the system prompt once at conversation start. Values remain fixed across turns, reloads and forks. Preview with `lamb assistant preview-filters ASSISTANT_ID`: this is a sample only, with no model call or saved realization. For a saved interview, use `lamb assistant chat ASSISTANT_ID --message "Hello" --persist` and reuse its --chat-id with --persist for follow-ups. Stateless debug and saved tests initialize temporary context and support enabled filters without saved chat IDs. Use create-assistant or improve-assistant to configure filters through normal application approval, or Advanced Mode > Prompt filters in the UI. Configuration edits affect new conversations. Privacy sanitization is not implemented.

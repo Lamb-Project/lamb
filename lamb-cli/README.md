@@ -54,6 +54,34 @@ The JSON summary includes a private `result_id`, a Moodle evidence-view path and
 
 Limits per task: 100 selected courses, 160 requests, 90 seconds checked before new requests, 200 retained posts and 2 MiB of retained post source. A request already in flight can finish after the time budget; requests have a 15-second I/O timeout. Model-facing summaries/pages are capped at 6,000 UTF-8 bytes. Stored results expire after 24 hours, with at most 16 per creator; reconnecting or losing access invalidates retrieval. Full source stays in private storage, not in static files or the immediate model response.
 
+## LEGATUS Auto mode (0.9)
+
+New conversations start in Auto. LEGATUS resolves unique accessible names such as
+`prova carles` and `prova_carles`, prepares one concrete plan for resource changes,
+and continues its approved steps through analysis and reporting. Exactly ten
+target-assistant calls per task need no cost approval; an eleventh needs an approved
+larger allowance. Saved tests, runs, evaluations and reports are resource changes.
+Operational logs and execution checkpoints do not require approval.
+
+```sh
+lamb aac mode SESSION auto       # or guided; does not approve pending work
+lamb aac new-task SESSION        # explicit reset for a different task
+lamb aac report SESSION REPORT   # saved report, no model call
+lamb aac changes SESSION         # retained change history
+```
+
+The conversation control preserves its mode and task allowance across reloads.
+LEGATUS evaluations carry `evaluator=legatus`; they are not human confirmations.
+Use `lamb test evaluate ... --evaluator legatus` when submitting an agent evaluation
+through the CLI. The normal CLI default remains a user evaluation.
+
+In the browser, **Show me** opens the saved result only when clicked. Reports and
+resource destinations are rechecked against current access, and unsaved edits block
+navigation. Assistant edits retain previous fields; restoration requires a new
+approval and refuses to overwrite an intervening edit. Interrupted writes remain
+uncertain until their outcome can be read back. Older sessions keep Guided mode
+until explicitly switched, while new sessions use pack 1.12.0.
+
 ## Private AAC result pages
 
 When an AAC tool response is too large, its model view contains a partial preview and a private result reference. Read it through either CLI or LiteShell:

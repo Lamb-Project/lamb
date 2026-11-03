@@ -47,13 +47,13 @@ Generate a test set based on the assistant's purpose and configuration:
    - 1 edge case (related but slightly off-center topic)
    - 1 adversarial (prompt injection or off-topic request)
 3. For each: provide title, message, expected behavior, and type
-4. Present them to the user for approval
-5. After approval, create each with `lamb test add ASSISTANT_ID TITLE --message "input" --expected "approved expected behavior" --type single_turn`. The expectation must be stored, not only described in conversation.
+4. In Auto, include creation and execution of the cases in one concrete plan, with their expectations and the analysis/report steps. The application asks once because this saves resources.
+5. After approval, execute the plan. Its creation commands use `lamb test add ASSISTANT_ID TITLE --message "input" --expected "approved expected behavior" --type single_turn`. The expectation must be stored, not only described in conversation.
 6. Read `lamb test cases ASSISTANT_ID` back and verify each title, message, type and expected_behavior against the approved proposal. Missing expectations are incomplete creation, not a successful test set. Report any mismatch before running.
 
 ## If test cases exist but have never been run
 
-Offer to run them.
+When running them is already requested, include their verified IDs in the plan and run them after its one approval. Do not offer the already-requested work back as a choice.
 
 For RAG assistants running a full test suite, suggest bypass first:
 1. Run `lamb test run {assistant_id} --bypass` to check the pipeline
@@ -70,12 +70,12 @@ If the user asks to run tests without bypass, do it. Don't refuse.
 
 ## If test cases have runs but no evaluations
 
-Present the test results and guide the user through evaluation:
+Present and evaluate the actual test results:
 
 1. Show each result in a chat-style format (student question → assistant response)
 2. For each, give your preliminary assessment
-3. Ask the user to evaluate: good, bad, or mixed
-4. Record the user's evaluation via `lamb test evaluate RUN_ID ASSISTANT_ID good --notes "Evidence and rationale"` (choose good, bad or mixed as appropriate)
+3. In Auto, evaluate each result against its stored expectation and explain your reasoning. Do not require a human verdict to complete the requested workflow. Human review remains optional.
+4. Record your LEGATUS evaluation via `lamb test evaluate RUN_ID ASSISTANT_ID good --notes "Evidence and rationale"` (choose good, bad or mixed as appropriate)
 
 ## If test cases have evaluations
 
@@ -87,8 +87,8 @@ Analyze the evaluation patterns and suggest improvements:
    - Weak system prompt? → propose specific rewording
    - Model limitations? → suggest upgrading
    - Prompt template issues? → check `{context}` and `{user_input}` placeholders
-3. Propose concrete changes (one at a time)
-4. After each change, offer to re-run the tests to see if quality improved
+3. Propose concrete changes. Apply only changes already covered by the user-approved plan; otherwise prepare one extension.
+4. Run the affected cases when rerunning is part of the request or approved branch. Compare actual outputs without another menu.
 
 ## Edit an existing test case
 
@@ -108,8 +108,7 @@ Read the saved result and evaluate that run explicitly.
 
 ## Critical rules
 
-**Present options after every action.** Always end with numbered choices
-so the user knows what they can do next.
+**Finish the requested workflow.** Progress updates never require a reply. Optional next-step suggestions belong only after the request is satisfied.
 
 
 ## Evidence-backed reports
@@ -121,7 +120,7 @@ For saved multi-turn assistant chat, use `lamb assistant chat ID --message TEXT 
 
 ## Command sequence and result checks
 
-Use a verified ASSISTANT_ID. Ask for missing expectations before inventing a pass criterion. After the user approves the test cases:
+Use a verified ASSISTANT_ID. Derive and disclose reasonable expectations from the purpose and instructions. Ask only if a missing pedagogical decision materially changes what success means. After the user approves the test cases:
 ```aac-command
 lamb assistant get ASSISTANT_ID
 lamb test cases ASSISTANT_ID
@@ -130,7 +129,7 @@ lamb test cases ASSISTANT_ID
 lamb test run ASSISTANT_ID --case CASE_ID
 lamb test runs ASSISTANT_ID
 lamb test run-detail RUN_ID ASSISTANT_ID
-lamb test evaluate RUN_ID ASSISTANT_ID good --notes "User-approved verdict and observed evidence"
+lamb test evaluate RUN_ID ASSISTANT_ID good --notes "LEGATUS verdict and observed evidence"
 lamb test evaluations ASSISTANT_ID
 ```
 
@@ -143,9 +142,9 @@ After creating or running tests, use `frontend-manage open assistant ASSISTANT_I
 
 ## Guided workspace handover
 
-After creating test cases, executing tests or saving evaluations, run `frontend-manage open assistant ASSISTANT_ID --tab tests` and identify the actual saved test cases/results. The view refreshes on each navigation. Do not claim a failed test or pending evaluation passed. Opening Tests alone never executes or evaluates tests.
+For Auto, save the requested report and finish; the application provides Show me and Test results buttons without moving the workspace. For an explicit navigation request use `frontend-manage open assistant ASSISTANT_ID --tab tests` and identify the actual saved test cases/results. The view refreshes on each navigation. Do not claim a failed test or pending evaluation passed. Opening Tests alone never executes or evaluates tests.
 
-Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.
+At completion, expose the verified destination through lamb plan finish --resource TYPE --id ID --tab TAB, or the saved report. The Show me button navigates only when clicked and respects unsaved edits. Use frontend-manage open only when the user explicitly asks to open a view now; wait for status=opened before claiming it opened. A failed navigation never justifies repeating a successful write.
 
 ## Test case detail and multi-turn input
 
@@ -154,9 +153,22 @@ Navigate once at the useful handover point, unless the user asked to stay on the
 
 ## System prompt filters
 
-Random filters resolve {{RANDOM:minimum-maximum}} in the system prompt once at conversation start. Values remain fixed across turns, reloads and forks. Preview with `lamb assistant preview-filters ASSISTANT_ID`: this is a sample only, with no model call or saved realization. A filtered chat requires `lamb assistant chat ASSISTANT_ID --message "Hello" --persist`; reuse the returned --chat-id and --persist for follow-ups. Stateless debug and saved tests without conversation identity are unsupported for enabled filters. Use create-assistant or improve-assistant to configure filters through normal application approval, or Advanced Mode > Prompt filters in the UI. Configuration edits affect new conversations. Privacy sanitization is not implemented.
+Random filters resolve {{RANDOM:minimum-maximum}} in the system prompt once at conversation start. Values remain fixed across turns, reloads and forks. Preview with `lamb assistant preview-filters ASSISTANT_ID`: this is a sample only, with no model call or saved realization. Use `lamb assistant chat ASSISTANT_ID --message "Hello" --persist` for a saved interview; reuse its --chat-id and --persist for follow-ups. Stateless debug and saved tests initialize temporary context and support enabled filters without saved chat IDs. Use create-assistant or improve-assistant to configure filters through normal application approval, or Advanced Mode > Prompt filters in the UI. Configuration edits affect new conversations. Privacy sanitization is not implemented.
 
 
 ## Conversation initialization
 
 Saved evaluations initialize the assistant system prompt, including conversation-start random filters, in temporary context without creating a chat. A fixture containing several turns is one fresh evaluation case. Normal persisted chats retain their initialized prompt across turns; teacher edits apply to new conversations. Do not confuse a prompt preview with a model test.
+
+
+## Auto plan example
+
+After reading assistant 7 and discovering that a useful new case is needed, prepare all case data and execution at once. Adapt IDs, content and counts to the actual task:
+
+```aac-command
+lamb plan prepare --json '{"title":"Test assistant 7 and report","steps":[{"id":"normal","title":"Create a normal-use case","command":"lamb test add 7 Normal --message \"Explain photosynthesis\" --expected \"Explain light, water and carbon dioxide in age-appropriate language\""},{"id":"run_normal","title":"Run the normal-use case","command":"lamb test run 7 --case @normal.id","after":"normal"}],"assistant_calls":10,"tool_estimate":12,"evaluate":true,"report":{"title":"Assistant test report","assistant_id":"7"}}'
+```
+
+After approval, call `lamb plan execute`. Each test run must use a specific --case, including @step.id for cases created in the plan. A saved multi-turn fixture is one completion on its supplied history, not a simulation with one model call per supplied message. A retry must be an explicit additional step/branch and count toward the allowance.
+
+Read each returned run. Use its verified IDs with `lamb test evaluate RUN_ID ASSISTANT_ID good --notes "Observed evidence and rationale"`, choosing good, bad or mixed honestly. These are LEGATUS evaluations, not human confirmations. Save a report that distinguishes execution errors, unmet expectations, hypotheses and verified causes with `lamb report save --content "Report with actual cases, run IDs, verdicts, evidence and limitations"`, then `lamb plan finish`. Do not ask the teacher to grade every answer, choose the next already-approved step, or confirm continuation.

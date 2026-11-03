@@ -50,6 +50,8 @@ async def small_model_sentence(owner, language, facts):
 
 async def explain_pending_action(agent):
     action = agent.pending_action
+    if action.get('plan'):
+        return  # Exact plan facts are already a readable review; no extra model call.
     language = response_language(agent)
     fingerprint = hashlib.sha256(json.dumps(['review-v2', action['command'], action.get('moodle_review'), language], sort_keys=True).encode()).hexdigest()
     if (action.get('explanation') or {}).get('fingerprint') == fingerprint:
@@ -151,8 +153,42 @@ def basic_values(action, language):
 
 
 def render_details(action, language, advanced):
+    if action.get('plan'):
+        plan = action['plan']
+        labels = {
+            'en': ('Plan', 'Estimated tool uses', 'Total assistant-call allowance', 'Evaluate the resulting test runs', 'Save report'),
+            'es': ('Plan', 'Usos de herramientas estimados', 'Límite total de llamadas a asistentes', 'Evaluar los resultados de pruebas', 'Guardar informe'),
+            'ca': ('Pla', 'Usos estimats de les eines', 'Límit total de crides a assistents', 'Avaluar els resultats de les proves', 'Desar informe'),
+            'eu': ('Plana', 'Aurreikusitako tresna erabilerak', 'Laguntzaileen dei muga osoa', 'Proben emaitzak ebaluatu', 'Txostena gorde'),
+        }.get(language)
+        if labels is None:
+            return render_details(action, 'en', advanced)
+        rows = [f'**{labels[0]}: {plain(plan["title"])}**']
+        for n, step in enumerate(plan['steps'], 1):
+            rows.append(f'{n}. {plain(step["title"])}')
+            # Exact values are reviewable even in basic mode; never approve a hidden mutation.
+            key = action_values({'command': step['command']})
+            rows.extend(human_values({'action': key.get('action'), 'arguments': key.get('arguments'), 'values': key.get('values')}))
+            if step.get('after'):
+                rows.append(plain(f'{step["when"]}: {step["after"]}'))
+            if step.get('review'):
+                rows.append(render_details({'command': step['command'], 'moodle_review': step['review']}, language, advanced))
+        rows.extend([f'{labels[1]}: {plan["tool_estimate"]}', f'{labels[2]}: {plan["assistant_calls"]}'])
+        if plan.get('evaluate'): rows.append(labels[3])
+        if plan.get('report'): rows.append(f'{labels[4]}: {plain(plan["report"]["title"])}')
+        return '\n\n'.join(rows)
     review = action.get('moodle_review')
     parts = []
+    if action.get('change_review'):
+        review_change = action['change_review']
+        parts.extend(human_values({'restore_previous_values': (review_change.get('before') or {}).get('fields'),
+                                   'replace_saved_values': (review_change.get('after') or {}).get('fields')}))
+    if action.get('call_limit'):
+        labels = {'en': 'Total assistant-call allowance for this task', 'es': 'Límite total de llamadas a asistentes para esta tarea',
+                  'ca': 'Límit total de crides a assistents per a aquesta tasca', 'eu': 'Zeregin honetako laguntzaileen dei muga osoa'}
+        parts.append(f'{labels.get(language, labels["en"])}: {action["call_limit"]}')
+    if action.get('batch_snapshot') is not None:
+        parts.extend(human_values({'test_cases': [{'id': c['id'], 'title': c.get('title', '')} for c in action['batch_snapshot']]}))
     explanation = action.get('explanation') or {}
     if explanation.get('status') == 'generated':
         parts.append(plain(explanation['text']))

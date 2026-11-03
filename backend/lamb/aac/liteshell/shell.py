@@ -22,6 +22,19 @@ logger = get_logger(__name__, component="AAC")
 # Explicit supported shell surface. Unsupported CLI options fail instead of being ignored.
 # key: (minimum positional arguments, maximum, accepted option names)
 COMMAND_CONTRACTS = {
+    'plan.prepare': (0, 0, 'json'),
+    'plan.extend': (0, 0, 'json'),
+    'plan.execute': (0, 0, ''),
+    'plan.status': (0, 0, ''),
+    'plan.finish': (0, 0, 'resource id tab'),
+    'plan.cancel': (0, 0, ''),
+    'plan.reconcile': (0, 0, ''),
+    'plan.allow-calls': (1, 1, ''),
+    'report.save': (0, 0, 'content'),
+    'report.get': (1, 1, ''),
+    'change.list': (0, 0, ''),
+    'change.get': (1, 1, ''),
+    'change.restore': (1, 1, ''),
     'document.list': (1, 2, 'course user offset'),
     'document.open': (1, 1, ''),
     'document.read': (1, 1, 'offset find'),
@@ -367,6 +380,12 @@ class LiteShell:
         key, args, kwargs, help_requested = prepare_command(command_str, self.allowlist)
         if self.allowed_commands is not None and key not in self.allowed_commands:
             raise ValueError('Command is outside your role; ask the appropriate administrator')
+        if key.startswith(('plan.', 'report.', 'change.')) and not help_requested:
+            controller = self.knowledge.get('auto_work')
+            if controller is None:
+                raise ValueError('Task commands require a LEGATUS session')
+            data = await controller.handle(key, args, kwargs)
+            return ShellResult(not (isinstance(data, dict) and data.get('success') is False), data=data)
         if key.startswith('moodle.'):
             if self.moodle is None:
                 raise ValueError('Moodle connector is unavailable in this conversation')

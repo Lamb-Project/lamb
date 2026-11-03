@@ -10,6 +10,7 @@
 	import { renderMarkdownWithMath } from '$lib/utils/renderMarkdown.js';
     import { agentWelcome } from '$lib/utils/aacWelcome.js';
     import { turnEndText } from '$lib/utils/aacTurnStatus.js';
+    import AacExecution from './AacExecution.svelte';
 
 	// Abort any in-flight stream when the component unmounts so the fetch
 	// and getReader() loop stop running in the background (#352, H3).
@@ -59,7 +60,10 @@
     let approval = $state(null);
     let editingApproval = $state(null);
     let charts = $state([]);
+    /** @type {any} */
+    let execution = $state(null);
     function loadApproval(session) {
+        execution = session.execution || null;
         charts = session.charts || [];
         approval = session.approval || null;
         advancedMode = session.advanced_mode === true;
@@ -92,6 +96,7 @@
     }
     const languageNames = {en:'English',es:'Español',ca:'Català',eu:'Euskara'};
     function updateProgress(event) {
+        if (event.status === 'execution') { execution = event.execution; return; }
         if (event.status === 'chart') {
             if (!charts.some(c => c.id === event.chart_id)) charts = [...charts, {id:event.chart_id, title:event.title}];
             window.dispatchEvent(new CustomEvent('moodle-charts-changed'));
@@ -381,6 +386,9 @@
 	class:border-gray-300={!darkMode}
 >
 	<!-- Header -->
+    <AacExecution {sessionId} {execution} language={responsePolicy?.effective_language || 'en'} busy={loading || historyLoading}
+        refresh={async () => loadApproval(await getSession(sessionId))}
+        restore={(id) => handleSend(null, `Prepare restoration of change ${id} using lamb change restore ${id}.`)} />
 	<div
 		class="flex items-center justify-between px-3 py-1.5 border-b text-xs"
 		class:border-gray-700={darkMode}
