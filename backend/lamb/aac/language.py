@@ -117,8 +117,8 @@ def announces_unfinished_work(text):
         _ANNOUNCED_WORK = re.compile('|'.join([
             rf'\bvoy a (?:{verbs_es})\b', r'\b(?:continuar|seguir|comprobar|revisar|obtendr|preparar|buscar|consultar|verificar)[éeá]\b',
             r'\ba continuaci[oó]n (?:voy|har[ée]|obtendr[ée]|comprobar[ée]|revisar[ée])\b',
-            r"\bi(?:['’]ll| will) (?:now |next |then )?(?:continue|check|look|fetch|retrieve|get|prepare|read|search|proceed|verify|import|create|list|correct|retry|fix|resume|review|audit|analy[sz]e|save)\b",
-            r"\bi(?:['’]ll| will) use [^\n.!?]{0,120} and (?:review|audit|analy[sz]e|save)\b",
+            r"\bi(?:['’]ll| will) (?:now |next |then )?(?:continue|check|look|fetch|retrieve|get|prepare|read|search|proceed|verify|import|create|list|correct|retry|fix|resume|review|audit|analy[sz]e|save|conduct|perform|execute|run)\b",
+            r"\bi(?:['’]ll| will) use [^\n.!?]{0,120} and (?:review|audit|analy[sz]e|save|conduct|perform|execute|run)\b",
             r'\blet me (?:now )?(?:continue|check|look|fetch|retrieve|get|read|verify)\b',
             r'\b(?:continuar|comprovar|revisar|obtindr|preparar|cercar|consultar|verificar)[ée]\b',
             r'\b(?:jarraitu|egiaztatu|begiratu|prestatu|lortu|bilatu)ko dut\b']), re.I)
