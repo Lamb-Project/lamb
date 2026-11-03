@@ -324,3 +324,28 @@ async def test_finish_saves_a_verified_resource_destination():
     result = await a._execute_tool(tool('lamb plan finish --resource assistant --id 7 --tab properties'))
     assert result['success']
     assert result['data']['result']['destination'] == {'resource': 'assistant', 'id': '7', 'tab': 'properties'}
+
+
+@pytest.mark.asyncio
+async def test_read_extension_cannot_renew_an_expired_write_grant():
+    a, _, _ = agent()
+    await prepare(a, proposal())
+    await a._resolve_pending_action('yes')
+    a.auto_work.task['plan']['expires'] = 0
+    with pytest.raises(ValueError, match='expired'):
+        await a.auto_work.prepare({'title': 'Read', 'steps': [{'id': 'read', 'command': 'lamb assistant get 7'}]}, extend=True)
+
+
+@pytest.mark.asyncio
+async def test_attached_kb_name_is_frozen_before_plan_approval():
+    a, h, _ = agent()
+    original = h.get
+    async def get(path, **kwargs):
+        if path.endswith('/knowledgebases/user'):
+            return {'knowledge_bases': [{'id': 9, 'name': 'prova_carles'}]}
+        if path.endswith('/knowledgebases/shared'):
+            return {'knowledge_bases': []}
+        return await original(path, **kwargs)
+    h.get = get
+    await prepare(a, proposal(steps=[{'id': 'attach', 'command': 'lamb assistant update 7 --rag-collections "prova carles"'}]))
+    assert a.pending_action['plan']['steps'][0]['command'] == 'lamb assistant update 7 --rag-collections 9'

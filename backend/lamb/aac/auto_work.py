@@ -139,6 +139,10 @@ class AutoWork:
         if index is not None and not str(args[index]).isdigit() and not REF.fullmatch(str(args[index])):
             args[index] = await resolve(self.agent.shell._get_http(), kind, args[index])
             command = render(key, args, kwargs)
+        if key in {'assistant.create', 'assistant.update'} and kwargs.get('rag_collections') and not REF.fullmatch(str(kwargs['rag_collections'])):
+            kwargs['rag_collections'] = ','.join([await resolve(self.agent.shell._get_http(), 'kb', value.strip())
+                                                for value in kwargs['rag_collections'].split(',') if value.strip()])
+            command = render(key, args, kwargs)
         return command
 
     async def prepare(self, payload, *, extend=False):
@@ -152,6 +156,8 @@ class AutoWork:
         current = self.task.get('plan')
         if extend and (not current or current.get('status') not in {'approved', 'running'}):
             raise ValueError('There is no active plan to extend')
+        if extend and current['expires'] < stamp():
+            raise ValueError('The previous approval expired. Cancel it and prepare a fresh review of the remaining work.')
         if extend and current.get('report_id'):
             raise ValueError('This plan already has its final report. Finish it before preparing further work.')
         if not extend and current and current.get('status') in {'approved', 'running', 'uncertain'}:
