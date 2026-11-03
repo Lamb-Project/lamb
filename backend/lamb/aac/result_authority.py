@@ -8,17 +8,18 @@ the caller gets a recovery instruction, never an automatic replay of a write.
 SAFE_LOCAL = frozenset({'help', 'docs.index', 'docs.read', 'skill.list', 'skill.load'})
 ASSISTANT_READS = frozenset({'assistant.get', 'assistant.export'})
 KB_READS = frozenset({'kb.get', 'kb.query', 'kb.jobs', 'kb.status'})
+ANALYSIS_READS = frozenset({'analytics.analysis-context', 'analytics.reports', 'analytics.report', 'analytics.chat-detail'})
 
 
 def authority(key, args, payload):
     if key in SAFE_LOCAL:
         return {'version': 1, 'resources': []}
-    kind = 'assistant' if key in ASSISTANT_READS else 'kb' if key in KB_READS else None
+    kind = 'analysis' if key in ANALYSIS_READS else 'assistant' if key in ASSISTANT_READS else 'kb' if key in KB_READS else None
     if kind and args:
         identity = str(args[0])
-        if kind == 'assistant' and not identity.isdigit():
+        if kind in {'assistant', 'analysis'} and not identity.isdigit():
             data = payload.get('data')
-            identity = str(data.get('id', '')) if isinstance(data, dict) else ''
+            identity = str(data.get('assistant_id' if kind == 'analysis' else 'id', '')) if isinstance(data, dict) else ''
         if identity.isdigit() and int(identity) > 0:
             return {'version': 1, 'resources': [{'kind': kind, 'id': int(identity)}]}
     return None
@@ -34,12 +35,17 @@ def require_current_authority(auth, origin):
         raise PermissionError('Saved result authority is unavailable')
     if key in SAFE_LOCAL and not resources:
         return
-    expected = 'assistant' if key in ASSISTANT_READS else 'kb' if key in KB_READS else None
+    expected = 'analysis' if key in ANALYSIS_READS else 'assistant' if key in ASSISTANT_READS else 'kb' if key in KB_READS else None
     if expected is None or len(resources) != 1:
         raise PermissionError('Saved result requires a fresh resource-authorized read; do not repeat a write')
     for resource in resources:
         if resource.get('kind') != expected or type(resource.get('id')) is not int or resource['id'] <= 0:
             raise PermissionError('Saved result authority is unavailable')
+        if expected == 'analysis':
+            from creator_interface.analytics_router import check_assistant_access_for_analytics
+            if check_assistant_access_for_analytics(auth, resource['id']) != 'full':
+                raise PermissionError('Analysis evidence requires current full analytics access')
+            continue
         access = (auth.can_access_assistant(resource['id']) if expected == 'assistant'
                   else auth.can_access_kb(str(resource['id'])))
         if access not in {'owner', 'shared', 'org_admin'}:
