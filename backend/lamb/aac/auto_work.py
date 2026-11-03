@@ -513,8 +513,10 @@ class AutoWork:
                 if 'content' in kwargs or 'reviewed' in kwargs:
                     raise ValueError('Use --json or --content/--reviewed, not both')
                 payload = json.loads(kwargs['json'])
-                if not isinstance(payload, dict) or set(payload) - {'content', 'reviewed_chat_ids'}:
-                    raise ValueError('Report JSON accepts content and reviewed_chat_ids only')
+                if not isinstance(payload, dict) or set(payload) - {'content', 'reviewed_chat_ids', 'reviewed_labels'}:
+                    raise ValueError('Report JSON accepts content and reviewed_chat_ids or reviewed_labels only')
+                if 'reviewed_chat_ids' in payload and 'reviewed_labels' in payload:
+                    raise ValueError('Choose reviewed_chat_ids or reviewed_labels, not both')
                 content = payload.get('content', '')
                 reviewed = payload.get('reviewed_chat_ids', [])
             else:
@@ -525,6 +527,16 @@ class AutoWork:
             if not isinstance(reviewed, list) or any(not isinstance(v, str) for v in reviewed):
                 raise ValueError('reviewed_chat_ids must be a list of conversation IDs')
             assistant_id = await self._assistant(spec['assistant_id'])
+            if 'json' in kwargs and 'reviewed_labels' in payload:
+                labels = payload['reviewed_labels']
+                if not spec.get('analysis_id') or not isinstance(labels, list) or any(not isinstance(v, str) for v in labels):
+                    raise ValueError('reviewed_labels requires an activity analysis and a list of exact Conversation labels')
+                receipt = await self.agent.shell._get_http().get(
+                    f"/creator/analytics/assistant/{assistant_id}/analysis-reports/{spec['analysis_id']}", params={'draft': 'true'})
+                references = {ref['label']: ref['chat_id'] for ref in receipt.get('evidence', [])}
+                if any(label not in references for label in labels):
+                    raise ValueError('Unknown reviewed label. Reread the receipt and use its exact Conversation labels.')
+                reviewed = [references[label] for label in labels]
             report = {'id': str(uuid.uuid4()), 'title': spec['title'], 'content': content,
                       'task_id': self.task['id'], 'created_at': stamp(),
                       'destination': {'resource': 'assistant', 'id': assistant_id, 'tab': 'tests'},

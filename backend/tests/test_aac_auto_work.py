@@ -376,10 +376,11 @@ async def test_auto_analysis_approval_save_and_readback():
     saved = []
     async def read(path, **kwargs):
         if '/analysis-reports/' in path:
-            return saved[0] if saved else {'id': receipt_id}
+            return saved[0] if saved else {'id': receipt_id, 'evidence': [{'label': 'Conversation 1', 'chat_id': 'uuid-with-no-model-transcription'}]}
         return await old_get(path, **kwargs)
     async def write(path, json=None, **kwargs):
         if '/analysis-reports/' in path:
+            assert json['reviewed_chat_ids'] == ['uuid-with-no-model-transcription']
             result = {'id': receipt_id, 'assistant_id': 7, 'title': json['title'], 'content': json['content'], 'created_at': 1,
                       'destination': {'resource': 'assistant', 'id': '7', 'tab': 'analysis'}}
             saved.append(result)
@@ -396,7 +397,9 @@ async def test_auto_analysis_approval_save_and_readback():
     # Exercise JSON decoding through the same shell parser as the model tool.
     from lamb.aac.liteshell.shell import prepare_command
     import shlex
-    command = 'lamb report save --json ' + shlex.quote(json.dumps({'content': content, 'reviewed_chat_ids': []}))
+    with pytest.raises(ValueError, match='Unknown reviewed label'):
+        await a.auto_work.handle('report.save', [], {'json': json.dumps({'content': content, 'reviewed_labels': ['Conversation 9']})})
+    command = 'lamb report save --json ' + shlex.quote(json.dumps({'content': content, 'reviewed_labels': ['Conversation 1']}))
     key, args, kwargs, _ = prepare_command(command)
     report = await a.auto_work.handle(key, args, kwargs)
     assert report['destination']['tab'] == 'analysis'
