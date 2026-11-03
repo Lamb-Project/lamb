@@ -507,9 +507,23 @@ class AutoWork:
                 raise ValueError('Resolve the remaining plan steps before saving the final report.')
             if plan.get('evaluate') and {r['id'] for s in plan['steps'] for r in runs(s.get('result'))} - set(plan['evaluated']):
                 raise ValueError('Evaluate the actual runs before saving the final report.')
-            content = kwargs.get('content', '')
+            # Structured input preserves Markdown newlines without guessing at
+            # whether literal backslash sequences in source text are escapes.
+            if 'json' in kwargs:
+                if 'content' in kwargs or 'reviewed' in kwargs:
+                    raise ValueError('Use --json or --content/--reviewed, not both')
+                payload = json.loads(kwargs['json'])
+                if not isinstance(payload, dict) or set(payload) - {'content', 'reviewed_chat_ids'}:
+                    raise ValueError('Report JSON accepts content and reviewed_chat_ids only')
+                content = payload.get('content', '')
+                reviewed = payload.get('reviewed_chat_ids', [])
+            else:
+                content = kwargs.get('content', '')
+                reviewed = json.loads(kwargs.get('reviewed', '[]'))
             if not isinstance(content, str) or not 1 <= len(content) <= 100000:
                 raise ValueError('Report content must be 1..100000 characters')
+            if not isinstance(reviewed, list) or any(not isinstance(v, str) for v in reviewed):
+                raise ValueError('reviewed_chat_ids must be a list of conversation IDs')
             assistant_id = await self._assistant(spec['assistant_id'])
             report = {'id': str(uuid.uuid4()), 'title': spec['title'], 'content': content,
                       'task_id': self.task['id'], 'created_at': stamp(),
@@ -517,7 +531,6 @@ class AutoWork:
                       'run_ids': [r['id'] for s in plan['steps'] for r in runs(s.get('result'))],
                       'calls': self.task['calls'], 'tools': self.task['tools']}
             if spec.get('analysis_id'):
-                reviewed = json.loads(kwargs.get('reviewed', '[]'))
                 report = await self.agent.shell._get_http().post(
                     f"/creator/analytics/assistant/{assistant_id}/analysis-reports/{spec['analysis_id']}",
                     json={'title': spec['title'], 'content': content, 'reviewed_chat_ids': reviewed})

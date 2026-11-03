@@ -30,7 +30,7 @@ COMMAND_CONTRACTS = {
     'plan.cancel': (0, 0, ''),
     'plan.reconcile': (0, 0, ''),
     'plan.allow-calls': (1, 1, ''),
-    'report.save': (0, 0, 'content reviewed'),
+    'report.save': (0, 0, 'content reviewed json'),
     'report.get': (1, 1, ''),
     'change.list': (0, 0, ''),
     'change.get': (1, 1, ''),

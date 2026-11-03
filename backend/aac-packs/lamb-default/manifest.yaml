@@ -1,6 +1,6 @@
 {
   "name": "lamb-default",
-  "version": "1.13.0",
+  "version": "1.13.1",
   "requires": "lamb >= 0.8.0",
   "compatibility": "knowledge-brief",
   "layers": {
@@ -42,7 +42,7 @@
     "skills/create_assistant.md": "c7f0ec3840ce7edce29573c80289afb353ea2ddd617636bba01b6da762142d2c",
     "skills/explain_assistant.md": "fa38aad9f4e23cf43f82c32ea1685720f2a0dff51d0052f48534624983cab4e0",
     "skills/improve_assistant.md": "9bc5ee65892ae6532fede068d11dc15dc0209bf34aa8f86ca1a347fb20e5204c",
-    "skills/inspect_activity.md": "d13c07e6065ae772cbe1b2432b824e099d5449aa8d398f6ab8f4a08b211bc4ad",
+    "skills/inspect_activity.md": "203558e63bf5fb79c83dc1a53049cc697252defe3ccd89d9396118123a80871f",
     "skills/manage_knowledge_base.md": "947de25696530af38fcd7fa034296ea741fb69cc8c57082c584eaf100b39fe14",
     "skills/manage_learning_scenarios.md": "7c42e45df2b7d5137aa04d1aac8902f272fabb3720f758e4d8f8679883e0e64f",
     "skills/manage_rubric.md": "67790a88e04b53c534ad05204ee473e9d8fce6b7b3214400272c4e73261507b8",

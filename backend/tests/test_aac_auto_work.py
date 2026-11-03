@@ -392,6 +392,13 @@ async def test_auto_analysis_approval_save_and_readback():
     plan['status'] = 'approved'
     a.auto_work.task['plan'] = plan
     await a.auto_work.execute_plan()
-    report = await a.auto_work.handle('report.save', [], {'content': 'Evidence and actions', 'reviewed': '[]'})
+    content = '# Findings\n\nEvidence and actions. Literal `\\n` in a code example stays literal.'
+    # Exercise JSON decoding through the same shell parser as the model tool.
+    from lamb.aac.liteshell.shell import prepare_command
+    import shlex
+    command = 'lamb report save --json ' + shlex.quote(json.dumps({'content': content, 'reviewed_chat_ids': []}))
+    key, args, kwargs, _ = prepare_command(command)
+    report = await a.auto_work.handle(key, args, kwargs)
     assert report['destination']['tab'] == 'analysis'
+    assert saved[0]['content'] == content
     assert len(saved) == 1
