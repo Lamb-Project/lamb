@@ -10,12 +10,14 @@ import {getChatDetail} from '$lib/services/analyticsService';
 import {createSession} from '$lib/services/aacService';
 import {resetSidebar} from '$lib/stores/aacStore.svelte';
 import View from './ActivityAnalysis.svelte';
-const report = {id:'report', title:'Conceptual findings', created_at:1, period:{start:null,end:null}, dimensions:['learning'], scenario:{title:'Physics',content:'Original context',revision:1}, coverage:{total_conversations:8,provided_conversations:2,exhaustive:false,provided_by_source:{owi:2}}, reviewed_chat_ids:['a'], metrics:{messages_per_conversation:{median:4},user_prompt_characters:{median:18},assistant_response_characters:{median:40}}, content:'Observed misconception', limitations:['Newest-first sample'], evidence:[{chat_id:'a',label:'Conversation 1'}]};
+const report = {id:'report', title:'Conceptual findings', created_at:1, period:{start:null,end:null}, dimensions:['learning'], scenario:{title:'Physics',content:'Original context',revision:1}, coverage:{total_conversations:8,provided_conversations:2,exhaustive:false,failed_chat_ids:['missing'],truncated_chat_ids:['a'],provided_by_source:{owi:2}}, reviewed_chat_ids:['a'], metrics:{messages_per_conversation:{median:4},user_prompt_characters:{median:18},assistant_response_characters:{median:40}}, content:'Observed misconception', limitations:['Newest-first sample'], evidence:[{chat_id:'a',label:'Conversation 1'}]};
 beforeEach(()=>{cleanup();vi.resetAllMocks();resetSidebar();init({fallbackLocale:'en',initialLocale:'en'});locale.set('en');vi.mocked(apiJson).mockImplementation(async p=>p.endsWith('/analysis-reports')?[report]:report);});
 it('loads saved report, original scenario, explicit sampling and live evidence', async()=>{
     render(View,{assistantId:7});
     await screen.findByText('Observed misconception');
     expect(screen.getByText('Sampled or incomplete evidence')).toBeTruthy();
+    expect(screen.getByText('Conversations that could not be loaded: 1')).toBeTruthy();
+    expect(screen.getByText('Conversations with shortened text: 1')).toBeTruthy();
     expect(screen.getByText('Original context')).toBeTruthy();
     vi.mocked(getChatDetail).mockResolvedValue(/** @type {any} */ ({messages:[{role:'user',content:'Original student question'}]}));
     await fireEvent.click(screen.getByRole('button',{name:'Conversation 1'}));

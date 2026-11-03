@@ -13,9 +13,16 @@ const sources = {
     ca: ['Converses d’Open WebUI', 'Converses de creadors', 'disponible', 'no disponible'],
     eu: ['Open WebUI elkarrizketak', 'Sortzaileen elkarrizketak', 'eskuragarri', 'ez dago eskuragarri']
 };
+const incomplete = {
+    en: ['Conversations that could not be loaded', 'Conversations with shortened text'],
+    es: ['Conversaciones que no se pudieron cargar', 'Conversaciones con texto recortado'],
+    ca: ['Converses que no s’han pogut carregar', 'Converses amb text escurçat'],
+    eu: ['Kargatu ezin izan diren elkarrizketak', 'Testua laburtuta duten elkarrizketak']
+};
 /** @param {string|null|undefined} language */
 export function analysisText(language) {
     const code = /** @type {keyof typeof sources} */ (language || 'en');
     return {...Object.fromEntries(keys.map((key, i) => [key, (words[code] || words.en)[i]])),
+        ...Object.fromEntries(['missingChats','truncatedChats'].map((key,i)=>[key,(incomplete[code] || incomplete.en)[i]])),
         ...Object.fromEntries(['owi','lamb_internal','available','unavailable'].map((key,i)=>[key,(sources[code] || sources.en)[i]]))};
 }

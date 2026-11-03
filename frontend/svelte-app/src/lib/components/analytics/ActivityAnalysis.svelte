@@ -86,6 +86,8 @@
                 <div class="coverage"><h4>{labels.coverage}</h4>
                     <p>{labels.total}: {selected.coverage.total_conversations} · {labels.provided}: {selected.coverage.provided_conversations} · {labels.reviewed}: {selected.reviewed_chat_ids.length}</p>
                     <p>{selected.coverage.exhaustive ? labels.exhaustive : labels.sample}</p>
+                    {#if selected.coverage.failed_chat_ids?.length}<p>{labels.missingChats}: {selected.coverage.failed_chat_ids.length}</p>{/if}
+                    {#if selected.coverage.truncated_chat_ids?.length}<p>{labels.truncatedChats}: {selected.coverage.truncated_chat_ids.length}</p>{/if}
                     <p>{Object.entries(selected.coverage.source_status || {}).map(([source, status]) => `${labels[source] || source}: ${labels[String(status)] || status}`).join(' · ')}</p>
                     <p>{Object.entries(selected.coverage.provided_by_source).map(([source, count]) => `${labels[source] || source}: ${count}`).join(' · ')}</p>
                     <table><thead><tr><th></th><th>{labels.median}</th></tr></thead><tbody>

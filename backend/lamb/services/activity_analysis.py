@@ -91,6 +91,7 @@ class AnalysisStore:
                 if len(content) > allowance:
                     truncated.append(summary['id'])
                 selected.append({'id': str(msg['id']), 'role': msg['role'], 'content': content[:allowance],
+                                 'original_characters': len(content), 'provided_characters': min(len(content), allowance),
                                  'truncated': len(content) > allowance})
                 remaining -= min(len(content), allowance)
             turns.append(message_count)

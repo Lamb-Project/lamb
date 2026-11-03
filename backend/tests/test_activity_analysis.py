@@ -100,6 +100,9 @@ def test_empty_unavailable_truncated_and_dimensions(fixture):
     service.get_chat_detail.side_effect = lambda *a, **kw: {'messages': [{'id': 'm', 'role': 'user', 'content': 'x'*9000}]}
     result = store.prepare(auth, 7, service)
     assert result['coverage']['truncated_chat_ids'] == ['a']
+    message = result['conversations'][0]['messages'][0]
+    assert message['original_characters'] == 9000
+    assert message['provided_characters'] == len(message['content']) == 8000
     assert not result['coverage']['exhaustive']
     for kwargs in [{'dimensions': ['invented']}, {'limit': 51}, {'start': '2026-12-01', 'end': '2026-11-01'}]:
         with pytest.raises(HTTPException):
