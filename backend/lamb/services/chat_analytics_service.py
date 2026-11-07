@@ -104,8 +104,7 @@ class ChatAnalyticsService:
             count_result = self._execute_query(count_query, tuple(params), fetch_one=True)
             total = count_result[0] if count_result else 0
             
-            # Get paginated results
-            offset = (page - 1) * per_page
+            # Read the source prefix needed for the merged page.
             
             query = f"""
                 SELECT 
@@ -120,10 +119,11 @@ class ChatAnalyticsService:
                 FROM chat c
                 LEFT JOIN user u ON c.user_id = u.id
                 WHERE {where_sql}
-                ORDER BY c.created_at DESC
+                ORDER BY c.created_at DESC, c.id DESC
                 LIMIT ? OFFSET ?
             """
-            params.extend([per_page, offset])
+            # Apply the offset only after merging both sources.
+            params.extend([page * per_page, 0])
             
             results = self._execute_query(query, tuple(params))
             
@@ -190,7 +190,7 @@ class ChatAnalyticsService:
             
             # Merge and sort by created_at (descending)
             all_chats = chats + lamb_chats
-            all_chats.sort(key=lambda c: c.get("created_at", ""), reverse=True)
+            all_chats.sort(key=lambda c: (c.get("created_at", ""), c["id"]), reverse=True)
             
             # Update total to include both sources
             total = total + len(lamb_chats)
@@ -744,7 +744,7 @@ class ChatAnalyticsService:
                 start_date=start_ts,
                 end_date=end_ts,
                 search_content=search_content,
-                limit=100,  # Get all for merging
+                limit=-1,  # SQLite: all matching rows, for an accurate merged total
                 offset=0
             )
             
