@@ -5,17 +5,19 @@ const fs = require('fs');
 // Fixture: {cases:[{assistant_id,name,expected:[{id,title,stamp}]}]}.
 const fixturePath = process.env.PAGINATION_FIXTURE;
 test.describe('Chat activity pagination regression', () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
   test.skip(!fixturePath, 'Set PAGINATION_FIXTURE to the synthetic fixture inventory');
   test('page buttons, page sizes and API traversal preserve the complete inventory', async ({ page, request }) => {
     const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
     const auth = JSON.parse(fs.readFileSync(process.env.PAGINATION_AUTH, 'utf8'));
     await page.goto('/');
-    if (await page.locator('#email').isVisible()) {
+    await expect(page.locator('#email')).toBeVisible({ timeout: 15000 });
+    {
       await page.locator('#email').fill(auth.admin_email);
       await page.locator('#password').fill(auth.admin_password);
       await page.locator('button[type=submit]').click();
     }
-    await page.waitForFunction(() => !!localStorage.getItem('userToken'));
+    await page.waitForFunction(() => !!localStorage.getItem('userToken'), null, { timeout: 15000 });
     const token = await page.evaluate(() => localStorage.getItem('userToken'));
     const headers = { Authorization: `Bearer ${token}` };
     for (const fixtureCase of fixture.cases) {
