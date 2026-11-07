@@ -132,8 +132,7 @@ class ChatAnalyticsService:
             count_result = self._execute_query(count_query, tuple(params), fetch_one=True)
             total = count_result[0] if count_result else 0
             
-            # Get paginated results
-            offset = (page - 1) * per_page
+            # Read the source prefix needed for the merged page.
             
             query = f"""
                 SELECT 
@@ -773,7 +772,7 @@ class ChatAnalyticsService:
                 start_date=start_ts,
                 end_date=end_ts,
                 search_content=search_content,
-                limit=100,  # Get all for merging
+                limit=-1,  # SQLite: all matching rows, for an accurate merged total
                 offset=0
             )
             
