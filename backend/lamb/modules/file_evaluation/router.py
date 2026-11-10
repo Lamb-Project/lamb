@@ -15,6 +15,7 @@ from lamb import auth as lamb_auth
 from lamb.logging_config import get_logger
 
 from .service import FileEvalService
+from .storage_service import FileStorageService
 from .grade_service import GradeService
 from .evaluation_service import EvaluationService
 from .lti_passback import LTIGradePassback
@@ -279,8 +280,8 @@ async def download_file(request: Request, token: str = "", activity_id: int = Qu
     if not sub:
         raise HTTPException(status_code=404, detail="No submission")
 
-    file_path = sub["file_submission"]["file_path"]
-    if not os.path.isfile(file_path):
+    file_path = FileStorageService.resolve_path(sub["file_submission"]["file_path"])
+    if not file_path or not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="File not found on disk")
 
     file_name = sub["file_submission"]["file_name"]
@@ -316,9 +317,9 @@ async def download_submission_by_id(file_submission_id: str, request: Request, t
 
         _assert_activity(payload, int(fs["activity_id"]))
 
-        file_path = fs.get("file_path", "")
+        file_path = FileStorageService.resolve_path(fs.get("file_path", ""))
         if not file_path or not os.path.isfile(file_path):
-            logger.warning("File not found on disk for submission %s: %s", file_submission_id, file_path)
+            logger.warning("File not found on disk for submission %s: %s", file_submission_id, fs.get("file_path"))
             raise HTTPException(status_code=404, detail="File not found on disk")
 
         file_name = fs.get("file_name", "download")
