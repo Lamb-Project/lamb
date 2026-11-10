@@ -93,7 +93,7 @@ class LlmAccessModule(ActivityModule):
 
     def configured_redirect(self, public_base, activity, lms_user_id, lms_email) -> Optional[str]:
         td = wiring.store().get_activity_by_resource_link(activity['resource_link_id'])
-        t = pages.make_token({'type': 'manage', 'activity_id': td['id'], 'lms_user_id': lms_user_id, 'email': lms_email})
+        t = pages.make_token({'type': 'manage', 'activity_id': td['id'], 'lms_user_id': lms_user_id, 'lms_email': lms_email})
         return f'{public_base}{pages.PREFIX}/manage?token={t}'
 
     # ── launches ───────────────────────────────────────────────────────

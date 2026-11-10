@@ -313,10 +313,14 @@ def _build_auth_context(token: str) -> Optional[AuthContext]:
         An ``AuthContext`` instance, or ``None`` if the token is invalid.
     """
     # --- 1. Decode token (LAMB JWT first, OWI fallback) ---
-    from lamb.auth import decode_token as lamb_decode
+    from lamb.auth import decode_token as lamb_decode, is_creator_session
 
     payload = lamb_decode(token)
     jwt_role: Optional[str] = None
+
+    if payload and not is_creator_session(payload):
+        logger.warning("Rejected an activity token presented as a Creator session")
+        return None
 
     if payload:
         user_email = payload.get("email", "")

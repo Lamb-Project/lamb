@@ -51,9 +51,9 @@ def expired():
 def launch_redirect(public_base, activity, roles_is_instructor, lms_user_id, email, name):
     """Called by lti_router for a link that is an LLM-access activity."""
     if roles_is_instructor:
-        t = make_token({'type': 'manage', 'activity_id': activity['id'], 'lms_user_id': lms_user_id, 'email': email})
+        t = make_token({'type': 'manage', 'activity_id': activity['id'], 'lms_user_id': lms_user_id, 'lms_email': email})
         return RedirectResponse(f'{public_base}{PREFIX}/manage?token={t}', status_code=303)
-    t = make_token({'type': 'student', 'activity_id': activity['id'], 'lms_user_id': lms_user_id, 'email': email, 'name': name})
+    t = make_token({'type': 'student', 'activity_id': activity['id'], 'lms_user_id': lms_user_id, 'lms_email': email, 'name': name})
     return RedirectResponse(f'{public_base}{PREFIX}/student?token={t}', status_code=303)
 
 
@@ -194,9 +194,9 @@ async def issue(request: Request):
     svc = wiring.service()
     try:
         if form.get('rotate') == '1':
-            issued = svc.rotate_key(data['activity_id'], data['lms_user_id'], data.get('email'), data.get('name'), NOTICE_VERSION)
+            issued = svc.rotate_key(data['activity_id'], data['lms_user_id'], data.get('lms_email'), data.get('name'), NOTICE_VERSION)
         else:
-            issued = svc.issue_key(data['activity_id'], data['lms_user_id'], data.get('email'), data.get('name'), NOTICE_VERSION)
+            issued = svc.issue_key(data['activity_id'], data['lms_user_id'], data.get('lms_email'), data.get('name'), NOTICE_VERSION)
     except KeyExists:
         return _student_context(request, token, data, error='You already have a key. Replace it if you lost it.')
     except (AllocationError, SettingsError) as e:

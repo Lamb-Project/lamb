@@ -90,7 +90,7 @@ def test_launches_go_to_the_module_pages(env):
 
 def test_student_takes_a_key_once_after_the_notice(env):
     a = configure(env, pool_tokens='50000', slot_tokens='2000')
-    t = lti.make_token({'type': 'student', 'activity_id': a['id'], 'lms_user_id': 'stu-1', 'email': 's@x.edu', 'name': 'Ana'})
+    t = lti.make_token({'type': 'student', 'activity_id': a['id'], 'lms_user_id': 'stu-1', 'lms_email': 's@x.edu', 'name': 'Ana'})
     assert 'Get my key' in env.client.get(PREFIX + '/student', params={'token': t}).text
     assert 'accept the notice' in env.client.post(PREFIX + '/issue', data={'token': t}).text
     r = env.client.post(PREFIX + '/issue', data={'token': t, 'accept': lti.NOTICE_VERSION})

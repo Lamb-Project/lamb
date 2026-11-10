@@ -200,6 +200,10 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
         from lamb import auth as lamb_auth
         payload = lamb_auth.decode_token(clean_token)
 
+        if payload and not lamb_auth.is_creator_session(payload):
+            logger.warning("Rejected an activity token presented as a Creator session")
+            return None
+
         if payload:
             user_email = payload.get("email", "")
             if not user_email:
