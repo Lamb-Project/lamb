@@ -454,7 +454,7 @@ Open these URLs in a browser:
 
 ```bash
 curl -s http://localhost:8080/health
-curl -s http://localhost:9099/health
+curl -s http://localhost:9099/status
 curl -s http://localhost:9090/health
 ```
 
