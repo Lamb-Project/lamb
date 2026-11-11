@@ -4,6 +4,7 @@
     import AssistantForm from '$lib/components/assistants/AssistantForm.svelte'; 
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import ChatInterface from '$lib/components/ChatInterface.svelte';
+    import ActivityAnalysis from '$lib/components/analytics/ActivityAnalysis.svelte';
     import ChatAnalytics from '$lib/components/analytics/ChatAnalytics.svelte';
     import { _, locale } from '$lib/i18n';
     import { isKbBasedRag } from '$lib/utils/ragProcessorHelpers.js';
@@ -68,7 +69,7 @@
     let startEditMode = $state(false); // New state for initial edit mode
 
     // --- Detail View Sub-Tab State ---
-    /** @type {'properties' | 'chat' | 'edit' | 'share' | 'analytics' | 'tests' | 'aac'} */
+    /** @type {'properties' | 'chat' | 'edit' | 'share' | 'analytics' | 'analysis' | 'tests' | 'aac'} */
     let detailSubView = $state($page.url.searchParams.get('startInEdit') === 'true' ? 'edit' : 'properties');
 
     // --- AAC Agent State ---
@@ -319,7 +320,7 @@
                 selectedAssistantData = fullAssistantData;
                 console.log("Assigned selectedAssistantData:", selectedAssistantData);
                 // Update URL (remove startInEdit param if it was there) - this is fine now
-                goto(`${base}/assistants?view=detail&id=${id}&aacTab=${$page.url.searchParams.get("aacTab") || "properties"}&aacRequest=${$page.url.searchParams.get("aacRequest") || ""}`, { replaceState: true, noScroll: true });
+                goto(`${base}/assistants?view=detail&id=${id}&aacTab=${$page.url.searchParams.get("aacTab") || "properties"}&aacRequest=${$page.url.searchParams.get("aacRequest") || ""}&analysisReport=${encodeURIComponent($page.url.searchParams.get("analysisReport") || "")}`, { replaceState: true, noScroll: true });
             } else {
                 detailError = $_('assistant_not_found', { values: { id } });
                 console.error(detailError);
@@ -384,7 +385,7 @@
             const idParam = currentPage.url.searchParams.get('id');
             const requestedAacTab = currentPage.url.searchParams.get("aacTab");
             const aacRequest = currentPage.url.searchParams.get("aacRequest") || "";
-            if (["properties", "tests", "chat", "activity", "edit"].includes(requestedAacTab)) detailSubView = requestedAacTab === "activity" ? "analytics" : requestedAacTab;
+            if (["properties", "tests", "chat", "activity", "analysis", "edit"].includes(requestedAacTab)) detailSubView = requestedAacTab === "activity" ? "analytics" : requestedAacTab;
             const startInEditParam = currentPage.url.searchParams.get('startInEdit');
             console.log(`[+page.svelte] URL Params: view=${viewParam}, id=${idParam}, startInEdit=${startInEditParam}`);
             
@@ -416,7 +417,7 @@
                     // Set the view to detail if not already there
                     if (currentView !== 'detail') {
                         currentView = 'detail';
-                        detailSubView = ['properties', 'tests', 'chat', 'activity', 'edit'].includes(requestedAacTab) ? (requestedAacTab === 'activity' ? 'analytics' : requestedAacTab) : 'properties'; // URL-selected workspace tab
+                        detailSubView = ['properties', 'tests', 'chat', 'activity', 'analysis', 'edit'].includes(requestedAacTab) ? (requestedAacTab === 'activity' ? 'analytics' : requestedAacTab) : 'properties'; // URL-selected workspace tab
                     }
                     
                     // Fetch only if the ID is different from the currently loaded one
@@ -888,7 +889,7 @@
     });
 
 </script>
-{#if selectedAssistantData && !loadingDetail && !detailError && currentView === 'detail' && !['tests', 'analytics', 'edit', 'chat'].includes(detailSubView)}
+{#if selectedAssistantData && !loadingDetail && !detailError && currentView === 'detail' && !['tests', 'analytics', 'analysis', 'edit', 'chat'].includes(detailSubView)}
 <span hidden data-aac-resource="assistant" data-aac-id={selectedAssistantData.id} data-aac-tab={detailSubView}></span>
 {/if}
 
@@ -985,7 +986,7 @@
     <AssistantForm assistant={null} onFormSuccess={handleAssistantCreated} />
 {:else if currentView === 'detail'}
     <!-- Detail View Sub-Tabs -->
-    <div class="mb-4 border-b border-gray-300 flex space-x-4">
+    <div class="mb-4 border-b border-gray-300 flex flex-wrap gap-1">
         <button
             class="py-2 px-4 text-sm font-medium rounded-t-md {detailSubView === 'properties' ? 'bg-gray-100 border border-b-0 border-gray-300 text-brand' : 'text-gray-600 hover:text-gray-800'}"
             onclick={() => detailSubView = 'properties'}
@@ -1023,6 +1024,11 @@
                 onclick={() => detailSubView = 'analytics'}
             >
                 {currentLocale ? $_('assistants.detail.activityTab', { default: 'Activity' }) : 'Activity'}
+            </button>
+        {/if}
+        {#if isOwner || $user.data?.role === 'admin'}
+            <button class="py-2 px-4 text-sm font-medium rounded-t-md {detailSubView === 'analysis' ? 'bg-gray-100 border border-b-0 border-gray-300 text-brand' : 'text-gray-600 hover:text-gray-800'}" onclick={() => detailSubView = 'analysis'}>
+                {$_('assistants.detail.analysisTab', {default: 'Activity analysis'})}
             </button>
         {/if}
         {#if isOwner}
@@ -1548,6 +1554,10 @@
                 <!-- Should not happen if configError is handled, but as fallback -->
                 <p>{currentLocale ? $_('assistants.chatLoadingConfig') : 'Loading chat configuration...'}</p>
             {/if}
+        {:else if detailSubView === 'analysis'}
+            <div data-aac-resource="assistant" data-aac-id={selectedAssistantData.id} data-aac-tab="analysis">
+                {#key selectedAssistantData.id}<ActivityAnalysis assistantId={selectedAssistantData.id} reportId={$page.url.searchParams.get('analysisReport') || ''} />{/key}
+            </div>
         {:else if detailSubView === 'analytics'}
             <!-- Analytics Tab Content -->
             <div class="px-6 py-4">

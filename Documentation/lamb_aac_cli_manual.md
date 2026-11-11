@@ -38,3 +38,15 @@ instructor access. Languages: `en`, `es`, `ca`, `eu`; timezone defaults to `UTC`
 
 The terminal equivalent is `lamb moodle chart submissions` with the same options;
 it returns the chart handle and aggregate figures as JSON.
+
+### Assistant activity analysis (0.9)
+
+The `inspect-activity` recipe proposes analysis dimensions or a Full audit, checks the learning scenario, reads bounded conversation evidence and saves a dated report under the assistant. Full audit covers all dimensions; coverage still states any sampling, truncation or unavailable source. Reports require full conversation analytics access.
+
+- `lamb analytics analysis-context ASSISTANT_ID --dimensions full --limit 20` reads a bounded sample and retains its evidence receipt. Options: `--start-date`, `--end-date`, `--scenario SCENARIO_ID|none`; dimensions can be comma-separated `participation,patterns,learning,assistant,friction,boundaries`. The maximum sample is 50 conversations. Date-only bounds use UTC, with the whole end day included.
+- `lamb analytics reports ASSISTANT_ID` lists saved reports, newest first, across sessions.
+- `lamb analytics report ASSISTANT_ID REPORT_ID` reads a saved report and its original context.
+- In Auto, include `analysis_id` alongside `title` and `assistant_id` in the plan's `report` object. After the plan's single approval, `lamb report save --content "REPORT" --reviewed '["CHAT_ID"]'` saves it. `lamb plan finish` exposes Show report. The report is immutable; reanalysis starts a new receipt.
+- The external CLI also supports `lamb analytics report-save ASSISTANT_ID RECEIPT_ID --file report.json`, where the JSON contains `title`, `content` and `reviewed_chat_ids`.
+
+Receipts retain measured coverage and the scenario snapshot, not duplicated conversation bodies. A declared reviewed subset is recorded separately from the conversations provided. Historical evidence opens through current analytics permissions. Reports do not grade individual students or establish learning gains from activity counts.

@@ -6,6 +6,17 @@ import { isAxiosError } from 'axios';
 axios.isAxiosError = isAxiosError;
 import { normalizeAssistantData } from '$lib/utils/assistantData';
 
+/** Validate an imported filter definition without sampling or starting a conversation.
+ * @param {string} systemPrompt
+ * @param {Record<string, any>} metadata
+ */
+export async function validatePromptFilters(systemPrompt, metadata) {
+	const response = await axios.post(getApiUrl('/assistant/prompt-filters/preview'), {
+		system_prompt: systemPrompt, metadata, validate_only: true
+	}, { headers: { Authorization: `Bearer ${localStorage.getItem('userToken')}` } });
+	return response.data;
+}
+
 /**
  * @typedef {Object} Assistant - Defines the structure of an assistant object from the API
  * @property {number} id

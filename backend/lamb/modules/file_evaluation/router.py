@@ -15,6 +15,7 @@ from lamb import auth as lamb_auth
 from lamb.logging_config import get_logger
 
 from .service import FileEvalService
+from .storage_service import FileStorageService
 from .grade_service import GradeService
 from .evaluation_service import EvaluationService
 from .lti_passback import LTIGradePassback
@@ -35,6 +36,9 @@ _eval_svc = EvaluationService()
 
 # ── JWT dependency ────────────────────────────────────────────────────────
 
+FILE_EVAL_TOKEN_TYPES = ("file_eval", "dashboard")
+
+
 def _decode_jwt(request: Request, token: Optional[str] = None) -> dict:
     """Extract and validate a LAMB JWT from Authorization header or query param."""
     raw_token = token
@@ -48,6 +52,9 @@ def _decode_jwt(request: Request, token: Optional[str] = None) -> dict:
     payload = lamb_auth.decode_token(raw_token)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    # Creator sessions and other modules' tokens carry the same signature; they are not ours.
+    if payload.get("lti_type") not in FILE_EVAL_TOKEN_TYPES:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     return payload
 
@@ -58,7 +65,7 @@ def _require_instructor(payload: dict):
 
 
 def _assert_activity(payload: dict, activity_id: int):
-    """Reject instructor tokens not bound to this activity (prevents cross-activity IDOR)."""
+    """Reject tokens not bound to this activity, for students and instructors alike."""
     tid = payload.get("lti_activity_id")
     if tid is None or int(tid) != int(activity_id):
         raise HTTPException(status_code=403, detail="Activity does not match token")
@@ -91,11 +98,7 @@ async def get_activity_view(activity_id: int, request: Request, token: str = "")
 
     if is_instructor:
         _require_instructor(payload)
-        _assert_activity(payload, activity_id)
-    else:
-        tid = payload.get("lti_activity_id")
-        if tid is not None and int(tid) != int(activity_id):
-            raise HTTPException(status_code=403, detail="Activity does not match token")
+    _assert_activity(payload, activity_id)
 
     student_id = payload.get("lti_user_email", "")
     cfg = _service.get_setup_config(activity_id)
@@ -181,10 +184,8 @@ async def upload_submission(
     lis_sourcedid = payload.get("lis_result_sourcedid")
     display_name = (payload.get("lti_display_name") or "").strip() or None
 
-    # Path param must match the activity embedded in the JWT (numeric lti_activities.id).
-    tid = payload.get("lti_activity_id")
-    if tid is not None and int(tid) != int(activity_id):
-        raise HTTPException(status_code=403, detail="Activity does not match token")
+    # The path must name the activity the token was issued for.
+    _assert_activity(payload, activity_id)
 
     content = await file.read()
     try:
@@ -231,6 +232,7 @@ async def list_submissions(activity_id: int, request: Request, token: str = ""):
 @router.get("/submissions/me")
 async def my_submission(request: Request, token: str = "", activity_id: int = Query(...)):
     payload = _decode_jwt(request, token)
+    _assert_activity(payload, activity_id)
     student_id = payload.get("lti_user_email", "")
     sub = _service.get_student_submission(activity_id, student_id)
     if not sub:
@@ -241,6 +243,7 @@ async def my_submission(request: Request, token: str = "", activity_id: int = Qu
 @router.post("/submissions/join")
 async def join_group(request: Request, body: GroupCodeSubmission, token: str = "", activity_id: int = Query(...)):
     payload = _decode_jwt(request, token)
+    _assert_activity(payload, activity_id)
     student_id = payload.get("lti_user_email", "")
     lis_sourcedid = payload.get("lis_result_sourcedid")
     display_name = (payload.get("lti_display_name") or "").strip() or None
@@ -267,20 +270,22 @@ async def join_group(request: Request, body: GroupCodeSubmission, token: str = "
 
 @router.get("/submissions/{file_submission_id}/members")
 async def get_members(file_submission_id: str, request: Request, token: str = ""):
-    _decode_jwt(request, token)
+    payload = _decode_jwt(request, token)
+    _assert_activity(payload, _lookup_submission_activity_id(file_submission_id))
     return _service.get_group_members(file_submission_id)
 
 
 @router.get("/submissions/my-file/download")
 async def download_file(request: Request, token: str = "", activity_id: int = Query(...)):
     payload = _decode_jwt(request, token)
+    _assert_activity(payload, activity_id)
     student_id = payload.get("lti_user_email", "")
     sub = _service.get_student_submission(activity_id, student_id)
     if not sub:
         raise HTTPException(status_code=404, detail="No submission")
 
-    file_path = sub["file_submission"]["file_path"]
-    if not os.path.isfile(file_path):
+    file_path = FileStorageService.resolve_path(sub["file_submission"]["file_path"])
+    if not file_path or not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="File not found on disk")
 
     file_name = sub["file_submission"]["file_name"]
@@ -316,9 +321,9 @@ async def download_submission_by_id(file_submission_id: str, request: Request, t
 
         _assert_activity(payload, int(fs["activity_id"]))
 
-        file_path = fs.get("file_path", "")
+        file_path = FileStorageService.resolve_path(fs.get("file_path", ""))
         if not file_path or not os.path.isfile(file_path):
-            logger.warning("File not found on disk for submission %s: %s", file_submission_id, file_path)
+            logger.warning("File not found on disk for submission %s: %s", file_submission_id, fs.get("file_path"))
             raise HTTPException(status_code=404, detail="File not found on disk")
 
         file_name = fs.get("file_name", "download")
@@ -402,7 +407,7 @@ async def accept_ai_grades(activity_id: int, request: Request, token: str = ""):
 # ── Grade sync to Moodle ─────────────────────────────────────────────────
 
 @router.post("/activities/{activity_id}/grades/sync")
-async def sync_grades(activity_id: int, request: Request, token: str = ""):
+def sync_grades(activity_id: int, request: Request, token: str = ""):
     payload = _decode_jwt(request, token)
     _require_instructor(payload)
     _assert_activity(payload, activity_id)

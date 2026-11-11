@@ -117,15 +117,19 @@ def announces_unfinished_work(text):
         _ANNOUNCED_WORK = re.compile('|'.join([
             rf'\bvoy a (?:{verbs_es})\b', r'\b(?:continuar|seguir|comprobar|revisar|obtendr|preparar|buscar|consultar|verificar)[éeá]\b',
             r'\ba continuaci[oó]n (?:voy|har[ée]|obtendr[ée]|comprobar[ée]|revisar[ée])\b',
-            r"\bi(?:'ll| will) (?:now |next |then )?(?:continue|check|look|fetch|retrieve|get|prepare|read|search|proceed|verify|import|create|list)\b",
+            r"\bi(?:['’]ll| will) (?:now |next |then )?(?:continue|check|look|fetch|retrieve|get|prepare|read|search|proceed|verify|import|create|list|correct|retry|fix|resume|review|audit|analy[sz]e|save|conduct|perform|execute|run)\b",
+            r"\bi(?:['’]ll| will) use [^\n.!?]{0,120} and (?:review|audit|analy[sz]e|save|conduct|perform|execute|run)\b",
             r'\blet me (?:now )?(?:continue|check|look|fetch|retrieve|get|read|verify)\b',
             r'\b(?:continuar|comprovar|revisar|obtindr|preparar|cercar|consultar|verificar)[ée]\b',
             r'\b(?:jarraitu|egiaztatu|begiratu|prestatu|lortu|bilatu)ko dut\b']), re.I)
-    tail = (text or '').strip()[-400:]
+    tail = (text or '').strip()[-4000:]
     if not tail or '?' in tail[-200:] or re.search(r'(?m)^\s*1\.\s.+\n\s*2\.\s', tail):
         return False
-    last = re.split(r'(?<=[.!])\s+', tail)[-2:]
-    return bool(_ANNOUNCED_WORK.search(' '.join(last)))
+    sentences = re.split(r'(?<=[.!])\s+', tail)
+    # A plan promise often precedes explanatory bullets. Looking only at the
+    # last two sentences missed those turns and left no actual approval card.
+    boundary_sentences = sentences[:2] + sentences[-2:]
+    return bool(_ANNOUNCED_WORK.search(' '.join(boundary_sentences)))
 
 
 ANNOUNCED_WORK_NOTE = ('Your last reply announced a next step but called no tool, so the turn would end here and '

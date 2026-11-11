@@ -122,11 +122,48 @@ class TokenDealerStore:
                       f"revoked_at = CASE WHEN ? = 'revoked' THEN ? ELSE revoked_at END WHERE id = ?",
                       (status, reason, status, int(time.time()), key_id))
 
-    def key_index(self):
-        """proxy_token -> (key_id, activity_id, organization_id) for every key ever issued (usage attribution)."""
+    def key_index(self, tokens=None):
+        """proxy_token -> (key_id, activity_id, organization_id) for usage attribution: of every key
+        ever issued, or only of the given tokens (the worker passes those of the rows it fetched)."""
+        q = f"SELECT id, activity_id, organization_id, proxy_token FROM {self.tp}token_dealer_keys"
         with closing(self._conn()) as c:
-            return {r['proxy_token']: (r['id'], r['activity_id'], r['organization_id'])
-                    for r in c.execute(f"SELECT id, activity_id, organization_id, proxy_token FROM {self.tp}token_dealer_keys")}
+            if tokens is None:
+                rows = c.execute(q).fetchall()
+            else:
+                tokens, rows = list(tokens), []
+                for i in range(0, len(tokens), 500):
+                    chunk = tokens[i:i + 500]
+                    rows += c.execute(f"{q} WHERE proxy_token IN ({', '.join('?' for _ in chunk)})", chunk).fetchall()
+            return {r['proxy_token']: (r['id'], r['activity_id'], r['organization_id']) for r in rows}
+
+    def organization_ids(self):
+        """Organizations with at least one LLM-access activity: the proxies the worker reads usage from."""
+        with closing(self._conn()) as c:
+            return [r[0] for r in c.execute(
+                f"SELECT DISTINCT organization_id FROM {self.tp}token_dealer_activities ORDER BY organization_id")]
+
+    def reconcile_candidates(self):
+        """The keys whose proxy state may need a change, with the state last applied, in one query:
+        every live key of an active activity (timetables move on their own), and the live keys of
+        archived activities that the proxy has not yet been told to close. Archived activities whose
+        keys are closed cost nothing per cycle, however many accumulate."""
+        q = (f"SELECT k.id, k.status, k.proxy_token, k.organization_id, k.activity_id, "
+             f"a.status AS activity_status, a.override, a.schedule_json, s.applied "
+             f"FROM {self.tp}token_dealer_keys k JOIN {self.tp}token_dealer_activities a ON a.id = k.activity_id "
+             f"LEFT JOIN {self.tp}token_dealer_sync_state s ON s.object = 'key:' || k.id "
+             f"WHERE k.status IN ('active', 'blocked') "
+             f"AND (a.status = 'active' OR s.applied IS NULL OR s.applied != 'closed') ORDER BY k.id")
+        schedules, out = {}, []
+        with closing(self._conn()) as c:
+            for r in c.execute(q):
+                aid = r['activity_id']
+                if aid not in schedules:
+                    schedules[aid] = json.loads(r['schedule_json'] or '{}')
+                out.append({'key': {'id': r['id'], 'status': r['status'], 'proxy_token': r['proxy_token']},
+                            'activity': {'id': aid, 'organization_id': r['organization_id'], 'status': r['activity_status'],
+                                         'override': r['override'], 'schedule': schedules[aid]},
+                            'applied': r['applied']})
+        return out
 
     # ── sync state (what the proxy was last told) ──────────────────────
     def get_sync_state(self, obj):

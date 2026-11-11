@@ -161,6 +161,19 @@ owi_model_manager = OWIModel(owi_db_manager) # Pass the OWI DB manager
 openai_connector = OpenAIConnector()
 
 
+@router.post('/prompt-filters/preview')
+async def preview_prompt_filters(body: Dict[str, Any], auth: AuthContext = Depends(get_auth_context)):
+    from lamb.completions.prompt_filters import validated_items, run_filters
+    text = body.get('system_prompt', '')
+    metadata = body.get('metadata', {})
+    if not isinstance(text, str) or not isinstance(metadata, dict):
+        raise HTTPException(400, 'Expected a system_prompt string and metadata object.')
+    items = validated_items(metadata, text)
+    if body.get('validate_only') is True:
+        return {'valid': True}
+    return {'system_prompt': run_filters(text, items)}
+
+
 def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
     """
     Get creator user from authentication token.
@@ -186,6 +199,10 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
         # --- Try LAMB JWT first ---
         from lamb import auth as lamb_auth
         payload = lamb_auth.decode_token(clean_token)
+
+        if payload and not lamb_auth.is_creator_session(payload):
+            logger.warning("Rejected an activity token presented as a Creator session")
+            return None
 
         if payload:
             user_email = payload.get("email", "")
@@ -336,7 +353,9 @@ async def get_assistant_capabilities(auth: AuthContext = Depends(get_auth_contex
     defaults = (auth.organization.get('config') or {}).get('assistant_defaults') or {}
     from lamb.aac.brief import capability_map
     installation = await capability_map(auth, request.app.routes if request else ())
-    return {**capabilities, **model_configuration(capabilities, defaults, configured), 'capability_map':installation}
+    return {**capabilities, **model_configuration(capabilities, defaults, configured), 'capability_map':installation,
+            'prompt_filters': [{'type': 'random', 'target': 'system_prompt', 'run_on': 'conversation_start',
+                                'compatible_prompt_processors': capabilities.get('prompt_processors', [])}]}
 
 
 REQUIRED_PLUGIN_METADATA_KEYS = (
@@ -449,10 +468,16 @@ def _merge_partial_metadata(stored_raw, incoming_raw):
         return parsed if isinstance(parsed, dict) else None
 
     incoming = as_dict(incoming_raw)
-    if incoming is None or all(isinstance(incoming.get(k), str) and incoming[k].strip()
-                               for k in REQUIRED_PLUGIN_METADATA_KEYS):
+    if incoming is None:
         return incoming_raw
-    merged = as_dict(stored_raw) or {}
+    stored = as_dict(stored_raw) or {}
+    # Old API/CLI editors do not know about filters. Omission must preserve them;
+    # send prompt_filters=null or an empty items list to remove them explicitly.
+    if 'prompt_filters' not in incoming and 'prompt_filters' in stored:
+        incoming['prompt_filters'] = stored['prompt_filters']
+    if all(isinstance(incoming.get(k), str) and incoming[k].strip() for k in REQUIRED_PLUGIN_METADATA_KEYS):
+        return json.dumps(incoming) if isinstance(incoming_raw, str) else incoming
+    merged = stored
     merged.update(incoming)
     return json.dumps(merged) if isinstance(incoming_raw, str) else merged
 
@@ -489,6 +514,8 @@ def prepare_assistant_body(
         metadata = _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", "")),
                                              creator_user.get('email'))
         parsed_metadata = json.loads(metadata) if isinstance(metadata, str) else metadata
+        from lamb.completions.prompt_filters import validate_definition
+        validate_definition(parsed_metadata, original_body.get("system_prompt", original_body.get("instructions", "")))
         prompt_template = original_body.get("prompt_template", "")
         # Only default new, omitted templates for the built-in augmentation path.
         # Explicit templates (including empty ones) and custom processors retain their semantics.
@@ -2007,4 +2034,3 @@ async def update_organization_assistant_defaults(slug: str, request: Request):
     except Exception as e:
         logger.error(f"Error updating assistant defaults: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-

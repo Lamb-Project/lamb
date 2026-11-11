@@ -82,7 +82,7 @@
         {% endfor %}
         </tbody>
     </table>
-    <p class="text-xs text-gray-500">Usage reaches this page 20 to 40 seconds after the request. Blocking takes effect within 10 seconds.</p>
+    <p class="text-xs text-gray-500">Usage reaches this page up to {{ usage_delay }} seconds after the request. Blocking, unblocking, closing and opening take effect at once.</p>
 </div>
 </body>
 </html>

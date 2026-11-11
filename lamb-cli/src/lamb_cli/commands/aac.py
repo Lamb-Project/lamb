@@ -43,6 +43,37 @@ SESSION_DETAIL_FIELDS = [
 ]
 
 
+@app.command('mode')
+def execution_mode(session_id: str, mode: str) -> None:
+    """Set auto or guided execution for this conversation; does not approve a plan."""
+    if mode not in ('auto', 'guided'):
+        print_error('Mode must be auto or guided.')
+        raise typer.Exit(1)
+    with get_client() as client:
+        print_json(client.put(f'/creator/aac/sessions/{session_id}/execution', json={'mode': mode}))
+
+
+@app.command('new-task')
+def new_task(session_id: str) -> None:
+    """Explicitly start a different task and its ten-call allowance; history stays saved."""
+    with get_client() as client:
+        print_json(client.put(f'/creator/aac/sessions/{session_id}/execution', json={'new_task': True}))
+
+
+@app.command('report')
+def saved_report(session_id: str, report_id: str) -> None:
+    """Read a saved LEGATUS report without a model call."""
+    with get_client() as client:
+        print_json(client.get(f'/creator/aac/sessions/{session_id}/reports/{report_id}'))
+
+
+@app.command('changes')
+def saved_changes(session_id: str) -> None:
+    """Read the session's change journal, including available prior values."""
+    with get_client() as client:
+        print_json(client.get(f'/creator/aac/sessions/{session_id}/changes'))
+
+
 def _enrich_session(s: dict) -> dict:
     """Add computed fields for display."""
     conv = s.get("conversation", [])

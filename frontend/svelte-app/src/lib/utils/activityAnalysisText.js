@@ -1,0 +1,28 @@
+const keys = ['title', 'newAnalysis', 'fullAudit', 'nudge', 'empty', 'refresh', 'loading', 'period', 'allDates', 'scenario', 'general', 'coverage', 'provided', 'reviewed', 'total', 'sample', 'exhaustive', 'evidence', 'limitations', 'close', 'messages', 'userLength', 'responseLength', 'median', 'participation', 'patterns', 'learning', 'assistant', 'friction', 'boundaries', 'showReport'];
+/** @type {Record<string, string[]>} */
+const words = {
+    en: ['Activity analysis', 'New analysis', 'Full audit', 'A learning scenario helps LEGATUS interpret activity against your teaching intentions. Select or define one with LEGATUS, or continue with a general analysis.', 'No saved analyses yet.', 'Refresh reports', 'Loading…', 'Period', 'All available dates', 'Learning scenario', 'General analysis: no learning scenario', 'Data coverage', 'Provided', 'Declared reviewed', 'Available conversations', 'Sampled or incomplete evidence', 'All available conversations provided in full', 'Conversation evidence', 'Limitations', 'Close', 'Messages per conversation', 'User prompt length (characters)', 'Assistant response length (characters)', 'Median', 'Participation', 'Usage patterns', 'Conceptual understanding', 'Assistant performance', 'Friction and sentiment', 'Attempts to redirect the assistant', 'Show report'],
+    es: ['Análisis de actividad', 'Nuevo análisis', 'Auditoría completa', 'Un escenario de aprendizaje ayuda a LEGATUS a interpretar la actividad según tus intenciones docentes. Selecciona o define uno con LEGATUS, o continúa con un análisis general.', 'Todavía no hay análisis guardados.', 'Actualizar informes', 'Cargando…', 'Periodo', 'Todas las fechas disponibles', 'Escenario de aprendizaje', 'Análisis general: sin escenario de aprendizaje', 'Cobertura de los datos', 'Proporcionadas', 'Declaradas como revisadas', 'Conversaciones disponibles', 'Evidencia parcial o muestreada', 'Todas las conversaciones disponibles proporcionadas completas', 'Evidencia de conversaciones', 'Limitaciones', 'Cerrar', 'Mensajes por conversación', 'Longitud del mensaje del usuario (caracteres)', 'Longitud de la respuesta (caracteres)', 'Mediana', 'Participación', 'Patrones de uso', 'Comprensión conceptual', 'Desempeño del asistente', 'Dificultades y sentimiento', 'Intentos de redirigir al asistente', 'Ver informe'],
+    ca: ['Anàlisi de l’activitat', 'Anàlisi nova', 'Auditoria completa', 'Un escenari d’aprenentatge ajuda LEGATUS a interpretar l’activitat segons les teves intencions docents. Selecciona’n o defineix-ne un amb LEGATUS, o continua amb una anàlisi general.', 'Encara no hi ha anàlisis desades.', 'Actualitza els informes', 'Carregant…', 'Període', 'Totes les dates disponibles', 'Escenari d’aprenentatge', 'Anàlisi general: sense escenari d’aprenentatge', 'Cobertura de les dades', 'Proporcionades', 'Declarades com a revisades', 'Converses disponibles', 'Evidència parcial o mostrejada', 'Totes les converses disponibles proporcionades completes', 'Evidència de converses', 'Limitacions', 'Tanca', 'Missatges per conversa', 'Longitud del missatge de l’usuari (caràcters)', 'Longitud de la resposta (caràcters)', 'Mediana', 'Participació', 'Patrons d’ús', 'Comprensió conceptual', 'Comportament de l’assistent', 'Dificultats i sentiment', 'Intents de redirigir l’assistent', 'Mostra l’informe'],
+    eu: ['Jardueraren analisia', 'Analisi berria', 'Auditoria osoa', 'Ikaskuntza agertoki batek jarduera irakaskuntzaren helburuen arabera interpretatzen laguntzen dio LEGATUSi. Aukeratu edo definitu bat LEGATUSekin, edo jarraitu analisi orokorrarekin.', 'Oraindik ez dago gordetako analisirik.', 'Eguneratu txostenak', 'Kargatzen…', 'Epea', 'Eskuragarri dauden data guztiak', 'Ikaskuntza agertokia', 'Analisi orokorra: ikaskuntza agertokirik gabe', 'Datuen estaldura', 'Emandakoak', 'Berrikusitzat adierazitakoak', 'Eskuragarri dauden elkarrizketak', 'Ebidentzia partziala edo lagina', 'Eskuragarri dauden elkarrizketa guztiak osorik emanda', 'Elkarrizketen ebidentzia', 'Mugak', 'Itxi', 'Mezuak elkarrizketako', 'Erabiltzailearen mezuaren luzera (karaktereak)', 'Erantzunaren luzera (karaktereak)', 'Mediana', 'Parte-hartzea', 'Erabilera ereduak', 'Ulermen kontzeptuala', 'Laguntzailearen jarduna', 'Zailtasunak eta sentimendua', 'Laguntzailea birbideratzeko saiakerak', 'Erakutsi txostena']
+};
+/** @param {string|null|undefined} language */
+const sources = {
+    en: ['Open WebUI chats', 'Creator chats', 'available', 'unavailable'],
+    es: ['Conversaciones de Open WebUI', 'Conversaciones de creadores', 'disponible', 'no disponible'],
+    ca: ['Converses d’Open WebUI', 'Converses de creadors', 'disponible', 'no disponible'],
+    eu: ['Open WebUI elkarrizketak', 'Sortzaileen elkarrizketak', 'eskuragarri', 'ez dago eskuragarri']
+};
+const incomplete = {
+    en: ['Conversations that could not be loaded', 'Conversations with shortened text'],
+    es: ['Conversaciones que no se pudieron cargar', 'Conversaciones con texto recortado'],
+    ca: ['Converses que no s’han pogut carregar', 'Converses amb text escurçat'],
+    eu: ['Kargatu ezin izan diren elkarrizketak', 'Testua laburtuta duten elkarrizketak']
+};
+/** @param {string|null|undefined} language */
+export function analysisText(language) {
+    const code = /** @type {keyof typeof sources} */ (language || 'en');
+    return {...Object.fromEntries(keys.map((key, i) => [key, (words[code] || words.en)[i]])),
+        ...Object.fromEntries(['missingChats','truncatedChats'].map((key,i)=>[key,(incomplete[code] || incomplete.en)[i]])),
+        ...Object.fromEntries(['owi','lamb_internal','available','unavailable'].map((key,i)=>[key,(sources[code] || sources.en)[i]]))};
+}

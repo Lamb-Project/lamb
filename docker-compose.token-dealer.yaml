@@ -38,9 +38,10 @@ services:
       DATABASE_URL: postgresql://litellm:${TOKEN_DEALER_DB_PASSWORD}@token-dealer-db:5432/litellm
       LITELLM_MASTER_KEY: ${TOKEN_DEALER_MASTER_KEY?Set TOKEN_DEALER_MASTER_KEY}
       LITELLM_TELEMETRY: "False"
-      # Per-slot budgets must refill within seconds of the slot boundary (default tick: about 10 minutes).
-      PROXY_BUDGET_RESCHEDULER_MIN_TIME: "10"
-      PROXY_BUDGET_RESCHEDULER_MAX_TIME: "15"
+      # Per-slot budgets must refill within seconds of the slot boundary (LiteLLM's own tick: about
+      # 10 minutes). Each tick is one query on the proxy's database; longer ticks, later refills.
+      PROXY_BUDGET_RESCHEDULER_MIN_TIME: "${TOKEN_DEALER_BUDGET_RESET_MIN_SECONDS:-10}"
+      PROXY_BUDGET_RESCHEDULER_MAX_TIME: "${TOKEN_DEALER_BUDGET_RESET_MAX_SECONDS:-15}"
     volumes:
       - ${TOKEN_DEALER_CONFIG:-./token-dealer/config.yaml}:/app/config.yaml:ro
       # Words budget refusals in tokens instead of dollars; loaded by config.yaml (callbacks).
@@ -76,12 +77,17 @@ services:
       TOKEN_DEALER_PROXY_URL: ${TOKEN_DEALER_PROXY_URL:-http://token-dealer-proxy:4000}
       TOKEN_DEALER_PROXY_ADMIN_KEY: ${TOKEN_DEALER_MASTER_KEY}
       TOKEN_DEALER_PUBLIC_URL: ${TOKEN_DEALER_PUBLIC_URL}
+      # Production defaults; development rigs use 10 and 20 for quick results (lamb/token_dealer/timing.py).
+      TOKEN_DEALER_RECONCILE_SECONDS: ${TOKEN_DEALER_RECONCILE_SECONDS:-30}
+      TOKEN_DEALER_INGEST_SECONDS: ${TOKEN_DEALER_INGEST_SECONDS:-60}
+      TOKEN_DEALER_INGEST_OVERLAP_SECONDS: ${TOKEN_DEALER_INGEST_OVERLAP_SECONDS:-600}
 
   lamb:
     environment:
       TOKEN_DEALER_PROXY_URL: ${TOKEN_DEALER_PROXY_URL:-http://token-dealer-proxy:4000}
       TOKEN_DEALER_PROXY_ADMIN_KEY: ${TOKEN_DEALER_MASTER_KEY}
       TOKEN_DEALER_PUBLIC_URL: ${TOKEN_DEALER_PUBLIC_URL?Set TOKEN_DEALER_PUBLIC_URL (the address students paste, ending in /v1)}
+      TOKEN_DEALER_INGEST_SECONDS: ${TOKEN_DEALER_INGEST_SECONDS:-60}   # the teacher's page states the usage delay
 
 volumes:
   token-dealer-db:

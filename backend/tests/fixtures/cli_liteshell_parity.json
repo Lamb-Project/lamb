@@ -1265,6 +1265,34 @@
           "is_flag": false
         },
         {
+          "name": "random_filter",
+          "kind": "TyperOption",
+          "opts": [
+            "--random-filter"
+          ],
+          "secondary_opts": [
+            "--no-random-filter"
+          ],
+          "required": false,
+          "default": "None",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "prompt_filters",
+          "kind": "TyperOption",
+          "opts": [
+            "--prompt-filters"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
           "name": "interactive",
           "kind": "TyperOption",
           "opts": [
@@ -1504,6 +1532,34 @@
           "kind": "TyperOption",
           "opts": [
             "--prompt-template"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "random_filter",
+          "kind": "TyperOption",
+          "opts": [
+            "--random-filter"
+          ],
+          "secondary_opts": [
+            "--no-random-filter"
+          ],
+          "required": false,
+          "default": "None",
+          "type": "BOOL",
+          "nargs": 1,
+          "is_flag": true
+        },
+        {
+          "name": "prompt_filters",
+          "kind": "TyperOption",
+          "opts": [
+            "--prompt-filters"
           ],
           "secondary_opts": [],
           "required": false,
@@ -7789,6 +7845,37 @@
           "is_flag": false
         }
       ]
+    },
+    "assistant.preview-filters": {
+      "params": [
+        {
+          "name": "assistant_id",
+          "kind": "TyperArgument",
+          "opts": [
+            "assistant_id"
+          ],
+          "secondary_opts": [],
+          "required": true,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        },
+        {
+          "name": "output",
+          "kind": "TyperOption",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "secondary_opts": [],
+          "required": false,
+          "default": "None",
+          "type": "STRING",
+          "nargs": 1,
+          "is_flag": false
+        }
+      ]
     }
   },
   "shell_contracts": {
@@ -8050,12 +8137,12 @@
     "assistant.create": [
       1,
       1,
-      "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor file_reference rubric_id rubric_format vision no_vision image_generation no_image_generation"
+      "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor file_reference rubric_id rubric_format vision no_vision image_generation no_image_generation random_filter no_random_filter prompt_filters"
     ],
     "assistant.update": [
       1,
       1,
-      "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor file_reference rubric_id rubric_format vision no_vision image_generation no_image_generation"
+      "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor file_reference rubric_id rubric_format vision no_vision image_generation no_image_generation random_filter no_random_filter prompt_filters"
     ],
     "assistant.publish": [
       1,
@@ -8256,6 +8343,11 @@
       1,
       1,
       "content revision references"
+    ],
+    "assistant.preview-filters": [
+      1,
+      1,
+      ""
     ]
   },
   "dispositions": {
@@ -8416,7 +8508,8 @@
     "moodle.book.read": "supported: shared Moodle document read contract and runtime (#525); read-only, no approval; CLI --session is a transport field; AAC provides conversation scope",
     "moodle.read.summary": "supported: shared Moodle document read contract and runtime (#525); read-only, no approval; CLI --session is a transport field; AAC provides conversation scope",
     "moodle.read.ask": "supported: shared Moodle document read contract and runtime (#525); read-only, no approval; CLI --session is a transport field; AAC provides conversation scope",
-    "moodle.read.verbatim": "supported: shared Moodle document read contract and runtime (#525); read-only, no approval; CLI --session is a transport field; AAC provides conversation scope"
+    "moodle.read.verbatim": "supported: shared Moodle document read contract and runtime (#525); read-only, no approval; CLI --session is a transport field; AAC provides conversation scope",
+    "assistant.preview-filters": "supported: authenticated sample only; no model, conversation or persisted realization"
   },
   "shell_only": [
     "assistant.chat",

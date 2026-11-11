@@ -31,6 +31,8 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="AAC")
 
 router = APIRouter(prefix="/aac", tags=["AAC"])
+from lamb.aac.execution_router import router as execution_router
+router.include_router(execution_router)
 
 from lamb.aac.skill_loader import SKILLS_DIR
 from lamb.aac.scenario_router import router as scenario_router
@@ -227,6 +229,9 @@ async def create_session(
         "created_at": session["created_at"],
     }
 
+    state['execution'] = {'mode': 'auto'}
+    from lamb.aac.auto_work import task_state
+    task_state(state)
     mgr.update_conversation(session_id=session['id'], user_email=auth.user['email'], conversation=conversation, skill_info=state)
     result.update(brief=state['brief'], response_language_policy=state['response_language_policy'])
 
@@ -513,6 +518,8 @@ async def _send_message_stream(
         events = stream_with_frontend(agent.chat_stream(user_message), bridge)
         try:
             yield f"data: {json.dumps({'status': 'preferences', 'advanced_mode': getattr(agent, 'approval_preferences', {}).get('advanced_mode') is True})}\n\n"
+            if getattr(agent, 'auto_work', None):
+                yield f"data: {json.dumps({'status': 'execution', 'execution': agent.auto_work.public()})}\n\n"
             policy = (getattr(agent, 'skill_state', None) or {}).get('response_language_policy')
             if policy:
                 yield f"data: {json.dumps({'status': 'policy', 'policy': policy})}\n\n"
@@ -730,6 +737,13 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
         agent.conversation.append({"role": "assistant", "content": notice})
     agent.pending_action = session.get("pending_action")
     agent.tool_audit = session.get("tool_audit", [])
+    from lamb.aac.auto_work import AutoWork
+    agent.auto_work = AutoWork(agent)
+    shell.knowledge['auto_work'] = agent.auto_work
+    agent.max_tool_rounds = 80 if agent.auto_work.enabled else 10
+    agent.checkpoint = lambda: AACSessionManager().update_conversation(
+        session_id=session['id'], user_email=user_email, conversation=agent.conversation,
+        pending_action=agent.pending_action, skill_info=agent.skill_state, tool_audit=agent.tool_audit)
     from lamb.aac.learning_scenarios import apply_scenario
     apply_scenario(agent, auth)
 

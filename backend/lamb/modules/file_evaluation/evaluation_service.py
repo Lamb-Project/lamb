@@ -137,6 +137,7 @@ class EvaluationService:
     ) -> Dict[str, Any]:
         from .evaluator_client import EvaluatorClient
         from .document_extractor import DocumentExtractor
+        from .storage_service import FileStorageService
         from .grade_service import GradeService
 
         grade_svc = GradeService()
@@ -165,7 +166,9 @@ class EvaluationService:
 
             # Extract text
             try:
-                text = DocumentExtractor.extract_text_from_file(sub["file_path"])
+                text = DocumentExtractor.extract_text_from_file(
+                    FileStorageService.resolve_path(sub["file_path"]) or ""
+                )
                 if not text or not text.strip():
                     self._mark_error(fsid, "Could not extract text from document")
                     results["errors"].append({"id": fsid, "error": "Empty text"})

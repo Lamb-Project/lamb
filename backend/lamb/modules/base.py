@@ -17,6 +17,9 @@ class LTIContext(BaseModel):
     context_title: str
     # LTI 1.1: per-user grade line id for Outcomes passback (from launch POST)
     lis_result_sourcedid: Optional[str] = None
+    lti_version: str = "1.1"
+    registration_id: Optional[int] = None
+    deployment_id: Optional[str] = None
 
 def module_public_base() -> str:
     """Public base URL for module redirects made without a request at hand (student launches).

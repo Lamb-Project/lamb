@@ -3,13 +3,15 @@
     python -m lamb.token_dealer.worker            # loops until stopped
     python -m lamb.token_dealer.worker --once     # one reconcile and one ingestion, then exit
 
-Two jobs on one lock (only one worker runs per deployment):
-  reconcile, every 10 s: make the proxy's block state of every key match LAMB's view
-    (timetable, instructor override, key status). Per key, not per team: a key block takes effect
-    at once on every proxy instance that shares Redis; a team block waits out a 60 s auth cache.
-  ingest, every 20 s: pull the proxy's spend logs from a 3-minute overlapping window and add them
-    to the usage ledger, deduplicated on request id. Spend logs reach the proxy's database in
-    batches, 10 to 30 s after the request.
+Two jobs on one lock (only one worker runs per deployment); intervals in timing.py, from the environment:
+  reconcile, every 30 s and right after each minute mark: make the proxy's block state of every
+    live key match LAMB's view (timetable, instructor override, key status). Teachers' actions are
+    applied at once by the service; this is the timetable driver and the safety net. Per key, not
+    per team: a key block takes effect at once on every proxy instance that shares Redis; a team
+    block waits out a 60 s auth cache.
+  ingest, every 60 s: pull the proxy's spend logs from an overlapping window (600 s by default) and
+    add them to the usage ledger, deduplicated on request id. Spend logs reach the proxy's database
+    in batches, 10 to 30 s after the request, stamped with the request's start time.
 It can run on another machine than LAMB's web server as long as it reaches LAMB's database and
 the proxy; the ledger file is its own.
 """
@@ -21,66 +23,59 @@ import signal
 import time
 from datetime import datetime, timezone
 
-from . import schedule as sched
+from . import timing
 from .proxy_client import ProxyError
+from .service import desired_state
 
 log = logging.getLogger('lamb.token_dealer.worker')
-OVERLAP = 180          # seconds re-read on every ingestion
 BOUNDARY = 60          # timetables change only on minute marks: reconcile right after each one
 AHEAD = 60             # seconds past now in the query window (proxy clock skew)
 
 
 class Worker:
-    def __init__(self, store, ledger, settings_for, client_for):
+    def __init__(self, store, ledger, settings_for, client_for, overlap=None):
         self.store, self.ledger, self.settings_for, self.client_for = store, ledger, settings_for, client_for
+        self.overlap = timing.ingest_overlap_seconds() if overlap is None else overlap
 
     def desired(self, activity, key, now):
-        if key['status'] != 'active' or activity['status'] != 'active':
-            return 'closed'
-        return 'open' if sched.is_open(activity['schedule'], activity['override'], now) else 'closed'
+        return desired_state(activity, key, now)
 
     def reconcile(self, now=None):
-        """Returns {'opened': n, 'closed': n, 'errors': n}."""
+        """Returns {'opened': n, 'closed': n, 'errors': n}. One query reads only the keys that can need a
+        change (store.reconcile_candidates); the proxy is called only for those whose state differs."""
         now = now or datetime.now(timezone.utc)
         out = {'opened': 0, 'closed': 0, 'errors': 0}
         clients = {}
-        for a in self.store.list_activities(status=None):
-            keys = self.store.list_keys(activity_id=a['id'])
-            if not keys:
+        for c in self.store.reconcile_candidates():
+            k, a = c['key'], c['activity']
+            want = desired_state(a, k, now)
+            if c['applied'] == want:
                 continue
-            for k in keys:
-                want = self.desired(a, k, now)
-                obj = f"key:{k['id']}"
-                state = self.store.get_sync_state(obj)
-                if state and state['applied'] == want:
-                    continue
-                org = a['organization_id']
-                try:
-                    client = clients.get(org) or clients.setdefault(org, self.client_for(org))
-                    (client.unblock_key if want == 'open' else client.block_key)(k['proxy_token'])
-                    self.store.record_applied(obj, want)
-                    out['opened' if want == 'open' else 'closed'] += 1
-                except ProxyError as e:
-                    self.store.record_error(obj, want, e)
-                    out['errors'] += 1
-                    log.warning('reconcile %s -> %s failed: %s', obj, want, e)
+            obj, org = f"key:{k['id']}", a['organization_id']
+            try:
+                client = clients.get(org) or clients.setdefault(org, self.client_for(org))
+                (client.unblock_key if want == 'open' else client.block_key)(k['proxy_token'])
+                self.store.record_applied(obj, want)
+                out['opened' if want == 'open' else 'closed'] += 1
+            except ProxyError as e:
+                self.store.record_error(obj, want, e)
+                out['errors'] += 1
+                log.warning('reconcile %s -> %s failed: %s', obj, want, e)
         return out
 
     def ingest(self, now=None):
         """Returns {'new': n, 'skipped': n, 'errors': n} over every proxy in use."""
         now = time.time() if now is None else now
         out = {'new': 0, 'skipped': 0, 'errors': 0}
-        index = self.store.key_index()
-        orgs = sorted({a['organization_id'] for a in self.store.list_activities(status=None)})
         seen_sources = set()
-        for org in orgs:
+        for org in self.store.organization_ids():
             settings = self.settings_for(org)
             source = settings.proxy_url
             if not source or source in seen_sources:
                 continue
             seen_sources.add(source)
             last = self.ledger.cursor(source)
-            start = (last if last is not None else now - 3600) - OVERLAP
+            start = (last if last is not None else now - 3600) - self.overlap
             try:
                 rows, newest = [], last or 0
                 for row in self.client_for(org).iter_spend_logs(start, now + AHEAD):
@@ -89,6 +84,7 @@ class Worker:
                         newest = max(newest, datetime.fromisoformat(str(row['startTime']).replace('Z', '+00:00')).timestamp())
                     except (KeyError, ValueError):
                         pass
+                index = self.store.key_index({r.get('api_key') for r in rows if r.get('api_key')})
                 new, skipped = self.ledger.record(rows, index)
                 out['new'] += new
                 out['skipped'] += skipped
@@ -116,11 +112,15 @@ def _production():
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--once', action='store_true')
-    ap.add_argument('--reconcile-every', type=float, default=10)
-    ap.add_argument('--ingest-every', type=float, default=20)
+    ap.add_argument('--reconcile-every', type=float, default=timing.reconcile_seconds(),
+                    help='seconds between reconciles (TOKEN_DEALER_RECONCILE_SECONDS, default 30)')
+    ap.add_argument('--ingest-every', type=float, default=timing.ingest_seconds(),
+                    help='seconds between usage ingestions (TOKEN_DEALER_INGEST_SECONDS, default 60)')
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s %(message)s')
     worker, ledger_path = _production()
+    log.info('reconcile every %ss and after each minute mark; ingest every %ss, re-reading %ss',
+             args.reconcile_every, args.ingest_every, worker.overlap)
     lock = open(ledger_path + '.lock', 'w')
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

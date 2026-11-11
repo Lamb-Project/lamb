@@ -45,12 +45,20 @@ class UsageLedger:
         not token-dealer keys are skipped. Refused requests count as refused, with no tokens."""
         new = skipped = 0
         now = int(time.time())
+        ids = list({row.get('request_id') for row in rows if row.get('request_id')})
         with closing(self._conn()) as c, c:
+            # The overlapping window re-reads most rows on every pass: look them up in batches.
+            seen = set()
+            for i in range(0, len(ids), 500):
+                chunk = ids[i:i + 500]
+                seen.update(r[0] for r in c.execute(
+                    f"SELECT request_id FROM seen_request WHERE request_id IN ({', '.join('?' for _ in chunk)})", chunk))
             for row in rows:
                 rid = row.get('request_id')
-                if not rid or c.execute('SELECT 1 FROM seen_request WHERE request_id = ?', (rid,)).fetchone():
+                if not rid or rid in seen:
                     skipped += 1
                     continue
+                seen.add(rid)
                 c.execute('INSERT INTO seen_request VALUES (?, ?)', (rid, now))
                 hit = key_index.get(row.get('api_key'))
                 if not hit:

@@ -330,6 +330,7 @@ def evaluate_run(
     assistant_id: int = typer.Argument(..., help="Assistant ID."),
     verdict: str = typer.Argument(..., help="Verdict: good, bad, or mixed."),
     notes: Optional[str] = typer.Option(None, "--notes", "-n", help="Evaluation notes."),
+    evaluator: str = typer.Option('user', '--evaluator', help='Evaluation author: user or legatus. LEGATUS judgments are not human-confirmed.'),
     output: str = typer.Option(None, "-o", "--output", help="Output format."),
 ) -> None:
     """Submit an evaluation for a test run."""
@@ -337,8 +338,13 @@ def evaluate_run(
     if verdict not in ("good", "bad", "mixed"):
         print_error("Verdict must be 'good', 'bad', or 'mixed'.")
         raise typer.Exit(1)
+    if evaluator not in ('user', 'legatus'):
+        print_error('Evaluator must be user or legatus.')
+        raise typer.Exit(1)
 
     body: dict = {"verdict": verdict}
+    if evaluator != 'user':
+        body['evaluator'] = evaluator
     if notes:
         body["notes"] = notes
 

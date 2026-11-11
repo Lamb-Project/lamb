@@ -9,6 +9,7 @@ from typing import Optional
 
 import typer
 
+from lamb_cli.prompt_filters import apply_prompt_filter_options
 from lamb_cli.client import get_client
 from lamb_cli.errors import AuthenticationError
 from lamb_cli.config import get_output_format
@@ -33,6 +34,7 @@ ASSISTANT_DETAIL_FIELDS = [
     ("connector", "Connector"),
     ("llm", "LLM"),
     ("prompt_processor", "Prompt Processor"),
+    ("prompt_filters", "Prompt Filters"),
     ("rag_processor", "RAG Processor"),
     ("rag_top_k", "RAG Top-K"),
     ("rag_collection_names", "RAG Collections"),
@@ -49,6 +51,7 @@ def _parse_metadata(data: dict) -> dict:
             data.setdefault("llm", md.get("llm", ""))
             data.setdefault("prompt_processor", md.get("prompt_processor", ""))
             data.setdefault("rag_processor", md.get("rag_processor", ""))
+            data.setdefault("prompt_filters", md.get("prompt_filters"))
         except (json.JSONDecodeError, AttributeError):
             pass
     elif isinstance(metadata_str, dict):
@@ -56,6 +59,7 @@ def _parse_metadata(data: dict) -> dict:
         data.setdefault("llm", metadata_str.get("llm", ""))
         data.setdefault("prompt_processor", metadata_str.get("prompt_processor", ""))
         data.setdefault("rag_processor", metadata_str.get("rag_processor", ""))
+        data.setdefault("prompt_filters", metadata_str.get("prompt_filters"))
     return data
 
 
@@ -232,6 +236,8 @@ def create_assistant(
         None, "--rag-collections", help="Comma-separated knowledge base IDs (see 'lamb kb list'); an exact, unambiguous name is resolved to its ID."
     ),
     prompt_template: Optional[str] = typer.Option(None, "--prompt-template", help="Prompt template text."),
+    random_filter: Optional[bool] = typer.Option(None, "--random-filter/--no-random-filter", help="Enable/disable random system-prompt integers, fixed at conversation start."),
+    prompt_filters: Optional[str] = typer.Option(None, "--prompt-filters", help='Replace ordered filter definition as JSON {"version":1,"items":[...]}; null clears it.'),
     interactive: bool = typer.Option(False, "--interactive", "-i", help="Run interactive configuration wizard."),
     output: str = typer.Option(None, "-o", "--output", help="Output format: table, json, plain."),
 ) -> None:
@@ -255,7 +261,7 @@ def create_assistant(
     if rag_collections:
         body["RAG_collections"] = rag_collections
 
-    has_config_flags = any(v is not None for v in [connector, llm, prompt_processor, rag_processor, file_path, rubric_id, rubric_format])
+    has_config_flags = any(v is not None for v in [connector, llm, prompt_processor, rag_processor, file_path, rubric_id, rubric_format, random_filter, prompt_filters])
     is_tty = hasattr(sys.stdin, "isatty") and sys.stdin.isatty()
 
     with get_client() as client:
@@ -289,6 +295,12 @@ def create_assistant(
             md = json.loads(body.get("metadata", "{}"))
             md.update({k:v for k,v in {"file_path":file_path,"rubric_id":rubric_id,"rubric_format":rubric_format}.items() if v is not None})
             body["metadata"] = json.dumps(md)
+        if random_filter is not None or prompt_filters is not None:
+            try:
+                body["metadata"] = json.dumps(apply_prompt_filter_options(
+                    json.loads(body.get("metadata", "{}")), definition=prompt_filters, random_filter=random_filter))
+            except ValueError as exc:
+                raise typer.BadParameter(str(exc)) from exc
         data = client.post("/creator/assistant/create_assistant", json=body)
     print_success(f"Assistant created: {data.get('assistant_id', '')}")
     format_output(data, ASSISTANT_LIST_COLUMNS, fmt)
@@ -314,6 +326,8 @@ def update_assistant(
         None, "--rag-collections", help="Comma-separated knowledge base IDs (see 'lamb kb list'); an exact, unambiguous name is resolved to its ID."
     ),
     prompt_template: Optional[str] = typer.Option(None, "--prompt-template", help="Prompt template text."),
+    random_filter: Optional[bool] = typer.Option(None, "--random-filter/--no-random-filter", help="Enable/disable random system-prompt integers, fixed at conversation start."),
+    prompt_filters: Optional[str] = typer.Option(None, "--prompt-filters", help='Replace ordered filter definition as JSON {"version":1,"items":[...]}; null clears it.'),
     interactive: bool = typer.Option(False, "--interactive", "-i", help="Run interactive configuration wizard."),
     output: str = typer.Option(None, "-o", "--output", help="Output format: table, json, plain."),
 ) -> None:
@@ -337,7 +351,7 @@ def update_assistant(
     if rag_collections is not None:
         body["RAG_collections"] = rag_collections
 
-    has_config_flags = any(v is not None for v in [connector, llm, prompt_processor, rag_processor, vision, image_generation, file_path, rubric_id, rubric_format])
+    has_config_flags = any(v is not None for v in [connector, llm, prompt_processor, rag_processor, vision, image_generation, file_path, rubric_id, rubric_format, random_filter, prompt_filters])
 
     with get_client() as client:
         if file_path:
@@ -391,6 +405,17 @@ def update_assistant(
                 current = client.get(f"/creator/assistant/get_assistant/{assistant_id}")
             body["name"] = current.get("name", "")
 
+        if random_filter is not None or prompt_filters is not None:
+            # Include the current chain even when the interactive wizard rebuilt metadata.
+            current = current or client.get(f"/creator/assistant/get_assistant/{assistant_id}")
+            old = current.get("metadata") or current.get("api_callback") or {}
+            old = json.loads(old) if isinstance(old, str) else old
+            md = {**old, **json.loads(body.get("metadata", "{}"))}
+            try:
+                body["metadata"] = json.dumps(apply_prompt_filter_options(
+                    md, definition=prompt_filters, random_filter=random_filter))
+            except ValueError as exc:
+                raise typer.BadParameter(str(exc)) from exc
         data = client.put(f"/creator/assistant/update_assistant/{assistant_id}", json=body)
     if fmt == "json":
         format_output(data, [], "json")
@@ -502,6 +527,10 @@ def show_config(
     for pp in capabilities.get("prompt_processors", []):
         stderr_console.print(f"  {pp}")
 
+    stderr_console.print("\n[bold]Prompt Filters[/bold]")
+    for item in capabilities.get("prompt_filters", []):
+        stderr_console.print(f"  {item['type']}: {item['target']}, {item['run_on']}")
+
     stderr_console.print("\n[bold]RAG Processors[/bold]")
     for rp in capabilities.get("rag_processors", []):
         stderr_console.print(f"  {rp}")
@@ -517,3 +546,18 @@ def show_config(
             if val:
                 stderr_console.print(f"  {key}: {val}")
     stderr_console.print("")
+
+
+@app.command("preview-filters")
+def preview_filters(
+    assistant_id: str = typer.Argument(..., help="Assistant ID."),
+    output: str = typer.Option(None, "-o", "--output", help="Output format: table, json, plain."),
+) -> None:
+    """Preview one sample system prompt without saving values or calling a model."""
+    with get_client() as client:
+        current = client.get(f"/creator/assistant/get_assistant/{assistant_id}")
+        md = current.get("metadata") or current.get("api_callback") or {}
+        md = json.loads(md) if isinstance(md, str) else md
+        data = client.post("/creator/assistant/prompt-filters/preview", json={
+            "system_prompt": current.get("system_prompt", ""), "metadata": md})
+    format_output(data, [], output or get_output_format(), detail_fields=[("system_prompt", "Sample system prompt")])

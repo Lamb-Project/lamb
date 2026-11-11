@@ -80,9 +80,10 @@ LAMB_FRONTEND_OPENWEBUI_SERVER = (
 LAMB_ENABLE_OPENWEBUI = _env_bool('LAMB_ENABLE_OPENWEBUI', True)
 LAMB_ENABLE_DEBUG = _env_bool('LAMB_ENABLE_DEBUG', False)
 # Feature flag for the Library Manager microservice.
-# Enabled by default; set LAMB_LIBRARY_SERVER_ENABLE=DISABLE to turn off.
+# Disabled by default since 0.9 (no 0.7+ feature uses it; production runs it off);
+# set LAMB_LIBRARY_SERVER_ENABLE=ENABLE to turn on.
 LAMB_ENABLE_LIBRARIES = os.getenv(
-    "LAMB_LIBRARY_SERVER_ENABLE", "ENABLE").upper().strip() != "DISABLE"
+    "LAMB_LIBRARY_SERVER_ENABLE", "DISABLE").upper().strip() != "DISABLE"
 
 # Database Configuration
 LAMB_DB_PATH = os.getenv('LAMB_DB_PATH', '/data/lamb')

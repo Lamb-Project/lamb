@@ -143,6 +143,12 @@ def test_ledger_aggregates_per_slot_and_deduplicates(tmp_path):
     assert ledger.cursor('p') == 100.0
 
 
+
+def test_ledger_counts_a_request_once_even_twice_in_one_batch(tmp_path):
+    ledger = UsageLedger(tmp_path / 'usage.db')
+    assert ledger.record([log('f', 'h1'), log('f', 'h1')], {'h1': (1, 10, 1)}) == (1, 1)
+    assert ledger.totals()[1]['tokens'] == 15
+
 # ── proxy client ───────────────────────────────────────────────────────
 def mock_client(handler):
     return ProxyClient('http://proxy', 'sk-admin', transport=httpx.MockTransport(handler))
@@ -263,24 +269,58 @@ def test_teacher_allowance_bounds_totals_and_policy_is_enforced(svc):
 def test_worker_reconciles_per_key_and_only_on_change(svc, tmp_path):
     service, proxy = svc
     aid, _ = service.configure_activity(1, 'rl-1', 't@x.edu', ['m'], WEEKLY, slot_tokens=4000)
-    k1 = service.issue_key(aid, 'u1', now=MONDAY_1600_MADRID)['key_id']
+    service.issue_key(aid, 'u1', now=MONDAY_1600_MADRID)
     service.issue_key(aid, 'u2', now=MONDAY_1600_MADRID)
     worker = Worker(service.store, UsageLedger(tmp_path / 'u.db'), lambda o: SETTINGS, lambda o: proxy)
     proxy.calls.clear()
     assert worker.reconcile(MONDAY_1600_MADRID) == {'opened': 0, 'closed': 0, 'errors': 0}
     assert worker.reconcile(MONDAY_1700_MADRID) == {'opened': 0, 'closed': 2, 'errors': 0}
     assert proxy.names() == ['block_key', 'block_key']
-    service.set_override(aid, 'open')
-    service.block_student(k1)
-    assert worker.reconcile(MONDAY_1700_MADRID) == {'opened': 1, 'closed': 0, 'errors': 0}
+    assert worker.reconcile(MONDAY_1700_MADRID) == {'opened': 0, 'closed': 0, 'errors': 0}
+
+
+def test_teacher_actions_reach_the_proxy_at_once_and_the_worker_retries_failures(svc, tmp_path):
+    service, proxy = svc
+    aid, _ = service.configure_activity(1, 'rl-1', 't@x.edu', ['m'], WEEKLY, slot_tokens=4000)
+    k1 = service.issue_key(aid, 'u1', now=MONDAY_1600_MADRID)['key_id']
+    service.issue_key(aid, 'u2', now=MONDAY_1600_MADRID)
+    proxy.calls.clear()
+    assert service.block_student(k1, now=MONDAY_1600_MADRID) == {'opened': 0, 'closed': 1, 'errors': 0}
+    assert proxy.names() == ['block_key']
+    assert service.set_override(aid, 'closed', now=MONDAY_1600_MADRID) == {'opened': 0, 'closed': 1, 'errors': 0}
+    assert service.set_override(aid, 'open', now=MONDAY_1700_MADRID) == {'opened': 1, 'closed': 0, 'errors': 0}
     proxy.fail.add('unblock_key')
-    service.set_override(aid, 'auto')
-    service.set_override(aid, 'open')
-    service.unblock_student(k1)
-    assert worker.reconcile(MONDAY_1700_MADRID)['errors'] == 1
+    assert service.unblock_student(k1, now=MONDAY_1700_MADRID)['errors'] == 1
+    assert service.store.get_key(k1)['status'] == 'active'
     assert service.store.get_sync_state(f'key:{k1}')['last_error']
     proxy.fail.clear()
-    assert worker.reconcile(MONDAY_1700_MADRID)['opened'] == 1      # retried on the next cycle
+    worker = Worker(service.store, UsageLedger(tmp_path / 'u.db'), lambda o: SETTINGS, lambda o: proxy)
+    assert worker.reconcile(MONDAY_1700_MADRID) == {'opened': 1, 'closed': 0, 'errors': 0}   # retried
+
+
+def test_archived_activities_cost_nothing_once_their_keys_are_closed(svc, tmp_path):
+    service, proxy = svc
+    aid, _ = service.configure_activity(1, 'rl-1', 't@x.edu', ['m'], WEEKLY, slot_tokens=4000)
+    service.issue_key(aid, 'u1', now=MONDAY_1600_MADRID)
+    worker = Worker(service.store, UsageLedger(tmp_path / 'u.db'), lambda o: SETTINGS, lambda o: proxy)
+    service.store.update_activity(aid, status='archived')
+    proxy.calls.clear()
+    assert worker.reconcile(MONDAY_1600_MADRID) == {'opened': 0, 'closed': 1, 'errors': 0}
+    assert service.store.reconcile_candidates() == []
+    assert worker.reconcile(MONDAY_1600_MADRID) == {'opened': 0, 'closed': 0, 'errors': 0}
+    assert proxy.names() == ['block_key']
+
+
+def test_timings_come_from_the_environment_with_production_defaults(monkeypatch):
+    from lamb.token_dealer import timing
+    for name in ('TOKEN_DEALER_RECONCILE_SECONDS', 'TOKEN_DEALER_INGEST_SECONDS', 'TOKEN_DEALER_INGEST_OVERLAP_SECONDS'):
+        monkeypatch.delenv(name, raising=False)
+    assert (timing.reconcile_seconds(), timing.ingest_seconds(), timing.ingest_overlap_seconds()) == (30, 60, 600)
+    assert timing.usage_delay_seconds() == 90
+    monkeypatch.setenv('TOKEN_DEALER_RECONCILE_SECONDS', '10')
+    monkeypatch.setenv('TOKEN_DEALER_INGEST_SECONDS', 'soon')
+    monkeypatch.setenv('TOKEN_DEALER_INGEST_OVERLAP_SECONDS', '5')
+    assert (timing.reconcile_seconds(), timing.ingest_seconds(), timing.ingest_overlap_seconds()) == (10, 60, 60)
 
 
 def test_worker_ingests_into_the_ledger(svc, tmp_path):
@@ -292,6 +332,15 @@ def test_worker_ingests_into_the_ledger(svc, tmp_path):
     assert worker.ingest(now=MONDAY_1600_MADRID.timestamp()) == {'new': 2, 'skipped': 1, 'errors': 0}
     assert worker.ingest(now=MONDAY_1600_MADRID.timestamp()) == {'new': 0, 'skipped': 3, 'errors': 0}
     assert worker.ledger.totals(activity_id=aid)[1]['tokens'] == 30
+
+
+def test_ingest_window_reaches_back_by_the_overlap(svc, tmp_path):
+    service, proxy = svc
+    worker = Worker(service.store, UsageLedger(tmp_path / 'u.db'), lambda o: SETTINGS, lambda o: proxy, overlap=600)
+    service.configure_activity(1, 'rl-1', 't@x.edu', ['m'], WEEKLY, slot_tokens=4000)
+    worker.ledger.set_cursor('http://proxy', 1000.0)
+    worker.ingest(now=2000.0)
+    assert [c[1][0] for c in proxy.calls if c[0] == 'iter_spend_logs'] == [400.0]
 
 
 def test_worker_wakes_on_every_minute_mark():

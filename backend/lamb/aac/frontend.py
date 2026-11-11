@@ -6,7 +6,7 @@ import uuid
 from contextlib import closing, suppress
 from functools import lru_cache
 
-TABS = {'assistant': ('properties', 'tests', 'chat', 'activity', 'edit'), 'kb': ('files', 'ingest', 'query'), 'rubric': ('view',), 'learning-scenario': ('view', 'edit'), 'moodle-result': ('view',)}
+TABS = {'assistant': ('properties', 'tests', 'chat', 'activity', 'analysis', 'edit'), 'kb': ('files', 'ingest', 'query'), 'rubric': ('view',), 'learning-scenario': ('view', 'edit'), 'moodle-result': ('view',)}
 PAGES = {'assistants', 'assistant-create', 'learning-scenarios'}
 
 

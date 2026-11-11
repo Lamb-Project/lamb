@@ -220,7 +220,6 @@ class FileEvalModule(ActivityModule):
             f"?activity_id={activity['id']}&resource_link_id={ctx.resource_link_id}"
             f"&lang={lang}&token={token}"
         )
-        logger.info(f"Redirecting to grading: {redirect_url}")
 
         return RedirectResponse(url=redirect_url, status_code=303)
 

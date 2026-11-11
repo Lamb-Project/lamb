@@ -6,6 +6,9 @@
 	} from '$lib/services/testService';
 	import { _ } from 'svelte-i18n';
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
+    import { locale } from 'svelte-i18n';
+    import { executionText } from '$lib/utils/aacExecutionText';
+    const evaluationLabels = $derived(executionText($locale));
 
 	/** @type {{ assistantId: number, onLaunchSkill?: (skill: string) => void }} */
 	let { assistantId, onLaunchSkill = () => {} } = $props();
@@ -34,6 +37,7 @@
 	let evalNotes = $state('');
 
 	// Expanded run detail
+    /** @type {string|null} */
 	let expandedRunId = $state(null);
 
 	// --- Delete Scenario Confirmation Modal ---
@@ -42,6 +46,7 @@
 	let scenarioToDelete = $state(null);
 
 	onMount(() => {
+		expandedRunId = new URLSearchParams(window.location.search).get('aacRun');
 		void loadData();
 		// LAMB LEGATUS added, ran or evaluated this assistant's tests: show them.
 		/** @param {Event} event */
@@ -307,6 +312,7 @@
 									{#if evalResult}
 										{@const vb = VERDICT_BADGES[evalResult.verdict] || {}}
 										<span class="px-2 py-0.5 rounded text-xs {vb.color}">{vb.label}</span>
+                                        <span class="text-xs">{evalResult.evaluator === 'legatus' ? evaluationLabels.legatus : evaluationLabels.human}</span>
 									{/if}
 								</div>
 								<div class="flex items-center gap-2">

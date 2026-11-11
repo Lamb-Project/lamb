@@ -22,6 +22,19 @@ logger = get_logger(__name__, component="AAC")
 # Explicit supported shell surface. Unsupported CLI options fail instead of being ignored.
 # key: (minimum positional arguments, maximum, accepted option names)
 COMMAND_CONTRACTS = {
+    'plan.prepare': (0, 0, 'json'),
+    'plan.extend': (0, 0, 'json'),
+    'plan.execute': (0, 0, ''),
+    'plan.status': (0, 0, ''),
+    'plan.finish': (0, 0, 'resource id tab'),
+    'plan.cancel': (0, 0, ''),
+    'plan.reconcile': (0, 0, ''),
+    'plan.allow-calls': (1, 1, ''),
+    'report.save': (0, 0, 'content reviewed json'),
+    'report.get': (1, 1, ''),
+    'change.list': (0, 0, ''),
+    'change.get': (1, 1, ''),
+    'change.restore': (1, 1, ''),
     'document.list': (1, 2, 'course user offset'),
     'document.open': (1, 1, ''),
     'document.read': (1, 1, 'offset find'),
@@ -81,8 +94,9 @@ COMMAND_CONTRACTS = {
     "assistant.list": (0, 0, "limit l offset"), "assistant.list-shared": (0, 0, ""),
     "assistant.get": (1, 1, ""), "assistant.config": (0, 0, ""),
     "assistant.debug": (1, 1, "message m"),
-    "assistant.create": (1, 1, "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor file_reference rubric_id rubric_format vision no_vision image_generation no_image_generation"),
-    "assistant.update": (1, 1, "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor file_reference rubric_id rubric_format vision no_vision image_generation no_image_generation"),
+    "assistant.preview-filters": (1, 1, ""),
+    "assistant.create": (1, 1, "system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor file_reference rubric_id rubric_format vision no_vision image_generation no_image_generation random_filter no_random_filter prompt_filters"),
+    "assistant.update": (1, 1, "name n system_prompt s description d prompt_template rag_top_k rag_collections llm connector prompt_processor rag_processor file_reference rubric_id rubric_format vision no_vision image_generation no_image_generation random_filter no_random_filter prompt_filters"),
     "assistant.publish": (1, 1, ""), "assistant.unpublish": (1, 1, ""),
     "assistant.delete": (1, 1, ""), "assistant.list-published": (0, 0, ""),
     "assistant.chat": (1, 1, "message m bypass b chat_id persist"),
@@ -97,6 +111,9 @@ COMMAND_CONTRACTS = {
     "session.rename": (1, 1, "session s"), "skill.list": (0, 0, ""),
     "skill.load": (1, 1, "assistant a language"), "docs.index": (0, 0, ""),
     "docs.read": (1, 1, "section"), "help": (0, 0, ""),
+    'analytics.analysis-context': (1, 1, 'start_date end_date dimensions limit scenario'),
+    'analytics.reports': (1, 1, ''),
+    'analytics.report': (2, 2, ''),
     "analytics.chats": (1, 1, "page per_page user_id search start_date end_date"),
     "analytics.chat-detail": (2, 2, ""), "analytics.stats": (1, 1, "start_date end_date"),
     "analytics.timeline": (1, 1, "period start_date end_date"),
@@ -138,9 +155,11 @@ def validate_command(key, args, kwargs):
     minimum, maximum, options = COMMAND_CONTRACTS[key]
     if not minimum <= len(args) <= maximum:
         raise ValueError(f"{key} expects {minimum}..{maximum} positional arguments")
-    for positive, negative in [('enable', 'disable'), ('vision', 'no_vision'), ('image_generation', 'no_image_generation')]:
+    for positive, negative in [('enable', 'disable'), ('vision', 'no_vision'), ('image_generation', 'no_image_generation'), ('random_filter', 'no_random_filter')]:
         if positive in kwargs and negative in kwargs:
             raise ValueError(f'Use only one of --{positive} or --{negative.replace("_", "-")}')
+    if 'prompt_filters' in kwargs and ({'random_filter', 'no_random_filter'} & kwargs.keys()):
+        raise ValueError('Use either --prompt-filters or --random-filter/--no-random-filter.')
     if 'timeout' in kwargs:
         import math
         if not math.isfinite(float(kwargs['timeout'])) or float(kwargs['timeout']) < 1:
@@ -364,6 +383,12 @@ class LiteShell:
         key, args, kwargs, help_requested = prepare_command(command_str, self.allowlist)
         if self.allowed_commands is not None and key not in self.allowed_commands:
             raise ValueError('Command is outside your role; ask the appropriate administrator')
+        if key.startswith(('plan.', 'report.', 'change.')) and not help_requested:
+            controller = self.knowledge.get('auto_work')
+            if controller is None:
+                raise ValueError('Task commands require a LEGATUS session')
+            data = await controller.handle(key, args, kwargs)
+            return ShellResult(not (isinstance(data, dict) and data.get('success') is False), data=data)
         if key.startswith('moodle.'):
             if self.moodle is None:
                 raise ValueError('Moodle connector is unavailable in this conversation')
@@ -476,7 +501,7 @@ class CommandContext:
     knowledge: dict = field(default_factory=dict)
 
 
-BOOLEAN_OPTIONS = {'bypass', 'b', 'persist', 'enable', 'disable', 'vision', 'no_vision',
+BOOLEAN_OPTIONS = {'random_filter', 'no_random_filter', 'bypass', 'b', 'persist', 'enable', 'disable', 'vision', 'no_vision',
                    'image_generation', 'no_image_generation', 'shared', 'help', 'h'}
 
 

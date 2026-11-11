@@ -123,6 +123,10 @@ class LtiActivityManager:
         Uses waterfall: email match → lti_user_id match → identity links.
         Returns list of Creator user dicts (may span multiple orgs).
         """
+        from lamb.lti13 import is_scoped
+        if is_scoped(lms_user_id):
+            from lamb.lti13.store import Store
+            return Store(self.db_manager).creators(lms_user_id)
         return self.db_manager.get_creator_users_by_lms_identity(
             lms_user_id=lms_user_id,
             lms_email=lms_email
@@ -131,6 +135,11 @@ class LtiActivityManager:
     def link_identity(self, lms_user_id: str, creator_user_id: int,
                        lms_email: str = None) -> Optional[int]:
         """Store a link between an LMS identity and a Creator user."""
+        from lamb.lti13 import is_scoped
+        if is_scoped(lms_user_id):
+            from lamb.lti13.store import Store
+            Store(self.db_manager).link_creator(lms_user_id, creator_user_id)
+            return creator_user_id
         return self.db_manager.create_lti_identity_link(
             lms_user_id=lms_user_id,
             creator_user_id=creator_user_id,
@@ -293,6 +302,22 @@ class LtiActivityManager:
         owner_email = activity.get('owner_email')
         if not owner_email:
             return False
+
+        from lamb.lti13 import is_scoped
+        if is_scoped(activity.get('resource_link_id')) or is_scoped(lms_user_id):
+            if not is_scoped(lms_user_id):
+                return False
+            from lamb.lti13.store import Store
+            try:
+                store = Store(self.db_manager)
+                resource = store.object(activity['resource_link_id'], 'resource')
+                user = store.object(lms_user_id, 'user')
+                if (resource['registration_id'], resource['deployment_id']) != (user['registration_id'], user['deployment_id']):
+                    return False
+                return any(cu['user_email'] == owner_email and cu['organization_id'] == activity['organization_id']
+                           for cu in store.creators(lms_user_id))
+            except ValueError:
+                return False
 
         # Quick check: direct email match (works for regular password creators)
         if lms_email and lms_email == owner_email:

@@ -11,6 +11,10 @@ def test_detects_announced_work_in_four_languages():
     for text in ('Para preparar la importación necesito las referencias. Voy a continuar con esa comprobación.',
                  'Ahora solo tengo los recursos. Obtendré las referencias de cada PDF.',
                  "I only have the resource ids. I'll now fetch the file references.",
+                 'The plan command was malformed. I will correct the plan and continue with the same audit evidence.',
+                 'I’ll use that scenario and review the full audit across all available activity dates.',
+                 '- I’ll use that scenario and conduct the requested **full audit** across all six areas, using all available activity dates.',
+                 '11 proba erreal egiteko plana prestatuko dut.\n\n- '+('Proba-kasuaren azalpena. '*30)+'\n- Guztira 11 laguntzaile-dei izango dira.',
                  'Ara continuaré amb la comprovació.', 'Erreferentziak lortuko dut.'):
         assert announces_unfinished_work(text), text
 
@@ -18,6 +22,7 @@ def test_detects_announced_work_in_four_languages():
 def test_questions_options_and_finished_replies_are_not_nudged():
     for text in ('¿Voy a continuar con la importación?', 'He creado la base de conocimiento prueba.',
                  'Voy a continuar cuando me digas el nombre. ¿Qué nombre quieres darle?',
+                 'Which dimensions should I analyse?\n- Participation\n- Learning\nI will use all available dates unless you specify a period.',
                  'Puedo seguir así:\n1. Continuar con la importación\n2. Otra cosa: dime', ''):
         assert not announces_unfinished_work(text), text
 

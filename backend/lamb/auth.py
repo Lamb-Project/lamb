@@ -74,10 +74,23 @@ def create_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
         Encoded JWT string.
     """
     to_encode = data.copy()
+    from lamb.lti13.store import session_claims
+    to_encode.update(session_claims(data))
     expire = datetime.now(timezone.utc) + (expires_delta or DEFAULT_TOKEN_EXPIRY)
     to_encode["exp"] = expire
     to_encode["iat"] = datetime.now(timezone.utc)
     return jwt.encode(to_encode, _get_jwt_secret(), algorithm="HS256")
+
+
+# Claims that mark a token as issued for one LTI activity or module page (setup, dashboard,
+# file evaluation, LLM access, transcript notice). Those tokens are signed with the same key
+# as Creator sessions, so every Creator entry point must refuse them explicitly.
+ACTIVITY_TOKEN_CLAIMS = ("scope", "lti_type")
+
+
+def is_creator_session(payload: Optional[dict]) -> bool:
+    """True when a decoded LAMB JWT is a Creator session and not an activity or module token."""
+    return bool(payload) and not any(claim in payload for claim in ACTIVITY_TOKEN_CLAIMS)
 
 
 def decode_token(token: str) -> Optional[dict]:
@@ -103,4 +116,7 @@ def decode_token(token: str) -> Optional[dict]:
         if not isinstance(takeover, dict) or not is_active(str(takeover.get("id", ""))):
             logger.debug("Takeover token no longer active")
             return None
+    from lamb.lti13.store import session_active
+    if not session_active(payload):
+        return None
     return payload

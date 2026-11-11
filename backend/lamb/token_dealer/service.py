@@ -26,6 +26,13 @@ def user_ref(organization_id, lms_user_id):
     return 'lamb-u-' + hashlib.sha256(f'{organization_id}:{lms_user_id}'.encode()).hexdigest()[:16]
 
 
+def desired_state(activity, key, now):
+    """'open' or 'closed': what the proxy should do with this key now."""
+    if key['status'] != 'active' or activity['status'] != 'active':
+        return 'closed'
+    return 'open' if sched.is_open(activity['schedule'], activity['override'], now) else 'closed'
+
+
 class TokenDealerService:
     def __init__(self, store, settings_for, client_for):
         """settings_for(org_id) -> Settings; client_for(org_id) -> ProxyClient."""
@@ -102,10 +109,38 @@ class TokenDealerService:
         w = pool_sizing_warning(a['pool_tokens'], a['slot_tokens'], len(self.store.list_keys(activity_id=activity_id)))
         return [w] if w else []
 
-    def set_override(self, activity_id, override):
+    def set_override(self, activity_id, override, now=None):
         if override not in sched.OVERRIDES:
             raise SettingsError(f'override must be one of {sched.OVERRIDES}')
-        self.store.update_activity(activity_id, override=override)   # the worker applies it within one cycle
+        self.store.update_activity(activity_id, override=override)
+        return self.apply_now(activity_id, now=now)
+
+    def apply_now(self, activity_id, key_ids=None, now=None):
+        """Tell the proxy at once what a teacher's action means for the activity's keys, instead of
+        waiting for the worker's next cycle. A key the proxy refuses is recorded and left to the
+        worker, which retries it. Returns {'opened': n, 'closed': n, 'errors': n}."""
+        out = {'opened': 0, 'closed': 0, 'errors': 0}
+        a = self.store.get_activity(activity_id)
+        if a is None:
+            return out
+        now = now or datetime.now(timezone.utc)
+        client = None
+        for k in self.store.list_keys(activity_id=activity_id):
+            if key_ids is not None and k['id'] not in key_ids:
+                continue
+            want, obj = desired_state(a, k, now), f"key:{k['id']}"
+            state = self.store.get_sync_state(obj)
+            if state and state['applied'] == want:
+                continue
+            try:
+                client = client or self.client_for(a['organization_id'])
+                (client.unblock_key if want == 'open' else client.block_key)(k['proxy_token'])
+                self.store.record_applied(obj, want)
+                out['opened' if want == 'open' else 'closed'] += 1
+            except ProxyError as e:
+                self.store.record_error(obj, want, e)
+                out['errors'] += 1
+        return out
 
     # ── keys ───────────────────────────────────────────────────────────
     def issue_key(self, activity_id, lms_user_id, user_email=None, user_name=None, notice_version=None, now=None):
@@ -159,9 +194,11 @@ class TokenDealerService:
             self.revoke_key(old['id'], 'rotated')
         return self.issue_key(activity_id, lms_user_id, user_email, user_name, notice_version)
 
-    def block_student(self, key_id, reason='instructor'):
-        """Keep the key but refuse it (the worker closes it in the proxy)."""
+    def block_student(self, key_id, reason='instructor', now=None):
+        """Keep the key but refuse it, in the proxy at once."""
         self.store.set_key_status(key_id, 'blocked', reason)
+        return self.apply_now(self.store.get_key(key_id)['activity_id'], key_ids={key_id}, now=now)
 
-    def unblock_student(self, key_id):
+    def unblock_student(self, key_id, now=None):
         self.store.set_key_status(key_id, 'active', None)
+        return self.apply_now(self.store.get_key(key_id)['activity_id'], key_ids={key_id}, now=now)

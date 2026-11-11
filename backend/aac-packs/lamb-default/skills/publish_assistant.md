@@ -30,4 +30,4 @@ Offer “Publish this assistant in LAMB” for execution, and “Guide me throug
 
 After an approved publish/unpublish and verified saved status, run `frontend-manage open assistant ASSISTANT_ID --tab properties`. Explain its published state and available integration details. Opening this view does not configure an external LMS.
 
-Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.
+At completion, expose the verified destination through lamb plan finish --resource TYPE --id ID --tab TAB, or the saved report. The Show me button navigates only when clicked and respects unsaved edits. Use frontend-manage open only when the user explicitly asks to open a view now; wait for status=opened before claiming it opened. A failed navigation never justifies repeating a successful write.

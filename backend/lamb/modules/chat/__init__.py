@@ -112,7 +112,6 @@ class ChatModule(ActivityModule):
         )
         
         redirect_url = f"{public_base}/m/chat/dashboard?resource_link_id={ctx.resource_link_id}&token={dashboard_token}"
-        logger.info(f"Redirecting to dashboard: {redirect_url}")
         
         return RedirectResponse(
             url=redirect_url,

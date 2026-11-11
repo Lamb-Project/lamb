@@ -90,7 +90,7 @@ def test_launches_go_to_the_module_pages(env):
 
 def test_student_takes_a_key_once_after_the_notice(env):
     a = configure(env, pool_tokens='50000', slot_tokens='2000')
-    t = lti.make_token({'type': 'student', 'activity_id': a['id'], 'lms_user_id': 'stu-1', 'email': 's@x.edu', 'name': 'Ana'})
+    t = lti.make_token({'type': 'student', 'activity_id': a['id'], 'lms_user_id': 'stu-1', 'lms_email': 's@x.edu', 'name': 'Ana'})
     assert 'Get my key' in env.client.get(PREFIX + '/student', params={'token': t}).text
     assert 'accept the notice' in env.client.post(PREFIX + '/issue', data={'token': t}).text
     r = env.client.post(PREFIX + '/issue', data={'token': t, 'accept': lti.NOTICE_VERSION})
@@ -110,6 +110,7 @@ def test_instructor_pages_need_the_manage_token_and_change_every_key(env):
     assert 'Change limits and timetable' in env.client.get(PREFIX + '/manage', params={'token': mt}).text
     env.client.post(PREFIX + '/student-action', data={'token': mt, 'key_id': key['id'], 'action': 'block'})
     assert env.store.get_key(key['id'])['status'] == 'blocked'
+    assert ('block_key', (key['proxy_token'],), {}) in env.proxy.calls      # at once, not at the worker's next cycle
     r = env.client.post(PREFIX + '/configure', follow_redirects=False, data={
         'token': mt, 'models': 'course-model', 'mode': 'weekly', 'days': ['0'], 'start': '15:00', 'end': '17:00',
         'timezone': 'Europe/Madrid', 'pool_tokens': '60000', 'slot_tokens': '3000'})

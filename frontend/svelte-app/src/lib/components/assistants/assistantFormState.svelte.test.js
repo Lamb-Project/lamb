@@ -47,6 +47,18 @@ import { createAssistantFormState, handleFieldChange, resetFormFieldsToDefaults,
 const getAvailableModels = () => ['gpt-4', 'gpt-3.5-turbo'];
 
 describe('createAssistantFormState', () => {
+	test('loads independent filter definitions, preserves them across mode changes and resets new forms', () => {
+		const form = createAssistantFormState();
+		const definition = {version: 1, items: [{id: 'stable', type: 'random', enabled: true}]};
+		populateFormFields(form, {name: 'Test', metadata: {prompt_filters: definition}}, getAvailableModels);
+		form.isAdvancedMode = true;
+		form.isAdvancedMode = false;
+		expect(form.promptFilters).toEqual(definition);
+		form.promptFilters.items[0].enabled = false;
+		expect(definition.items[0].enabled).toBe(true);
+		resetFormFieldsToDefaults(form, getAvailableModels);
+		expect(form.promptFilters).toBeNull();
+	});
 	test('returns an object with all expected properties', () => {
 		const form = createAssistantFormState();
 

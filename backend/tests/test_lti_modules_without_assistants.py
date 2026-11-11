@@ -93,3 +93,20 @@ def test_same_named_organizations_are_told_apart_by_slug(env, monkeypatch):
     monkeypatch.setattr(lti_router.db_manager, 'get_organization_by_id', orgs.get, raising=False)
     info = env.client.get('/lamb/v1/lti/setup/info', params={'token': 't'}).json()
     assert info['needs_org_selection'] and info['org_names'] == {'3': 'UPC (upc-a)', '4': 'UPC (upc-b)'}
+
+
+def test_setup_extras_cannot_override_verified_identity_or_resource(env, monkeypatch):
+    mod = get_module('llm_access')
+    received = {}
+    monkeypatch.setattr(mod, 'on_activity_configured', lambda aid, data: received.update(data))
+    monkeypatch.setattr(mod, 'configured_redirect', lambda *args: '/llm-access')
+    r = env.client.post('/lamb/v1/lti/configure', json={
+        'token':'t', 'organization_id':3, 'activity_type':'llm_access',
+        'resource_link_id':'another-registration-resource', 'configured_by_email':'other@example.edu',
+        'lms_email':'other@example.edu', 'activity_name':'untrusted-name', 'pool_tokens':'5000'})
+    assert r.status_code == 200
+    assert received['resource_link_id'] == JWT['lti_resource_link_id']
+    assert received['configured_by_email'] == CU['user_email']
+    assert received['lms_email'] == JWT['lti_lms_email']
+    assert received['activity_name'] == JWT['lti_context_title']
+    assert received['pool_tokens'] == '5000'

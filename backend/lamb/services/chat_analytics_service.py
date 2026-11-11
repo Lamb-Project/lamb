@@ -36,6 +36,34 @@ class ChatAnalyticsService:
     def __init__(self):
         self.owi_db = OwiDatabaseManager()
         self.lamb_db = LambDatabaseManager()
+
+    def analysis_inventory(self, assistant_id, start_date=None, end_date=None, limit=20):
+        """Bounded two-source sample with uncapped counts and explicit source failures."""
+        from contextlib import closing
+        candidates, source_status, totals = [], {}, {}
+        for source, db, table, predicate, identifier in (
+            ('owi', self.owi_db, 'chat', "EXISTS (SELECT 1 FROM json_each(c.chat, '$.models') AS m WHERE m.value=?)", f'lamb_assistant.{assistant_id}'),
+            ('lamb_internal', self.lamb_db, f'{self.lamb_db.table_prefix}lamb_chats', 'c.assistant_id=?', assistant_id)):
+            params = [identifier]
+            for name, bound, operator in [('created_at', start_date, '>='), ('created_at', end_date, '<=')]:
+                if bound:
+                    predicate += f' AND c.{name}{operator}?'
+                    params.append(bound.timestamp())
+            try:
+                with closing(db.get_connection()) as connection:
+                    connection.execute('BEGIN')
+                    total = connection.execute(f'SELECT COUNT(*) FROM {table} c WHERE {predicate}', params).fetchone()[0]
+                    rows = connection.execute(f'SELECT c.id, c.created_at FROM {table} c WHERE {predicate} ORDER BY c.created_at DESC, c.id DESC LIMIT ?', [*params, limit]).fetchall()
+                totals[source] = total
+                source_status[source] = 'available'
+                candidates.extend({'id': row[0], 'created_at': datetime.utcfromtimestamp(row[1]).isoformat()+'Z', 'source': source} for row in rows)
+            except Exception:
+                source_status[source] = 'unavailable'
+        if not totals:
+            return {'error': 'All activity sources are unavailable'}
+        candidates.sort(key=lambda c: (c['created_at'], c['id']), reverse=True)
+        return {'chats': candidates[:limit], 'total': sum(totals.values()), 'total_by_source': totals,
+                'source_status': source_status, 'sources_complete': all(v == 'available' for v in source_status.values())}
     
     # Backward compatibility alias
     @property
@@ -802,4 +830,3 @@ class ChatAnalyticsService:
     ) -> Optional[Any]:
         """Execute a query using the OWI database manager"""
         return self.db.execute_query(query, params, fetch_one=fetch_one)
-

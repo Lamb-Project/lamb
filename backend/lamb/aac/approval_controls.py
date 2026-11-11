@@ -15,7 +15,7 @@ def action_id(action):
     # New proposals carry a nonce. The content digest also invalidates a card if
     # its command/review changes. Older saved proposals remain usable.
     return hashlib.sha256(json.dumps([action.get('nonce'), action.get('tool_call_id'),
-        action['command'], action.get('moodle_review')], sort_keys=True).encode()).hexdigest()
+        action['command'], action.get('moodle_review'), action.get('plan'), action.get('call_limit'), action.get('batch_snapshot'), action.get('change_review')], sort_keys=True).encode()).hexdigest()
 
 
 def card(action, state=None):

@@ -4,6 +4,9 @@
     "assistant.list",
     "assistant.list-published",
     "assistant.list-shared",
+    "change.get",
+    "change.list",
+    "change.restore",
     "docs.index",
     "docs.read",
     "document.list",
@@ -23,6 +26,16 @@
     "notebook.list",
     "notebook.read",
     "notebook.write",
+    "plan.allow-calls",
+    "plan.cancel",
+    "plan.execute",
+    "plan.extend",
+    "plan.finish",
+    "plan.prepare",
+    "plan.reconcile",
+    "plan.status",
+    "report.get",
+    "report.save",
     "result.read",
     "rubric.list",
     "rubric.list-public",
@@ -39,7 +52,8 @@
     "create-assistant": [
       "assistant.create",
       "assistant.debug",
-      "assistant.get"
+      "assistant.get",
+      "assistant.preview-filters"
     ],
     "publish-assistant": [
       "assistant.debug",
@@ -51,17 +65,20 @@
       "assistant.debug",
       "assistant.delete",
       "assistant.get",
-      "assistant.update"
+      "assistant.update",
+      "assistant.preview-filters"
     ],
     "explain-assistant": [
       "assistant.debug",
       "assistant.export",
-      "assistant.get"
+      "assistant.get",
+      "assistant.preview-filters"
     ],
     "chat-with-assistant": [
       "assistant.chat",
       "assistant.debug",
-      "assistant.get"
+      "assistant.get",
+      "assistant.preview-filters"
     ],
     "test-and-evaluate": [
       "assistant.chat",
@@ -79,7 +96,8 @@
       "test.update",
       "test.cases",
       "test.case-detail",
-      "test.delete-case"
+      "test.delete-case",
+      "assistant.preview-filters"
     ],
     "manage-knowledge-base": [
       "job.cancel",
@@ -112,7 +130,12 @@
       "analytics.stats",
       "analytics.timeline",
       "assistant.debug",
-      "assistant.get"
+      "assistant.get",
+      "analytics.analysis-context",
+      "analytics.reports",
+      "analytics.report",
+      "learning-scenario.list",
+      "learning-scenario.get"
     ],
     "manage-templates": [
       "template.create",
@@ -591,7 +614,11 @@
     "moodle.read.verbatim": "moodle-course-documents",
     "moodle.chart.submissions": "moodle-triage",
     "moodle.chart.list": "moodle-triage",
-    "moodle.chart.read": "moodle-triage"
+    "moodle.chart.read": "moodle-triage",
+    "assistant.preview-filters": "explain-assistant",
+    "analytics.analysis-context": "inspect-activity",
+    "analytics.reports": "inspect-activity",
+    "analytics.report": "inspect-activity"
   },
   "USER_ROUTING": {
     "negative": "\\b(don't|do not|no|not|never|another|different|otro|otra|altre|altra)\\b",
@@ -624,8 +651,7 @@
       },
       {
         "skill": "inspect-activity",
-        "pattern": "\\b(activity|analytics|statistics|timeline|actividad|activitat|estadisticas|estadistiques)\\b",
-        "requires_context": true
+        "pattern": "\\b(activity|analytics|statistics|timeline|actividad|activitat|estadisticas|estadistiques|audit|auditoria|misconceptions?|sentiment|jarduera|analisi)\\b|\\b(analy[sz]e|analyse|analiza|analitza)\\b.*\\b(conversations?|chats?|students?|learners?|conversaciones|converses|alumn[oa]s?|estudiants?)\\b"
       },
       {
         "skill": "manage-rubric",
@@ -681,7 +707,7 @@
       },
       {
         "skill": "about-lamb",
-        "pattern": "\\b(how should i design|when should i use|single file or|should i use a rubric|como disenar|cuando usar|fitxer o|com dissenyar|quan conv[e\u00e9]|quin tipus de)\\b",
+        "pattern": "\\b(how should i design|when should i use|single file or|should i use a rubric|como disenar|cuando usar|fitxer o|com dissenyar|quan conv[eé]|quin tipus de)\\b",
         "priority": 1
       },
       {

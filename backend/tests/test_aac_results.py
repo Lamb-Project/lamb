@@ -262,3 +262,21 @@ async def test_result_endpoint_owner_denial_and_bad_pointer(store):
         with pytest.raises(HTTPException) as denied:
             await read_tool_result(identity,path='/data',offset=0,auth=auth)
         assert denied.value.status_code==404
+
+
+@pytest.mark.parametrize('command', ['analytics.analysis-context', 'analytics.reports', 'analytics.report', 'analytics.chat-detail'])
+def test_analysis_pages_recheck_full_access_and_reject_aggregate_roles(store, command):
+    from lamb.aac.result_authority import authority
+    from lamb.aac.result_reader import read_result
+    payload = {'data': {'assistant_id': 42, 'conversations': [{'content': 'private evidence' * 1000}]}}
+    proof = authority(command, ['42'], payload)
+    assert proof == {'version': 1, 'resources': [{'kind': 'analysis', 'id': 42}]}
+    identity = store.save(payload, origin={'command': command, 'authority': proof})['result_id']
+    auth = N(user={'id':1}, organization={'id':1,'config':{}}, is_system_admin=False,
+             is_org_admin=False, can_access_assistant=lambda _: 'owner')
+    with patch('lamb.aac.brief.role_axes',return_value={'layers':['creator']}):
+        assert read_result(auth, identity, '/data/conversations', 0)
+        for access in ('shared', 'org_admin', 'none'):
+            auth.can_access_assistant = lambda _, access=access: access
+            with pytest.raises(PermissionError, match='full analytics access'):
+                read_result(auth, identity, '/data/conversations', 0)

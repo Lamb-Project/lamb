@@ -471,6 +471,9 @@ cd /opt/lamb && docker compose -f docker-compose.next.yaml -f docker-compose.nex
 cd /opt/lamb && docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml restart lamb
 ```
 
+### Back up
+All persistent data is in the named volumes (`lamb-data`, `lamb-static`, `openwebui-data`, `kb-data`, `kb-static`, `library-manager-data`). `lamb-data` holds the LAMB database and the students' file-evaluation submissions (`/data/lamb/uploads/file-eval/`). Stop the stack and archive the volumes as a whole; see "Docker volumes" in `deployLocal.md`.
+
 ---
 
 ## Phase 8: Tear Down

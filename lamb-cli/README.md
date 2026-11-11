@@ -54,6 +54,34 @@ The JSON summary includes a private `result_id`, a Moodle evidence-view path and
 
 Limits per task: 100 selected courses, 160 requests, 90 seconds checked before new requests, 200 retained posts and 2 MiB of retained post source. A request already in flight can finish after the time budget; requests have a 15-second I/O timeout. Model-facing summaries/pages are capped at 6,000 UTF-8 bytes. Stored results expire after 24 hours, with at most 16 per creator; reconnecting or losing access invalidates retrieval. Full source stays in private storage, not in static files or the immediate model response.
 
+## LEGATUS Auto mode (0.9)
+
+New conversations start in Auto. LEGATUS resolves unique accessible names such as
+`prova carles` and `prova_carles`, prepares one concrete plan for resource changes,
+and continues its approved steps through analysis and reporting. Exactly ten
+target-assistant calls per task need no cost approval; an eleventh needs an approved
+larger allowance. Saved tests, runs, evaluations and reports are resource changes.
+Operational logs and execution checkpoints do not require approval.
+
+```sh
+lamb aac mode SESSION auto       # or guided; does not approve pending work
+lamb aac new-task SESSION        # explicit reset for a different task
+lamb aac report SESSION REPORT   # saved report, no model call
+lamb aac changes SESSION         # retained change history
+```
+
+The conversation control preserves its mode and task allowance across reloads.
+LEGATUS evaluations carry `evaluator=legatus`; they are not human confirmations.
+Use `lamb test evaluate ... --evaluator legatus` when submitting an agent evaluation
+through the CLI. The normal CLI default remains a user evaluation.
+
+In the browser, **Show me** opens the saved result only when clicked. Reports and
+resource destinations are rechecked against current access, and unsaved edits block
+navigation. Assistant edits retain previous fields; restoration requires a new
+approval and refuses to overwrite an intervening edit. Interrupted writes remain
+uncertain until their outcome can be read back. Older sessions keep Guided mode
+until explicitly switched, while new sessions use pack 1.12.0.
+
 ## Private AAC result pages
 
 When an AAC tool response is too large, its model view contains a partial preview and a private result reference. Read it through either CLI or LiteShell:
@@ -371,3 +399,18 @@ lamb moodle folder status BATCH_ID --session SESSION
 A partial result lists completed, processing, failed, unknown and not-started files. `lamb moodle folder finish BATCH_ID --session SESSION --confirm BATCH_ID` explicitly continues the approved set after fresh checks. Completed files are not uploaded again; uncertain uploads require inspection. Keep the session and batch IDs for recovery. Running a new `import folder` creates a new batch, not an idempotent retry. Use individual returned import IDs with `import check`/`refresh` for later source updates; no automatic folder synchronization runs.
 
 Individual nested-file inspection is also available through `lamb moodle file list CONTEXT_ID --component mod_folder --filepath '/Unit 1/' --itemid 0 --session SESSION`. Course/module context IDs come from `lamb moodle course contents COURSE_ID --session SESSION`.
+
+
+### Random system-prompt values (LAMB 0.9)
+
+Use `--random-filter` on `lamb assistant create` or `update`, with markers such as `{{RANDOM:25-70}}` in the system prompt and `--prompt-processor simple_augment`. The common completion workflow initializes the system prompt once per conversation for every processor, including assistants without filters. Follow-ups and forks keep the initialized prompt; edits affect new conversations.
+
+```sh
+lamb assistant update 42 --system-prompt 'Client age: {{RANDOM:25-70}}' --random-filter
+lamb assistant preview-filters 42
+lamb chat 42 --message 'Hello'
+lamb chat 42 --chat-id RETURNED_CHAT_ID --message 'What is your age?'
+lamb assistant update 42 --no-random-filter
+```
+
+Preview draws a sample without calling a model or saving conversation values. Normal `lamb chat` persists by default and preserves its initialized prompt. `--no-persist` and stateless `--bypass` now work as independent fresh calls; they do not retain a scenario across requests. Saved evaluations also initialize temporary context without a chat ID. Changes apply to new conversations. The full ordered definition is available as `--prompt-filters '{"version":1,"items":[...]}'`; use `null` to clear it. Each item needs `id`, `type`, `enabled`, `target`, `run_on`, `options`; the supported enabled type is `random`, target `system_prompt`, run_on `conversation_start`, options `{}`. `lamb assistant get` displays filters and `lamb assistant config` reports supported types.

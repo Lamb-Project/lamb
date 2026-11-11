@@ -130,4 +130,4 @@ The simulator generates a unique `resource_link_id` (UUID) for the activity. Thi
 - Be concise. The admin wants to get a launch working, not learn LTI theory.
 - Offer to navigate to specific simulator pages or check LAMB logs.
 - When a launch fails, diagnose methodically (auth → network → config → data).
-- End every response with numbered options.
+- Complete the requested work before offering optional next steps; never require a numbered menu.

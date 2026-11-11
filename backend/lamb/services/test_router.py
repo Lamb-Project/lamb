@@ -150,14 +150,27 @@ async def run_tests(
         scenario = svc.get_scenario(scenario_id)
         if not scenario or scenario["assistant_id"] != assistant_id:
             raise HTTPException(status_code=404, detail="Scenario not found")
-        result = await svc.run_scenario(
-            assistant_id=assistant_id,
-            scenario_id=scenario_id,
-            messages=scenario["messages"],
-            user_email=auth.user["email"],
-            debug_bypass=debug_bypass,
-        )
-        return result
+        request_id = body.get('request_id')
+        async def execute():
+            return await svc.run_scenario(assistant_id=assistant_id, scenario_id=scenario_id,
+                messages=scenario['messages'], user_email=auth.user['email'], debug_bypass=debug_bypass,
+                **({'request_id': request_id} if request_id else {}))
+        if request_id:
+            import uuid
+            from lamb.aac.turn_lock import TurnLock
+            try:
+                request_id = str(uuid.UUID(request_id))
+            except (ValueError, TypeError, AttributeError):
+                raise HTTPException(400, 'request_id must be a UUID')
+            # Requests with the same key never dispatch two completions concurrently.
+            with TurnLock('test-run:' + request_id, namespace='test'):
+                existing = svc.get_run(request_id)
+                if existing:
+                    if existing['assistant_id'] != assistant_id or existing['scenario_id'] != scenario_id:
+                        raise HTTPException(409, 'Request identifier is already used')
+                    return existing
+                return await execute()
+        return await execute()
     else:
         results = await svc.run_all_scenarios(assistant_id, auth.user["email"], debug_bypass=debug_bypass)
         return {"runs": results, "count": len(results)}
@@ -209,6 +222,8 @@ async def evaluate_run(
     body = await request.json()
 
     verdict = body.get("verdict", "").strip().lower()
+    if body.get('evaluator', 'user') not in {'user', 'legatus'}:
+        raise HTTPException(status_code=400, detail='Evaluator must be user or legatus')
     if verdict not in ("good", "bad", "mixed"):
         raise HTTPException(status_code=400, detail="Verdict must be 'good', 'bad', or 'mixed'")
 
@@ -219,7 +234,7 @@ async def evaluate_run(
 
     result = svc.create_evaluation(
         test_run_id=run_id,
-        evaluator="user",
+        evaluator="legatus" if body.get('evaluator') == 'legatus' else "user",
         verdict=verdict,
         notes=body.get("notes", ""),
         dimensions=body.get("dimensions"),

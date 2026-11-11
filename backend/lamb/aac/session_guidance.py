@@ -1,6 +1,6 @@
 """Explicit instruction compatibility, independent of deploy/build timestamps."""
 # Bump only for a deliberate instruction-policy change, not each deployment.
-POLICY_VERSION = 4
+POLICY_VERSION = 5
 
 
 def refresh_guidance(agent, state, session, skills_dir):
@@ -47,6 +47,11 @@ def browser_session(session):
     result.pop('tool_audit', None)
     from lamb.aac.approval_controls import card
     result['approval'] = card(result.pop('pending_action', None), state)
+    from lamb.aac.auto_work import AutoWork
+    from types import SimpleNamespace
+    import copy
+    controller = AutoWork(SimpleNamespace(skill_state=copy.deepcopy(state)))
+    result['execution'] = controller.public()
     return result
 
 

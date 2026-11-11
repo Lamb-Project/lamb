@@ -16,6 +16,7 @@ Endpoint: POST /lamb/v1/lti/launch
 """
 
 from fastapi import APIRouter, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from lamb import auth as lamb_auth
@@ -26,10 +27,15 @@ from lamb.modules import get_all_modules, get_module
 import os
 from datetime import timedelta
 from lamb.modules.base import LTIContext
+from lamb.lti13 import is_scoped
+from lamb.lti13.store import Store
+from lamb.lti13.protocol import browser_response, validate_launch
+from lamb.lti13.router import router as lti13_router
 
 logger = get_logger(__name__, component="LTI_UNIFIED")
 
 router = APIRouter()
+router.include_router(lti13_router)
 manager = LtiActivityManager()
 db_manager = LambDatabaseManager()
 
@@ -109,7 +115,7 @@ async def lti_launch(request: Request):
     Main unified LTI launch endpoint.
 
     Decision tree:
-    1. Validate OAuth signature
+    1. Validate LTI 1.1 OAuth or the bound LTI 1.3 OIDC transaction
     2. Is there a configured activity for this resource_link_id?
        YES + instructor -> module.on_instructor_launch() (dashboard)
        YES + student    -> module.on_student_launch() (direct launch)
@@ -120,43 +126,77 @@ async def lti_launch(request: Request):
         form_data = await request.form()
         post_data = dict(form_data)
 
-        consumer_key = post_data.get("oauth_consumer_key")
-        expected_key, _ = manager.get_lti_credentials()
-        if not expected_key:
-            logger.error("No LTI credentials configured")
-            raise HTTPException(status_code=500, detail="LTI not configured")
-        if consumer_key != expected_key:
-            logger.error(f"Consumer key mismatch: got '{consumer_key}', expected '{expected_key}'")
-            raise HTTPException(status_code=401, detail="Invalid consumer key")
+        if any(len(form_data.getlist(key)) != 1 for key in form_data):
+            raise HTTPException(400, "Duplicate launch parameter")
+        is_lti13 = any(key in post_data for key in ("id_token", "state", "browser_proof"))
+        if is_lti13:
+            if any(key.startswith("oauth_") for key in post_data):
+                raise HTTPException(400, "Mixed LTI launch protocols")
+            try:
+                if "browser_proof" not in post_data:
+                    return browser_response(post_data.get("id_token"), post_data.get("state"))
+                verified = await run_in_threadpool(validate_launch, post_data)
+                ctx = LTIContext(**verified)
+            except ValueError as exc:
+                raise HTTPException(401, str(exc)) from exc
+            resource_link_id, lms_user_id = ctx.resource_link_id, ctx.lms_user_id
+            lms_email, username, display_name = ctx.lms_email, ctx.username, ctx.display_name
+            roles, context_id, context_title = ctx.roles, ctx.context_id, ctx.context_title
+            lis_result_sourcedid, lis_outcome_service_url = None, ""
+            Store().save_grade_target(resource_link_id, lms_user_id,
+                manager.generate_student_email(username, resource_link_id), verified['grade_endpoint'])
+        else:
+            consumer_key = post_data.get("oauth_consumer_key")
+            expected_key, _ = manager.get_lti_credentials()
+            if not expected_key:
+                logger.error("No LTI credentials configured")
+                raise HTTPException(status_code=500, detail="LTI not configured")
+            if consumer_key != expected_key:
+                logger.error(f"Consumer key mismatch: got '{consumer_key}', expected '{expected_key}'")
+                raise HTTPException(status_code=401, detail="Invalid consumer key")
 
-        # Extract and log lis_outcome_service_url for grade passback
-        lis_outcome_service_url = post_data.get("lis_outcome_service_url", "")
-        if lis_outcome_service_url:
-            logger.info(f"LTI Outcome Service URL received: {lis_outcome_service_url[:50]}...")
+            # Extract and log lis_outcome_service_url for grade passback
+            lis_outcome_service_url = post_data.get("lis_outcome_service_url", "")
+            if lis_outcome_service_url:
+                logger.info(f"LTI Outcome Service URL received: {lis_outcome_service_url[:50]}...")
 
-        base_url = manager.build_base_url(request)
-        if not manager.validate_oauth_signature(post_data, "POST", base_url):
-            raise HTTPException(status_code=401, detail="Invalid OAuth signature")
+            base_url = manager.build_base_url(request)
+            if not manager.validate_oauth_signature(post_data, "POST", base_url):
+                raise HTTPException(status_code=401, detail="Invalid OAuth signature")
 
-        resource_link_id = post_data.get("resource_link_id")
-        if not resource_link_id:
-            raise HTTPException(status_code=400, detail="Missing resource_link_id")
+            resource_link_id = post_data.get("resource_link_id")
+            if not resource_link_id:
+                raise HTTPException(status_code=400, detail="Missing resource_link_id")
 
-        roles = post_data.get("roles", "")
-        lms_user_id = post_data.get("user_id", "")
-        lms_email = post_data.get("lis_person_contact_email_primary", "")
-        username = post_data.get("ext_user_username", "") or lms_user_id
-        display_name = (post_data.get("lis_person_name_full")
-                        or post_data.get("ext_user_username")
-                        or lms_user_id or "LTI User")
-        context_id = post_data.get("context_id", "")
-        context_title = post_data.get("context_title", "")
-        _raw_sourced = (post_data.get("lis_result_sourcedid") or "").strip()
-        lis_result_sourcedid = _raw_sourced or None
+            roles = post_data.get("roles", "")
+            lms_user_id = post_data.get("user_id", "")
+            lms_email = post_data.get("lis_person_contact_email_primary", "")
+            username = post_data.get("ext_user_username", "") or lms_user_id
+            display_name = (post_data.get("lis_person_name_full")
+                            or post_data.get("ext_user_username")
+                            or lms_user_id or "LTI User")
+            context_id = post_data.get("context_id", "")
+            context_title = post_data.get("context_title", "")
+            _raw_sourced = (post_data.get("lis_result_sourcedid") or "").strip()
+            lis_result_sourcedid = _raw_sourced or None
+
+            if any(is_scoped(v) for v in (resource_link_id, lms_user_id, context_id, username)):
+                raise HTTPException(400, "Reserved LTI identifier")
+            ctx = LTIContext(
+                resource_link_id=resource_link_id, lms_user_id=lms_user_id, lms_email=lms_email,
+                username=username, display_name=display_name, roles=roles,
+                is_instructor=manager.is_instructor(roles), context_id=context_id,
+                context_title=context_title, lis_result_sourcedid=lis_result_sourcedid)
 
         logger.info(f"LTI launch: resource_link={resource_link_id}, user={username}, roles={roles}")
 
         activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
+
+        if activity and is_lti13:
+            try:
+                Store().assert_org(resource_link_id, activity['organization_id'])
+            except ValueError as exc:
+                raise HTTPException(403, str(exc)) from exc
 
         # Persist lis_outcome_service_url if we have it and activity exists
         if activity and lis_outcome_service_url:
@@ -171,42 +211,13 @@ async def lti_launch(request: Request):
         if activity and activity['status'] == 'active':
             public_base = manager.get_public_base_url(request)
 
-            # -- CONFIGURED: Instructor -> module dispatch --
-            if manager.is_instructor(roles):
-                logger.info(f"Instructor at configured activity {resource_link_id} -> module.on_instructor_launch")
-                ctx = LTIContext(
-                    resource_link_id=resource_link_id,
-                    lms_user_id=lms_user_id,
-                    lms_email=lms_email,
-                    username=username,
-                    display_name=display_name,
-                    roles=roles,
-                    is_instructor=True,
-                    context_id=context_id,
-                    context_title=context_title,
-                )
-                module = _get_activity_module(activity)
-                return module.on_instructor_launch(ctx)
-
-            # ── CONFIGURED: Student -> module dispatch ──
-            ctx = LTIContext(
-                resource_link_id=resource_link_id,
-                lms_user_id=lms_user_id,
-                lms_email=lms_email,
-                username=username,
-                display_name=display_name,
-                roles=roles,
-                is_instructor=False,
-                context_id=context_id,
-                context_title=context_title,
-                lis_result_sourcedid=lis_result_sourcedid,
-            )
             module = _get_activity_module(activity)
-            logger.info(f"Student launch -> module {activity.get('activity_type', 'chat')}")
+            if ctx.is_instructor:
+                return module.on_instructor_launch(ctx)
             return module.on_student_launch(ctx)
 
         # -- NOT CONFIGURED --
-        if not manager.is_instructor(roles):
+        if not ctx.is_instructor:
             logger.info(f"Student arrived at unconfigured activity {resource_link_id}")
             return templates.TemplateResponse("lti_waiting.html", {
                 "request": request,
@@ -217,7 +228,7 @@ async def lti_launch(request: Request):
         logger.info(f"Instructor setup flow for {resource_link_id}")
         creator_users = manager.identify_instructor(lms_user_id=lms_user_id, lms_email=lms_email)
 
-        if not creator_users:
+        if not creator_users and not is_lti13:
             logger.info(f"Instructor {lms_user_id} has no Creator account - showing contact-admin page")
             return templates.TemplateResponse("lti_contact_admin.html", {"request": request})
 
@@ -235,10 +246,8 @@ async def lti_launch(request: Request):
         )
 
         public_base = manager.get_public_base_url(request)
-        redirect_url = f"{public_base}/m/chat/setup?token={setup_token}"
-        logger.info(f"Redirecting instructor to setup page: {redirect_url}")
-        logger.info(f"  Token length: {len(setup_token)}")
-        logger.info(f"  Public base URL: {public_base}")
+        page = "/m/chat/setup" if creator_users else "/lamb/v1/lti/link-account"
+        redirect_url = f"{public_base}{page}?token={setup_token}"
         
         return RedirectResponse(
             url=redirect_url,
@@ -273,10 +282,12 @@ async def lti_setup_info(request: Request, token: str = ""):
     if data.get("lti_type") == "setup":
         # Re-fetch creator users from DB using IDs stored in JWT
         creator_user_ids = data.get("lti_creator_user_ids", [])
+        if is_scoped(data.get("lti_lms_user_id")):
+            creator_user_ids = [cu['id'] for cu in manager.identify_instructor(data['lti_lms_user_id'])]
         creator_users = []
         for uid in creator_user_ids:
             cu = db_manager.get_creator_user_by_id(uid)
-            if cu:
+            if cu and cu.get('enabled', True):
                 creator_users.append({
                     "id": cu['id'],
                     "organization_id": cu['organization_id'],
@@ -363,6 +374,11 @@ async def lti_configure_activity(request: Request):
             return JSONResponse({"detail": "Session expired"}, status_code=403)
 
         organization_id = int(payload.get("organization_id", 0))
+        if is_scoped(data.get("lti_resource_link_id")):
+            try:
+                Store().assert_org(data["lti_resource_link_id"], organization_id)
+            except ValueError as exc:
+                raise HTTPException(403, str(exc)) from exc
         assistant_ids_raw = payload.get("assistant_ids", [])
         assistant_ids = [int(x) for x in assistant_ids_raw if x]
         activity_type = payload.get("activity_type", "chat")
@@ -413,10 +429,12 @@ async def lti_configure_activity(request: Request):
 
         # Re-fetch creator user from JWT (never trust form data for identity)
         creator_user_ids = data.get("lti_creator_user_ids", [])
+        if is_scoped(data.get("lti_lms_user_id")):
+            creator_user_ids = [cu['id'] for cu in manager.identify_instructor(data['lti_lms_user_id'])]
         creator_user = None
         for uid in creator_user_ids:
             cu = db_manager.get_creator_user_by_id(uid)
-            if cu and cu.get('organization_id') == organization_id:
+            if cu and cu.get('enabled', True) and cu.get('organization_id') == organization_id:
                 creator_user = {
                     "id": cu['id'],
                     "organization_id": cu['organization_id'],
@@ -451,8 +469,15 @@ async def lti_configure_activity(request: Request):
         # Check if activity already exists (reconfiguration case)
         existing_activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
         
-        reserved = {"token", "organization_id", "assistant_ids", "activity_type", "chat_visibility_enabled"}
+        reserved = {"token", "organization_id", "assistant_ids", "activity_type",
+                    "chat_visibility_enabled", "resource_link_id", "configured_by_email",
+                    "lms_email", "activity_name"}
         extras = {k: v for k, v in payload.items() if k not in reserved}
+
+        if existing_activity and is_scoped(resource_link_id):
+            if existing_activity['organization_id'] != organization_id or not manager.determine_is_owner(
+                    existing_activity, data.get('lti_lms_user_id', '')):
+                raise HTTPException(403, 'Only the activity owner can reconfigure this activity')
 
         if existing_activity:
             # Reconfigure existing activity
@@ -596,11 +621,16 @@ async def lti_link_account_submit(request: Request):
 
         lms_user_id = data.get("lti_lms_user_id", "")
         lms_email = data.get("lti_lms_email", "")
-        manager.link_identity(
-            lms_user_id=lms_user_id,
-            creator_user_id=creator_user["id"],
-            lms_email=lms_email
-        )
+        try:
+            manager.link_identity(
+                lms_user_id=lms_user_id,
+                creator_user_id=creator_user["id"],
+                lms_email=lms_email
+            )
+        except ValueError as exc:
+            return templates.TemplateResponse("lti_link_account.html", {
+                "request": request, "token": token, "error": str(exc),
+            }, status_code=403)
         logger.info(f"Linked LMS user {lms_user_id} to Creator user {creator_user['user_email']}")
 
         new_token = _create_setup_jwt(

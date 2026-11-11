@@ -49,6 +49,16 @@ describe('validateSubmission', () => {
 });
 
 describe('buildAssistantPayload', () => {
+	test('preserves ordered filters and IDs when saving from basic mode', () => {
+		const promptFilters = {version: 1, items: [
+			{id: 'second', type: 'future', enabled: false, options: {preserve: true}},
+			{id: 'first', type: 'random', enabled: true, target: 'system_prompt', run_on: 'conversation_start', options: {}}
+		]};
+		const payload = buildAssistantPayload({name: 'Renamed', selectedRagProcessor: 'no_rag', isAdvancedMode: false,
+			promptFilters, system_prompt: '{{RANDOM:1-2}}', selectedKnowledgeBases: []});
+		expect(JSON.parse(payload.metadata).prompt_filters).toEqual(promptFilters);
+		expect(payload.system_prompt).toBe('{{RANDOM:1-2}}');
+	});
 	test('builds payload with metadata', () => {
 		const form = {
 			name: ' test ',

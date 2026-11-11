@@ -27,6 +27,15 @@ class AnalyticsIsolation(unittest.TestCase):
         self.assertNotIn('error', result)
         self.assertEqual({c['id'] for c in result['chats']}, {'own','multi'})
 
+    def test_merged_sources_paginate_once(self):
+        self.service._get_lamb_internal_chats.return_value = [
+            {'id': 'lamb_a', 'created_at': '2027-01-01', 'source': 'lamb_internal'},
+            {'id': 'lamb_b', 'created_at': '2020-01-01', 'source': 'lamb_internal'}]
+        pages = [self.service.get_chats_for_assistant(25, page=p, per_page=1) for p in range(1, 6)]
+        self.assertEqual([len(p['chats']) for p in pages], [1, 1, 1, 1, 0])
+        self.assertEqual(len({p['chats'][0]['id'] for p in pages[:4]}), 4)
+        self.assertTrue(all(p['total'] == 4 for p in pages))
+
     def test_foreign_detail_denied(self):
         self.assertIsNone(self.service.get_chat_detail('foreign',25))
         self.assertIsNotNone(self.service.get_chat_detail('own',25))

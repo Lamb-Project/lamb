@@ -27,7 +27,8 @@
     "rubrics.form.criteria": "Criteris d'Avaluació",
     "rubrics.form.weight": "Pes (%)",
     "rubrics.form.performanceLevels": "Nivells de Rendiment",
-    "rubrics.form.addCriterion": "Afegir Criteri"
+    "rubrics.form.addCriterion": "Afegir Criteri",
+    "assistants.detail.analysisTab": "Anàlisi de l’activitat"
   },
   "terms": [
     {

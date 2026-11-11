@@ -34,7 +34,7 @@
   let versionDisplay = `v${VERSION_INFO.version}`;
   
   // Feature flags
-  let librariesEnabled = $derived(getConfig().features.enableLibraries ?? true);
+  let librariesEnabled = $derived(getConfig().features.enableLibraries ?? false);
   
   // Default text for when i18n isn't loaded yet
   let localeLoaded = $state(false);

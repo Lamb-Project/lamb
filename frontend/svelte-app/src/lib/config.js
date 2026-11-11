@@ -15,7 +15,7 @@ const defaultConfig = {
 	features: {
 		enableOpenWebUi: true,
 		enableDebugMode: true,
-		enableLibraries: true
+		enableLibraries: false
 	}
 };
 

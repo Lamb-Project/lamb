@@ -286,6 +286,8 @@ class AgentLoop(SkillRouting):
     skill_state: dict | None = None
     pack: Any = None
     session_id: str = ""  # current AAC session ID (for self-referencing commands like session.rename)
+    auto_work: Any = None
+    checkpoint: Any = None
 
     _turn_id: str = field(default="", init=False)
     _tool_rounds: int = field(default=0, init=False)
@@ -544,7 +546,8 @@ class AgentLoop(SkillRouting):
                 yield {"status": "approval", "approval": card(self.pending_action, self.skill_state)}
                 return
             yield {"status": "thinking"}
-            tools_enabled = tool_rounds < self.max_tool_rounds and not self.pending_action
+            round_limit = 80 if self.auto_work and self.auto_work.enabled else self.max_tool_rounds
+            tools_enabled = tool_rounds < round_limit and not self.pending_action
             if not tools_enabled:
                 from lamb.aac.language import budget_notice, budget_model_note
                 notice = budget_notice(self)
@@ -713,6 +716,8 @@ class AgentLoop(SkillRouting):
 
         # Reject unsupported/malformed commands before they can become pending writes.
         try:
+            if self.auto_work:
+                command = await self.auto_work.normalize(command)
             action_key, parsed_args, parsed_kwargs, help_requested = prepare_command(command, getattr(self.shell, "allowlist", None))
         except ValueError as error:
             result = ShellResult(False, error=str(error), command=command)
@@ -724,11 +729,42 @@ class AgentLoop(SkillRouting):
         if allowed is not None and action_key not in allowed:
             return {'success':False, 'error':'This command is outside your role; ask the appropriate administrator'}
         policy = "auto" if help_requested else self.authorizer.check(action_key)
+        prepared_plan = None
+        call_limit = None
+        batch_snapshot = None
+        covered = False
+        if self.auto_work and not help_requested:
+            from lamb.aac.auto_work import mutation, MAX_CALLS
+            try:
+                if action_key in {'plan.prepare', 'plan.extend'}:
+                    prepared_plan = await self.auto_work.prepare(json.loads(parsed_kwargs.get('json', '{}')), extend=action_key == 'plan.extend')
+                    if not prepared_plan['needs_approval']:
+                        self.auto_work.approve(prepared_plan)
+                        return {'success': True, 'data': self.auto_work.public(), 'message': 'Read-only plan ready. Execute it now; no approval needed.'}
+                elif action_key == 'plan.allow-calls':
+                    ceiling = int(parsed_args[0])
+                    if not 1 <= ceiling <= MAX_CALLS:
+                        raise ValueError('Call allowance must be 1..200')
+                    if ceiling <= self.auto_work.task['call_limit']:
+                        policy = 'auto'
+                covered = self.auto_work.covered(command)
+                if policy != 'never' and covered:
+                    policy = 'auto'
+                elif mutation(action_key, parsed_kwargs) and policy != 'never':
+                    policy = 'ask'
+                anticipated, batch_snapshot = await self.auto_work.cost(command)
+                if self.auto_work.task['calls'] + anticipated > MAX_CALLS:
+                    return {'success': False, 'error': 'The task exceeds its technical limit of 200 assistant calls. Completed work is saved.'}
+                if self.auto_work.task['calls'] + anticipated > self.auto_work.task['call_limit'] and policy != 'never':
+                    policy = 'ask'
+                    call_limit = self.auto_work.task['calls'] + anticipated
+            except (ValueError, TypeError) as error:
+                return {'success': False, 'error': str(error)}
         interpretations = (self.skill_state or {}).get('translation_interpretations', [])
         # Even otherwise automatic resource writes require a reviewed interpretation.
         translated_writes = {key for key, value in DEFAULT_POLICY.items() if value == 'ask'} | {
             'test.add', 'test.run', 'test.evaluate', 'assistant.chat', 'session.rename'}
-        if interpretations and policy == 'auto' and not help_requested and action_key in translated_writes:
+        if interpretations and policy == 'auto' and not help_requested and action_key in translated_writes and not covered and (not self.auto_work or mutation(action_key, parsed_kwargs)):
             policy = 'ask'
 
         if self.skill_state is not None and not help_requested:
@@ -744,7 +780,7 @@ class AgentLoop(SkillRouting):
                     text = self.activate_skill(parsed_args[0], context)
                     self._record_audit(command, action_key, True, 0, ShellResult(True, data={"skill_id": self.skill_state["skill_id"]}))
                     return {"success": True, "data": text, "action_executed": False, "skill_loaded": self.skill_state["skill_id"]}
-                if policy != "never" and not self.pending_action:
+                if policy != "never" and not self.pending_action and not (self.auto_work and self.auto_work.executing):
                     instructions = self.required_skill(action_key, parsed_args, parsed_kwargs)
                     if instructions:
                         self._record_audit(command, action_key, False, 0, ShellResult(False, error="Required workflow loaded; command not executed."))
@@ -794,6 +830,18 @@ class AgentLoop(SkillRouting):
                 "machine_translation_interpretations": [dict(item) for item in interpretations],
                 "tool_call_id": tool_call.id,
             }
+            if prepared_plan:
+                self.pending_action['plan'] = prepared_plan
+            if call_limit is not None:
+                self.pending_action['call_limit'] = call_limit
+            if batch_snapshot is not None:
+                self.pending_action['batch_snapshot'] = batch_snapshot
+            if action_key == 'change.restore' and self.auto_work:
+                entry = next((e for e in self.auto_work.state['journal'] if e['id'] == parsed_args[0]), None)
+                if entry:
+                    self.pending_action['change_review'] = {'before': entry.get('before'), 'after': entry.get('after')}
+            if self.auto_work:
+                self.auto_work.save()
             if review is not None:
                 self.pending_action['moodle_review'] = review
             self._record_audit(command, action_key, True, 0, None, queued=True)
@@ -822,7 +870,13 @@ class AgentLoop(SkillRouting):
 
         # policy == "auto" — execute directly
         try:
-            result = await self.shell.execute(command)
+            if self.auto_work:
+                review = self.auto_work.executing.get('review') if self.auto_work.executing else None
+                result = await self.auto_work.execute(command, confirmed=covered, review=review)
+            else:
+                result = await self.shell.execute(command)
+        except Exception as error:
+            result = ShellResult(False, error=str(error), command=command)
         except BaseException:
             self._record_interrupted(command, action_key)
             raise
@@ -892,12 +946,22 @@ class AgentLoop(SkillRouting):
             # Execute the queued command
             self.pending_action = None
             try:
-                if action.get("action_key") == "moodle.assign.grade" or action.get("moodle_review") is not None:
+                if action.get('plan') and self.auto_work:
+                    self.auto_work.approve(action['plan'])
+                    result = ShellResult(True, data={'plan_id': action['plan']['id'], 'next': 'Run lamb plan execute now, then analyze, evaluate, save report and finish without further permission.'})
+                elif self.auto_work:
+                    if action.get('call_limit'):
+                        self.auto_work.task['call_limit'] = max(action['call_limit'], self.auto_work.task['call_limit'])
+                        self.auto_work.save()
+                    result = await self.auto_work.execute(action['command'], confirmed=True, review=action.get('moodle_review'), batch_snapshot=action.get('batch_snapshot'))
+                elif action.get("action_key") == "moodle.assign.grade" or action.get("moodle_review") is not None:
                     result = await self.shell.execute(action["command"], confirmed=True, review=action.get('moodle_review'))
                 elif (action.get("action_key") or "").startswith("moodle."):
                     result = await self.shell.execute(action["command"], confirmed=True)
                 else:
                     result = await self.shell.execute(action["command"])
+            except Exception as error:
+                result = ShellResult(False, error=str(error), command=action['command'])
             except BaseException:
                 self._record_interrupted(action["command"], action.get("action_key"))
                 self.conversation.append({"role": "user", "content": user_message})

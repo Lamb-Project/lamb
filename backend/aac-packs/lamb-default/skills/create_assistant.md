@@ -92,7 +92,7 @@ After successful creation and readback, use `frontend-manage open assistant ASSI
 
 If the user asks to open the creation form, run `frontend-manage open assistant-create` immediately, then explain fields only as needed. Do not start the creation interview or issue a create command for a navigation-only request. For the assistant list run `frontend-manage open assistants`. After an approved creation, read back the saved assistant and run `frontend-manage open assistant ASSISTANT_ID --tab properties`.
 
-Navigate once at the useful handover point, unless the user asked to stay on the current page. Use verified returned IDs. Wait for status=opened before saying the view is open. On blocked, failed or unavailable navigation, preserve and report any successful resource action separately, then provide the appropriate UI guide; never repeat a successful write to fix navigation. Respect unsaved edits. No extra confirmation is needed just to open a view.
+At completion, expose the verified destination through lamb plan finish --resource TYPE --id ID --tab TAB, or the saved report. The Show me button navigates only when clicked and respects unsaved edits. Use frontend-manage open only when the user explicitly asks to open a view now; wait for status=opened before claiming it opened. A failed navigation never justifies repeating a successful write.
 
 
 For an existing owned single-file import, use the returned reference directly and request the normal application confirmation once:
@@ -105,3 +105,17 @@ Do not omit the reference and then claim single-file assistants require browser 
 ## One prepared proposal, one decision
 
 If the user selects “create with your proposal”, prepare the create command immediately. Never answer with another “shall I create it?” menu. The application shows a plain-language review and Create / Edit proposal / Cancel controls. The command is only queued at this point. A Create click runs that exact saved action once. An edit makes a new proposal; it is not approval of the old one. After a successful creation, verify and open the assistant, without asking for creation again. Do not display commands, processor names or full configuration in chat unless the user asks for technical details.
+
+
+## Conversation-start random values
+
+For simulated clients or varied interviews, use a random prompt filter with simple_augment. Put markers such as {{RANDOM:25-70}}, {{RANDOM:3000-40000}} and {{RANDOM:2-24}} in the system prompt. The common completion workflow samples inclusive integers once when a conversation starts, before prompt processing. All assistants, including those without filters, retain their initialized system prompt for that conversation. Follow-ups, reloads and forks retain those values. A new conversation draws again; different conversations can coincidentally match. Never ask the model itself to supply the randomness.
+
+Use --random-filter to enable the random filter or --no-random-filter to disable it for new conversations. Existing filter IDs and other filters survive this toggle. For an ordered chain, --prompt-filters accepts the complete JSON object {"version":1,"items":[...]}; each item needs a unique stable id, type, enabled, target, run_on and options. Currently the supported enabled type is random, target system_prompt, run_on conversation_start, options {}. Use --prompt-filters null to clear the definition. Do not combine the JSON option with a random toggle. Ordinary edits must preserve unrelated metadata. Check available filters with lamb assistant config.
+
+```aac-command
+lamb assistant create Interview --description "Practice a requirements interview" --system-prompt "You are a renovation client. Age: {{RANDOM:25-70}}. Budget: {{RANDOM:3000-40000}} euros. Deadline: {{RANDOM:2-24}} weeks. Reveal these details only when asked." --connector PROVIDER --llm MODEL --prompt-processor simple_augment --rag-processor no_rag --prompt-template "{user_input}" --random-filter
+lamb assistant preview-filters ASSISTANT_ID
+```
+
+Create/update retain the normal application approval. Preview is read-only: it draws one illustrative sample without a model call, chat or stored conversation values. Do not present it as the student's actual future profile. To test a filtered assistant with assistant chat, pass --persist on the first and every later turn, and --chat-id with the returned ID on follow-ups. Stateless debug/bypass and saved tests initialize temporary context and can run filters without a saved chat ID. Each independent stateless call starts fresh; use a persisted chat for a multi-turn interview. The API also supports caller-held prompt_context for trusted backends. Use preview-filters for a no-model sample. System-prompt and filter edits apply to new conversations. A legacy conversation with no recorded system prompt asks for a new chat rather than inventing its original instructions. Editing or disabling filters never rerolls existing interviews. In the UI, use Advanced Mode > Prompt filters. The separate privacy sanitizer is future work, not an available filter.

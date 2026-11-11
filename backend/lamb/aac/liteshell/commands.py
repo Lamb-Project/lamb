@@ -49,6 +49,24 @@ def _unwrap(response: Any) -> Any:
     return response
 
 
+@register('plan.prepare')
+@register('plan.extend')
+@register('plan.execute')
+@register('plan.status')
+@register('plan.finish')
+@register('plan.cancel')
+@register('plan.reconcile')
+@register('plan.allow-calls')
+@register('report.save')
+@register('report.get')
+@register('change.list')
+@register('change.get')
+@register('change.restore')
+async def execution_command(ctx, args, kwargs):
+    """Manage a bounded task, concrete approved plan, saved report or change history."""
+    raise ValueError('Task commands require the LEGATUS execution controller')
+
+
 async def _resolve_kb_ids(ctx: "CommandContext", collections: str) -> str:
     """Resolve KB names to numeric IDs. Numeric IDs pass through unchanged."""
     if not collections or not collections.strip():
@@ -58,16 +76,8 @@ async def _resolve_kb_ids(ctx: "CommandContext", collections: str) -> str:
     if all(item.isdigit() for item in items):
         return collections
 
-    # Fetch KB list and build name→id map, falling back to pass-through on error
-    try:
-        kbs = _unwrap(await ctx.http.get("/creator/knowledgebases/user"))
-        kbs = kbs if isinstance(kbs, list) else kbs.get("knowledge_bases", [])
-    except Exception:
-        return collections
-
-    kb_map = {kb["name"].lower(): str(kb["id"]) for kb in kbs if kb.get("id") is not None and kb.get("name")}
-    resolved = [kb_map.get(item.lower(), item) for item in items]
-    return ",".join(resolved)
+    from lamb.aac.resource_names import resolve
+    return ",".join([await resolve(ctx.http, 'kb', item) for item in items])
 
 
 # ---------------------------------------------------------------------------
@@ -103,36 +113,9 @@ async def assistant_get(ctx: "CommandContext", args: list[str], kwargs: dict) ->
         raise ValueError("Usage: lamb assistant get <id_or_name>")
     identifier = args[0]
 
-    # If it's a number, get by ID
-    if identifier.isdigit():
-        return _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{identifier}"))
-
-    # Otherwise, search by name in owned + shared assistants
-    owned = _unwrap(await ctx.http.get("/creator/assistant/get_assistants", params={"limit": 100}))
-    assistants = owned.get("assistants", owned) if isinstance(owned, dict) else owned
-    if isinstance(assistants, list):
-        for a in assistants:
-            name = a.get("name", "")
-            # Match exact or without user prefix (e.g., "1_rock_the_60s" matches "rock_the_60s")
-            bare_name = name.split("_", 1)[1] if "_" in name and name.split("_")[0].isdigit() else name
-            if name == identifier or bare_name == identifier:
-                aid = a.get("id") or a.get("assistant_id")
-                return _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{aid}"))
-
-    # Try shared assistants too
-    try:
-        shared = _unwrap(await ctx.http.get("/creator/lamb/assistant-sharing/shared-with-me"))
-        shared_list = shared if isinstance(shared, list) else shared.get("assistants", [])
-        for a in shared_list:
-            name = a.get("name", "")
-            bare_name = name.split("_", 1)[1] if "_" in name and name.split("_")[0].isdigit() else name
-            if name == identifier or bare_name == identifier:
-                aid = a.get("id") or a.get("assistant_id")
-                return _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{aid}"))
-    except Exception:
-        pass
-
-    raise ValueError(f"Assistant '{identifier}' not found by name. Use numeric ID or exact name.")
+    from lamb.aac.resource_names import resolve
+    identifier = await resolve(ctx.http, 'assistant', identifier)
+    return _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{identifier}"))
 
 
 @register("assistant.config")
@@ -204,6 +187,7 @@ async def assistant_create(ctx: "CommandContext", args: list[str], kwargs: dict)
         await ctx.http.get('/creator/aac/files/validate', params={'reference': kwargs['file_reference']})
         metadata['file_path'] = kwargs['file_reference']
     _capabilities(metadata, kwargs)
+    _prompt_filters(metadata, kwargs)
     body: dict[str, Any] = {"name": name}
     if kwargs.get("system_prompt"):
         body["system_prompt"] = kwargs["system_prompt"]
@@ -278,6 +262,7 @@ async def assistant_update(ctx: "CommandContext", args: list[str], kwargs: dict)
         await ctx.http.get('/creator/aac/files/validate', params={'reference': kwargs['file_reference']})
         existing_meta['file_path'] = kwargs['file_reference']
     _capabilities(existing_meta, kwargs)
+    _prompt_filters(existing_meta, kwargs)
     body["metadata"] = json.dumps(existing_meta)
 
     return _unwrap(await ctx.http.put(f"/creator/assistant/update_assistant/{assistant_id}", json=body))
@@ -463,6 +448,8 @@ async def test_run(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     scenario_id = kwargs.get("case", kwargs.get("scenario", kwargs.get("s")))
     if scenario_id:
         body["scenario_id"] = scenario_id
+        if ctx.knowledge.get('test_request_id'):
+            body['request_id'] = ctx.knowledge['test_request_id']
     import asyncio
     try:
         return _unwrap(await asyncio.wait_for(ctx.http.post(f"/creator/assistant/{assistant_id}/tests/run", json=body), float(kwargs.get('timeout', 900))))
@@ -507,6 +494,7 @@ async def test_evaluate(ctx: "CommandContext", args: list[str], kwargs: dict) ->
     return _unwrap(await ctx.http.post(
         f"/creator/assistant/{assistant_id}/tests/runs/{run_id}/evaluate",
         json={
+            "evaluator": "legatus",
             "verdict": verdict,
             "notes": kwargs.get("notes", kwargs.get("n", "")),
         },
@@ -679,6 +667,32 @@ def _analytics_params(kwargs, defaults=None):
     if "period" in params and params["period"] not in {"day", "week", "month"}:
         raise ValueError("period must be day, week or month")
     return params
+
+
+@register('analytics.analysis-context')
+async def analytics_analysis_context(ctx, args, kwargs):
+    """Read bounded activity evidence and retain its scope/scenario receipt. --dimensions full or comma-separated dimensions."""
+    params = {key: value for key, value in kwargs.items() if key in ('start_date', 'end_date', 'dimensions', 'limit')}
+    scenario = kwargs.get('scenario')
+    if scenario is None and ctx.session_id:
+        selection = await ctx.http.get(f'/creator/aac/sessions/{ctx.session_id}/learning-scenario')
+        scenario = (selection.get('scenario') or {}).get('id')
+    if scenario and scenario != 'none':
+        params['scenario_id'] = scenario
+    return await ctx.http.get(f'/creator/analytics/assistant/{args[0]}/analysis-context', params=params)
+
+
+@register('analytics.reports')
+async def analytics_reports(ctx, args, kwargs):
+    """List saved activity reports, newest first, across LEGATUS sessions."""
+    return await ctx.http.get(f'/creator/analytics/assistant/{args[0]}/analysis-reports')
+
+
+@register('analytics.report')
+async def analytics_report(ctx, args, kwargs):
+    """Read an assistant's saved activity report."""
+    from uuid import UUID
+    return await ctx.http.get(f'/creator/analytics/assistant/{args[0]}/analysis-reports/{UUID(args[1])}')
 
 
 @register("analytics.chats")
@@ -1211,3 +1225,23 @@ async def notebook_write(ctx, args, kwargs):
     body = {'name': args[0], 'content': kwargs['content'], 'revision': int(kwargs['revision']),
             'references': [v.strip() for v in kwargs.get('references', '').split(',') if v.strip()]}
     return await ctx.http.post(_workspace_url(ctx) + '/notebook', json=body)
+
+
+def _prompt_filters(metadata, kwargs):
+    from .prompt_filters import apply_prompt_filter_options
+    enabled = None
+    if "random_filter" in kwargs:
+        enabled = kwargs["random_filter"] in (True, "true")
+    elif "no_random_filter" in kwargs:
+        enabled = kwargs["no_random_filter"] not in (True, "true")
+    apply_prompt_filter_options(metadata, definition=kwargs.get("prompt_filters"), random_filter=enabled)
+
+
+@register("assistant.preview-filters")
+async def assistant_preview_filters(ctx, args, kwargs):
+    """Sample the saved system-prompt filters without a model call or stored realization."""
+    current = _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{args[0]}"))
+    md = current.get("metadata") or current.get("api_callback") or {}
+    md = json.loads(md) if isinstance(md, str) else md
+    return _unwrap(await ctx.http.post("/creator/assistant/prompt-filters/preview", json={
+        "system_prompt": current.get("system_prompt", ""), "metadata": md}))

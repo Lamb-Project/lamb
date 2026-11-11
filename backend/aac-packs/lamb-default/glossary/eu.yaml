@@ -27,7 +27,8 @@
     "rubrics.form.criteria": "Ebaluazio Irizpideak",
     "rubrics.form.weight": "Pisua (%)",
     "rubrics.form.performanceLevels": "Errendimendu Mailak",
-    "rubrics.form.addCriterion": "Gehitu Irizpidea"
+    "rubrics.form.addCriterion": "Gehitu Irizpidea",
+    "assistants.detail.analysisTab": "Jardueraren analisia"
   },
   "terms": [
     {
