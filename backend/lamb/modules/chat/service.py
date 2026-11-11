@@ -2,6 +2,7 @@ from typing import Dict, Any, List, Optional, Tuple
 import time
 import re
 import os
+import secrets
 
 from lamb.database_manager import LambDatabaseManager
 from lamb.owi_bridge.owi_users import OwiUserManager
@@ -139,7 +140,7 @@ class ChatModuleService:
             owi_user = self.owi_user_manager.create_user(
                 name=display_name,
                 email=email,
-                password=f"lti_activity_{activity['id']}",
+                password=secrets.token_urlsafe(32),  # Random; sign-in is by trusted header, never this password (#411)
                 role="user"
             )
             if not owi_user:

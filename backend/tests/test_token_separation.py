@@ -98,3 +98,20 @@ def test_student_routes_refuse_another_activity_before_touching_data():
         assert client.post('/activities/8/submissions', headers=headers,
                            files={'file': ('a.pdf', b'%PDF-1.4', 'application/pdf')}).status_code == 403
         assert not service.method_calls
+
+
+def test_new_student_chat_accounts_get_a_random_password():
+    """Regression of #411: the module port had brought back a password derived from the activity id."""
+    from unittest.mock import MagicMock
+    from lamb.modules.chat.service import ChatModuleService
+    service = object.__new__(ChatModuleService)
+    service.owi_user_manager = MagicMock()
+    service.owi_user_manager.get_user_by_email.return_value = None
+    service.owi_user_manager.create_user.return_value = None      # stop right after the creation call
+    activity = {'id': 7, 'resource_link_id': 'rl-7'}
+    passwords = []
+    for _ in range(2):
+        assert service.handle_student_launch(activity, 'ana', 'Ana') is None
+        passwords.append(service.owi_user_manager.create_user.call_args.kwargs['password'])
+    assert all('lti_activity' not in p and len(p) >= 32 for p in passwords)
+    assert passwords[0] != passwords[1]
