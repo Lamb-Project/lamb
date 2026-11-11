@@ -2,6 +2,7 @@ import httpx
 import os
 from typing import Optional, Dict, Any
 import config
+from starlette.concurrency import run_in_threadpool
 from lamb.database_manager import LambDatabaseManager
 from lamb.services import CreatorUserService
 from lamb.owi_bridge.owi_users import OwiUserManager
@@ -176,7 +177,7 @@ class UserCreatorManager:
             
             if user_info:
                 # Get OWI launch URL using manager directly
-                launch_url = self.owi_user_manager.get_login_url(email, user_info.get("name"))
+                launch_url = await run_in_threadpool(self.owi_user_manager.get_login_url, email, user_info.get("name"))
                 logger.debug(f"Launch URL: {launch_url}")
                 
                 # Fetch organization role if user belongs to an organization

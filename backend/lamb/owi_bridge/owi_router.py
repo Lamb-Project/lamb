@@ -5,6 +5,7 @@ from .owi_database import OwiDatabaseManager
 from .owi_users import OwiUserManager
 from .owi_group import OwiGroupManager
 from config import API_KEY
+from starlette.concurrency import run_in_threadpool
 import logging
 from fastapi.templating import Jinja2Templates
 import os
@@ -177,7 +178,7 @@ async def verify_user(request: Request, _=Depends(verify_api_key)):
         # we call this to make sure the admin user exists
         # if it doesn't, we create it with the default password on the .env file
         # this is a bit of a hack, but it's a quick way to make sure the admin user exists
-        admin_token = user_manager.get_admin_user_token()
+        admin_token = await run_in_threadpool(user_manager.get_admin_user_token)
         
         data = await request.json()
         logging.info(f"Verify user request: {data}")
@@ -234,7 +235,7 @@ async def get_user_login_url(email: str, _=Depends(verify_api_key)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"User with email {email} not found"
         )
-    return user_manager.get_login_url(email, user['name'])  
+    return await run_in_threadpool(user_manager.get_login_url, email, user['name'])
 
 @router.get("/users/token/{email}", 
     summary="Get user auth token",
@@ -248,7 +249,7 @@ async def get_user_token(email: str, _=Depends(verify_api_key)):
             detail=f"User with email {email} not found"
         )
     try:
-        token = user_manager.get_auth_token(email, user['name'])
+        token = await run_in_threadpool(user_manager.get_auth_token, email, user['name'])
         if token:
             return handle_response(True, data={"token": token})
         else:

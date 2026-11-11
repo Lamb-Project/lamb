@@ -28,6 +28,7 @@ import unicodedata
 from lamb.lamb_classes import Assistant
 from datetime import datetime
 import config
+from starlette.concurrency import run_in_threadpool
 from utils.name_sanitizer import sanitize_assistant_name_with_prefix
 from lamb.logging_config import get_logger
 
@@ -729,7 +730,7 @@ async def create_assistant_directly(request: Request, auth: AuthContext = Depend
         logger.info(f"Starting OWI integration for assistant {assistant_id}")
         try:
             # Get admin token for OWI operations
-            admin_token = owi_user_manager.get_admin_user_token()
+            admin_token = await run_in_threadpool(owi_user_manager.get_admin_user_token)
             if not admin_token:
                 logger.error("Failed to get OWI admin token during assistant creation.")
                 # Don't fail the whole process, but log the error. Assistant is created locally.
@@ -1620,7 +1621,7 @@ async def upload_files(request: Request, auth: AuthContext = Depends(get_auth_co
         
         # Get admin token for OWI API operations
         logger.info("Getting admin token...")
-        admin_token = owi_user_manager.get_admin_user_token()
+        admin_token = await run_in_threadpool(owi_user_manager.get_admin_user_token)
         if not admin_token:
             logger.error("Failed to get admin token")
             raise HTTPException(

@@ -30,6 +30,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from starlette.concurrency import run_in_threadpool
 
 from lamb.database_manager import LambDatabaseManager
 from lamb.logging_config import get_logger
@@ -412,6 +413,19 @@ def _build_auth_context(token: str) -> Optional[AuthContext]:
 # FastAPI dependency functions
 # ---------------------------------------------------------------------------
 
+async def _auth_context(token: str) -> Optional[AuthContext]:
+    """Build the context without letting the Open WebUI fallback block the event loop.
+
+    A LAMB JWT is resolved from LAMB's own database, inline as before. Any other
+    token is checked against Open WebUI over HTTP: that runs in a worker thread,
+    because Open WebUI may be waiting for LAMB at that very moment.
+    """
+    from lamb.auth import decode_token as lamb_decode
+    if lamb_decode(token):
+        return _build_auth_context(token)
+    return await run_in_threadpool(_build_auth_context, token)
+
+
 _bearer = HTTPBearer()
 _bearer_optional = HTTPBearer(auto_error=False)
 
@@ -423,7 +437,7 @@ async def get_auth_context(
 
     Raises ``HTTPException(401)`` if the token is missing or invalid.
     """
-    ctx = _build_auth_context(credentials.credentials)
+    ctx = await _auth_context(credentials.credentials)
     if ctx is None:
         raise HTTPException(status_code=401, detail="Invalid or expired authentication token")
     return ctx
@@ -446,7 +460,7 @@ async def get_optional_auth_context(
         raise HTTPException(status_code=401, detail="Invalid authentication credentials",
                             headers={"WWW-Authenticate": "Bearer"})
 
-    ctx = _build_auth_context(credentials.credentials)
+    ctx = await _auth_context(credentials.credentials)
     if ctx is None:
         raise HTTPException(status_code=401, detail="Invalid or expired authentication token",
                             headers={"WWW-Authenticate": "Bearer"})

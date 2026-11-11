@@ -9,6 +9,7 @@ services:
       PORT: ${LAMB_PORT:-9099}
       OWI_BASE_URL: ${OWI_BASE_URL?Set OWI_BASE_URL}
       OWI_PUBLIC_BASE_URL: ${OWI_PUBLIC_BASE_URL:-http://localhost:8080}
+      OWI_HTTP_TIMEOUT_SECONDS: ${OWI_HTTP_TIMEOUT_SECONDS:-10}
       LAMB_DB_PATH: /data/lamb
       LAMB_DB_PREFIX: ${LAMB_DB_PREFIX-LAMB_}
       OWI_PATH: /data/openwebui

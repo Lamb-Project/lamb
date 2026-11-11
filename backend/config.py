@@ -12,6 +12,14 @@ def _env_bool(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_float(name: str, default: float) -> float:
+    try:
+        value = float(os.getenv(name, ""))
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
 # Server Configuration
 DEV_MODE = _env_bool("DEV_MODE", False)
 
@@ -67,6 +75,10 @@ if not OWI_BASE_URL:
 # OWI_PUBLIC_BASE_URL: Public URL for browser-facing redirects and login URLs
 # Falls back to OWI_BASE_URL if not explicitly set
 OWI_PUBLIC_BASE_URL = os.getenv('OWI_PUBLIC_BASE_URL') or OWI_BASE_URL
+# Seconds LAMB waits for Open WebUI to answer one of LAMB's own service calls
+# (sign-in tokens, token checks). Open WebUI calls LAMB back on every chat turn;
+# a call without a limit, made while Open WebUI waits for LAMB, never returns.
+OWI_HTTP_TIMEOUT_SECONDS = _env_float('OWI_HTTP_TIMEOUT_SECONDS', 10.0)
 CHROMA_PATH = os.path.join(OWI_PATH, "vector_db")
 
 # Frontend Runtime Configuration

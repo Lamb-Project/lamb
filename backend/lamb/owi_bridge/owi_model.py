@@ -5,6 +5,8 @@ import logging
 import requests
 import os
 
+import config
+
 class OWIModel:
     def __init__(self, db_connection):
         self.db = db_connection
@@ -89,7 +91,8 @@ class OWIModel:
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {token}"
                 },
-                json=model_data
+                json=model_data,
+                timeout=config.OWI_HTTP_TIMEOUT_SECONDS
             )
             
             #logging.info(f"API Response Status: {response.status_code}")

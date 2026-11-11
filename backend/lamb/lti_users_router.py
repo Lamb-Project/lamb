@@ -16,6 +16,7 @@ import hashlib
 import base64
 import urllib.parse
 import config
+from starlette.concurrency import run_in_threadpool
 
 # Create logger instance using centralized logging with LTI component
 logger = get_logger(__name__, component="LTI")
@@ -169,7 +170,7 @@ async def sign_in_lti_user(request: Request, current_user: str = Depends(get_cur
                 )
 
             # Get auth token for existing user
-            user_token = owi_user_manager.get_auth_token(email, username)
+            user_token = await run_in_threadpool(owi_user_manager.get_auth_token, email, username)
             if not user_token:
                 raise HTTPException(
                     status_code=500, detail="Failed to get user token")
@@ -255,7 +256,7 @@ async def sign_in_lti_user(request: Request, current_user: str = Depends(get_cur
                     status_code=500, detail="Failed to create LTI user")
 
             # Get auth token for new user
-            user_token = owi_user_manager.get_auth_token(email, username)
+            user_token = await run_in_threadpool(owi_user_manager.get_auth_token, email, username)
             if not user_token:
                 raise HTTPException(
                     status_code=500, detail="Failed to get user token")
@@ -392,7 +393,7 @@ async def process_lti_connection(request: Request):
             logger.info(
                 f"User with email {email} already exists, getting token directly")
             # User exists, just get the token
-            user_token = owi_user_manager.get_auth_token(email, username)
+            user_token = await run_in_threadpool(owi_user_manager.get_auth_token, email, username)
             if not user_token:
                 logger.error(
                     f"Failed to get token for existing user: {email}")

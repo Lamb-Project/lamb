@@ -11,6 +11,7 @@ from .organization_router import router as organization_router
 from .setup_translations import setup_translations
 from fastapi import APIRouter, Query, Request, Form, Response, HTTPException, File, UploadFile, Depends, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from starlette.concurrency import run_in_threadpool
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pathlib import Path
@@ -539,7 +540,7 @@ async def get_current_user(auth: AuthContext = Depends(get_auth_context)):
     email = auth.user.get("email", "")
     name = auth.user.get("name", "")
     owi_manager = OwiUserManager()
-    launch_url = owi_manager.get_login_url(email, name)
+    launch_url = await run_in_threadpool(owi_manager.get_login_url, email, name)
 
     return {
         "success": True,

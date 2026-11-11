@@ -212,9 +212,13 @@ async def lti_launch(request: Request):
             public_base = manager.get_public_base_url(request)
 
             module = _get_activity_module(activity)
+            # The hooks call Open WebUI over HTTP (the chat module requests a
+            # sign-in token). Open WebUI calls LAMB back on every chat turn from
+            # its single event loop, so a hook running on LAMB's event loop can
+            # leave each service waiting for the other. Worker thread instead.
             if ctx.is_instructor:
-                return module.on_instructor_launch(ctx)
-            return module.on_student_launch(ctx)
+                return await run_in_threadpool(module.on_instructor_launch, ctx)
+            return await run_in_threadpool(module.on_student_launch, ctx)
 
         # -- NOT CONFIGURED --
         if not ctx.is_instructor:
@@ -911,7 +915,8 @@ async def lti_enter_chat(request: Request, resource_link_id: str = "", token: st
     username = data.get("lti_username", lms_user_id)
 
     module = _get_activity_module(activity)
-    redirect_url = module.launch_user(
+    redirect_url = await run_in_threadpool(
+        module.launch_user,
         activity=activity,
         username=username,
         display_name=display_name,

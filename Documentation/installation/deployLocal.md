@@ -195,6 +195,7 @@ These MUST be set. The compose file uses `${VAR?error message}` syntax.
 | Variable | Local Default | Notes |
 |----------|--------------|-------|
 | `OWI_PUBLIC_BASE_URL` | `http://localhost:8080` | Browser-facing OpenWebUI URL. REQUIRED — without it, LAMB generates login redirects using the internal Docker hostname (`openwebui:8080`) that browsers cannot resolve. Must be set even for local dev. |
+| `OWI_HTTP_TIMEOUT_SECONDS` | `10` | Optional. Seconds LAMB waits for OpenWebUI to answer one of LAMB's own service calls (sign-in tokens, token checks). OpenWebUI calls LAMB on every chat turn, so these calls are limited in time and made off LAMB's event loop; raise the value only if OpenWebUI is slow to answer sign-ins. |
 
 ### 3.3 — KB Embeddings Variables
 

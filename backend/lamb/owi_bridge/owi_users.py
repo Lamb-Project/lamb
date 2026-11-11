@@ -96,8 +96,22 @@ class OwiUserManager:
         # Public-facing base URL to hand back to browsers. Falls back to internal base if not provided.
         self.OWI_PUBLIC_BASE_URL = config.OWI_PUBLIC_BASE_URL
         self.OWI_PUBLIC_API_BASE_URL = self.OWI_PUBLIC_BASE_URL+"/api/v1"
-        # this will ensure that the admin user is created
-        self.admin_token = self.get_admin_user_token()
+        # Make sure the admin user exists. This used to request an admin token
+        # here too: a network call to Open WebUI on every construction, made
+        # from request handlers on the event loop, for a token nothing read.
+        self._ensure_admin_user()
+
+    @property
+    def admin_token(self) -> str:
+        """Admin token, requested from Open WebUI when asked for (a network call)."""
+        return self.get_admin_user_token()
+
+    def _ensure_admin_user(self) -> None:
+        import config
+        if not self.get_user_by_email(config.OWI_ADMIN_EMAIL):
+            logger.error(f"Admin user {config.OWI_ADMIN_EMAIL} not found, creating...")
+            self.create_user(config.OWI_ADMIN_NAME, config.OWI_ADMIN_EMAIL,
+                             config.OWI_ADMIN_PASSWORD, "admin")
 
     def create_user(self, name: str, email: str, password: str, role: str = "user") -> Optional[Dict]:
         """
@@ -206,16 +220,8 @@ class OwiUserManager:
 
     def get_admin_user_token(self) -> str:
         import config
-        admin_email = config.OWI_ADMIN_EMAIL
-        admin_name = config.OWI_ADMIN_NAME
-        admin_password = config.OWI_ADMIN_PASSWORD
-        # check if the admin user exists
-        user = self.get_user_by_email(admin_email)
-        if not user:
-            logger.error(f"Admin user {admin_email} not found, creating...")
-            self.create_user(admin_name, admin_email, admin_password, "admin")
-
-        return self.get_auth_token(admin_email, admin_name)
+        self._ensure_admin_user()
+        return self.get_auth_token(config.OWI_ADMIN_EMAIL, config.OWI_ADMIN_NAME)
 
     def get_auth_token(self, email: str, name: str) -> str:
 
@@ -232,7 +238,8 @@ class OwiUserManager:
                 json={
                     'email': '',
                     'password': ''
-                }
+                },
+                timeout=config.OWI_HTTP_TIMEOUT_SECONDS
             )
 
             if response.status_code != 200:
@@ -813,7 +820,8 @@ class OwiUserManager:
 
             response = requests.get(
                 url,
-                headers=headers
+                headers=headers,
+                timeout=config.OWI_HTTP_TIMEOUT_SECONDS
             )
 
             if response.status_code != 200:
