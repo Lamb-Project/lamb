@@ -1,19 +1,31 @@
 """
 File storage service for the file_evaluation module.
 
-Files are stored under ``{BACKEND_DIR}/uploads/file-eval/{activity_id}/``.
+Files are stored under ``{LAMB_DB_PATH}/uploads/file-eval/{activity_id}/``, next
+to the database that references them, so they live in the same persistent volume
+and the same backup.
+
+The database keeps the path *relative* to that root (``{activity_id}/{file}``).
+Rows written before this layout hold an absolute path under
+``.../uploads/file-eval/``; ``resolve_path`` maps those onto the current root.
 """
 import os
 import re
 import shutil
 from datetime import datetime, timezone
 from typing import Optional
+
+import config
 from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="FILE_EVAL")
 
-_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-UPLOADS_ROOT = os.path.join(_BACKEND_DIR, "uploads", "file-eval")
+_UPLOADS_SUBDIR = ("uploads", "file-eval")
+_LEGACY_MARKER = "/uploads/file-eval/"
+
+
+def uploads_root() -> str:
+    return os.path.abspath(os.path.join(config.LAMB_DB_PATH, *_UPLOADS_SUBDIR))
 
 
 class FileStorageService:
@@ -21,8 +33,9 @@ class FileStorageService:
 
     @classmethod
     def ensure_uploads_root(cls) -> str:
-        os.makedirs(UPLOADS_ROOT, exist_ok=True)
-        return UPLOADS_ROOT
+        root = uploads_root()
+        os.makedirs(root, exist_ok=True)
+        return root
 
     @classmethod
     def ensure_activity_directory(cls, activity_id: int) -> str:
@@ -40,7 +53,7 @@ class FileStorageService:
         file_bytes: bytes,
         previous_file_path: Optional[str] = None,
     ) -> str:
-        """Persist a file and return its *absolute* path (stored in DB)."""
+        """Persist a file and return its path relative to the uploads root (stored in DB)."""
         activity_dir = cls.ensure_activity_directory(activity_id)
 
         if previous_file_path:
@@ -49,27 +62,38 @@ class FileStorageService:
         sanitized = cls._sanitize_filename(file_name)
         ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         dest_name = f"{submission_id}_{ts}_{sanitized}"
-        dest_path = os.path.join(activity_dir, dest_name)
 
-        with open(dest_path, "wb") as fh:
+        with open(os.path.join(activity_dir, dest_name), "wb") as fh:
             fh.write(file_bytes)
 
-        return dest_path
+        return f"{activity_id}/{dest_name}"
 
     @classmethod
-    def is_within_uploads(cls, path: str) -> bool:
-        root = cls.ensure_uploads_root()
+    def resolve_path(cls, stored_path: Optional[str]) -> Optional[str]:
+        """Absolute path for a ``file_path`` value from the DB, or None if it
+        does not point inside the uploads root."""
+        if not stored_path:
+            return None
+        root = uploads_root()
+        normalized = stored_path.replace("\\", "/")
+        if os.path.isabs(stored_path) or _LEGACY_MARKER in normalized:
+            # Legacy absolute path: keep only what follows .../uploads/file-eval/
+            _, found, tail = normalized.rpartition(_LEGACY_MARKER)
+            if not found:
+                return None
+            normalized = tail
+        candidate = os.path.abspath(os.path.join(root, *normalized.split("/")))
         try:
-            return os.path.commonpath([os.path.abspath(path), root]) == root
+            if candidate == root or os.path.commonpath([candidate, root]) != root:
+                return None
         except ValueError:
-            return False
+            return None
+        return candidate
 
     @classmethod
-    def delete_path(cls, path: str) -> None:
-        if not path:
-            return
-        abs_path = os.path.abspath(path)
-        if not cls.is_within_uploads(abs_path):
+    def delete_path(cls, stored_path: Optional[str]) -> None:
+        abs_path = cls.resolve_path(stored_path)
+        if not abs_path:
             return
         if os.path.isdir(abs_path):
             shutil.rmtree(abs_path, ignore_errors=True)
