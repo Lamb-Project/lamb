@@ -47,7 +47,7 @@ class DocumentExtractor:
         try:
             if ext == '.pdf':
                 return DocumentExtractor._extract_from_pdf(file_path)
-            elif ext in ('.docx', '.doc'):
+            elif ext == '.docx':
                 return DocumentExtractor._extract_from_docx(file_path)
             elif ext in _TEXT_EXTENSIONS:
                 return DocumentExtractor._extract_from_text(file_path)

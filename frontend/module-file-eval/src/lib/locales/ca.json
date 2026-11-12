@@ -3,7 +3,7 @@
 		"upload": {
 			"title": "Lliurament de treball",
 			"dropzone": "Arrossega un fitxer o usa el botó.",
-			"formats": "PDF, Word o text.",
+			"formats": "PDF, Word (.docx) o text.",
 			"noteLabel": "Nota per al professor (opcional)",
 			"notePlaceholder": "Comentari opcional…",
 			"submit": "Enviar",

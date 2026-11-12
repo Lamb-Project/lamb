@@ -3,7 +3,7 @@
 		"upload": {
 			"title": "Submit your work",
 			"dropzone": "Drag a file here or use the button below.",
-			"formats": "PDF, Word, or text files.",
+			"formats": "PDF, Word (.docx), or text files.",
 			"noteLabel": "Note to instructor (optional)",
 			"notePlaceholder": "Optional comment for your instructor…",
 			"submit": "Submit",

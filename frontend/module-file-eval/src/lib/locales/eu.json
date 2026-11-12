@@ -3,7 +3,7 @@
 		"upload": {
 			"title": "Lana bidali",
 			"dropzone": "Arrastra fitxategi bat edo erabili botoia.",
-			"formats": "PDF, Word edo testua.",
+			"formats": "PDF, Word (.docx) edo testua.",
 			"noteLabel": "Oharra irakasleari (aukerakoa)",
 			"notePlaceholder": "Iruzkin aukerakoa…",
 			"submit": "Bidali",

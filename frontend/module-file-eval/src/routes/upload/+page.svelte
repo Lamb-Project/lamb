@@ -483,7 +483,7 @@
 							<p class="text-gray-500">{$_('fileEval.upload.dropzone')}</p>
 							<p class="mt-1 text-xs text-gray-400">{$_('fileEval.upload.formats')}</p>
 						{/if}
-						<input type="file" class="mt-3" onchange={handleFileSelect} accept=".pdf,.docx,.doc,.txt,.md" />
+						<input type="file" class="mt-3" onchange={handleFileSelect} accept=".pdf,.docx,.txt,.md" />
 					</div>
 
 					<label for="student-note-leader-replace" class="mb-1 block text-sm font-medium text-gray-700">
@@ -551,7 +551,7 @@
 									<p class="text-sm text-gray-500">{$_('fileEval.upload.dropzone')}</p>
 									<p class="mt-1 text-xs text-gray-400">{$_('fileEval.upload.formats')}</p>
 								{/if}
-								<input type="file" class="mt-3 text-sm" onchange={handleFileSelect} accept=".pdf,.docx,.doc,.txt,.md" />
+								<input type="file" class="mt-3 text-sm" onchange={handleFileSelect} accept=".pdf,.docx,.txt,.md" />
 							</div>
 
 							<label for="student-note-leader" class="block text-sm font-medium text-gray-700 mb-1">
@@ -690,7 +690,7 @@
 							<p class="text-gray-500">{$_('fileEval.upload.dropzone')}</p>
 							<p class="mt-1 text-xs text-gray-400">{$_('fileEval.upload.formats')}</p>
 						{/if}
-						<input type="file" class="mt-3" onchange={handleFileSelect} accept=".pdf,.docx,.doc,.txt,.md" />
+						<input type="file" class="mt-3" onchange={handleFileSelect} accept=".pdf,.docx,.txt,.md" />
 					</div>
 
 					<label for="student-note-individual" class="mb-1 block text-sm font-medium text-gray-700">

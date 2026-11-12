@@ -187,6 +187,12 @@ async def upload_submission(
     # The path must name the activity the token was issued for.
     _assert_activity(payload, activity_id)
 
+    if (file.filename or "").lower().endswith(".doc"):
+        raise HTTPException(
+            status_code=400,
+            detail="Legacy Word (.doc) files are not supported. Save the document as .docx and upload it again.",
+        )
+
     content = await file.read()
     try:
         result = _service.create_submission(
