@@ -1,1 +1,9 @@
-{}
+{
+	"creatorAccess": {
+		"open": "Ireki LAMB Creator",
+		"openIn": "Ireki LAMB Creator {organization} erakundean",
+		"newTab": "Fitxa berri batean irekitzen da",
+		"blocked": "Nabigatzaileak fitxa berria blokeatu du. Baimendu orri honetako laster-leihoak eta saiatu berriro.",
+		"failed": "Ezin izan da LAMB Creator ireki. Saiatu berriro, edo ireki jarduera berriro LMStik."
+	}
+}

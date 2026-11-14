@@ -1,1 +1,9 @@
-{}
+{
+	"creatorAccess": {
+		"open": "Obre LAMB Creator",
+		"openIn": "Obre LAMB Creator a {organization}",
+		"newTab": "S’obre en una pestanya nova",
+		"blocked": "El navegador ha bloquejat la pestanya nova. Permet les finestres emergents per a aquesta pàgina i torna-ho a provar.",
+		"failed": "No s’ha pogut obrir LAMB Creator. Torna-ho a provar o torna a obrir l’activitat des de l’LMS."
+	}
+}

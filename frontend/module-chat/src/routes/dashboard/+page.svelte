@@ -1,6 +1,7 @@
 <script>
     import { onMount } from 'svelte';
     import { page } from '$app/stores';
+    import CreatorAccess from '$lib/CreatorAccess.svelte';
 
     let token = $state('');
     let resourceLinkId = $state('');
@@ -137,11 +138,14 @@
                             </p>
                         </div>
                     </div>
-                    <a href={`/lamb/v1/lti/enter-chat?resource_link_id=${resourceLinkId}&token=${token}`}
-                       class="inline-flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors text-sm whitespace-nowrap">
-                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                        Open Chat
-                    </a>
+                    <div class="flex flex-col gap-2 md:items-end">
+                        <a href={`/lamb/v1/lti/enter-chat?resource_link_id=${resourceLinkId}&token=${token}`}
+                           class="inline-flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors text-sm whitespace-nowrap">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                            Open Chat
+                        </a>
+                        <CreatorAccess {token} accounts={activityInfo.creator_access} />
+                    </div>
                 </div>
             </div>
 

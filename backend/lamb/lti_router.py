@@ -332,6 +332,12 @@ async def lti_setup_info(request: Request, token: str = ""):
         org_id = cu['organization_id']
         if org_id not in orgs_with_assistants and any(m.enabled_for_org(org_id) for m in no_assistant_modules):
             orgs_with_assistants[org_id] = []
+    if not orgs_with_assistants:
+        # A creator with nothing published yet, such as a teacher who has just redeemed a creator
+        # code: the page still names the organization and says what is missing, instead of
+        # showing a form that cannot be saved and does not say why.
+        for cu in creator_users:
+            orgs_with_assistants[cu['organization_id']] = []
     instructor_orgs = sorted({cu['organization_id'] for cu in creator_users})
     offered_modules = [m for m in get_all_modules() if any(m.enabled_for_org(o) for o in instructor_orgs)]
 

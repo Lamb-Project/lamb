@@ -14,7 +14,12 @@ supportedLocales.forEach((lang) => {
 
 function getInitialLocale() {
 	if (!browser) return fallbackLocale;
-	const saved = localStorage.getItem('lang');
+	let saved = null;
+	try {
+		saved = localStorage.getItem('lang');
+	} catch {
+		// A browser may deny storage to a page framed by another site, as an LMS frames this one.
+	}
 	return saved && supportedLocales.includes(saved) ? saved : fallbackLocale;
 }
 
