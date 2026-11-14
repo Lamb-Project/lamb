@@ -163,9 +163,10 @@ def test_an_instructor_with_a_valid_code_becomes_a_creator_in_that_organization_
     assert db._one('SELECT * FROM T_lti_identity_links')['creator_user_id'] == user['id']
     assert db._one('SELECT COUNT(*) AS n FROM T_Creator_users WHERE organization_id!=?', (ORG_A,))['n'] == 0
     assert onboarding.list_codes(db, ORG_A)[0]['use_count'] == 1 and db.count('lti_creator_code_redemptions') == 1
-    # The same person arriving again with the code (a link went missing) takes no second use and no second account.
+    # The same person entering the code of the organization again is told she is already in it: no second
+    # account, no second use.
     again = onboarding.redeem(db, manager, ticket(), code)
-    assert again.ok and again.creator_user['id'] == user['id']
+    assert again.reason == 'already_member' and 'already have an account' in again.message
     assert db.count('Creator_users') == 1 and onboarding.list_codes(db, ORG_A)[0]['use_count'] == 1
 
 
@@ -269,6 +270,12 @@ def test_on_lti13_the_code_must_belong_to_an_organization_of_the_registration(db
     # The LTI 1.3 identity is scoped to its registration, so the Creator entry needs no instance name.
     assert [a['creator_user_id'] for a in onboarding.creator_access(db, manager, launch_claims(lti13.user, instance=''))] == [accepted.creator_user['id']]
     assert onboarding.creator_access(db, manager, launch_claims(lti13.user, instance='', email='other@school.example')) == []
+    # An LTI creator account whose link to the LMS identity went missing is linked again by the code, with no new use.
+    with db.get_connection() as c:
+        c.execute('DELETE FROM T_lti13_identity_links')
+    relinked = onboarding.redeem(db, manager, ticket(lti13.user, '1.3', lti13.resource), code_a)
+    assert relinked.ok and relinked.creator_user['id'] == accepted.creator_user['id'] and db.count('Creator_users') == 1
+    assert onboarding.list_codes(db, ORG_A)[0]['use_count'] == 1 and len(lti13.store.creators(lti13.user)) == 1
     # On LTI 1.1 the code alone picks the organization: the same code B lands in B and nowhere else.
     landed = onboarding.redeem(db, manager, ticket('teacher-11'), code_b)
     assert landed.ok and landed.creator_user['organization_id'] == ORG_B
