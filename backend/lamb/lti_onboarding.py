@@ -362,8 +362,10 @@ def redeem(db, manager, ticket: Dict[str, Any], code: str) -> Redemption:
         known = manager.identify_instructor(lms_user_id=lms_user_id, lms_email=ticket.get("lti_lms_email") or None)
     except ValueError:
         known = []
-    if not existing and any(account["organization_id"] == organization["id"] for account in known):
+    if any(account["organization_id"] == organization["id"] for account in known):
         return _refuse(db, ticket, "already_member", organization, row["id"])
+    # `existing` without being known: an LTI creator account whose link to this LMS identity
+    # went missing. The code links it again and takes no use.
 
     creator_id = existing["id"] if existing else None
     if not existing:
