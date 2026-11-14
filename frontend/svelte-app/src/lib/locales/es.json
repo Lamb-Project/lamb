@@ -1137,5 +1137,15 @@
       "restoreConfirm": "¿Quieres quitar el texto de esta organización? Los docentes volverán a leer el texto predeterminado.",
       "restored": "Texto predeterminado restaurado."
     }
+  },
+  "ltiSession": {
+    "organization": "Organización: {name}",
+    "switchOrganization": "Cambiar de organización",
+    "current": "actual",
+    "switching": "Cambiando de organización...",
+    "switchFailed": "No se ha podido cambiar de organización. Vuelve a abrir LAMB desde tu LMS.",
+    "cameFromCourse": "Has llegado desde la actividad del curso {course}",
+    "cameFromActivity": "Has llegado desde una actividad de tu LMS",
+    "backToActivity": "Volver a la actividad"
   }
 }

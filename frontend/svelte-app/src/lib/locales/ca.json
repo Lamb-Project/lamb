@@ -1126,5 +1126,15 @@
       "restoreConfirm": "Vols treure el text d’aquesta organització? Els docents tornaran a llegir el text predeterminat.",
       "restored": "Text predeterminat restaurat."
     }
+  },
+  "ltiSession": {
+    "organization": "Organització: {name}",
+    "switchOrganization": "Canvia d’organització",
+    "current": "actual",
+    "switching": "S’està canviant d’organització...",
+    "switchFailed": "No s’ha pogut canviar d’organització. Torna a obrir LAMB des del teu LMS.",
+    "cameFromCourse": "Has arribat des de l’activitat del curs {course}",
+    "cameFromActivity": "Has arribat des d’una activitat del teu LMS",
+    "backToActivity": "Torna a l’activitat"
   }
 }

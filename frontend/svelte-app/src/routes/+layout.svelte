@@ -19,6 +19,8 @@
 	import TakeoverBar from '$lib/components/TakeoverBar.svelte';
 	import TakeoverNotices from '$lib/components/TakeoverNotices.svelte';
 	import { takeoverReturn, returnFromTakeover } from '$lib/session/takeover';
+	import ActivityReturnBar from '$lib/components/ActivityReturnBar.svelte';
+	import { captureActivity, stripSessionParams } from '$lib/session/activityReturn';
 
 	let { children } = $props();
 	let sessionReady = $state(!$page.url.searchParams.get('token'));
@@ -61,13 +63,15 @@
 		try {
 			await replaceSessionWithToken(token);
 			processedToken = token;
+			// A teacher who came from an LMS activity (#562): keep the way back for this tab. Only once
+			// the new session is in place, because replacing a session forgets the previous activity.
+			captureActivity(url);
 		} catch (error) {
 			console.error('Error bootstrapping session from URL token:', error);
 			sessionError = error instanceof Error ? error.message : 'Failed to start session';
 		} finally {
-			const cleanUrl = new URL(window.location.href);
-			cleanUrl.searchParams.delete('token');
-			window.history.replaceState({}, '', cleanUrl.toString());
+			// Neither the session token nor the return token stays in the address.
+			window.history.replaceState({}, '', stripSessionParams(window.location.href));
 
 			processingToken = false;
 			sessionReady = true;
@@ -111,6 +115,7 @@
 	<div class="lamb-workspace" class:agent-open={$sidebarOpen && !!$user.token} style:--aac-width={$sidebarWidth + "px"} inert={$sidebarOpen && $sidebarMobile && !!$user.token}>
 	{#if acting && sessionReady && $user.token}<TakeoverBar />{/if}
 	<Nav />
+	{#if sessionReady && $user.token}<ActivityReturnBar />{/if}
 	{#if !acting && sessionReady && $user.token}<TakeoverNotices />{/if}
 
 

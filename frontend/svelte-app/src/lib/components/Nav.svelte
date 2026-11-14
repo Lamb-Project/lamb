@@ -29,6 +29,50 @@
   import LanguageSelector from '$lib/components/LanguageSelector.svelte';
   import { VERSION_INFO } from '$lib/version.js';
   import { getConfig } from '$lib/config.js';
+  import { switchLtiOrganization } from '$lib/services/authService';
+  import { carryActivity } from '$lib/session/activityReturn';
+
+  // The organization of this session, shown next to the user name. A teacher who came from the LMS
+  // and has Creator accounts in several organizations gets a menu to move between them (#562).
+  let ltiOrganizations = $derived(
+    $user.isLoggedIn && Array.isArray($user.data?.lti_organizations) ? $user.data.lti_organizations : []
+  );
+  let organizationName = $derived(
+    !$user.isLoggedIn ? '' : $user.data?.organization?.name
+      || ltiOrganizations.find((/** @type {any} */ account) => account.current)?.organization_name
+      || ''
+  );
+  let canSwitchOrganization = $derived(ltiOrganizations.length >= 2);
+  let orgMenuOpen = $state(false);
+  let switchingTo = $state(/** @type {number | null} */ (null));
+  let switchError = $state('');
+
+  // The organization comes with the profile. A password sign-in, and a session stored before this
+  // version, carry a profile without it: read the profile once more, once per session.
+  let profileAskedFor = '';
+  $effect(() => {
+    const token = $user.isLoggedIn && $user.name && !$user.data?.organization ? $user.token : null;
+    if (!token || profileAskedFor === token) return;
+    profileAskedFor = token;
+    user.fetchAndPopulateProfile().catch(() => {});
+  });
+
+  /** @param {{ creator_user_id: number, current?: boolean }} account */
+  async function switchOrganization(account) {
+    if (account.current || switchingTo !== null) return;
+    switchingTo = account.creator_user_id;
+    switchError = '';
+    try {
+      // The address carries the new session: follow it in this window, never log or show it.
+      const url = await switchLtiOrganization(account.creator_user_id);
+      window.location.assign(carryActivity(url));
+    } catch (error) {
+      // What the API said, or a general message when it said nothing (network, expired session).
+      const fallback = 'The organization could not be changed. Open LAMB from your LMS again.';
+      switchError = /** @type {any} */ (error)?.detail || (localeLoaded ? $_('ltiSession.switchFailed', { default: fallback }) : fallback);
+      switchingTo = null;
+    }
+  }
   
   // Format version display
   let versionDisplay = `v${VERSION_INFO.version}`;
@@ -52,6 +96,9 @@
   // Close dropdown when clicking outside (optimized)
   /** @param {MouseEvent} event */
   function handleClickOutside(event) {
+    if (orgMenuOpen && !(event.target instanceof Element && event.target.closest('.org-menu'))) {
+      orgMenuOpen = false;
+    }
     // Only check if menu is actually open to avoid unnecessary work
     if (!toolsMenuOpen) return;
     
@@ -67,6 +114,9 @@
   function handleKeydown(event) {
     if (toolsMenuOpen && event.key === 'Escape') {
       toolsMenuOpen = false;
+    }
+    if (orgMenuOpen && event.key === 'Escape') {
+      orgMenuOpen = false;
     }
   }
   
@@ -207,11 +257,69 @@
       {#if keysEnabled}<a href="{base}/api-keys" class="sm:hidden order-last w-full py-2 text-sm font-medium text-[#173f64]">{apiKeysText($locale).nav}</a>{/if}
       {/if}
       <!-- User info and Language selector section -->
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 min-w-0">
         {#if $user.isLoggedIn}
           <button class="rounded bg-[#173f64] text-white px-3 py-2 text-xs font-semibold whitespace-nowrap" onclick={() => sidebarOpen.set(true)} aria-label="Open LAMB LEGATUS">LAMB LEGATUS</button>
-          <!-- Username -->
-          <span class="text-sm font-medium text-gray-600 hidden sm:block">{$user.name || $user.email || ''}</span>
+          <!-- Username, and under it the organization of this session (#562) -->
+          <div class="{organizationName ? 'flex' : 'hidden sm:flex'} flex-col items-end min-w-0">
+            <span class="text-sm font-medium text-gray-600 hidden sm:block">{$user.name || $user.email || ''}</span>
+            {#if organizationName}
+              {@const organizationTitle = localeLoaded ? $_('ltiSession.organization', { values: { name: organizationName }, default: 'Organization: {name}' }) : `Organization: ${organizationName}`}
+              {#if canSwitchOrganization}
+                {@const changeLabel = localeLoaded ? $_('ltiSession.switchOrganization', { default: 'Change organization' }) : 'Change organization'}
+                <!-- Narrow screens: the menu spans the page width; from sm up it hangs from the button -->
+                <div class="org-menu max-w-[min(100%,9rem)] sm:relative sm:max-w-[min(100%,14rem)]">
+                  <button
+                    type="button"
+                    data-organization-switcher
+                    onclick={() => { orgMenuOpen = !orgMenuOpen; switchError = ''; }}
+                    class="inline-flex max-w-full items-center gap-1 rounded border border-gray-300 bg-white px-1.5 py-0.5 text-xs font-medium text-[#173f64] hover:bg-gray-50"
+                    title={organizationTitle}
+                    aria-haspopup="true"
+                    aria-expanded={orgMenuOpen}
+                  >
+                    <span class="truncate">{organizationName}</span>
+                    <span class="sr-only">{changeLabel}</span>
+                    <svg class="h-3 w-3 flex-shrink-0 transition-transform duration-200 {orgMenuOpen ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                  </button>
+                  {#if orgMenuOpen}
+                    <div data-organization-menu class="absolute left-4 right-4 z-50 mt-1 rounded-md border border-gray-200 bg-white py-1 shadow-lg sm:left-auto sm:right-0 sm:w-64">
+                      <p class="px-3 py-1 text-xs font-semibold text-gray-500">{changeLabel}</p>
+                      <ul>
+                        {#each ltiOrganizations as account (account.creator_user_id)}
+                          <li>
+                            <button
+                              type="button"
+                              onclick={() => switchOrganization(account)}
+                              disabled={account.current || switchingTo !== null}
+                              aria-current={account.current ? 'true' : undefined}
+                              class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm {account.current ? 'font-semibold text-[#173f64]' : switchingTo !== null ? 'text-gray-400' : 'text-gray-700 hover:bg-gray-50 hover:text-[#2271b3]'}"
+                            >
+                              <span class="w-4 flex-shrink-0 text-center" aria-hidden="true">{account.current ? '✓' : ''}</span>
+                              <span class="min-w-0 flex-1 break-words">{account.organization_name || `#${account.organization_id}`}</span>
+                              {#if account.current}
+                                <span class="flex-shrink-0 text-xs font-normal text-gray-500">{localeLoaded ? $_('ltiSession.current', { default: 'current' }) : 'current'}</span>
+                              {/if}
+                            </button>
+                          </li>
+                        {/each}
+                      </ul>
+                      {#if switchingTo !== null}
+                        <p role="status" class="border-t border-gray-100 px-3 py-2 text-xs text-gray-500">{localeLoaded ? $_('ltiSession.switching', { default: 'Changing organization...' }) : 'Changing organization...'}</p>
+                      {/if}
+                      {#if switchError}
+                        <p role="alert" class="border-t border-gray-100 px-3 py-2 text-xs text-red-700">{switchError}</p>
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
+              {:else}
+                <span data-organization-name class="block max-w-[min(100%,9rem)] sm:max-w-[min(100%,14rem)] truncate text-xs text-gray-500" title={organizationTitle}>{organizationName}</span>
+              {/if}
+            {/if}
+          </div>
         {/if}
         
         <!-- Logout and Language stacked vertically -->

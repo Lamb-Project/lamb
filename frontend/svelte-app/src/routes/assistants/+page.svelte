@@ -380,7 +380,6 @@
         currentLocale = $locale ?? null; // Handle potential undefined value from $locale
 
         unsubscribePage = page.subscribe(currentPage => {
-            console.log("Page store updated:", currentPage.url.searchParams.toString());
             const viewParam = currentPage.url.searchParams.get('view');
             const idParam = currentPage.url.searchParams.get('id');
             const requestedAacTab = currentPage.url.searchParams.get("aacTab");

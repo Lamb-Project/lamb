@@ -2,8 +2,17 @@
 	"creatorAccess": {
 		"open": "Ireki LAMB Creator",
 		"openIn": "Ireki LAMB Creator {organization} erakundean",
-		"newTab": "Fitxa berri batean irekitzen da",
-		"blocked": "Nabigatzaileak fitxa berria blokeatu du. Baimendu orri honetako laster-leihoak eta saiatu berriro.",
 		"failed": "Ezin izan da LAMB Creator ireki. Saiatu berriro, edo ireki jarduera berriro LMStik."
+	},
+	"setupHub": {
+		"yourOrganization": "Zure erakundea",
+		"chooseOrganization": "Aukeratu erakundea",
+		"chooseIntro": "Erakunde batean baino gehiagotan dituzu kontuak. Aukeratu bat jarduera honetarako.",
+		"cannotChange": "Gero ezin da aldatu.",
+		"organizationFallback": "{id} erakundea",
+		"assistantCount": "Argitaratutako laguntzaileak: {count}",
+		"addOrganization": "Gehitu erakunde bat sortzaile-kode batekin",
+		"creator": "Laguntzaileak LAMB Creator aplikazioan sortu eta argitaratzen dira.",
+		"signIn": "Hasi saioa LAMB Creator aplikazioan zure LAMB kontuarekin, erakunde honetarako laguntzaileak sortzeko."
 	}
 }

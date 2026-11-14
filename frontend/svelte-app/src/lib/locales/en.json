@@ -1123,5 +1123,15 @@
       "restoreConfirm": "Remove the text of this organization? Instructors will read the default text again.",
       "restored": "Default text restored."
     }
+  },
+  "ltiSession": {
+    "organization": "Organization: {name}",
+    "switchOrganization": "Change organization",
+    "current": "current",
+    "switching": "Changing organization...",
+    "switchFailed": "The organization could not be changed. Open LAMB from your LMS again.",
+    "cameFromCourse": "You came from the activity in {course}",
+    "cameFromActivity": "You came from an activity in your LMS",
+    "backToActivity": "Back to the activity"
   }
 }

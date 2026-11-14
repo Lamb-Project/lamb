@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
+import { clearActivity } from '$lib/session/activityReturn';
 
 // Function to safely parse JSON from localStorage
 /**
@@ -164,6 +165,8 @@ const createUserStore = () => {
         localStorage.removeItem('userEmail');
         localStorage.removeItem('OWI_url');
         localStorage.removeItem('userData');
+        // The LMS activity this tab came from ends with the session (#562).
+        clearActivity();
       }
       
       // Update the store

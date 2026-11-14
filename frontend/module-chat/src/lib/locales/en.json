@@ -2,8 +2,17 @@
 	"creatorAccess": {
 		"open": "Open LAMB Creator",
 		"openIn": "Open LAMB Creator in {organization}",
-		"newTab": "Opens in a new tab",
-		"blocked": "Your browser blocked the new tab. Allow pop-ups for this page and try again.",
 		"failed": "LAMB Creator could not be opened. Try again, or open the activity from your LMS again."
+	},
+	"setupHub": {
+		"yourOrganization": "Your Organization",
+		"chooseOrganization": "Choose Organization",
+		"chooseIntro": "You have accounts in multiple organizations. Choose one for this activity.",
+		"cannotChange": "This cannot be changed later.",
+		"organizationFallback": "Organization {id}",
+		"assistantCount": "{count, plural, one {# published assistant} other {# published assistants}}",
+		"addOrganization": "Add an organization with a creator code",
+		"creator": "Assistants are built and published in LAMB Creator.",
+		"signIn": "Sign in to LAMB Creator with your LAMB account to build assistants for this organization."
 	}
 }

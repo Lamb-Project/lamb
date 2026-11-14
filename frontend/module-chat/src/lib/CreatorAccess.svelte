@@ -1,19 +1,61 @@
+<script module>
+	/** @typedef {{ creator_user_id: number, organization_id?: number | string, organization_name?: string, user_name?: string }} CreatorAccount */
+
+	/**
+	 * The account that enters LAMB Creator in one organization, if the backend offers one. An
+	 * organization of the instructor may have none: a regular account, with a password.
+	 * @param {CreatorAccount[] | null | undefined} accounts
+	 * @param {number | string | null | undefined} organizationId
+	 * @returns {CreatorAccount | undefined}
+	 */
+	export function creatorAccountFor(accounts, organizationId) {
+		if (!Array.isArray(accounts) || organizationId === undefined || organizationId === null) {
+			return undefined;
+		}
+		return accounts.find((account) => String(account.organization_id) === String(organizationId));
+	}
+</script>
+
 <script>
 	import { _, locale } from '$lib/i18n.js';
 
 	// Way into LAMB Creator for an instructor who reaches it only through the LMS (an LTI creator
 	// has no password). The setup and dashboard pages get `creator_access` from the backend: the
-	// Creator accounts this launch may enter. With no account, nothing is rendered.
+	// Creator accounts this launch may enter. With no account, nothing is rendered. LAMB Creator
+	// opens in this same window: no new tab (issue 562).
+	//
+	// `organizationId` restricts the control to one organization: a single button for that
+	// organization's account, or nothing when the organization has no account in the list.
 
-	/** @typedef {{ creator_user_id: number, organization_id?: number, organization_name?: string, user_name?: string }} CreatorAccount */
+	/**
+	 * @type {{
+	 *   token: string | null,
+	 *   accounts?: CreatorAccount[] | null,
+	 *   organizationId?: number | string | null,
+	 *   prominent?: boolean,
+	 *   navigate?: (address: string) => void,
+	 *   class?: string
+	 * }}
+	 */
+	let {
+		token,
+		accounts = [],
+		organizationId = undefined,
+		prominent = false,
+		navigate = (address) => window.location.assign(address),
+		class: className = ''
+	} = $props();
 
-	/** @type {{ token: string | null, accounts?: CreatorAccount[] | null, class?: string }} */
-	let { token, accounts = [], class: className = '' } = $props();
-
-	let list = $derived(Array.isArray(accounts) ? accounts : []);
+	let list = $derived.by(() => {
+		if (organizationId === undefined || organizationId === null) {
+			return Array.isArray(accounts) ? accounts : [];
+		}
+		const account = creatorAccountFor(accounts, organizationId);
+		return account ? [account] : [];
+	});
+	/** True from the click until the answer, and on while the browser leaves for LAMB Creator. */
 	let busy = $state(false);
-	/** @type {'' | 'blocked' | 'failed'} */
-	let failure = $state('');
+	let failed = $state(false);
 	/** The reason the backend gave for a refusal, when it gave one. */
 	let detail = $state('');
 
@@ -23,7 +65,7 @@
 	}
 
 	/**
-	 * The address for the new tab, or '' when the answer carries none that a browser tab may open.
+	 * The address to go to, or '' when the answer carries none that a browser window may open.
 	 * @param {unknown} value
 	 */
 	function webAddress(value) {
@@ -39,17 +81,8 @@
 	/** @param {CreatorAccount} account */
 	async function enter(account) {
 		if (busy) return;
-		failure = '';
+		failed = false;
 		detail = '';
-		// The tab has to open inside the click: opened after the request, the browser blocks it as
-		// a pop-up. It starts blank and cannot reach this page; the address, which carries a
-		// session token, goes to that tab only and is never shown or logged here.
-		const tab = window.open('about:blank', '_blank');
-		if (!tab) {
-			failure = 'blocked';
-			return;
-		}
-		tab.opener = null;
 		busy = true;
 		let address = '';
 		try {
@@ -64,15 +97,27 @@
 		} catch {
 			// No answer from the server: the translated message covers it.
 		}
-		busy = false;
 		if (address) {
-			if (!tab.closed) tab.location.replace(address);
+			// The address carries a session token: it goes to the browser only and is never shown
+			// or logged here. The control stays disabled while this page is being left.
+			navigate(address);
 			return;
 		}
-		tab.close();
-		failure = 'failed';
+		busy = false;
+		failed = true;
+	}
+
+	/**
+	 * Back from LAMB Creator with the browser's Back button, the page may come out of the
+	 * browser's cache exactly as it was left: with the control still disabled.
+	 * @param {PageTransitionEvent} event
+	 */
+	function restored(event) {
+		if (event.persisted) busy = false;
 	}
 </script>
+
+<svelte:window onpageshow={restored} />
 
 {#snippet entry(
 	/** @type {CreatorAccount} */ account,
@@ -81,9 +126,10 @@
 )}
 	<button
 		type="button"
-		class="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-left text-sm font-medium text-gray-700 transition-colors enabled:hover:border-blue-500 enabled:hover:bg-blue-50 enabled:hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+		class="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-lg border text-left text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 {prominent
+			? 'border-blue-600 bg-blue-600 px-4 py-2 text-white enabled:hover:border-blue-700 enabled:hover:bg-blue-700'
+			: 'border-gray-300 bg-white px-3 py-1.5 text-gray-700 enabled:hover:border-blue-500 enabled:hover:bg-blue-50 enabled:hover:text-blue-700'}"
 		aria-label={name}
-		title={$_('creatorAccess.newTab')}
 		disabled={busy}
 		onclick={() => enter(account)}
 	>
@@ -99,7 +145,7 @@
 				stroke-linecap="round"
 				stroke-linejoin="round"
 				stroke-width="2"
-				d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+				d="M14 5l7 7m0 0l-7 7m7-7H3"
 			/>
 		</svg>
 	</button>
@@ -123,9 +169,9 @@
 				{/each}
 			</div>
 		{/if}
-		{#if failure}
+		{#if failed}
 			<p role="alert" class="max-w-xs rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-				{failure === 'blocked' ? $_('creatorAccess.blocked') : detail || $_('creatorAccess.failed')}
+				{detail || $_('creatorAccess.failed')}
 			</p>
 		{/if}
 	</div>
