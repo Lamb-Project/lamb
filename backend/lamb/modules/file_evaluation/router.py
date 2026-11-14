@@ -171,6 +171,8 @@ async def update_setup_config(
 
 # ── Submissions ───────────────────────────────────────────────────────────
 
+PDF_ONLY = "Only PDF files can be submitted. Save your document as PDF and upload it again."
+
 @router.post("/activities/{activity_id}/submissions")
 async def upload_submission(
     activity_id: int,
@@ -187,13 +189,13 @@ async def upload_submission(
     # The path must name the activity the token was issued for.
     _assert_activity(payload, activity_id)
 
-    if (file.filename or "").lower().endswith(".doc"):
-        raise HTTPException(
-            status_code=400,
-            detail="Legacy Word (.doc) files are not supported. Save the document as .docx and upload it again.",
-        )
+    # Submissions are PDF only (Marc, 10 and 14 November 2026): by name and by content.
+    if not (file.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail=PDF_ONLY)
 
     content = await file.read()
+    if not content.lstrip(b"\xef\xbb\xbf\r\n\t ")[:5] == b"%PDF-":
+        raise HTTPException(status_code=400, detail=PDF_ONLY)
     try:
         result = _service.create_submission(
             activity_id=activity_id,
