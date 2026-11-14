@@ -1060,5 +1060,67 @@
     "empty": "No test cases yet. Add some or ask LAMB LEGATUS to generate them.",
     "delete": "Delete Test Case",
     "confirmDelete": "Are you sure you want to delete this test case? This action cannot be undone."
+  },
+  "creatorCodes": {
+    "title": "Creator codes",
+    "intro": "A creator code lets an instructor who opens a LAMB activity from the LMS, and has no LAMB Creator account yet, create one in this organization. It only works for instructors arriving from the LMS: on its own, the code gives access to nobody. It grants creator status and never makes anyone an administrator.",
+    "loading": "Loading creator codes...",
+    "requestFailed": "The request failed. Try again.",
+    "list": {
+      "empty": "This organization has no creator codes yet.",
+      "label": "Label",
+      "code": "Code",
+      "status": "Status",
+      "uses": "Uses",
+      "expires": "Expires",
+      "actions": "Actions",
+      "noLabel": "No label",
+      "noExpiry": "No expiry",
+      "disable": "Disable",
+      "enable": "Enable",
+      "disabledNotice": "Code …{hint} disabled. Instructors cannot use it until you enable it again.",
+      "enabledNotice": "Code …{hint} enabled."
+    },
+    "status": {
+      "active": "Active",
+      "disabled": "Disabled",
+      "expired": "Expired",
+      "used_up": "Used up"
+    },
+    "form": {
+      "title": "New code",
+      "label": "Label (optional)",
+      "labelPlaceholder": "For example: autumn term",
+      "labelHint": "A note for you, to tell the codes apart. Instructors do not see it.",
+      "expires": "Expiry date (optional)",
+      "expiresHint": "The code works until the end of that day. Leave it empty for no expiry.",
+      "maxUses": "Use limit (optional)",
+      "maxUsesHint": "How many instructors can use the code. Leave it empty for no limit.",
+      "maxUsesInvalid": "The use limit must be a whole number, 1 or more.",
+      "create": "Create code",
+      "creating": "Creating..."
+    },
+    "created": {
+      "title": "New creator code",
+      "warning": "Copy this code now and pass it on to your instructors. It will not be shown again: from now on you will only see its last four characters.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "copyFailed": "The code could not be copied. Select it and copy it by hand.",
+      "dismiss": "I have saved it"
+    },
+    "text": {
+      "title": "Text for instructors without an account",
+      "intro": "An instructor who opens a LAMB activity from the LMS and has no LAMB Creator account reads this text on the page where the creator code is entered. Use it to say who hands out the codes at your institution.",
+      "systemNote": "This is the system organization: it has no creator codes. The text you write here is the default for the whole deployment, shown whenever an organization has not written its own.",
+      "label": "Text of this organization",
+      "usingDefault": "This organization has no text of its own. Instructors read the default text:",
+      "counter": "{count} / {limit} characters",
+      "save": "Save text",
+      "saving": "Saving...",
+      "saved": "Text saved.",
+      "restore": "Restore the default text",
+      "restoreConfirm": "Remove the text of this organization? Instructors will read the default text again.",
+      "restored": "Default text restored."
+    }
   }
 }

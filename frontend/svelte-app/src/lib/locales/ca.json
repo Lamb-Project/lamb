@@ -1063,5 +1063,67 @@
     "empty": "Encara no hi ha casos de prova. Afegeix-ne un o demana a LAMB LEGATUS que els generi.",
     "delete": "Eliminar cas de prova",
     "confirmDelete": "Vols eliminar aquest cas de prova? Aquesta acció no es pot desfer."
+  },
+  "creatorCodes": {
+    "title": "Codis de creador",
+    "intro": "Amb un codi de creador, un docent que obre una activitat de LAMB des de l’LMS i encara no té compte de creador a LAMB en pot crear un en aquesta organització. Només serveix per a docents que arriben des de l’LMS: tot sol, el codi no dona accés a ningú. Dona la condició de creador i no converteix mai ningú en administrador.",
+    "loading": "Carregant els codis de creador...",
+    "requestFailed": "La petició ha fallat. Torna-ho a provar.",
+    "list": {
+      "empty": "Aquesta organització encara no té cap codi de creador.",
+      "label": "Etiqueta",
+      "code": "Codi",
+      "status": "Estat",
+      "uses": "Usos",
+      "expires": "Caduca",
+      "actions": "Accions",
+      "noLabel": "Sense etiqueta",
+      "noExpiry": "No caduca",
+      "disable": "Desactiva",
+      "enable": "Activa",
+      "disabledNotice": "Codi …{hint} desactivat. Els docents no el poden fer servir fins que el tornis a activar.",
+      "enabledNotice": "Codi …{hint} activat."
+    },
+    "status": {
+      "active": "Actiu",
+      "disabled": "Desactivat",
+      "expired": "Caducat",
+      "used_up": "Esgotat"
+    },
+    "form": {
+      "title": "Codi nou",
+      "label": "Etiqueta (opcional)",
+      "labelPlaceholder": "Per exemple: quadrimestre de tardor",
+      "labelHint": "Una nota per a tu, per distingir els codis. Els docents no la veuen.",
+      "expires": "Data de caducitat (opcional)",
+      "expiresHint": "El codi serveix fins al final d’aquell dia. Deixa-la buida si no vols que caduqui.",
+      "maxUses": "Límit d’usos (opcional)",
+      "maxUsesHint": "Quants docents poden fer servir el codi. Deixa’l buit si no vols cap límit.",
+      "maxUsesInvalid": "El límit d’usos ha de ser un nombre enter igual o superior a 1.",
+      "create": "Crea el codi",
+      "creating": "Creant..."
+    },
+    "created": {
+      "title": "Codi de creador nou",
+      "warning": "Copia aquest codi ara i fes-lo arribar als teus docents. No es tornarà a mostrar: a partir d’ara només en veuràs els quatre últims caràcters.",
+      "copy": "Copia",
+      "copied": "Copiat",
+      "copyFailed": "No s’ha pogut copiar el codi. Selecciona’l i copia’l a mà.",
+      "dismiss": "Ja l’he desat"
+    },
+    "text": {
+      "title": "Text per als docents sense compte",
+      "intro": "Un docent que obre una activitat de LAMB des de l’LMS i no té compte de creador a LAMB llegeix aquest text a la pàgina on s’introdueix el codi de creador. Fes-lo servir per explicar qui reparteix els codis a la teva institució.",
+      "systemNote": "Aquesta és l’organització del sistema: no té codis de creador. El text que escriguis aquí és el predeterminat de tota la instal·lació i es mostra sempre que una organització no ha escrit el seu.",
+      "label": "Text d’aquesta organització",
+      "usingDefault": "Aquesta organització no té text propi. Els docents llegeixen el text predeterminat:",
+      "counter": "{count} / {limit} caràcters",
+      "save": "Desa el text",
+      "saving": "Desant...",
+      "saved": "Text desat.",
+      "restore": "Restaura el text predeterminat",
+      "restoreConfirm": "Vols treure el text d’aquesta organització? Els docents tornaran a llegir el text predeterminat.",
+      "restored": "Text predeterminat restaurat."
+    }
   }
 }

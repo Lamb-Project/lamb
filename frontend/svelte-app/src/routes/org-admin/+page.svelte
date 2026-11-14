@@ -15,6 +15,7 @@
     import { user } from '$lib/stores/userStore';
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import OrgApiAccessSettings from '$lib/components/admin/OrgApiAccessSettings.svelte';
+    import OrgCreatorCodes from '$lib/components/admin/OrgCreatorCodes.svelte';
     import Pagination from '$lib/components/common/Pagination.svelte';
     import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
     // BulkUserImport component not yet implemented
@@ -4522,6 +4523,7 @@
                                 {/if}
                             </div>
                         </div>
+                        {#key targetOrgSlug}<OrgCreatorCodes org={targetOrgSlug} />{/key}
                         {/if}
                     {/if}
                 </div>

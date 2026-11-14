@@ -1074,5 +1074,67 @@
     "empty": "Todavía no hay casos de prueba. Añade uno o pide a LAMB LEGATUS que los genere.",
     "delete": "Eliminar caso de prueba",
     "confirmDelete": "¿Quieres eliminar este caso de prueba? Esta acción no se puede deshacer."
+  },
+  "creatorCodes": {
+    "title": "Códigos de creador",
+    "intro": "Con un código de creador, un docente que abre una actividad de LAMB desde el LMS y todavía no tiene cuenta de creador en LAMB puede crearla en esta organización. Solo sirve para docentes que llegan desde el LMS: por sí solo, el código no da acceso a nadie. Da la condición de creador y nunca convierte a nadie en administrador.",
+    "loading": "Cargando códigos de creador...",
+    "requestFailed": "La petición ha fallado. Vuelve a intentarlo.",
+    "list": {
+      "empty": "Esta organización todavía no tiene códigos de creador.",
+      "label": "Etiqueta",
+      "code": "Código",
+      "status": "Estado",
+      "uses": "Usos",
+      "expires": "Caduca",
+      "actions": "Acciones",
+      "noLabel": "Sin etiqueta",
+      "noExpiry": "No caduca",
+      "disable": "Desactivar",
+      "enable": "Activar",
+      "disabledNotice": "Código …{hint} desactivado. Los docentes no pueden usarlo hasta que lo vuelvas a activar.",
+      "enabledNotice": "Código …{hint} activado."
+    },
+    "status": {
+      "active": "Activo",
+      "disabled": "Desactivado",
+      "expired": "Caducado",
+      "used_up": "Agotado"
+    },
+    "form": {
+      "title": "Nuevo código",
+      "label": "Etiqueta (opcional)",
+      "labelPlaceholder": "Por ejemplo: cuatrimestre de otoño",
+      "labelHint": "Una nota para ti, para distinguir los códigos. Los docentes no la ven.",
+      "expires": "Fecha de caducidad (opcional)",
+      "expiresHint": "El código sirve hasta el final de ese día. Déjala vacía si no quieres que caduque.",
+      "maxUses": "Límite de usos (opcional)",
+      "maxUsesHint": "Cuántos docentes pueden usar el código. Déjalo vacío si no quieres límite.",
+      "maxUsesInvalid": "El límite de usos debe ser un número entero igual o mayor que 1.",
+      "create": "Crear código",
+      "creating": "Creando..."
+    },
+    "created": {
+      "title": "Nuevo código de creador",
+      "warning": "Copia este código ahora y hazlo llegar a tus docentes. No se volverá a mostrar: a partir de ahora solo verás sus cuatro últimos caracteres.",
+      "copy": "Copiar",
+      "copied": "Copiado",
+      "copyFailed": "No se ha podido copiar el código. Selecciónalo y cópialo a mano.",
+      "dismiss": "Ya lo he guardado"
+    },
+    "text": {
+      "title": "Texto para docentes sin cuenta",
+      "intro": "Un docente que abre una actividad de LAMB desde el LMS y no tiene cuenta de creador en LAMB lee este texto en la página donde se introduce el código de creador. Úsalo para explicar quién reparte los códigos en tu institución.",
+      "systemNote": "Esta es la organización del sistema: no tiene códigos de creador. El texto que escribas aquí es el predeterminado de toda la instalación y se muestra siempre que una organización no ha escrito el suyo.",
+      "label": "Texto de esta organización",
+      "usingDefault": "Esta organización no tiene texto propio. Los docentes leen el texto predeterminado:",
+      "counter": "{count} / {limit} caracteres",
+      "save": "Guardar texto",
+      "saving": "Guardando...",
+      "saved": "Texto guardado.",
+      "restore": "Restaurar el texto predeterminado",
+      "restoreConfirm": "¿Quieres quitar el texto de esta organización? Los docentes volverán a leer el texto predeterminado.",
+      "restored": "Texto predeterminado restaurado."
+    }
   }
 }

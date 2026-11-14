@@ -1070,5 +1070,67 @@
     "empty": "Oraindik ez dago proba-kasurik. Gehitu bat edo eskatu LAMB LEGATUSi sortzeko.",
     "delete": "Ezabatu proba-kasua",
     "confirmDelete": "Proba-kasu hau ezabatu nahi duzu? Ekintza hau ezin da desegin."
+  },
+  "creatorCodes": {
+    "title": "Sortzaile-kodeak",
+    "intro": "Sortzaile-kode batekin, LAMB jarduera bat LMStik irekitzen duen eta oraindik LAMBen sortzaile-konturik ez duen irakasleak kontua sor dezake erakunde honetan. LMStik datozen irakasleentzat bakarrik balio du: kodeak berez ez dio inori sarbiderik ematen. Sortzaile izaera ematen du, eta ez du inoiz inor administratzaile bihurtzen.",
+    "loading": "Sortzaile-kodeak kargatzen...",
+    "requestFailed": "Eskaerak huts egin du. Saiatu berriro.",
+    "list": {
+      "empty": "Erakunde honek ez du oraindik sortzaile-koderik.",
+      "label": "Etiketa",
+      "code": "Kodea",
+      "status": "Egoera",
+      "uses": "Erabilerak",
+      "expires": "Iraungitzea",
+      "actions": "Ekintzak",
+      "noLabel": "Etiketarik gabe",
+      "noExpiry": "Ez da iraungitzen",
+      "disable": "Desgaitu",
+      "enable": "Gaitu",
+      "disabledNotice": "…{hint} kodea desgaituta. Irakasleek ezin dute erabili berriro gaitu arte.",
+      "enabledNotice": "…{hint} kodea gaituta."
+    },
+    "status": {
+      "active": "Aktiboa",
+      "disabled": "Desgaituta",
+      "expired": "Iraungita",
+      "used_up": "Agortuta"
+    },
+    "form": {
+      "title": "Kode berria",
+      "label": "Etiketa (aukerakoa)",
+      "labelPlaceholder": "Adibidez: udazkeneko lauhilekoa",
+      "labelHint": "Zuretzako oharra, kodeak bereizteko. Irakasleek ez dute ikusten.",
+      "expires": "Iraungitze-data (aukerakoa)",
+      "expiresHint": "Kodeak egun horren amaierara arte balio du. Utzi hutsik iraungitzerik nahi ez baduzu.",
+      "maxUses": "Erabilera-muga (aukerakoa)",
+      "maxUsesHint": "Zenbat irakaslek erabil dezaketen kodea. Utzi hutsik mugarik nahi ez baduzu.",
+      "maxUsesInvalid": "Erabilera-mugak zenbaki oso bat izan behar du, 1 edo handiagoa.",
+      "create": "Sortu kodea",
+      "creating": "Sortzen..."
+    },
+    "created": {
+      "title": "Sortzaile-kode berria",
+      "warning": "Kopiatu kode hau orain eta helarazi zure irakasleei. Ez da berriro erakutsiko: hemendik aurrera azken lau karaktereak bakarrik ikusiko dituzu.",
+      "copy": "Kopiatu",
+      "copied": "Kopiatuta",
+      "copyFailed": "Ezin izan da kodea kopiatu. Hautatu eta kopiatu eskuz.",
+      "dismiss": "Gorde dut"
+    },
+    "text": {
+      "title": "Konturik gabeko irakasleentzako testua",
+      "intro": "LAMB jarduera bat LMStik irekitzen duen eta LAMBen sortzaile-konturik ez duen irakasleak testu hau irakurtzen du sortzaile-kodea sartzen den orrian. Erabili zure erakundean kodeak nork banatzen dituen azaltzeko.",
+      "systemNote": "Hau sistemaren erakundea da: ez du sortzaile-koderik. Hemen idazten duzun testua instalazio osoaren testu lehenetsia da, eta erakunde batek berea idatzi ez duen guztietan erakusten da.",
+      "label": "Erakunde honen testua",
+      "usingDefault": "Erakunde honek ez du testu propiorik. Irakasleek testu lehenetsia irakurtzen dute:",
+      "counter": "{count} / {limit} karaktere",
+      "save": "Gorde testua",
+      "saving": "Gordetzen...",
+      "saved": "Testua gordeta.",
+      "restore": "Leheneratu testu lehenetsia",
+      "restoreConfirm": "Erakunde honen testua kendu nahi duzu? Irakasleek testu lehenetsia irakurriko dute berriro.",
+      "restored": "Testu lehenetsia leheneratuta."
+    }
   }
 }
