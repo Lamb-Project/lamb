@@ -555,8 +555,40 @@ async def get_current_user(auth: AuthContext = Depends(get_auth_context)):
             "user_type": auth.user.get("user_type", "creator"),
             "organization_role": auth.organization_role,
             "launch_url": launch_url,
+            # Shown at the top right of LAMB Creator; the switcher appears with more than one (#562)
+            "organization": {"id": auth.organization.get("id"), "name": auth.organization.get("name")},
+            "lti_organizations": await run_in_threadpool(_lti_organizations, auth),
         }
     }
+
+
+def _lti_organizations(auth: AuthContext):
+    """Organizations an LTI creator may switch to from this session: their other LTI creator
+    accounts for the same LMS user, within four hours of the launch. Empty for everyone else."""
+    from lamb import lti_onboarding
+    from lamb.lti_activity_manager import LtiActivityManager
+    claims = lti_onboarding.session_identity(auth.token_payload)
+    if not claims:
+        return []
+    accounts = lti_onboarding.creator_access(db_manager, LtiActivityManager(), claims)
+    return [{**account, "current": account["creator_user_id"] == auth.user.get("id")} for account in accounts]
+
+
+@router.post("/lti/switch-organization", tags=["Authentication"], summary="Switch to another organization of the same LTI creator")
+async def switch_lti_organization(request: Request, auth: AuthContext = Depends(get_auth_context)):
+    """An LTI creator with accounts in several organizations moves to another one without going
+    back to the LMS. Only among their own LTI creator accounts, within four hours of the launch."""
+    from lamb import lti_onboarding
+    from lamb.lti_activity_manager import LtiActivityManager
+    try:
+        target = int((await request.json()).get("creator_user_id"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="creator_user_id is required")
+    claims = lti_onboarding.session_identity(auth.token_payload)
+    session = await run_in_threadpool(lti_onboarding.creator_session, db_manager, LtiActivityManager(), claims, target) if claims else None
+    if not session:
+        raise HTTPException(status_code=403, detail="Open LAMB from your LMS again to change organization.")
+    return {"url": f"/assistants?token={session}"}
 
 
 # Initialize security for token authentication

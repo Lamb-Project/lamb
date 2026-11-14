@@ -29,8 +29,10 @@ logger = get_logger(__name__, component="LTI")
 TICKET_TYPE = "onboarding"
 TICKET_LIFETIME = timedelta(minutes=15)
 ATTEMPT_WINDOW_SECONDS = 15 * 60
-# An instructor may enter LAMB Creator from the activity during this long after the launch.
-HANDOVER_WINDOW_SECONDS = 30 * 60
+# After a launch from the LMS, an instructor may move between the activity and LAMB Creator,
+# add an organization and switch organization for this long (Marc, 14 November 2026: four hours).
+ACTIVITY_SESSION_SECONDS = 4 * 3600
+RETURN_TYPE = "return"
 MAX_FAILED_ATTEMPTS = 5
 # No 0/O and no 1/I: the code is read aloud and typed by hand.
 ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -52,6 +54,7 @@ MESSAGES = {
     "rate_limited": "Too many attempts. Wait a few minutes, then open the activity from your LMS again.",
     "not_allowed": "This code belongs to an organization that your LMS is not connected to.",
     "account_disabled": "Your LAMB account in this organization is disabled.",
+    "already_member": "You already have an account in this organization. Go back and choose it.",
     "failed": "The account could not be created. Open the activity from your LMS again, or contact your LAMB administrator.",
 }
 # Outcomes that tell the instructor to talk to someone: the organization's own text follows them.
@@ -224,7 +227,8 @@ def set_page_text(db, organization: Dict[str, Any], text: str) -> str:
 # ---------------------------------------------------------------------------
 
 def issue_ticket(*, lms_user_id: str, lms_email: str, display_name: str, resource_link_id: str,
-                 context_id: str = "", context_title: str = "", protocol: str, lms_instance: str = "") -> str:
+                 context_id: str = "", context_title: str = "", protocol: str, lms_instance: str = "",
+                 username: str = "", launched_at: Optional[int] = None) -> str:
     """Sign what the LMS asserted in this launch. Call only after the launch was verified
     and only for a launch that carries the instructor role."""
     return lamb_auth.create_token({
@@ -235,6 +239,8 @@ def issue_ticket(*, lms_user_id: str, lms_email: str, display_name: str, resourc
         "lti_lms_user_id": lms_user_id,
         "lti_lms_email": lms_email or "",
         "lti_lms_instance": lms_instance or "",
+        "lti_launched_at": int(launched_at or time.time()),
+        "lti_username": username or "",
         "lti_display_name": display_name or "",
         "lti_resource_link_id": resource_link_id,
         "lti_context_id": context_id or "",
@@ -276,6 +282,7 @@ class Redemption:
     reason: str = ""
     creator_user: Optional[Dict[str, Any]] = None
     organization: Optional[Dict[str, Any]] = None
+    first_account: bool = False   # the person had no LAMB account before this code
 
     @property
     def message(self) -> str:
@@ -350,6 +357,13 @@ def redeem(db, manager, ticket: Dict[str, Any], code: str) -> Redemption:
     existing = db.get_creator_user_by_lti(organization["id"], lms_user_id)
     if existing and not existing.get("enabled", True):
         return _refuse(db, ticket, "account_disabled", organization, row["id"])
+    # Accounts this person already has, in any organization. Never two in one organization.
+    try:
+        known = manager.identify_instructor(lms_user_id=lms_user_id, lms_email=ticket.get("lti_lms_email") or None)
+    except ValueError:
+        known = []
+    if not existing and any(account["organization_id"] == organization["id"] for account in known):
+        return _refuse(db, ticket, "already_member", organization, row["id"])
 
     creator_id = existing["id"] if existing else None
     if not existing:
@@ -387,44 +401,58 @@ def redeem(db, manager, ticket: Dict[str, Any], code: str) -> Redemption:
         "id": creator_id, "organization_id": organization["id"],
         "user_email": creator.get("user_email") or creator.get("email"),
         "user_name": creator.get("user_name") or creator.get("name"),
-    }, organization=organization)
+    }, organization=organization, first_account=not known)
 
 
 # ---------------------------------------------------------------------------
-# Entering LAMB Creator from the activity
+# Between the activity and LAMB Creator
 # ---------------------------------------------------------------------------
+
+def launched_at(claims: Dict[str, Any]) -> Optional[int]:
+    """When the LMS launch behind these claims happened (carried from token to token), else when the token was issued."""
+    value = claims.get("lti_launched_at") or claims.get("iat")
+    return int(value) if isinstance(value, (int, float)) else None
+
+
+def within_session(claims: Dict[str, Any]) -> bool:
+    start = launched_at(claims)
+    return start is not None and 0 <= time.time() - start <= ACTIVITY_SESSION_SECONDS
+
 
 def creator_access(db, manager, claims: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """LTI creator accounts this instructor may enter LAMB Creator as, right after a launch.
+    """LTI creator accounts this instructor may enter LAMB Creator as, or switch to.
 
-    An LTI creator has no password and enters LAMB only through the LMS. The accounts offered
-    are those this person obtained with a creator code from the same LMS instance, user and
-    email as the launch behind `claims` (a setup or dashboard token). An account matched only
-    by the email the LMS asserts, a regular account with a password, a disabled account and a
-    launch older than half an hour are never offered: regular creators sign in on the login page.
+    An LTI creator has no password and enters LAMB only through the LMS (Marc, 14 November
+    2026). Offered: the enabled LTI creator accounts LAMB identifies for the LMS user of
+    `claims` (a setup, dashboard or return token, or the identity kept in a Creator session),
+    within four hours of the launch. An account obtained with a creator code is offered only
+    to the LMS instance and email it was obtained from; an account made by the organization's
+    own LTI Creator tool is recognised by the LMS user alone, as that tool recognises it.
+    Never offered: an account matched only by the email the LMS asserts, a regular account
+    with a password, a disabled account. Regular creators sign in on the login page.
     """
-    issued = claims.get("iat")
-    if not isinstance(issued, (int, float)) or not 0 <= time.time() - issued <= HANDOVER_WINDOW_SECONDS:
+    if not within_session(claims):
         return []
     lms_user_id = claims.get("lti_lms_user_id") or ""
     if not lms_user_id:
         return []
     protocol = "1.3" if is_scoped(lms_user_id) else "1.1"
     identity = hashlib.sha256(f"{protocol}:{lms_user_id}".encode()).hexdigest()
-    redeemed = {row["creator_user_id"] for row in _rows(
-        db, "SELECT creator_user_id FROM {p}lti_creator_code_redemptions WHERE identity_hash=? AND lms_instance=? AND lms_email=?",
-        (identity, _instance(claims), _email(claims)))}
-    if not redeemed:
-        return []
+    obtained: Dict[int, set] = {}
+    for row in _rows(db, "SELECT creator_user_id, lms_instance, lms_email FROM {p}lti_creator_code_redemptions WHERE identity_hash=?", (identity,)):
+        obtained.setdefault(row["creator_user_id"], set()).add((row["lms_instance"], row["lms_email"]))
     try:
         # Without the email: only accounts bound to this LMS user, and on LTI 1.3 only in the
         # organizations of the registration.
         identified = manager.identify_instructor(lms_user_id=lms_user_id, lms_email=None)
     except ValueError:
         return []
+    here = (_instance(claims), _email(claims))
     accounts = []
     for account in identified:
-        if account["id"] not in redeemed or account.get("auth_provider") != "lti_creator" or not account.get("enabled", True):
+        if account.get("auth_provider") != "lti_creator" or not account.get("enabled", True):
+            continue
+        if account["id"] in obtained and here not in obtained[account["id"]]:
             continue
         organization = db.get_organization_by_id(account["organization_id"]) or {}
         accounts.append({"creator_user_id": account["id"], "organization_id": account["organization_id"],
@@ -434,11 +462,50 @@ def creator_access(db, manager, claims: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def creator_session(db, manager, claims: Dict[str, Any], creator_user_id: int) -> Optional[str]:
-    """A LAMB Creator session for one of the accounts creator_access() offers, or None."""
+    """A LAMB Creator session for one of the accounts creator_access() offers, or None.
+
+    The session remembers the LMS identity and the time of the launch, so that the person can
+    switch organization from inside LAMB Creator for the rest of the four hours.
+    """
     if not any(account["creator_user_id"] == creator_user_id for account in creator_access(db, manager, claims)):
         logger.warning(f"Creator entry refused for creator user {creator_user_id}")
         return None
     user = db.get_creator_user_by_id(creator_user_id)
-    logger.info(f"Creator entry from an LTI activity: creator user {creator_user_id}")
-    return lamb_auth.create_token({"sub": str(creator_user_id), "email": user.get("user_email") or user.get("email"),
-                                   "role": user.get("role") or "user"})
+    logger.info(f"Creator entry from the LMS: creator user {creator_user_id}")
+    return lamb_auth.create_token({
+        "sub": str(creator_user_id), "email": user.get("user_email") or user.get("email"), "role": user.get("role") or "user",
+        "lti_identity": {"lms_user_id": claims.get("lti_lms_user_id"), "lms_email": _email(claims),
+                         "lms_instance": _instance(claims), "launched_at": launched_at(claims)}})
+
+
+def session_identity(session: Dict[str, Any]) -> Dict[str, Any]:
+    """The launch claims a Creator session carries, in the shape creator_access() reads; {} for a session
+    that did not come from the LMS."""
+    identity = session.get("lti_identity") if isinstance(session, dict) else None
+    if not isinstance(identity, dict) or not identity.get("lms_user_id"):
+        return {}
+    return {"lti_lms_user_id": identity.get("lms_user_id"), "lti_lms_email": identity.get("lms_email") or "",
+            "lti_lms_instance": identity.get("lms_instance") or "", "lti_launched_at": identity.get("launched_at")}
+
+
+RETURN_CLAIMS = ("lti_resource_link_id", "lti_context_id", "lti_context_title", "lti_lms_user_id", "lti_lms_email",
+                 "lti_lms_instance", "lti_username", "lti_display_name")
+
+
+def issue_return(claims: Dict[str, Any]) -> str:
+    """The way back to the activity a person came from, for the rest of the four hours. LAMB Creator
+    keeps it per browser tab: another activity opened in another tab has its own."""
+    start = launched_at(claims) or int(time.time())
+    remaining = max(1, start + ACTIVITY_SESSION_SECONDS - int(time.time()))
+    return lamb_auth.create_token({"lti_type": RETURN_TYPE, "lti_launched_at": start,
+                                   **{key: claims.get(key) or "" for key in RETURN_CLAIMS}},
+                                  expires_delta=timedelta(seconds=remaining))
+
+
+def read_return(token: str) -> Optional[Dict[str, Any]]:
+    payload = lamb_auth.decode_token(token) if token else None
+    if not payload or payload.get("lti_type") != RETURN_TYPE or not within_session(payload):
+        return None
+    if not payload.get("lti_resource_link_id") or not payload.get("lti_lms_user_id"):
+        return None
+    return payload

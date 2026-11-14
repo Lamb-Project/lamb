@@ -25,6 +25,7 @@ from lamb.database_manager import LambDatabaseManager
 from lamb.logging_config import get_logger
 from lamb.modules import get_all_modules, get_module
 import os
+import time
 from datetime import timedelta
 from lamb.modules.base import LTIContext
 from lamb.lti13 import is_scoped
@@ -57,7 +58,8 @@ LTI_SETUP_JWT_EXPIRY = timedelta(hours=2)
 
 
 def _create_dashboard_jwt(activity, instructor_user, lms_user_id: str,
-                           lms_email: str = "", username: str = "", lms_instance: str = "") -> str:
+                           lms_email: str = "", username: str = "", lms_instance: str = "",
+                           launched_at: int = 0) -> str:
     """Issue a LAMB JWT for instructor dashboard access."""
     return lamb_auth.create_token({
         "lti_type": "dashboard",
@@ -69,12 +71,14 @@ def _create_dashboard_jwt(activity, instructor_user, lms_user_id: str,
         "lti_lms_user_id": lms_user_id,
         "lti_lms_email": lms_email,
         "lti_lms_instance": lms_instance,
+        **({"lti_launched_at": int(launched_at)} if launched_at else {}),
     }, expires_delta=LTI_DASHBOARD_JWT_EXPIRY)
 
 
 def _create_setup_jwt(creator_users, lms_user_id: str, lms_email: str,
                        resource_link_id: str, context_id: str = "",
-                       context_title: str = "", lms_instance: str = "") -> str:
+                       context_title: str = "", lms_instance: str = "",
+                       username: str = "", display_name: str = "", launched_at: int = 0) -> str:
     """Issue a LAMB JWT for instructor setup flow."""
     return lamb_auth.create_token({
         "lti_type": "setup",
@@ -84,6 +88,9 @@ def _create_setup_jwt(creator_users, lms_user_id: str, lms_email: str,
         "lti_lms_user_id": lms_user_id,
         "lti_lms_email": lms_email,
         "lti_lms_instance": lms_instance,
+        "lti_username": username,
+        "lti_display_name": display_name,
+        **({"lti_launched_at": int(launched_at)} if launched_at else {}),
         "lti_creator_user_ids": [cu['id'] for cu in creator_users],
     }, expires_delta=LTI_SETUP_JWT_EXPIRY)
 
@@ -195,6 +202,8 @@ async def lti_launch(request: Request):
                 lms_instance=lms_instance)
 
         logger.info(f"LTI launch: resource_link={resource_link_id}, user={username}, roles={roles}")
+        launched_at = int(time.time())   # the four hours of moving between the activity and Creator start now
+        ctx.launched_at = launched_at
 
         activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
 
@@ -245,7 +254,8 @@ async def lti_launch(request: Request):
             ticket = lti_onboarding.issue_ticket(
                 lms_user_id=lms_user_id, lms_email=lms_email, display_name=display_name,
                 resource_link_id=resource_link_id, context_id=context_id, context_title=context_title,
-                protocol="1.3" if is_lti13 else "1.1", lms_instance=lms_instance)
+                protocol="1.3" if is_lti13 else "1.1", lms_instance=lms_instance,
+                username=username, launched_at=launched_at)
             return await run_in_threadpool(_onboarding_page, request, ticket)
 
         setup_token = _create_setup_jwt(
@@ -260,6 +270,7 @@ async def lti_launch(request: Request):
             context_id=context_id,
             context_title=context_title,
             lms_instance=lms_instance,
+            username=username, display_name=display_name, launched_at=launched_at,
         )
 
         public_base = manager.get_public_base_url(request)
@@ -332,12 +343,10 @@ async def lti_setup_info(request: Request, token: str = ""):
         org_id = cu['organization_id']
         if org_id not in orgs_with_assistants and any(m.enabled_for_org(org_id) for m in no_assistant_modules):
             orgs_with_assistants[org_id] = []
-    if not orgs_with_assistants:
-        # A creator with nothing published yet, such as a teacher who has just redeemed a creator
-        # code: the page still names the organization and says what is missing, instead of
-        # showing a form that cannot be saved and does not say why.
-        for cu in creator_users:
-            orgs_with_assistants[cu['organization_id']] = []
+    # Every organization where the instructor is a creator is offered, also one with nothing
+    # published yet: the page names it, says what is missing and leads to LAMB Creator (#562).
+    for cu in creator_users:
+        orgs_with_assistants.setdefault(cu['organization_id'], [])
     instructor_orgs = sorted({cu['organization_id'] for cu in creator_users})
     offered_modules = [m for m in get_all_modules() if any(m.enabled_for_org(o) for o in instructor_orgs)]
 
@@ -366,6 +375,7 @@ async def lti_setup_info(request: Request, token: str = ""):
         "context_title": data.get("lti_context_title", ""),
         "needs_org_selection": needs_org_selection,
         "creator_access": lti_onboarding.creator_access(db_manager, manager, data),
+        "can_add_organization": data.get("lti_type") == "setup" and lti_onboarding.within_session(data),
         "org_names": org_names,
         "orgs_with_assistants": orgs_with_assistants,
         "modules": [{"name": m.name, "display_name": getattr(m, 'display_name', m.name),
@@ -565,7 +575,7 @@ async def lti_configure_activity(request: Request):
 
         dashboard_token = _create_dashboard_jwt(
             activity, instructor_user, lms_user_id, lms_email, username=username,
-            lms_instance=data.get("lti_lms_instance", ""))
+            lms_instance=data.get("lti_lms_instance", ""), launched_at=lti_onboarding.launched_at(data) or 0)
 
         public_base = manager.get_public_base_url(request)
         at = activity.get("activity_type") or "chat"
@@ -595,25 +605,53 @@ async def lti_configure_activity(request: Request):
 
 
 # =============================================================================
-# Creator-code page (instructor with no LAMB account, #467 / #562)
+# Creator codes, LAMB Creator and the way back to the activity (#467 / #562)
 # =============================================================================
 
+def _setup_jwt_from(claims: dict, creator_users) -> str:
+    """A setup token for the same launch as `claims` (a ticket, a setup token or a return token)."""
+    return _create_setup_jwt(
+        creator_users=creator_users, lms_user_id=claims["lti_lms_user_id"], lms_email=claims.get("lti_lms_email", ""),
+        resource_link_id=claims["lti_resource_link_id"], context_id=claims.get("lti_context_id", ""),
+        context_title=claims.get("lti_context_title", ""), lms_instance=claims.get("lti_lms_instance", ""),
+        username=claims.get("lti_username", ""), display_name=claims.get("lti_display_name", ""),
+        launched_at=lti_onboarding.launched_at(claims) or 0)
+
+
+def _creator_users_for(claims: dict):
+    """The instructor's Creator accounts, as the setup token lists them."""
+    found = manager.identify_instructor(lms_user_id=claims["lti_lms_user_id"], lms_email=claims.get("lti_lms_email") or None)
+    return [{"id": cu["id"], "organization_id": cu["organization_id"],
+             "user_email": cu["user_email"], "user_name": cu["user_name"]} for cu in found]
+
+
+def _creator_url(request: Request, claims: dict, creator_user_id: int):
+    """Address of LAMB Creator for one of the instructor's LTI creator accounts, with the way back
+    to the activity; None when that account may not be entered from this launch."""
+    session = lti_onboarding.creator_session(db_manager, manager, claims, creator_user_id)
+    if not session:
+        return None
+    return f"{manager.get_public_base_url(request)}/assistants?token={session}&activity={lti_onboarding.issue_return(claims)}"
+
+
 def _onboarding_page(request: Request, ticket_token: str, reason: str = "", organization=None, status_code: int = 200):
-    """Render the page a verified instructor launch returns when LAMB has no account for the instructor."""
+    """Render the page a verified instructor launch returns when LAMB has no account for the instructor,
+    and the same page when an instructor adds an organization."""
     ticket = lti_onboarding.read_ticket(ticket_token)
     if not ticket:
         return HTMLResponse(SESSION_EXPIRED_HTML, status_code=403)
     try:
         allowed = lti_onboarding.allowed_organizations(db_manager, ticket)
+        accounts = _creator_users_for(ticket)
     except ValueError:
         return HTMLResponse(SESSION_EXPIRED_HTML, status_code=403)
-    link_token = ""
-    if ticket["lti_protocol"] == "1.3":
+    link_token, back_url = "", ""
+    if accounts:
+        # Already a creator somewhere: this is "add an organization", with the way back to the choice.
+        back_url = f"/m/chat/setup?token={_setup_jwt_from(ticket, accounts)}"
+    elif ticket["lti_protocol"] == "1.3":
         # LTI 1.3 already offered linking an existing account by email and password; it stays.
-        link_token = _create_setup_jwt(
-            creator_users=[], lms_user_id=ticket["lti_lms_user_id"], lms_email=ticket.get("lti_lms_email", ""),
-            resource_link_id=ticket["lti_resource_link_id"], context_id=ticket.get("lti_context_id", ""),
-            context_title=ticket.get("lti_context_title", ""), lms_instance=ticket.get("lti_lms_instance", ""))
+        link_token = _setup_jwt_from(ticket, [])
     organization_text = ""
     if reason in lti_onboarding.SHOW_ORGANIZATION_TEXT and organization:
         organization_text = lti_onboarding.own_page_text(organization)
@@ -625,13 +663,36 @@ def _onboarding_page(request: Request, ticket_token: str, reason: str = "", orga
         "organization_text": organization_text,
         "can_retry": reason != "rate_limited",
         "link_token": link_token,
+        "back_url": back_url,
         "context_title": ticket.get("lti_context_title") or "",
     }, status_code=status_code)
 
 
+@router.get("/onboarding")
+async def lti_onboarding_add_organization(request: Request, token: str = ""):
+    """An instructor who is already a creator adds an organization with a creator code.
+    Reached from the activity setup with its own token, within four hours of the launch."""
+    data = _validate_lti_jwt(token, "setup")
+    if not data or not lti_onboarding.within_session(data):
+        return HTMLResponse(SESSION_EXPIRED_HTML, status_code=403)
+    lms_user_id = data.get("lti_lms_user_id", "")
+    ticket = lti_onboarding.issue_ticket(
+        lms_user_id=lms_user_id, lms_email=data.get("lti_lms_email", ""), display_name=data.get("lti_display_name", ""),
+        resource_link_id=data.get("lti_resource_link_id", ""), context_id=data.get("lti_context_id", ""),
+        context_title=data.get("lti_context_title", ""), protocol="1.3" if is_scoped(lms_user_id) else "1.1",
+        lms_instance=data.get("lti_lms_instance", ""), username=data.get("lti_username", ""),
+        launched_at=lti_onboarding.launched_at(data))
+    return await run_in_threadpool(_onboarding_page, request, ticket)
+
+
 @router.post("/onboarding")
 async def lti_onboarding_redeem(request: Request):
-    """Redeem a creator code. Reachable only with the ticket of a verified instructor launch."""
+    """Redeem a creator code. Reachable only with the ticket of a verified instructor launch.
+
+    A person with no account before the code goes on to LAMB Creator: there is nothing to set
+    an activity up with yet. A creator adding an organization goes back to the choice of
+    organization, with the new one chosen.
+    """
     form_data = await request.form()
     ticket_token = str(form_data.get("ticket", ""))
     ticket = lti_onboarding.read_ticket(ticket_token)
@@ -643,24 +704,24 @@ async def lti_onboarding_redeem(request: Request):
             _onboarding_page, request, ticket_token, result.reason, result.organization,
             429 if result.reason == "rate_limited" else 400)
     creator = result.creator_user
-    setup_token = _create_setup_jwt(
-        creator_users=[creator], lms_user_id=ticket["lti_lms_user_id"], lms_email=ticket.get("lti_lms_email", ""),
-        resource_link_id=ticket["lti_resource_link_id"], context_id=ticket.get("lti_context_id", ""),
-        context_title=ticket.get("lti_context_title", ""), lms_instance=ticket.get("lti_lms_instance", ""))
-    return RedirectResponse(url=f"{manager.get_public_base_url(request)}/m/chat/setup?token={setup_token}", status_code=303)
+    if result.first_account:
+        url = await run_in_threadpool(_creator_url, request, ticket, creator["id"])
+        if url:
+            return RedirectResponse(url=url, status_code=303)
+    accounts = await run_in_threadpool(_creator_users_for, ticket)
+    setup_token = _setup_jwt_from(ticket, accounts or [creator])
+    return RedirectResponse(
+        url=f"{manager.get_public_base_url(request)}/m/chat/setup?token={setup_token}&org={creator['organization_id']}",
+        status_code=303)
 
-
-# =============================================================================
-# Entering LAMB Creator from the activity (#562)
-# =============================================================================
 
 @router.post("/creator-session")
 async def lti_creator_session(request: Request):
-    """Open LAMB Creator as one of the instructor's LTI creator accounts.
+    """Address of LAMB Creator for one of the instructor's LTI creator accounts.
 
     LTI creators have no password and reach Creator only through the LMS. The setup or
-    dashboard token of a launch made in the last half hour may ask for a Creator session of an
-    account obtained with a creator code from that same LMS identity. Regular creators sign in.
+    dashboard token of a launch made in the last four hours may ask for it; the address
+    carries the way back to the activity. Regular creators sign in on the login page.
     """
     try:
         body = await request.json()
@@ -672,12 +733,41 @@ async def lti_creator_session(request: Request):
         creator_user_id = int(body.get("creator_user_id"))
     except (TypeError, ValueError):
         creator_user_id = None
-    session = None
+    url = None
     if data and creator_user_id is not None:
-        session = await run_in_threadpool(lti_onboarding.creator_session, db_manager, manager, data, creator_user_id)
-    if not session:
+        url = await run_in_threadpool(_creator_url, request, data, creator_user_id)
+    if not url:
         return JSONResponse({"detail": "Open the activity from your LMS again to enter LAMB Creator."}, status_code=403)
-    return JSONResponse({"url": f"{manager.get_public_base_url(request)}/assistants?token={session}"})
+    return JSONResponse({"url": url})
+
+
+@router.get("/return")
+async def lti_return_to_activity(request: Request, token: str = ""):
+    """Back from LAMB Creator to the activity the person came from, within four hours of the launch:
+    its dashboard when it is set up, else the choice of organization and the setup."""
+    data = lti_onboarding.read_return(token)
+    if not data:
+        return HTMLResponse(SESSION_EXPIRED_HTML, status_code=403)
+    lms_user_id = data["lti_lms_user_id"]
+    try:
+        activity = db_manager.get_lti_activity_by_resource_link(data["lti_resource_link_id"])
+        if activity and activity['status'] == 'active':
+            ctx = LTIContext(
+                resource_link_id=data["lti_resource_link_id"], lms_user_id=lms_user_id, lms_email=data.get("lti_lms_email", ""),
+                username=data.get("lti_username") or lms_user_id, display_name=data.get("lti_display_name") or "Instructor",
+                roles="Instructor", is_instructor=True, context_id=data.get("lti_context_id", ""),
+                context_title=data.get("lti_context_title", ""), lms_instance=data.get("lti_lms_instance", ""),
+                launched_at=lti_onboarding.launched_at(data) or 0,
+                lti_version="1.3" if is_scoped(lms_user_id) else "1.1",
+                registration_id=data.get("lti13_registration_id"), deployment_id=data.get("lti13_deployment_id"))
+            return await run_in_threadpool(_get_activity_module(activity).on_instructor_launch, ctx)
+        accounts = await run_in_threadpool(_creator_users_for, data)
+    except ValueError:
+        return HTMLResponse(SESSION_EXPIRED_HTML, status_code=403)
+    if not accounts:
+        return HTMLResponse(SESSION_EXPIRED_HTML, status_code=403)
+    return RedirectResponse(
+        url=f"{manager.get_public_base_url(request)}/m/chat/setup?token={_setup_jwt_from(data, accounts)}", status_code=303)
 
 
 # =============================================================================
@@ -757,6 +847,8 @@ async def lti_link_account_submit(request: Request):
             context_id=data.get("lti_context_id", ""),
             context_title=data.get("lti_context_title", ""),
             lms_instance=data.get("lti_lms_instance", ""),
+            username=data.get("lti_username", ""), display_name=data.get("lti_display_name", ""),
+            launched_at=lti_onboarding.launched_at(data) or 0,
         )
 
         public_base = manager.get_public_base_url(request)

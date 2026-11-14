@@ -200,10 +200,16 @@ async def lti_creator_launch(request: Request):
         
         # Generate LAMB JWT for creator interface
         from lamb import auth as lamb_auth
+        import time as _time
         auth_token = lamb_auth.create_token({
             "sub": str(creator_user['id']),
             "email": user_email,
-            "role": creator_user.get('role', 'user')
+            "role": creator_user.get('role', 'user'),
+            # An LTI creator of this tool may switch among their own organizations in Creator (#562)
+            "lti_identity": {"lms_user_id": lti_user_id,
+                             "lms_email": (post_data.get("lis_person_contact_email_primary") or "").strip().lower(),
+                             "lms_instance": (post_data.get("tool_consumer_instance_guid") or "").strip(),
+                             "launched_at": int(_time.time())},
         })
         if not auth_token:
             logger.error(f"Failed to generate LAMB JWT for LTI creator user: {user_email}")
