@@ -1074,6 +1074,7 @@
   "creatorCodes": {
     "title": "Sortzaile-kodeak",
     "intro": "Sortzaile-kode batekin, LAMB jarduera bat LMStik irekitzen duen eta oraindik LAMBen sortzaile-konturik ez duen irakasleak kontua sor dezake erakunde honetan. LMStik datozen irakasleentzat bakarrik balio du: kodeak berez ez dio inori sarbiderik ematen. Sortzaile izaera ematen du, eta ez du inoiz inor administratzaile bihurtzen.",
+    "separate": "Hau goiko LTI Creator tresnatik bereizita dago. Tresna horrek sortzaile-kontu bat ematen dio LMStik irekitzen duenari. Sortzaile-kodea LAMB jarduera baten bidez iristen diren eta konturik ez duten irakasleentzat da.",
     "loading": "Sortzaile-kodeak kargatzen...",
     "requestFailed": "Eskaerak huts egin du. Saiatu berriro.",
     "list": {

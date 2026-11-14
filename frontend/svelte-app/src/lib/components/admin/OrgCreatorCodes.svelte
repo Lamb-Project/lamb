@@ -230,7 +230,10 @@
 <section class="mt-6 bg-white overflow-hidden shadow rounded-lg" aria-labelledby="creator-codes-title" data-creator-codes>
     <div class="px-4 py-5 sm:p-6">
         <h3 id="creator-codes-title" class="text-lg leading-6 font-medium text-gray-900 mb-4">{$_('creatorCodes.title')}</h3>
-        <p class="text-sm text-gray-600 mb-4">{$_('creatorCodes.intro')}</p>
+        <p class="text-sm text-gray-600 mb-2">{$_('creatorCodes.intro')}</p>
+        {#if codesAvailable}
+            <p class="text-sm text-gray-500 mb-4">{$_('creatorCodes.separate')}</p>
+        {/if}
 
         {#if loading}
             <div class="flex items-center justify-center py-8">

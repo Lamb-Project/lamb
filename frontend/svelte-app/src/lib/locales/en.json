@@ -1064,6 +1064,7 @@
   "creatorCodes": {
     "title": "Creator codes",
     "intro": "A creator code lets an instructor who opens a LAMB activity from the LMS, and has no LAMB Creator account yet, create one in this organization. It only works for instructors arriving from the LMS: on its own, the code gives access to nobody. It grants creator status and never makes anyone an administrator.",
+    "separate": "This is separate from the LTI Creator tool above. That tool gives a creator account to whoever opens it from the LMS. A creator code is for teachers who arrive through a LAMB activity and have no account.",
     "loading": "Loading creator codes...",
     "requestFailed": "The request failed. Try again.",
     "list": {
