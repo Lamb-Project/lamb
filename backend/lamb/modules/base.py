@@ -20,6 +20,8 @@ class LTIContext(BaseModel):
     lti_version: str = "1.1"
     registration_id: Optional[int] = None
     deployment_id: Optional[str] = None
+    # LTI 1.1: the LMS instance as it names itself in the launch (tool_consumer_instance_guid)
+    lms_instance: str = ""
 
 def module_public_base() -> str:
     """Public base URL for module redirects made without a request at hand (student launches).

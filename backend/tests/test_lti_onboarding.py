@@ -84,6 +84,18 @@ class FakeDb:
             return c.execute('INSERT INTO T_lti_identity_links (lms_user_id, lms_email, creator_user_id) VALUES (?,?,?)',
                              (lms_user_id, lms_email, creator_user_id)).lastrowid
 
+    def get_creator_users_by_lms_identity(self, lms_user_id=None, lms_email=None):
+        c = self.get_connection()
+        try:
+            c.row_factory = sqlite3.Row
+            rows = c.execute('''SELECT DISTINCT cu.* FROM T_Creator_users cu
+                LEFT JOIN T_lti_identity_links l ON l.creator_user_id=cu.id
+                WHERE cu.enabled=1 AND ((? IS NOT NULL AND cu.user_email=?) OR cu.lti_user_id=? OR l.lms_user_id=?)''',
+                (lms_email, lms_email, lms_user_id, lms_user_id)).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            c.close()
+
     def get_lti_activity_by_resource_link(self, resource_link_id):
         return None  # every activity in these tests is unconfigured
 
@@ -99,12 +111,18 @@ def db(tmp_path):
 @pytest.fixture
 def manager(db):
     # The real identity-link routing of the activity manager, over the test database.
-    return SimpleNamespace(link_identity=lambda **kw: LtiActivityManager.link_identity(SimpleNamespace(db_manager=db), **kw))
+    real = SimpleNamespace(db_manager=db)
+    return SimpleNamespace(link_identity=lambda **kw: LtiActivityManager.link_identity(real, **kw),
+                           identify_instructor=lambda **kw: LtiActivityManager.identify_instructor(real, **kw))
 
 
-def ticket(user='teacher-1', protocol='1.1', resource='rl-1', **changes):
-    token = onboarding.issue_ticket(lms_user_id=user, lms_email='teacher@school.example', display_name='Ana Teacher',
-                                    resource_link_id=resource, context_id='course-1', context_title='Databases', protocol=protocol)
+INSTANCE = 'moodle.school.example'
+
+
+def ticket(user='teacher-1', protocol='1.1', resource='rl-1', email='teacher@school.example', instance=INSTANCE, **changes):
+    token = onboarding.issue_ticket(lms_user_id=user, lms_email=email, display_name='Ana Teacher', resource_link_id=resource,
+                                    context_id='course-1', context_title='Databases', protocol=protocol,
+                                    lms_instance='' if protocol == '1.3' else instance)
     data = onboarding.read_ticket(token)
     assert data is not None
     data.update(changes)
@@ -248,6 +266,9 @@ def test_on_lti13_the_code_must_belong_to_an_organization_of_the_registration(db
     accepted = onboarding.redeem(db, manager, ticket(lti13.user, '1.3', lti13.resource), code_a)
     assert accepted.ok and accepted.creator_user['organization_id'] == ORG_A
     assert [c['id'] for c in lti13.store.creators(lti13.user)] == [accepted.creator_user['id']]  # next launch needs no code
+    # The LTI 1.3 identity is scoped to its registration, so the Creator entry needs no instance name.
+    assert [a['creator_user_id'] for a in onboarding.creator_access(db, manager, launch_claims(lti13.user, instance=''))] == [accepted.creator_user['id']]
+    assert onboarding.creator_access(db, manager, launch_claims(lti13.user, instance='', email='other@school.example')) == []
     # On LTI 1.1 the code alone picks the organization: the same code B lands in B and nowhere else.
     landed = onboarding.redeem(db, manager, ticket('teacher-11'), code_b)
     assert landed.ok and landed.creator_user['organization_id'] == ORG_B
@@ -290,7 +311,7 @@ def launch(client, roles='Instructor', signature='good', **extra):
     return client.post('/lamb/v1/lti/launch', data={
         'oauth_consumer_key': 'key', 'oauth_signature': signature, 'resource_link_id': 'rl-1', 'roles': roles, 'user_id': 'teacher-1',
         'ext_user_username': 'ana', 'lis_person_name_full': 'Ana Teacher', 'lis_person_contact_email_primary': 'ana@school.example',
-        'context_id': 'course-1', 'context_title': 'Databases', **extra})
+        'context_id': 'course-1', 'context_title': 'Databases', 'tool_consumer_instance_guid': INSTANCE, **extra})
 
 
 def ticket_in(page):
@@ -424,3 +445,79 @@ def test_the_page_text_is_set_and_cleared_through_the_api_and_the_system_organiz
     assert client.put(f'{path}/page-text', json={'page_text': 'Deployment policy'}).json()['effective_page_text'] == 'Deployment policy'
     assert onboarding.page_text(db) == 'Deployment policy'
     assert client.post(path, params={'org': 'alpha'}, json={'label': 'by the system admin'}).status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Entering LAMB Creator from the activity
+# ---------------------------------------------------------------------------
+
+def launch_claims(user='teacher-1', email='teacher@school.example', instance=INSTANCE, age=0, kind='setup'):
+    return {'lti_type': kind, 'lti_lms_user_id': user, 'lti_lms_email': email, 'lti_lms_instance': instance,
+            'iat': int(time.time()) - age}
+
+
+def test_an_lti_creator_may_enter_creator_only_from_the_same_lms_user_and_email_and_a_recent_launch(db, manager):
+    code = onboarding.create_code(db, ORG_A)['code']
+    account = onboarding.redeem(db, manager, ticket(), code).creator_user
+    offered = onboarding.creator_access(db, manager, launch_claims())
+    assert offered == [{'creator_user_id': account['id'], 'organization_id': ORG_A,
+                        'organization_name': 'Alpha University', 'user_name': 'Ana Teacher'}]
+    assert onboarding.creator_access(db, manager, launch_claims(kind='dashboard')) == offered
+    assert onboarding.creator_access(db, manager, launch_claims(email='Teacher@School.Example')) == offered  # same address
+    for other in (launch_claims(email='someone.else@school.example'), launch_claims(instance='moodle.other.example'),
+                  launch_claims(instance=''), launch_claims(user='teacher-2'),
+                  launch_claims(age=onboarding.HANDOVER_WINDOW_SECONDS + 60), launch_claims(age=-120),
+                  {k: v for k, v in launch_claims().items() if k != 'iat'}):
+        assert onboarding.creator_access(db, manager, other) == []
+    with db.get_connection() as c:
+        c.execute('UPDATE T_Creator_users SET enabled=0')
+    assert onboarding.creator_access(db, manager, launch_claims()) == []
+
+
+def test_accounts_not_obtained_with_a_code_are_never_offered(db, manager):
+    with db.get_connection() as c:
+        # A regular account whose address is the one the LMS sends, and one linked by hand to this LMS user.
+        c.execute("INSERT INTO T_Creator_users (organization_id,user_email,user_name,user_type,lti_user_id,auth_provider,enabled,role) VALUES (?,?,?,?,?,?,1,'admin')",
+                  (ORG_A, 'teacher@school.example', 'Regular Admin', 'creator', None, 'password'))
+        linked = c.execute("INSERT INTO T_Creator_users (organization_id,user_email,user_name,user_type,lti_user_id,auth_provider,enabled,role) VALUES (?,?,?,?,?,?,1,'user')",
+                           (ORG_A, 'linked@alpha.example', 'Linked Regular', 'creator', None, 'password')).lastrowid
+        c.execute('INSERT INTO T_lti_identity_links (lms_user_id, lms_email, creator_user_id) VALUES (?,?,?)', ('teacher-1', 'teacher@school.example', linked))
+        # An LTI creator of another entry path that happens to carry the same LMS user id.
+        c.execute("INSERT INTO T_Creator_users (organization_id,user_email,user_name,user_type,lti_user_id,auth_provider,enabled,role) VALUES (?,?,?,?,?,?,1,'user')",
+                  (ORG_B, 'lti_creator_beta_teacher-1@lamb-lti.local', 'Same Id Elsewhere', 'creator', 'teacher-1', 'lti_creator'))
+    assert len(manager.identify_instructor(lms_user_id='teacher-1', lms_email='teacher@school.example')) == 3  # all three are identified for the setup
+    assert onboarding.creator_access(db, manager, launch_claims()) == []
+    for row in sqlite3.connect(db.db_path).execute('SELECT id FROM T_Creator_users').fetchall():
+        assert onboarding.creator_session(db, manager, launch_claims(), row[0]) is None
+
+
+def test_a_creator_in_two_organizations_chooses_and_gets_a_creator_session_for_that_account_only(db, manager):
+    first = onboarding.redeem(db, manager, ticket(), onboarding.create_code(db, ORG_B)['code']).creator_user
+    second = onboarding.redeem(db, manager, ticket(), onboarding.create_code(db, ORG_A)['code']).creator_user
+    offered = onboarding.creator_access(db, manager, launch_claims())
+    assert [a['organization_name'] for a in offered] == ['Alpha University', 'Beta College']
+    assert {a['creator_user_id'] for a in offered} == {first['id'], second['id']}
+    session = lamb_auth.decode_token(onboarding.creator_session(db, manager, launch_claims(), second['id']))
+    assert lamb_auth.is_creator_session(session) and session['sub'] == str(second['id']) and session['role'] == 'user'
+    assert session['email'] == 'lti_creator_alpha_teacher-1@lamb-lti.local'
+    assert onboarding.creator_session(db, manager, launch_claims(), 9999) is None
+    assert onboarding.creator_session(db, manager, launch_claims(age=3600), second['id']) is None
+
+
+def test_the_creator_entry_route_takes_the_token_of_the_launch_and_nothing_else(client, db):
+    code = onboarding.create_code(db, ORG_A)['code']
+    page = launch(client)
+    done = client.post('/lamb/v1/lti/onboarding', data={'ticket': ticket_in(page), 'code': code})
+    setup_token = done.headers['location'].split('token=')[1]
+    creator = db._one('SELECT * FROM T_Creator_users')
+    assert [a['creator_user_id'] for a in onboarding.creator_access(db, lti_router.manager, lamb_auth.decode_token(setup_token))] == [creator['id']]
+    opened = client.post('/lamb/v1/lti/creator-session', json={'token': setup_token, 'creator_user_id': creator['id']})
+    assert opened.status_code == 200 and '/assistants?token=' in opened.json()['url']
+    session = lamb_auth.decode_token(opened.json()['url'].split('token=')[1])
+    assert lamb_auth.is_creator_session(session) and session['sub'] == str(creator['id'])
+    for body in ({'token': setup_token, 'creator_user_id': creator['id'] + 1}, {'token': setup_token}, {'token': setup_token, 'creator_user_id': 'x'},
+                 {'token': ticket_in(page), 'creator_user_id': creator['id']}, {'token': 'garbage', 'creator_user_id': creator['id']}, {}):
+        assert client.post('/lamb/v1/lti/creator-session', json=body).status_code == 403
+    # The next launch of the same person carries the same identity, so the setup token it gets offers the entry too.
+    again = lamb_auth.decode_token(launch(client).headers['location'].split('token=')[1])
+    assert again['lti_lms_instance'] == INSTANCE and len(onboarding.creator_access(db, lti_router.manager, again)) == 1
