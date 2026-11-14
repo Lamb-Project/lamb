@@ -12,13 +12,22 @@
 </head>
 <body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
     <div class="bg-white rounded-xl shadow-lg max-w-lg w-full p-8">
+        {% if back_url %}
+        <h1 class="text-xl font-bold text-gray-900 mb-3 text-center">Add an organization</h1>
+
+        <p class="text-gray-600 mb-4">
+            You already work in LAMB. With a <strong>creator code</strong> from another organization you get an account
+            there too, and can then choose that organization for this activity or open it in LAMB Creator.
+        </p>
+        {% else %}
         <h1 class="text-xl font-bold text-gray-900 mb-3 text-center">Set up this activity with LAMB</h1>
 
         <p class="text-gray-600 mb-4">
             Your LMS identified you as an <strong>instructor</strong>{% if context_title %} in <strong>{{ context_title }}</strong>{% endif %},
             but you do not have a LAMB Creator account yet. With a <strong>creator code</strong> from your institution
-            you can create one now and continue to the activity setup.
+            you can create one now and go on to LAMB Creator, where you build the assistants for your activities.
         </p>
+        {% endif %}
 
         <div id="institution-text" class="institution-text bg-blue-50 border border-blue-200 rounded-lg px-5 py-4 text-sm text-blue-900 mb-6">{{ page_text }}</div>
 
@@ -43,9 +52,15 @@
             </p>
             <button id="redeem-code" type="submit"
                     class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg px-4 py-2">
-                Create my account and continue
+                {% if back_url %}Add this organization{% else %}Create my account and continue{% endif %}
             </button>
         </form>
+        {% endif %}
+
+        {% if back_url %}
+        <p class="text-sm text-gray-600 mt-6 text-center">
+            <a id="back-to-organizations" class="text-blue-600 hover:text-blue-700 font-medium" href="{{ back_url }}">&larr; Back to your organizations</a>
+        </p>
         {% endif %}
 
         {% if link_token %}
