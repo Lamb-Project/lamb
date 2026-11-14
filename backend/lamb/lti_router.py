@@ -31,6 +31,7 @@ from lamb.lti13 import is_scoped
 from lamb.lti13.store import Store
 from lamb.lti13.protocol import browser_response, validate_launch
 from lamb.lti13.router import router as lti13_router
+from lamb import lti_onboarding
 
 logger = get_logger(__name__, component="LTI_UNIFIED")
 
@@ -232,9 +233,15 @@ async def lti_launch(request: Request):
         logger.info(f"Instructor setup flow for {resource_link_id}")
         creator_users = manager.identify_instructor(lms_user_id=lms_user_id, lms_email=lms_email)
 
-        if not creator_users and not is_lti13:
-            logger.info(f"Instructor {lms_user_id} has no Creator account - showing contact-admin page")
-            return templates.TemplateResponse("lti_contact_admin.html", {"request": request})
+        if not creator_users:
+            # No LAMB account for this instructor (#467, #562): the launch itself returns the
+            # creator-code page, with a ticket that carries what the LMS just asserted.
+            logger.info(f"Instructor {lms_user_id} has no Creator account - showing the creator-code page")
+            ticket = lti_onboarding.issue_ticket(
+                lms_user_id=lms_user_id, lms_email=lms_email, display_name=display_name,
+                resource_link_id=resource_link_id, context_id=context_id, context_title=context_title,
+                protocol="1.3" if is_lti13 else "1.1")
+            return await run_in_threadpool(_onboarding_page, request, ticket)
 
         setup_token = _create_setup_jwt(
             creator_users=[
@@ -571,6 +578,62 @@ async def lti_configure_activity(request: Request):
     except Exception as e:
         logger.error(f"Error configuring activity: {str(e)}", exc_info=True)
         return JSONResponse({"detail": str(e)}, status_code=500)
+
+
+# =============================================================================
+# Creator-code page (instructor with no LAMB account, #467 / #562)
+# =============================================================================
+
+def _onboarding_page(request: Request, ticket_token: str, reason: str = "", organization=None, status_code: int = 200):
+    """Render the page a verified instructor launch returns when LAMB has no account for the instructor."""
+    ticket = lti_onboarding.read_ticket(ticket_token)
+    if not ticket:
+        return HTMLResponse(SESSION_EXPIRED_HTML, status_code=403)
+    try:
+        allowed = lti_onboarding.allowed_organizations(db_manager, ticket)
+    except ValueError:
+        return HTMLResponse(SESSION_EXPIRED_HTML, status_code=403)
+    link_token = ""
+    if ticket["lti_protocol"] == "1.3":
+        # LTI 1.3 already offered linking an existing account by email and password; it stays.
+        link_token = _create_setup_jwt(
+            creator_users=[], lms_user_id=ticket["lti_lms_user_id"], lms_email=ticket.get("lti_lms_email", ""),
+            resource_link_id=ticket["lti_resource_link_id"], context_id=ticket.get("lti_context_id", ""),
+            context_title=ticket.get("lti_context_title", ""))
+    organization_text = ""
+    if reason in lti_onboarding.SHOW_ORGANIZATION_TEXT and organization:
+        organization_text = lti_onboarding.own_page_text(organization)
+    return templates.TemplateResponse("lti_onboarding.html", {
+        "request": request,
+        "ticket": ticket_token,
+        "page_text": lti_onboarding.page_text(db_manager, allowed or ()),
+        "error": lti_onboarding.MESSAGES.get(reason, "") if reason else "",
+        "organization_text": organization_text,
+        "can_retry": reason != "rate_limited",
+        "link_token": link_token,
+        "context_title": ticket.get("lti_context_title") or "",
+    }, status_code=status_code)
+
+
+@router.post("/onboarding")
+async def lti_onboarding_redeem(request: Request):
+    """Redeem a creator code. Reachable only with the ticket of a verified instructor launch."""
+    form_data = await request.form()
+    ticket_token = str(form_data.get("ticket", ""))
+    ticket = lti_onboarding.read_ticket(ticket_token)
+    if not ticket:
+        return HTMLResponse(SESSION_EXPIRED_HTML, status_code=403)
+    result = await run_in_threadpool(lti_onboarding.redeem, db_manager, manager, ticket, str(form_data.get("code", "")))
+    if not result.ok:
+        return await run_in_threadpool(
+            _onboarding_page, request, ticket_token, result.reason, result.organization,
+            429 if result.reason == "rate_limited" else 400)
+    creator = result.creator_user
+    setup_token = _create_setup_jwt(
+        creator_users=[creator], lms_user_id=ticket["lti_lms_user_id"], lms_email=ticket.get("lti_lms_email", ""),
+        resource_link_id=ticket["lti_resource_link_id"], context_id=ticket.get("lti_context_id", ""),
+        context_title=ticket.get("lti_context_title", ""))
+    return RedirectResponse(url=f"{manager.get_public_base_url(request)}/m/chat/setup?token={setup_token}", status_code=303)
 
 
 # =============================================================================

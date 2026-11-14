@@ -314,11 +314,14 @@ def test_valid_launch_dispatches_every_module(api, env, monkeypatch, module_name
     assert response.json() == {'instructor':teacher,'type':module_name,'version':'1.3.0'}
 
 
-def test_unlinked_instructor_goes_to_explicit_account_link(api, env):
+def test_unlinked_instructor_gets_the_creator_code_page_which_keeps_the_explicit_account_link(api, env):
+    # Since #562 the launch returns the creator-code page; linking an existing account stays one click away.
     response = api.client.post('/lamb/v1/lti/launch', data=launch(env,{CLAIM+'roles':[next(iter(protocol.INSTRUCTOR_ROLES))]}),follow_redirects=False)
-    assert response.status_code == 303, response.text
-    assert urlsplit(response.headers['location']).path == '/lamb/v1/lti/link-account'
-    token = parse_qs(urlsplit(response.headers['location']).query)['token'][0]
+    assert response.status_code == 200, response.text
+    assert 'name="ticket"' in response.text and 'Creator code' in response.text
+    href = response.text.split('id="link-existing-account"')[1].split('href="')[1].split('"')[0]
+    assert urlsplit(href).path == '/lamb/v1/lti/link-account'
+    token = parse_qs(urlsplit(href).query)['token'][0]
     page = api.client.get('/lamb/v1/lti/link-account', params={'token':token})
     assert page.status_code == 200 and 'password' in page.text
 

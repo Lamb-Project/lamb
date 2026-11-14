@@ -8,6 +8,7 @@ from lamb.aac.router import router as aac_router
 from lamb.services.test_router import router as test_router
 from .learning_assistant_proxy import router as learning_assistant_proxy_router
 from .organization_router import router as organization_router
+from .lti_onboarding_router import router as lti_onboarding_router
 from .setup_translations import setup_translations
 from fastapi import APIRouter, Query, Request, Form, Response, HTTPException, File, UploadFile, Depends, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -127,6 +128,8 @@ router.include_router(knowledges_router, prefix="/knowledgebases")
 
 # Include the organization management router
 router.include_router(organization_router, prefix="/admin")
+# Creator codes for instructors who arrive by LTI without an account (#562)
+router.include_router(lti_onboarding_router, prefix="/admin")
 
 # Include the learning assistant proxy router
 router.include_router(learning_assistant_proxy_router)

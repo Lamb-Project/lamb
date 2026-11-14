@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAMB — Create your Creator account</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        .institution-text { white-space: pre-line; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-lg max-w-lg w-full p-8">
+        <h1 class="text-xl font-bold text-gray-900 mb-3 text-center">Set up this activity with LAMB</h1>
+
+        <p class="text-gray-600 mb-4">
+            Your LMS identified you as an <strong>instructor</strong>{% if context_title %} in <strong>{{ context_title }}</strong>{% endif %},
+            but you do not have a LAMB Creator account yet. With a <strong>creator code</strong> from your institution
+            you can create one now and continue to the activity setup.
+        </p>
+
+        <div id="institution-text" class="institution-text bg-blue-50 border border-blue-200 rounded-lg px-5 py-4 text-sm text-blue-900 mb-6">{{ page_text }}</div>
+
+        {% if error %}
+        <div id="onboarding-error" role="alert" class="bg-red-50 border border-red-200 rounded-lg px-5 py-4 text-sm text-red-800 mb-4">
+            <p class="font-semibold">{{ error }}</p>
+            {% if organization_text %}
+            <p id="organization-text" class="institution-text mt-2 font-normal">{{ organization_text }}</p>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if can_retry %}
+        <form method="POST" action="/lamb/v1/lti/onboarding" autocomplete="off">
+            <input type="hidden" name="ticket" value="{{ ticket }}">
+            <label for="creator-code" class="block text-sm font-medium text-gray-700 mb-1">Creator code</label>
+            <input id="creator-code" type="text" name="code" required maxlength="40" autocapitalize="characters" spellcheck="false"
+                   placeholder="XXXX-XXXX-XXXX"
+                   class="w-full border border-gray-300 rounded-lg px-3 py-2 font-mono tracking-wider uppercase focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <p class="text-xs text-gray-500 mt-2">
+                The code gives you a Creator account in your institution's organization. It does not make you an administrator.
+            </p>
+            <button id="redeem-code" type="submit"
+                    class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg px-4 py-2">
+                Create my account and continue
+            </button>
+        </form>
+        {% endif %}
+
+        {% if link_token %}
+        <p class="text-sm text-gray-600 mt-6 text-center">
+            Already have a LAMB Creator account?
+            <a id="link-existing-account" class="text-blue-600 hover:text-blue-700 font-medium"
+               href="/lamb/v1/lti/link-account?token={{ link_token }}">Sign in to link it</a>
+        </p>
+        {% endif %}
+    </div>
+</body>
+</html>

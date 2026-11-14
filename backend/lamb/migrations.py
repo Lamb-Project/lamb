@@ -24,8 +24,9 @@ logger = get_logger(__name__, component="MIGRATIONS")
 # api_keys (this line; alpha keeps 26 free for it), 27-31 are taken on alpha; lamb-0.8 carries
 # alpha's LTI migrations 28 and 31 verbatim (same number, same docstring), 33 is token-dealer, and 32 is
 # account_takeovers (this line, #523). 34 adds unified LTI 1.3 registrations and transaction state;
-# 35 persists prompt-filter scenarios (#553). tests/test_migration_runner.py enforces this.
-LATEST_VERSION = 35
+# 35 persists prompt-filter scenarios (#553); 36 adds creator codes for LTI instructor onboarding (#562).
+# tests/test_migration_runner.py enforces this.
+LATEST_VERSION = 36
 
 # Numbers another line has applied to real databases; this line must never define them.
 RESERVED_ON_OTHER_LINES = {
@@ -1350,4 +1351,9 @@ class MigrationRunner:
     def _migration_35(self, cursor):
         """Persist conversation-start system prompt filters (#553)."""
         from lamb.completions.conversation_state import migrate
+        migrate(cursor, self.db.table_prefix)
+
+    def _migration_36(self, cursor):
+        """Creator codes for LTI instructor onboarding (#562)."""
+        from lamb.lti_onboarding import migrate
         migrate(cursor, self.db.table_prefix)
