@@ -51,8 +51,16 @@ def test_legacy_doc_is_not_sent_to_docx_parser(tmp_path):
     parse.assert_not_called()
 
 
-@pytest.mark.parametrize("filename", ["essay.doc", "essay.DOC"])
-def test_upload_rejects_legacy_doc_before_saving(filename):
+PDF_BYTES = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"
+
+
+@pytest.mark.parametrize("filename,content", [
+    ("essay.doc", b"legacy document"), ("essay.DOC", b"legacy document"), ("essay.docx", None), ("notes.txt", b"plain text"),
+    ("notes.md", b"# heading"), ("essay", PDF_BYTES), ("essay.pdf.docx", PDF_BYTES),
+    ("renamed.pdf", b"plain text with a pdf name"), ("word-renamed.pdf", None), ("empty.pdf", b""),
+])
+def test_upload_accepts_pdf_only_and_refuses_everything_else_before_saving(filename, content):
+    # Submissions are PDF only (Marc, 10 and 14 November 2026): by name and by content.
     from lamb.modules.file_evaluation import router as routes
 
     app = FastAPI()
@@ -61,7 +69,23 @@ def test_upload_rejects_legacy_doc_before_saving(filename):
     payload = {"lti_type": "file_eval", "lti_activity_id": 7, "lti_user_email": "student@example.test"}
     with patch.object(routes, "_decode_jwt", return_value=payload), patch.object(routes, "_service", service):
         with TestClient(app) as client:
-            response = client.post("/activities/7/submissions", files={"file": (filename, b"legacy document")})
+            response = client.post("/activities/7/submissions", files={"file": (filename, docx_bytes() if content is None else content)})
     assert response.status_code == 400
-    assert "Save the document as .docx" in response.json()["detail"]
+    assert response.json()["detail"] == routes.PDF_ONLY and "PDF" in routes.PDF_ONLY
     service.create_submission.assert_not_called()
+
+
+@pytest.mark.parametrize("filename", ["essay.pdf", "ESSAY.PDF"])
+def test_upload_passes_a_real_pdf_on_to_storage(filename):
+    from lamb.modules.file_evaluation import router as routes
+
+    app = FastAPI()
+    app.include_router(routes.router)
+    service = Mock()
+    service.create_submission.return_value = {"id": 1, "file_name": filename}
+    payload = {"lti_type": "file_eval", "lti_activity_id": 7, "lti_user_email": "student@example.test"}
+    with patch.object(routes, "_decode_jwt", return_value=payload), patch.object(routes, "_service", service):
+        with TestClient(app) as client:
+            client.post("/activities/7/submissions", files={"file": (filename, PDF_BYTES, "application/pdf")})
+    service.create_submission.assert_called_once()
+    assert service.create_submission.call_args.kwargs["file_bytes"] == PDF_BYTES
