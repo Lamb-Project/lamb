@@ -1,6 +1,7 @@
 <script>
     import { onMount } from 'svelte';
     import { page } from '$app/stores';
+    import CreatorAccess from '$lib/CreatorAccess.svelte';
 
     let token = $state('');
     let loading = $state(true);
@@ -207,14 +208,17 @@
 
 <div class="min-h-screen flex items-center justify-center p-4">
     <div class="bg-white rounded-xl shadow-lg max-w-2xl w-full p-8">
-        <div class="flex items-center gap-3 mb-6">
-            <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-xl">🚀</div>
-            <div>
-                <h1 class="text-xl font-bold text-gray-900">LAMB Activity Setup</h1>
-                {#if setupData?.context_title}
-                    <p class="text-sm text-gray-500">Course: {setupData.context_title}</p>
-                {/if}
+        <div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-xl shrink-0">🚀</div>
+                <div>
+                    <h1 class="text-xl font-bold text-gray-900">LAMB Activity Setup</h1>
+                    {#if setupData?.context_title}
+                        <p class="text-sm text-gray-500">Course: {setupData.context_title}</p>
+                    {/if}
+                </div>
             </div>
+            <CreatorAccess {token} accounts={setupData?.creator_access} class="sm:ml-auto sm:max-w-xs" />
         </div>
 
         {#if loading}
@@ -329,10 +333,17 @@
                             {:else if assistantsForCurrentActivity.length === 0}
                                 <div class="p-4 border border-amber-300 rounded-lg bg-amber-50">
                                     <p class="text-sm text-amber-800 font-medium mb-2">No published assistants found.</p>
-                                    <p class="text-sm text-amber-700">
-                                        Create an assistant in LAMB Creator and publish it, then reload this page. LAMB Creator from your course:
-                                    </p>
-                                    <code class="block mt-1 text-xs bg-amber-100 text-amber-900 px-2 py-1 rounded font-mono">/lamb/v1/lti_creator/launch</code>
+                                    {#if setupData?.creator_access?.length}
+                                        <p class="text-sm text-amber-700 mb-3">
+                                            This activity needs at least one. Open LAMB Creator, create an assistant and publish it, then open this activity from your LMS again.
+                                        </p>
+                                        <CreatorAccess {token} accounts={setupData.creator_access} />
+                                    {:else}
+                                        <p class="text-sm text-amber-700">
+                                            Create an assistant in LAMB Creator and publish it, then reload this page. LAMB Creator from your course:
+                                        </p>
+                                        <code class="block mt-1 text-xs bg-amber-100 text-amber-900 px-2 py-1 rounded font-mono">/lamb/v1/lti_creator/launch</code>
+                                    {/if}
                                 </div>
                             {/if}
                         </div>
