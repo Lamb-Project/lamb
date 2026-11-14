@@ -147,6 +147,31 @@ export async function fetchUserProfile(token) {
 }
 
 /**
+ * A teacher who came from the LMS and has Creator accounts in several organizations moves to
+ * another one (#562). The accounts come with the profile, in `lti_organizations`.
+ *
+ * The address returned carries the new session: follow it, never log or show it.
+ *
+ * @param {number} creatorUserId - The account to enter (`creator_user_id`)
+ * @returns {Promise<string>} - Address that opens LAMB Creator in that organization
+ * @throws {Error & { detail: string }} - `detail` is what the API said, or '' when it said nothing
+ */
+export async function switchLtiOrganization(creatorUserId) {
+  const response = await apiFetch('/lti/switch-organization', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ creator_user_id: creatorUserId })
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok || typeof data?.url !== 'string' || !data.url) {
+    throw Object.assign(new Error('organization switch refused'), {
+      detail: typeof data?.detail === 'string' ? data.detail : ''
+    });
+  }
+  return data.url;
+}
+
+/**
  * Sends a help request to the LAMB assistant
  * @param {string} question - User question
  * @param {string} token - User authentication token

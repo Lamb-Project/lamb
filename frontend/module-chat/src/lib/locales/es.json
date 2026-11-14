@@ -2,8 +2,17 @@
 	"creatorAccess": {
 		"open": "Abrir LAMB Creator",
 		"openIn": "Abrir LAMB Creator en {organization}",
-		"newTab": "Se abre en una pestaña nueva",
-		"blocked": "Tu navegador ha bloqueado la pestaña nueva. Permite las ventanas emergentes para esta página y vuelve a intentarlo.",
 		"failed": "No se ha podido abrir LAMB Creator. Vuelve a intentarlo o abre de nuevo la actividad desde tu LMS."
+	},
+	"setupHub": {
+		"yourOrganization": "Tu organización",
+		"chooseOrganization": "Elige una organización",
+		"chooseIntro": "Tienes cuentas en varias organizaciones. Elige una para esta actividad.",
+		"cannotChange": "Después no se puede cambiar.",
+		"organizationFallback": "Organización {id}",
+		"assistantCount": "{count, plural, one {# asistente publicado} other {# asistentes publicados}}",
+		"addOrganization": "Añadir una organización con un código de creador",
+		"creator": "Los asistentes se crean y se publican en LAMB Creator.",
+		"signIn": "Inicia sesión en LAMB Creator con tu cuenta de LAMB para crear asistentes en esta organización."
 	}
 }

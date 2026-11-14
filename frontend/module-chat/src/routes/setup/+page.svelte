@@ -1,7 +1,8 @@
 <script>
     import { onMount } from 'svelte';
     import { page } from '$app/stores';
-    import CreatorAccess from '$lib/CreatorAccess.svelte';
+    import { creatorAccountFor } from '$lib/CreatorAccess.svelte';
+    import OrganizationStep, { initialOrganization } from '$lib/OrganizationStep.svelte';
 
     let token = $state('');
     let loading = $state(true);
@@ -41,9 +42,8 @@
                 selectedActivity = setupData.modules[0].name;
             }
 
-            if (!setupData.needs_org_selection && Object.keys(setupData.orgs_with_assistants).length > 0) {
-                selectedOrg = Object.keys(setupData.orgs_with_assistants)[0];
-            }
+            // The only organization, or the one just added with a creator code (`&org=`).
+            selectedOrg = initialOrganization(setupData, $page.url.searchParams.get('org'));
         } catch (e) {
             error = e instanceof Error ? e.message : String(e);
         } finally {
@@ -98,6 +98,9 @@
         baseAssistantsForActivity.length > 0 && assistantsForCurrentActivity.length === 0
     );
 
+    // The chosen organization's account for entering LAMB Creator from this page, if it has one.
+    let creatorAccount = $derived(creatorAccountFor(setupData?.creator_access, selectedOrg || null));
+
     // Clear assistant selection when activity type changes
     $effect(() => {
         selectedActivity;
@@ -147,6 +150,11 @@
     // lamb-0.8: a module may not use assistants at all (LLM access)
     let needsAssistants = $derived(
         !(setupData?.modules || []).some(m => m.name === selectedActivity && m.requires_assistants === false)
+    );
+
+    // Nothing published that this activity can use: LAMB Creator comes first, the form after it.
+    let creatorFirst = $derived(
+        needsAssistants && assistantsForCurrentActivity.length === 0 && !emptyDueToFilters
     );
 
     let canSubmit = $derived(
@@ -208,17 +216,14 @@
 
 <div class="min-h-screen flex items-center justify-center p-4">
     <div class="bg-white rounded-xl shadow-lg max-w-2xl w-full p-8">
-        <div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-xl shrink-0">🚀</div>
-                <div>
-                    <h1 class="text-xl font-bold text-gray-900">LAMB Activity Setup</h1>
-                    {#if setupData?.context_title}
-                        <p class="text-sm text-gray-500">Course: {setupData.context_title}</p>
-                    {/if}
-                </div>
+        <div class="flex items-center gap-3 mb-6">
+            <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-xl shrink-0">🚀</div>
+            <div>
+                <h1 class="text-xl font-bold text-gray-900">LAMB Activity Setup</h1>
+                {#if setupData?.context_title}
+                    <p class="text-sm text-gray-500">Course: {setupData.context_title}</p>
+                {/if}
             </div>
-            <CreatorAccess {token} accounts={setupData?.creator_access} class="sm:ml-auto sm:max-w-xs" />
         </div>
 
         {#if loading}
@@ -237,7 +242,11 @@
             </div>
         {:else}
             <form onsubmit={handleSubmit}>
-                
+
+                <!-- Organization, always shown: the instructor's organizations, the chosen one, and
+                     under it the way into LAMB Creator for that organization. The form follows. -->
+                <OrganizationStep {token} info={setupData} bind:selected={selectedOrg} {creatorFirst} />
+
                 <!-- Step 0: Activity Type Selection -->
                 <div class="mb-6">
                     <h2 class="text-lg font-semibold text-gray-800 mb-3">Activity Type</h2>
@@ -257,30 +266,6 @@
                         {/each}
                     </div>
                 </div>
-
-                <!-- Step 1: Organization Selection -->
-                {#if setupData.needs_org_selection}
-                    <div class="mb-6">
-                        <h2 class="text-lg font-semibold text-gray-800 mb-3">Choose Organization</h2>
-                        <p class="text-sm text-gray-600 mb-4">
-                            You have accounts in multiple organizations. Choose one for this activity.
-                            <span class="text-amber-600 font-medium">This cannot be changed later.</span>
-                        </p>
-                        {#each Object.entries(setupData.orgs_with_assistants) as [org_id, assistants]}
-                            <label class="flex items-center gap-3 p-3 border rounded-lg mb-2 cursor-pointer hover:bg-blue-50 transition-colors {selectedOrg === org_id ? 'border-blue-500 bg-blue-50' : ''}">
-                                <input type="radio" 
-                                    name="organization_id" 
-                                    value={org_id} 
-                                    bind:group={selectedOrg}
-                                    class="text-blue-600 focus:ring-blue-500" required>
-                                <div>
-                                    <span class="font-medium text-gray-900">{setupData.org_names?.[org_id] || `Organization ${org_id}`}</span>
-                                    <span class="text-sm text-gray-500 ml-2">({assistants.length} published assistants)</span>
-                                </div>
-                            </label>
-                        {/each}
-                    </div>
-                {/if}
 
                 <!-- Step 2: Assistant Selection -->
                 {#if selectedOrg && needsAssistants}
@@ -333,11 +318,11 @@
                             {:else if assistantsForCurrentActivity.length === 0}
                                 <div class="p-4 border border-amber-300 rounded-lg bg-amber-50">
                                     <p class="text-sm text-amber-800 font-medium mb-2">No published assistants found.</p>
-                                    {#if setupData?.creator_access?.length}
-                                        <p class="text-sm text-amber-700 mb-3">
-                                            This activity needs at least one. Open LAMB Creator, create an assistant and publish it, then open this activity from your LMS again.
+                                    {#if creatorAccount}
+                                        <!-- The "Open LAMB Creator" button is above, under the chosen organization. -->
+                                        <p class="text-sm text-amber-700">
+                                            This activity needs at least one. Open LAMB Creator, create an assistant and publish it, then come back to this activity.
                                         </p>
-                                        <CreatorAccess {token} accounts={setupData.creator_access} />
                                     {:else}
                                         <p class="text-sm text-amber-700">
                                             Create an assistant in LAMB Creator and publish it, then reload this page. LAMB Creator from your course:

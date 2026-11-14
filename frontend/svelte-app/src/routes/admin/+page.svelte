@@ -1086,7 +1086,6 @@
         });
 
         unsubscribePage = page.subscribe(currentPage => {
-            console.log("Admin page store updated:", currentPage.url.searchParams.toString());
             const viewParam = currentPage.url.searchParams.get('view');
             
             if (viewParam === 'users') {

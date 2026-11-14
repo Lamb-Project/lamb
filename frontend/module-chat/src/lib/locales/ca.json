@@ -2,8 +2,17 @@
 	"creatorAccess": {
 		"open": "Obre LAMB Creator",
 		"openIn": "Obre LAMB Creator a {organization}",
-		"newTab": "S’obre en una pestanya nova",
-		"blocked": "El navegador ha bloquejat la pestanya nova. Permet les finestres emergents per a aquesta pàgina i torna-ho a provar.",
 		"failed": "No s’ha pogut obrir LAMB Creator. Torna-ho a provar o torna a obrir l’activitat des de l’LMS."
+	},
+	"setupHub": {
+		"yourOrganization": "La teva organització",
+		"chooseOrganization": "Tria una organització",
+		"chooseIntro": "Tens comptes en diverses organitzacions. Tria’n una per a aquesta activitat.",
+		"cannotChange": "Després no es pot canviar.",
+		"organizationFallback": "Organització {id}",
+		"assistantCount": "{count, plural, one {# assistent publicat} other {# assistents publicats}}",
+		"addOrganization": "Afegeix una organització amb un codi de creador",
+		"creator": "Els assistents es creen i es publiquen a LAMB Creator.",
+		"signIn": "Inicia la sessió a LAMB Creator amb el teu compte de LAMB per crear assistents en aquesta organització."
 	}
 }

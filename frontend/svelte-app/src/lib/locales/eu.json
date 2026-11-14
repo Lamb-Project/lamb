@@ -1133,5 +1133,15 @@
       "restoreConfirm": "Erakunde honen testua kendu nahi duzu? Irakasleek testu lehenetsia irakurriko dute berriro.",
       "restored": "Testu lehenetsia leheneratuta."
     }
+  },
+  "ltiSession": {
+    "organization": "Erakundea: {name}",
+    "switchOrganization": "Aldatu erakundea",
+    "current": "unekoa",
+    "switching": "Erakundea aldatzen...",
+    "switchFailed": "Ezin izan da erakundea aldatu. Ireki LAMB berriro zure LMStik.",
+    "cameFromCourse": "{course} ikastaroko jardueratik etorri zara",
+    "cameFromActivity": "Zure LMSko jarduera batetik etorri zara",
+    "backToActivity": "Itzuli jarduerara"
   }
 }
