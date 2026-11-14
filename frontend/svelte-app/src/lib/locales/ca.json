@@ -1067,6 +1067,7 @@
   "creatorCodes": {
     "title": "Codis de creador",
     "intro": "Amb un codi de creador, un docent que obre una activitat de LAMB des de l’LMS i encara no té compte de creador a LAMB en pot crear un en aquesta organització. Només serveix per a docents que arriben des de l’LMS: tot sol, el codi no dona accés a ningú. Dona la condició de creador i no converteix mai ningú en administrador.",
+    "separate": "Això és independent de l’eina LTI Creator de més amunt. Aquella eina dona un compte de creador a qui l’obre des de l’LMS. Un codi de creador és per als docents que arriben a través d’una activitat de LAMB i no tenen compte.",
     "loading": "Carregant els codis de creador...",
     "requestFailed": "La petició ha fallat. Torna-ho a provar.",
     "list": {

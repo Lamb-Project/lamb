@@ -1078,6 +1078,7 @@
   "creatorCodes": {
     "title": "Códigos de creador",
     "intro": "Con un código de creador, un docente que abre una actividad de LAMB desde el LMS y todavía no tiene cuenta de creador en LAMB puede crearla en esta organización. Solo sirve para docentes que llegan desde el LMS: por sí solo, el código no da acceso a nadie. Da la condición de creador y nunca convierte a nadie en administrador.",
+    "separate": "Esto es independiente de la herramienta LTI Creator de arriba. Esa herramienta da una cuenta de creador a quien la abre desde el LMS. Un código de creador es para los docentes que llegan a través de una actividad de LAMB y no tienen cuenta.",
     "loading": "Cargando códigos de creador...",
     "requestFailed": "La petición ha fallado. Vuelve a intentarlo.",
     "list": {
