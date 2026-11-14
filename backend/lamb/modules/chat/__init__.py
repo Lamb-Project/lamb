@@ -108,7 +108,8 @@ class ChatModule(ActivityModule):
             activity, instructor_user,
             lms_user_id=ctx.lms_user_id,
             lms_email=ctx.lms_email,
-            username=ctx.username
+            username=ctx.username,
+            lms_instance=getattr(ctx, 'lms_instance', '')
         )
         
         redirect_url = f"{public_base}/m/chat/dashboard?resource_link_id={ctx.resource_link_id}&token={dashboard_token}"
