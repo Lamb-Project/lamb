@@ -840,7 +840,8 @@ User clicks LTI link in LMS
         ├── Activity NOT configured:
         │     ├── Instructor with Creator account → Setup page
         │     │     (organization when the instructor has several, or add one
-        │     │      with a creator code; pick assistants, name, chat visibility option)
+        │     │      with a creator code; then the kinds of activity that can be
+        │     │      created there; pick assistants, name, chat visibility option)
         │     │     → First instructor becomes OWNER
         │     │     → Redirect to Instructor Dashboard
         │     ├── Instructor without Creator account → Creator-code page (0.9, §8.2.4)
@@ -872,6 +873,7 @@ User clicks LTI link in LMS
 
 **Key Design Decisions:**
 - Activities are bound to one organization (no cross-org mixing)
+- **Kinds of activity on offer (0.9):** once the organization is chosen, the setup page shows only the kinds this instructor can create there, and hides the rest. Each module answers through `ActivityModule.unavailable_reason(organization_id, assistants, teacher_email)`: a chat needs a published assistant the instructor can offer in that organization (own or shared), file evaluation one with a rubric, LLM access the organization's setup plus room in the instructor's token allowance for the smallest activity the organization's policy accepts (`TokenDealerService.can_create_activity`; the allowance is read for the email the LMS sends). `GET /lamb/v1/lti/setup/info` returns the list per organization as `org_modules` and describes in `modules` only kinds offered somewhere; `POST /lamb/v1/lti/configure` refuses a new activity of a kind that is not offered. Where nothing can be created yet the page says so and points to LAMB Creator.
 - **Activity ownership:** first instructor to configure = owner (can manage assistants for the activity; chat visibility is fixed at creation time)
 - **Instructor dashboard:** any instructor sees stats; only owner can reconfigure
 - **Chat visibility:** opt-in per activity at creation; when enabled, instructors see student conversations with real names from the LMS. LMS privacy settings control what identity data is passed to LAMB.
