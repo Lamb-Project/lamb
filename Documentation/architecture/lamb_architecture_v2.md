@@ -1,7 +1,7 @@
 # LAMB Architecture Documentation v2
 
 **Version:** 2.6
-**Last Updated:** March 31, 2026
+**Last Updated:** November 15, 2026
 **Reading Time:** ~40 minutes
 
 > This is the canonical architecture guide. A longer, more detailed architecture document lives in the private enterprise repository.
@@ -839,10 +839,13 @@ User clicks LTI link in LMS
         │
         ├── Activity NOT configured:
         │     ├── Instructor with Creator account → Setup page
-        │     │     (pick assistants, name, chat visibility option)
+        │     │     (organization when the instructor has several, or add one
+        │     │      with a creator code; pick assistants, name, chat visibility option)
         │     │     → First instructor becomes OWNER
         │     │     → Redirect to Instructor Dashboard
-        │     ├── Instructor without Creator account → "Contact LAMB admin" page
+        │     ├── Instructor without Creator account → Creator-code page (0.9, §8.2.4)
+        │     │     → valid code: LTI creator account in the code's organization
+        │     │     → LAMB Creator, same window, with the way back to this activity
         │     └── Student → "Not set up yet" waiting page
         │
         └── Activity IS configured:
@@ -863,6 +866,9 @@ User clicks LTI link in LMS
   - `GET /dashboard/stats`, `/dashboard/students`, `/dashboard/chats`, `/dashboard/chats/{id}`
 - `GET /lamb/v1/lti/enter-chat` — Dashboard → OWI redirect for instructors
 - `GET /lamb/v1/lti/info` — LTI tool configuration info
+- `GET`/`POST /lamb/v1/lti/onboarding`, `POST /lamb/v1/lti/creator-session`, `GET /lamb/v1/lti/return` — creator codes and the way between the activity and LAMB Creator (0.9, §8.2.4)
+
+> Since 0.9 the same activity endpoint also accepts **LTI 1.3** launches (`/lamb/v1/lti/login`, `/lamb/v1/lti/launch`, `/lamb/v1/lti/jwks`; platforms are registered by the system administrator and enabled per organization). The flow below the signature check is the one drawn above. LTI 1.3 is described in the 0.9 release notes on [lamb-project.org](https://lamb-project.org/en/releases/0.9/), not yet in this document.
 
 **Key Design Decisions:**
 - Activities are bound to one organization (no cross-org mixing)
@@ -973,6 +979,71 @@ Educator clicks LTI link in LMS
 - `lti_creator_keys` — Stores OAuth credentials per organization
 - `Creator_users.lti_user_id` — LMS user identifier
 - `Creator_users.auth_provider` — Set to `lti_creator`
+
+#### 8.2.4 Creator Codes (Instructor Self-Service Onboarding, new in 0.9)
+
+**Purpose:** An instructor who opens a unified LTI activity (§8.2.1) and has no LAMB Creator account can create one without an administrator doing it by hand. An organization admin creates **creator codes** and hands them out; the instructor enters one on the page the launch returns and becomes a creator, never an admin, in that one organization. Code: `backend/lamb/lti_onboarding.py`, `backend/lamb/lti_router.py`, `backend/creator_interface/lti_onboarding_router.py`; admin screen `frontend/svelte-app/src/lib/components/admin/OrgCreatorCodes.svelte` (Org Admin → Settings → LTI Creator).
+
+Step-by-step guide for administrators and teachers, with screenshots: [Give teachers their account with a creator code](https://lamb-project.org/en/guides/0.9/creator-codes/).
+
+This is separate from the LTI Creator tool (§8.2.3), which gives an account to whoever opens that tool from the LMS, and from the organization signup key, which belongs to the web sign-up form and is refused here.
+
+**Flow:**
+```
+Instructor launches an activity, no Creator account
+    → LAMB verifies the launch (LTI 1.1 signature or LTI 1.3 id_token) and the instructor role
+    → returns the creator-code page with a signed ticket
+        (15 minutes, this launch and this purpose only)
+    → instructor posts the code with the ticket: POST /lamb/v1/lti/onboarding
+        ├── refused → same page with a message (and the organization's own text
+        │             when the code matched an organization)
+        └── accepted:
+              → Creator user created (auth_provider = lti_creator, no usable password)
+                and linked to the LMS identity
+              ├── first account → LAMB Creator (/assistants), signed in, same window,
+              │                   carrying the way back to the activity
+              └── already a creator elsewhere ("add an organization")
+                                  → back to the activity setup, new organization chosen
+```
+
+**Rules:**
+- **The launch is the boundary.** A code can be redeemed only with the ticket of a verified instructor launch. Holding the code grants nothing: there is no endpoint that accepts a code on its own, and a student launch never gets a ticket.
+- **One organization per code.** On LTI 1.1 the code chooses the organization. On LTI 1.3 the code must belong to an organization the platform registration is enabled for. The system organization has no codes.
+- **Codes** are twelve characters in three groups (`XXXX-XXXX-XXXX`; no `0`, `O`, `1` or `I`), multi-use, with an optional expiry time and an optional use limit, and can be disabled and enabled again. The clear value is returned once, when the code is created. LAMB stores an HMAC-SHA256 of it keyed with the JWT secret (`LAMB_JWT_SECRET`, else `WEBUI_SECRET_KEY`) and its last four characters: **if that secret changes, existing codes stop matching** and new ones must be created.
+- **Attempts are limited:** five refused attempts in fifteen minutes for one LMS identity block further attempts for that window. Attempts are logged with their outcome and never with the code.
+- **Never two accounts in one organization** for the same person; a code of an organization the person already belongs to is refused with a message.
+- **The account** is the same kind of account the LTI Creator tool creates (`lti_creator_{org_slug}_{lti_user_id}@lamb-lti.local`). It is entered only through the LMS.
+- **Page text:** each organization can write the text an instructor without an account reads (who hands out the codes). The system organization's text is the deployment default. The page shows an organization's own text when the launch points at exactly one organization (an LTI 1.3 registration enabled for a single organization) and under the message when one of its codes is refused; on LTI 1.1 the organization is unknown until the code is entered, so the default is shown.
+
+**Between the activity and LAMB Creator (activity session):**
+- Every token issued from a launch carries the time of the launch (`lti_launched_at`). For **four hours** from it the instructor can open LAMB Creator from the setup page or the dashboard (`POST /lamb/v1/lti/creator-session`), come back (`GET /lamb/v1/lti/return`), add an organization and switch organization. Afterwards the activity is opened from the LMS again. The setup page's own token lasts two hours (`LTI_SETUP_JWT_EXPIRY`).
+- LAMB stays in the window the LMS opened. LAMB Creator keeps the return token per browser tab (`sessionStorage`), not in the address, and shows a bar that leads back to the activity.
+- The Creator session issued from a launch carries the LMS identity (`lti_identity` claim). `GET /creator/me` returns the current `organization` and `lti_organizations` (the person's other LTI creator accounts); `POST /creator/lti/switch-organization` issues a session for another of them.
+- Offered for entry and switching: enabled `lti_creator` accounts of the LMS user. An account obtained with a creator code is offered only to the LMS instance and email it was obtained from; an account created by the LTI Creator tool is recognised by the LMS user alone. Accounts that sign in with a password are not entered from a launch.
+
+**Key Endpoints:**
+
+| Endpoint | Who | What |
+|----------|-----|------|
+| `POST /lamb/v1/lti/onboarding` | Instructor (form: `ticket`, `code`) | Redeem a code |
+| `GET /lamb/v1/lti/onboarding?token=<setup token>` | Instructor who is already a creator | The same page, as "add an organization" |
+| `POST /lamb/v1/lti/creator-session` | Instructor (JSON: `token`, `creator_user_id`) | `{url}` of LAMB Creator for one of the person's LTI creator accounts |
+| `GET /lamb/v1/lti/return?token=<return token>` | Instructor | Back to the activity: dashboard when configured, setup otherwise |
+| `GET /creator/admin/org-admin/settings/creator-codes` | Org admin | Codes (label, last four characters, status, uses, expiry) and the page text |
+| `POST /creator/admin/org-admin/settings/creator-codes` | Org admin (`label`, `expires_at`, `max_uses`) | Create a code; the only response that contains it |
+| `PUT /creator/admin/org-admin/settings/creator-codes/{code_id}` | Org admin (`enabled`) | Disable or enable a code |
+| `PUT /creator/admin/org-admin/settings/creator-codes/page-text` | Org admin (`page_text`) | Set the text; empty restores the default |
+| `POST /creator/lti/switch-organization` | LTI creator (`creator_user_id`) | `{url}` with a session in another organization |
+
+A system admin can pass `?org=<slug>` to the four org-admin endpoints.
+
+**Database Tables (migration 36):**
+- `lti_creator_codes` — one row per code: organization, `code_hash`, `hint` (last four characters), label, `enabled`, `expires_at`, `max_uses`, `use_count`
+- `lti_creator_code_redemptions` — which code created which Creator user, for which LMS identity (hashed), LMS instance and email, protocol and launch
+- `lti_onboarding_attempts` — outcome and time of each attempt per LMS identity (hashed); the source of the attempt limit
+- `organizations.config.lti_onboarding.page_text` — the organization's text
+
+**Not in 0.9:** the creator-code page is English only; LTI 1.3 redemption is covered by automated tests and has not been exercised against a live LMS.
 
 ### 8.3 Assistant Sharing
 
