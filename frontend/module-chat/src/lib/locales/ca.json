@@ -13,6 +13,8 @@
 		"assistantCount": "{count, plural, one {# assistent publicat} other {# assistents publicats}}",
 		"addOrganization": "Afegeix una organització amb un codi de creador",
 		"creator": "Els assistents es creen i es publiquen a LAMB Creator.",
-		"signIn": "Inicia la sessió a LAMB Creator amb el teu compte de LAMB per crear assistents en aquesta organització."
+		"signIn": "Inicia la sessió a LAMB Creator amb el teu compte de LAMB per crear assistents en aquesta organització.",
+		"nothingTitle": "Encara no es pot crear res en aquesta organització.",
+		"nothingBody": "Una activitat amb assistents en necessita un de publicat. Crea un assistent a LAMB Creator, publica’l i torna a aquesta activitat."
 	}
 }

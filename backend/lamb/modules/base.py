@@ -53,6 +53,22 @@ class ActivityModule(ABC):
         """lamb-0.8: offer this module to instructors of this organization (default: always)."""
         return True
 
+    def unavailable_reason(self, organization_id: int, assistants: List[Dict[str, Any]],
+                           teacher_email: str = "") -> Optional[str]:
+        """Why this teacher cannot create an activity of this kind in this organization, or None
+        when they can. The setup page offers only the kinds that answer None (Marc, 15 November
+        2026: the list depends on the organization's settings and on the creator user in it).
+
+        `assistants`: the published assistants this teacher can offer in the organization.
+        `teacher_email`: the email the LMS sends for the teacher, else the account's.
+        Reasons are short codes: "not_enabled", "no_published_assistant", and a module's own.
+        """
+        if not self.enabled_for_org(organization_id):
+            return "not_enabled"
+        if self.requires_assistants and not assistants:
+            return "no_published_assistant"
+        return None
+
     def configured_redirect(self, public_base: str, activity: Dict[str, Any],
                             lms_user_id: str, lms_email: str) -> Optional[str]:
         """lamb-0.8: where to send the instructor after setup; None keeps the router's default."""

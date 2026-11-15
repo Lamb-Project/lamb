@@ -60,6 +60,21 @@ class TokenDealerService:
         if used + extra > allowance:
             raise AllocationError(f'this needs {extra} tokens; the teacher has {allowance - used} of {allowance} left')
 
+    def can_create_activity(self, organization_id, owner_email):
+        """Whether this teacher could set up an activity whose students get keys: the smallest
+        limits the organization's policy accepts must fit in what is left of the allowance.
+        A policy with a pool needs at least one token of pool; per-student limits alone commit
+        nothing when the activity is created."""
+        settings = self.settings_for(organization_id)
+        if not settings.enabled:
+            return False
+        smallest = 1 if settings.policy in ('pool', 'both') else 0
+        try:
+            self._check_allocation(settings, organization_id, owner_email, smallest)
+        except AllocationError:
+            return False
+        return True
+
     # ── activities ─────────────────────────────────────────────────────
     def configure_activity(self, organization_id, resource_link_id, owner_email, models, schedule,
                            pool_tokens=None, slot_tokens=None, total_tokens=None, owner_name=None,

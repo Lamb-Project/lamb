@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from lamb import lti_router
 from lamb.modules import discover_modules, get_module
 from lamb.token_dealer import wiring
+from lamb.token_dealer.service import TokenDealerService
 from lamb.token_dealer.settings import Settings
 
 CU = {'id': 5, 'organization_id': 3, 'user_email': 't@x.edu', 'user_name': 'Teacher'}
@@ -20,6 +21,8 @@ def env(monkeypatch):
     discover_modules()
     calls, created = [], {}
     monkeypatch.setattr(wiring, 'settings_for', lambda org: Settings(enabled=True, proxy_url='http://p', models=['m']))
+    # The setup page asks the service whether this teacher could hand out keys; no allowance limit here.
+    monkeypatch.setattr(wiring, 'service', lambda: TokenDealerService(None, lambda org: wiring.settings_for(org), lambda org: None))
     monkeypatch.setattr(lti_router, '_validate_lti_jwt', lambda token, kind: JWT if kind == 'setup' else None)
     db = SimpleNamespace(
         get_creator_user_by_id=lambda i: CU, get_organization_by_id=lambda i: {'name': 'UPC'},
@@ -40,8 +43,9 @@ def env(monkeypatch):
 def test_setup_info_offers_llm_access_to_an_org_without_assistants(env):
     info = env.client.get('/lamb/v1/lti/setup/info', params={'token': 't'}).json()
     assert info['orgs_with_assistants'] == {'3': []}
-    mods = {m['name']: m for m in info['modules']}
-    assert mods['llm_access']['requires_assistants'] is False and mods['chat']['requires_assistants'] is True
+    # Nothing published: LLM access is the one kind this teacher can create there (15 November 2026).
+    assert info['org_modules'] == {'3': ['llm_access']}
+    assert [(m['name'], m['requires_assistants']) for m in info['modules']] == [('llm_access', False)]
 
 
 def test_chat_still_needs_an_assistant(env):

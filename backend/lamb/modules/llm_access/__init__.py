@@ -49,6 +49,17 @@ class LlmAccessModule(ActivityModule):
             return False
         return s.enabled and bool(s.proxy_url) and bool(s.models)
 
+    def unavailable_reason(self, organization_id, assistants, teacher_email=""):
+        """Offered when this teacher could hand a key to students: the organization has LLM access
+        set up, and the smallest activity its policy accepts fits in the teacher's allowance."""
+        if not self.enabled_for_org(organization_id):
+            return "not_enabled"
+        try:
+            able = wiring.service().can_create_activity(organization_id, (teacher_email or "").strip().lower())
+        except SettingsError:
+            return "not_enabled"
+        return None if able else "no_allowance"
+
     def get_migrations(self) -> List[str]:
         return []          # tables come from numbered migration 33
 

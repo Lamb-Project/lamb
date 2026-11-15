@@ -40,6 +40,14 @@ class FileEvalModule(ActivityModule):
     display_name = "File Evaluation"
     description = "Students submit files; AI evaluates them; instructor reviews and sends grades to the LMS."
 
+    def unavailable_reason(self, organization_id, assistants, teacher_email=""):
+        reason = super().unavailable_reason(organization_id, assistants, teacher_email)
+        if reason:
+            return reason
+        if not any(a.get("rubric_eval_ready") for a in assistants):
+            return "no_rubric_assistant"
+        return None
+
     def __init__(self):
         self.service = FileEvalService()
         self.db_manager = LambDatabaseManager()

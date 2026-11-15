@@ -13,6 +13,8 @@
 		"assistantCount": "Argitaratutako laguntzaileak: {count}",
 		"addOrganization": "Gehitu erakunde bat sortzaile-kode batekin",
 		"creator": "Laguntzaileak LAMB Creator aplikazioan sortu eta argitaratzen dira.",
-		"signIn": "Hasi saioa LAMB Creator aplikazioan zure LAMB kontuarekin, erakunde honetarako laguntzaileak sortzeko."
+		"signIn": "Hasi saioa LAMB Creator aplikazioan zure LAMB kontuarekin, erakunde honetarako laguntzaileak sortzeko.",
+		"nothingTitle": "Oraindik ezin da ezer sortu erakunde honetan.",
+		"nothingBody": "Laguntzaileak dituen jarduera batek argitaratutako bat behar du. Sortu laguntzaile bat LAMB Creator aplikazioan, argitaratu eta itzuli jarduera honetara."
 	}
 }

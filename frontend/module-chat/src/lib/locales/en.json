@@ -13,6 +13,8 @@
 		"assistantCount": "{count, plural, one {# published assistant} other {# published assistants}}",
 		"addOrganization": "Add an organization with a creator code",
 		"creator": "Assistants are built and published in LAMB Creator.",
-		"signIn": "Sign in to LAMB Creator with your LAMB account to build assistants for this organization."
+		"signIn": "Sign in to LAMB Creator with your LAMB account to build assistants for this organization.",
+		"nothingTitle": "Nothing can be created in this organization yet.",
+		"nothingBody": "An activity with assistants needs a published one. Create an assistant in LAMB Creator, publish it, and come back to this activity."
 	}
 }

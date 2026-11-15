@@ -337,18 +337,20 @@ async def lti_setup_info(request: Request, token: str = ""):
         return JSONResponse({"detail": "Could not identify your Creator account."}, status_code=403)
 
     orgs_with_assistants = manager.get_published_assistants_for_instructor(creator_users)
-    # lamb-0.8: organizations where a module without assistants is enabled are offered too
-    no_assistant_modules = [m for m in get_all_modules() if not getattr(m, 'requires_assistants', True)]
-    for cu in creator_users:
-        org_id = cu['organization_id']
-        if org_id not in orgs_with_assistants and any(m.enabled_for_org(org_id) for m in no_assistant_modules):
-            orgs_with_assistants[org_id] = []
     # Every organization where the instructor is a creator is offered, also one with nothing
     # published yet: the page names it, says what is missing and leads to LAMB Creator (#562).
     for cu in creator_users:
         orgs_with_assistants.setdefault(cu['organization_id'], [])
-    instructor_orgs = sorted({cu['organization_id'] for cu in creator_users})
-    offered_modules = [m for m in get_all_modules() if any(m.enabled_for_org(o) for o in instructor_orgs)]
+    # The kinds of activity this teacher can create, organization by organization: the list
+    # follows the organization's settings and the creator user in it (Marc, 15 November 2026).
+    # A kind that cannot be created is not offered at all.
+    org_modules = {
+        org_id: [m.name for m in get_all_modules()
+                 if m.unavailable_reason(org_id, assistants, _teacher_email(data, creator_users, org_id)) is None]
+        for org_id, assistants in orgs_with_assistants.items()
+    }
+    offered = {name for names in org_modules.values() for name in names}
+    offered_modules = [m for m in get_all_modules() if m.name in offered]
 
     org_names, org_slugs = {}, {}
     for org_id in orgs_with_assistants:
@@ -378,6 +380,7 @@ async def lti_setup_info(request: Request, token: str = ""):
         "can_add_organization": data.get("lti_type") == "setup" and lti_onboarding.within_session(data),
         "org_names": org_names,
         "orgs_with_assistants": orgs_with_assistants,
+        "org_modules": org_modules,
         "modules": [{"name": m.name, "display_name": getattr(m, 'display_name', m.name),
                      "description": getattr(m, 'description', ''),
                      "requires_assistants": getattr(m, 'requires_assistants', True)} for m in offered_modules],
@@ -502,7 +505,15 @@ async def lti_configure_activity(request: Request):
 
         # Check if activity already exists (reconfiguration case)
         existing_activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
-        
+
+        # The page offers only the kinds this teacher can create in this organization; the
+        # server holds the same line for a new activity, whatever the page sent.
+        if not existing_activity and requested_module.unavailable_reason(
+                organization_id, allowed, _teacher_email(data, [creator_user], organization_id)):
+            return JSONResponse(
+                {"detail": f"Activity type '{activity_type}' is not available to you in this organization"},
+                status_code=400)
+
         reserved = {"token", "organization_id", "assistant_ids", "activity_type",
                     "chat_visibility_enabled", "resource_link_id", "configured_by_email",
                     "lms_email", "activity_name"}
@@ -616,6 +627,15 @@ def _setup_jwt_from(claims: dict, creator_users) -> str:
         context_title=claims.get("lti_context_title", ""), lms_instance=claims.get("lti_lms_instance", ""),
         username=claims.get("lti_username", ""), display_name=claims.get("lti_display_name", ""),
         launched_at=lti_onboarding.launched_at(claims) or 0)
+
+
+def _teacher_email(claims: dict, creator_users, organization_id: int) -> str:
+    """The email that identifies the teacher to a module: the one the LMS sends (allowances follow
+    it), else the email of the teacher's account in that organization."""
+    lms_email = (claims.get("lti_lms_email") or "").strip().lower()
+    if lms_email:
+        return lms_email
+    return next((cu.get("user_email") or "" for cu in creator_users if cu.get("organization_id") == organization_id), "")
 
 
 def _creator_users_for(claims: dict):

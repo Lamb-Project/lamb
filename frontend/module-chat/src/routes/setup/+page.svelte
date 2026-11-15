@@ -1,8 +1,9 @@
 <script>
     import { onMount } from 'svelte';
     import { page } from '$app/stores';
-    import { creatorAccountFor } from '$lib/CreatorAccess.svelte';
     import OrganizationStep, { initialOrganization } from '$lib/OrganizationStep.svelte';
+    import { kindsFor, keepOrFirst } from '$lib/activityKinds.js';
+    import { _, locale } from '$lib/i18n.js';
 
     let token = $state('');
     let loading = $state(true);
@@ -37,10 +38,6 @@
                 throw new Error(text || "Failed to load configuration info");
             }
             setupData = await res.json();
-            
-            if (setupData.modules && setupData.modules.length > 0) {
-                selectedActivity = setupData.modules[0].name;
-            }
 
             // The only organization, or the one just added with a creator code (`&org=`).
             selectedOrg = initialOrganization(setupData, $page.url.searchParams.get('org'));
@@ -49,6 +46,14 @@
         } finally {
             loading = false;
         }
+    });
+
+    // The kinds of activity this teacher can create in the chosen organization. A kind that
+    // cannot be created there is not shown; the selection follows the list.
+    let kinds = $derived(kindsFor(setupData, selectedOrg));
+    $effect(() => {
+        const next = keepOrFirst(selectedActivity, kinds);
+        if (next !== selectedActivity) selectedActivity = next;
     });
 
     let currentModuleFields = $derived(
@@ -97,9 +102,6 @@
     let emptyDueToFilters = $derived(
         baseAssistantsForActivity.length > 0 && assistantsForCurrentActivity.length === 0
     );
-
-    // The chosen organization's account for entering LAMB Creator from this page, if it has one.
-    let creatorAccount = $derived(creatorAccountFor(setupData?.creator_access, selectedOrg || null));
 
     // Clear assistant selection when activity type changes
     $effect(() => {
@@ -152,10 +154,8 @@
         !(setupData?.modules || []).some(m => m.name === selectedActivity && m.requires_assistants === false)
     );
 
-    // Nothing published that this activity can use: LAMB Creator comes first, the form after it.
-    let creatorFirst = $derived(
-        needsAssistants && assistantsForCurrentActivity.length === 0 && !emptyDueToFilters
-    );
+    // Nothing can be created in the chosen organization yet: LAMB Creator comes first.
+    let creatorFirst = $derived(!!selectedOrg && kinds.length === 0);
 
     let canSubmit = $derived(
         selectedActivity && selectedOrg
@@ -247,11 +247,20 @@
                      under it the way into LAMB Creator for that organization. The form follows. -->
                 <OrganizationStep {token} info={setupData} bind:selected={selectedOrg} {creatorFirst} />
 
-                <!-- Step 0: Activity Type Selection -->
-                <div class="mb-6">
+                <!-- Step 0: Activity Type Selection. Once the organization is chosen: the kinds this
+                     teacher can create there, and only those. -->
+                {#if selectedOrg && kinds.length === 0}
+                    {#if $locale}
+                        <div class="mb-6 p-4 border border-amber-300 rounded-lg bg-amber-50" data-no-activity-kinds>
+                            <p class="text-sm text-amber-800 font-medium mb-2">{$_('setupHub.nothingTitle')}</p>
+                            <p class="text-sm text-amber-700">{$_('setupHub.nothingBody')}</p>
+                        </div>
+                    {/if}
+                {:else if selectedOrg}
+                <div class="mb-6" data-activity-kinds>
                     <h2 class="text-lg font-semibold text-gray-800 mb-3">Activity Type</h2>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {#each setupData.modules as mod}
+                        {#each kinds as mod (mod.name)}
                             <label class="flex items-start gap-3 p-4 border rounded-xl cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all {selectedActivity === mod.name ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500 ring-opacity-50' : ''}">
                                 <input type="radio" 
                                     name="activity_type" 
@@ -266,9 +275,10 @@
                         {/each}
                     </div>
                 </div>
+                {/if}
 
                 <!-- Step 2: Assistant Selection -->
-                {#if selectedOrg && needsAssistants}
+                {#if selectedOrg && selectedActivity && needsAssistants}
                     <div class="mb-6">
                         <h2 class="text-lg font-semibold text-gray-800 mb-1">Select Assistants</h2>
                         <p class="text-sm text-gray-600 mb-3">Choose which AI assistants will be available in this activity.</p>
@@ -307,41 +317,13 @@
                             {/each}
                             {#if assistantsForCurrentActivity.length === 0 && emptyDueToFilters}
                                 <p class="text-sm text-gray-500 p-4 border rounded-lg bg-gray-50 italic">No assistants match the current filters. Adjust the filters above.</p>
-                            {:else if assistantsForCurrentActivity.length === 0 && selectedActivity === 'file_evaluation'}
-                                <div class="p-4 border border-amber-300 rounded-lg bg-amber-50">
-                                    <p class="text-sm text-amber-800 font-medium mb-2">No published assistant with a rubric.</p>
-                                    <p class="text-sm text-amber-700">
-                                        File Evaluation needs an assistant that has a rubric (RAG processor "Rubric RAG", chosen when the assistant is created) and is published. In LAMB Creator, create or open it and publish it, then reload this page. LAMB Creator from your course:
-                                    </p>
-                                    <code class="block mt-1 text-xs bg-amber-100 text-amber-900 px-2 py-1 rounded font-mono">/lamb/v1/lti_creator/launch</code>
-                                </div>
-                            {:else if assistantsForCurrentActivity.length === 0}
-                                <div class="p-4 border border-amber-300 rounded-lg bg-amber-50">
-                                    <p class="text-sm text-amber-800 font-medium mb-2">No published assistants found.</p>
-                                    {#if creatorAccount}
-                                        <!-- The "Open LAMB Creator" button is above, under the chosen organization. -->
-                                        <p class="text-sm text-amber-700">
-                                            This activity needs at least one. Open LAMB Creator, create an assistant and publish it, then come back to this activity.
-                                        </p>
-                                    {:else}
-                                        <p class="text-sm text-amber-700">
-                                            Create an assistant in LAMB Creator and publish it, then reload this page. LAMB Creator from your course:
-                                        </p>
-                                        <code class="block mt-1 text-xs bg-amber-100 text-amber-900 px-2 py-1 rounded font-mono">/lamb/v1/lti_creator/launch</code>
-                                    {/if}
-                                </div>
                             {/if}
                         </div>
-                    </div>
-                {:else if setupData?.needs_org_selection && !selectedOrg && needsAssistants}
-                    <div class="mb-6">
-                        <h2 class="text-lg font-semibold text-gray-800 mb-1">Select Assistants</h2>
-                        <p class="text-sm text-gray-400 italic">Select an organization above to see available assistants.</p>
                     </div>
                 {/if}
 
                 <!-- Step 3: Options -->
-                {#if selectedOrg && currentModuleFields.length > 0}
+                {#if selectedOrg && selectedActivity && currentModuleFields.length > 0}
                     <div class="mb-6">
                         <h2 class="text-lg font-semibold text-gray-800 mb-3">Options</h2>
                         <div class="space-y-3">
