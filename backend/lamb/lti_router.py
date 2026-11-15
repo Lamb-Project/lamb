@@ -245,7 +245,8 @@ async def lti_launch(request: Request):
 
         # -- INSTRUCTOR at unconfigured activity -> Setup flow --
         logger.info(f"Instructor setup flow for {resource_link_id}")
-        creator_users = manager.identify_instructor(lms_user_id=lms_user_id, lms_email=lms_email)
+        # Who the instructor is: the LMS user (and instance), never the email (15 November 2026).
+        creator_users = manager.identify_instructor(lms_user_id=lms_user_id, lms_instance=lms_instance)
 
         if not creator_users:
             # No LAMB account for this instructor (#467, #562): the launch itself returns the
@@ -274,8 +275,7 @@ async def lti_launch(request: Request):
         )
 
         public_base = manager.get_public_base_url(request)
-        page = "/m/chat/setup" if creator_users else "/lamb/v1/lti/link-account"
-        redirect_url = f"{public_base}{page}?token={setup_token}"
+        redirect_url = f"{public_base}/m/chat/setup?token={setup_token}"
         
         return RedirectResponse(
             url=redirect_url,
@@ -307,31 +307,7 @@ async def lti_setup_info(request: Request, token: str = ""):
 
     resource_link_id = data.get("lti_resource_link_id")
 
-    if data.get("lti_type") == "setup":
-        # Re-fetch creator users from DB using IDs stored in JWT
-        creator_user_ids = data.get("lti_creator_user_ids", [])
-        if is_scoped(data.get("lti_lms_user_id")):
-            creator_user_ids = [cu['id'] for cu in manager.identify_instructor(data['lti_lms_user_id'])]
-        creator_users = []
-        for uid in creator_user_ids:
-            cu = db_manager.get_creator_user_by_id(uid)
-            if cu and cu.get('enabled', True):
-                creator_users.append({
-                    "id": cu['id'],
-                    "organization_id": cu['organization_id'],
-                    "user_email": cu['user_email'],
-                    "user_name": cu['user_name'],
-                })
-    else:
-        # Dashboard JWT used for reconfigure - re-identify instructor dynamically
-        lms_user_id = data.get("lti_lms_user_id", "")
-        lms_email = data.get("lti_lms_email", "")
-        creator_users_raw = manager.identify_instructor(lms_user_id, lms_email)
-        creator_users = [
-            {"id": cu["id"], "organization_id": cu["organization_id"],
-             "user_email": cu["user_email"], "user_name": cu["user_name"]}
-            for cu in (creator_users_raw or [])
-        ]
+    creator_users = _creator_users_for(data)
 
     if not creator_users:
         return JSONResponse({"detail": "Could not identify your Creator account."}, status_code=403)
@@ -464,21 +440,9 @@ async def lti_configure_activity(request: Request):
                         status_code=400,
                     )
 
-        # Re-fetch creator user from JWT (never trust form data for identity)
-        creator_user_ids = data.get("lti_creator_user_ids", [])
-        if is_scoped(data.get("lti_lms_user_id")):
-            creator_user_ids = [cu['id'] for cu in manager.identify_instructor(data['lti_lms_user_id'])]
-        creator_user = None
-        for uid in creator_user_ids:
-            cu = db_manager.get_creator_user_by_id(uid)
-            if cu and cu.get('enabled', True) and cu.get('organization_id') == organization_id:
-                creator_user = {
-                    "id": cu['id'],
-                    "organization_id": cu['organization_id'],
-                    "user_email": cu['user_email'],
-                    "user_name": cu['user_name'],
-                }
-                break
+        # The instructor's account in that organization, identified again from the launch the
+        # token stands for (never trust form data for identity).
+        creator_user = next((cu for cu in _creator_users_for(data) if cu["organization_id"] == organization_id), None)
 
         if not creator_user:
             return JSONResponse({"detail": "You don't have access to this organization"}, status_code=403)
@@ -521,7 +485,7 @@ async def lti_configure_activity(request: Request):
 
         if existing_activity and is_scoped(resource_link_id):
             if existing_activity['organization_id'] != organization_id or not manager.determine_is_owner(
-                    existing_activity, data.get('lti_lms_user_id', '')):
+                    existing_activity, data.get('lti_lms_user_id', ''), data.get('lti_lms_instance', '')):
                 raise HTTPException(403, 'Only the activity owner can reconfigure this activity')
 
         if existing_activity:
@@ -639,8 +603,14 @@ def _teacher_email(claims: dict, creator_users, organization_id: int) -> str:
 
 
 def _creator_users_for(claims: dict):
-    """The instructor's Creator accounts, as the setup token lists them."""
-    found = manager.identify_instructor(lms_user_id=claims["lti_lms_user_id"], lms_email=claims.get("lti_lms_email") or None)
+    """The instructor's LTI creator accounts, identified from the LMS user and instance a launch
+    token carries (a ticket, a setup, dashboard or return token). Read again each time: an
+    organization just added is there, a disabled account is not."""
+    try:
+        found = manager.identify_instructor(lms_user_id=claims.get("lti_lms_user_id") or "",
+                                            lms_instance=claims.get("lti_lms_instance") or "")
+    except ValueError:
+        found = []
     return [{"id": cu["id"], "organization_id": cu["organization_id"],
              "user_email": cu["user_email"], "user_name": cu["user_name"]} for cu in found]
 
@@ -665,13 +635,10 @@ def _onboarding_page(request: Request, ticket_token: str, reason: str = "", orga
         accounts = _creator_users_for(ticket)
     except ValueError:
         return HTMLResponse(SESSION_EXPIRED_HTML, status_code=403)
-    link_token, back_url = "", ""
+    back_url = ""
     if accounts:
         # Already a creator somewhere: this is "add an organization", with the way back to the choice.
         back_url = f"/m/chat/setup?token={_setup_jwt_from(ticket, accounts)}"
-    elif ticket["lti_protocol"] == "1.3":
-        # LTI 1.3 already offered linking an existing account by email and password; it stays.
-        link_token = _setup_jwt_from(ticket, [])
     organization_text = ""
     if reason in lti_onboarding.SHOW_ORGANIZATION_TEXT and organization:
         organization_text = lti_onboarding.own_page_text(organization)
@@ -682,7 +649,6 @@ def _onboarding_page(request: Request, ticket_token: str, reason: str = "", orga
         "error": lti_onboarding.MESSAGES.get(reason, "") if reason else "",
         "organization_text": organization_text,
         "can_retry": reason != "rate_limited",
-        "link_token": link_token,
         "back_url": back_url,
         "context_title": ticket.get("lti_context_title") or "",
     }, status_code=status_code)
@@ -791,98 +757,6 @@ async def lti_return_to_activity(request: Request, token: str = ""):
 
 
 # =============================================================================
-# Link Account Page (fallback when instructor not auto-identified)
-# =============================================================================
-
-@router.get("/link-account")
-async def lti_link_account_page(request: Request, token: str = ""):
-    """Show the account-linking form for unidentified instructors."""
-    data = _validate_lti_jwt(token, "setup")
-    if not data:
-        return HTMLResponse(SESSION_EXPIRED_HTML, status_code=403)
-
-    return templates.TemplateResponse("lti_link_account.html", {
-        "request": request,
-        "token": token,
-        "error": "",
-    })
-
-
-@router.post("/link-account")
-async def lti_link_account_submit(request: Request):
-    """
-    Process the account-linking form.
-    Verifies credentials via manager.verify_creator_credentials(), links the
-    LMS identity to the Creator user, then issues a new setup JWT.
-    """
-    try:
-        form_data = await request.form()
-        token = form_data.get("token", "")
-        email = form_data.get("email", "").strip()
-        password = form_data.get("password", "")
-
-        data = _validate_lti_jwt(token, "setup")
-        if not data:
-            return HTMLResponse(SESSION_EXPIRED_HTML, status_code=403)
-
-        if not email or not password:
-            return templates.TemplateResponse("lti_link_account.html", {
-                "request": request,
-                "token": token,
-                "error": "Please enter your email and password.",
-            })
-
-        creator_user = manager.verify_creator_credentials(email, password)
-        if not creator_user:
-            return templates.TemplateResponse("lti_link_account.html", {
-                "request": request,
-                "token": token,
-                "error": "Invalid credentials. Please check your LAMB Creator email and password.",
-            })
-
-        lms_user_id = data.get("lti_lms_user_id", "")
-        lms_email = data.get("lti_lms_email", "")
-        try:
-            manager.link_identity(
-                lms_user_id=lms_user_id,
-                creator_user_id=creator_user["id"],
-                lms_email=lms_email
-            )
-        except ValueError as exc:
-            return templates.TemplateResponse("lti_link_account.html", {
-                "request": request, "token": token, "error": str(exc),
-            }, status_code=403)
-        logger.info(f"Linked LMS user {lms_user_id} to Creator user {creator_user['user_email']}")
-
-        new_token = _create_setup_jwt(
-            creator_users=[{
-                "id": creator_user["id"],
-                "organization_id": creator_user["organization_id"],
-                "user_email": creator_user["user_email"],
-                "user_name": creator_user["user_name"],
-            }],
-            lms_user_id=lms_user_id,
-            lms_email=lms_email,
-            resource_link_id=data.get("lti_resource_link_id", ""),
-            context_id=data.get("lti_context_id", ""),
-            context_title=data.get("lti_context_title", ""),
-            lms_instance=data.get("lti_lms_instance", ""),
-            username=data.get("lti_username", ""), display_name=data.get("lti_display_name", ""),
-            launched_at=lti_onboarding.launched_at(data) or 0,
-        )
-
-        public_base = manager.get_public_base_url(request)
-        return RedirectResponse(
-            url=f"{public_base}/m/chat/setup?token={new_token}",
-            status_code=303
-        )
-
-    except Exception as e:
-        logger.error(f"Error linking account: {str(e)}", exc_info=True)
-        return HTMLResponse(f"<h2>Error</h2><p>{str(e)}</p>", status_code=500)
-
-
-# =============================================================================
 # Reconfigure Activity
 # =============================================================================
 
@@ -905,7 +779,7 @@ async def lti_reconfigure_activity(request: Request):
         is_owner = manager.determine_is_owner(
             activity,
             lms_user_id=data.get("lti_lms_user_id", ""),
-            lms_email=data.get("lti_lms_email", "")
+            lms_instance=data.get("lti_lms_instance", "")
         )
         if not is_owner:
             return HTMLResponse(
@@ -1003,7 +877,7 @@ async def lti_dashboard_info(request: Request, resource_link_id: str = "", token
     is_owner = manager.determine_is_owner(
         activity,
         lms_user_id=data.get("lti_lms_user_id", ""),
-        lms_email=data.get("lti_lms_email", "")
+        lms_instance=data.get("lti_lms_instance", "")
     )
 
     org = db_manager.get_organization_by_id(activity['organization_id'])

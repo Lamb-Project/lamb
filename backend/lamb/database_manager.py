@@ -8277,72 +8277,38 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
-    def get_creator_users_by_lms_identity(self, lms_user_id: str = None,
-                                           lms_email: str = None) -> List[Dict[str, Any]]:
+    def get_lti_creator_users_by_lms_user(self, lms_user_id: str) -> List[Dict[str, Any]]:
         """
-        Find Creator users matching an LMS identity.
-        Tries: 1) email match in Creator_users, 2) lti_user_id match, 3) lti_identity_links.
-        Returns list of Creator user dicts (may be multiple if in different orgs).
+        The enabled LTI creator accounts tied to an LTI 1.1 user id: those created for it
+        (Creator_users.lti_user_id) and those linked to it (lti_identity_links).
+
+        Only accounts with auth_provider 'lti_creator'. The email a launch carries identifies
+        nobody, and an account that signs in with a password takes no part in LTI endpoints,
+        whatever link was once made to it (Marc, 15 November 2026). Callers go through
+        LtiActivityManager.identify_instructor, which also applies the LMS instance.
         """
-        results = []
-        seen_ids = set()
+        if not lms_user_id:
+            return []
         connection = self.get_connection()
         if not connection:
-            return results
+            return []
         try:
             with connection:
                 cursor = connection.cursor()
-
-                # Strategy 1: Direct email match in Creator_users
-                if lms_email:
-                    cursor.execute(f"""
-                        SELECT id, organization_id, user_email, user_name, user_type, 
-                               enabled, lti_user_id, auth_provider
-                        FROM {self.table_prefix}Creator_users
-                        WHERE user_email = ? AND enabled = 1
-                    """, (lms_email,))
-                    for row in cursor.fetchall():
-                        columns = [col[0] for col in cursor.description]
-                        user = dict(zip(columns, row))
-                        if user['id'] not in seen_ids:
-                            results.append(user)
-                            seen_ids.add(user['id'])
-
-                # Strategy 2: Match by lti_user_id in Creator_users
-                if lms_user_id:
-                    cursor.execute(f"""
-                        SELECT id, organization_id, user_email, user_name, user_type,
-                               enabled, lti_user_id, auth_provider
-                        FROM {self.table_prefix}Creator_users
-                        WHERE lti_user_id = ? AND enabled = 1
-                    """, (lms_user_id,))
-                    for row in cursor.fetchall():
-                        columns = [col[0] for col in cursor.description]
-                        user = dict(zip(columns, row))
-                        if user['id'] not in seen_ids:
-                            results.append(user)
-                            seen_ids.add(user['id'])
-
-                # Strategy 3: Check lti_identity_links
-                if lms_user_id:
-                    cursor.execute(f"""
-                        SELECT cu.id, cu.organization_id, cu.user_email, cu.user_name,
-                               cu.user_type, cu.enabled, cu.lti_user_id, cu.auth_provider
-                        FROM {self.table_prefix}lti_identity_links lil
-                        JOIN {self.table_prefix}Creator_users cu ON lil.creator_user_id = cu.id
-                        WHERE lil.lms_user_id = ? AND cu.enabled = 1
-                    """, (lms_user_id,))
-                    for row in cursor.fetchall():
-                        columns = [col[0] for col in cursor.description]
-                        user = dict(zip(columns, row))
-                        if user['id'] not in seen_ids:
-                            results.append(user)
-                            seen_ids.add(user['id'])
-
-                return results
+                cursor.execute(f"""
+                    SELECT id, organization_id, user_email, user_name, user_type,
+                           enabled, lti_user_id, auth_provider
+                    FROM {self.table_prefix}Creator_users
+                    WHERE enabled = 1 AND auth_provider = 'lti_creator'
+                      AND (lti_user_id = ? OR id IN (
+                            SELECT creator_user_id FROM {self.table_prefix}lti_identity_links WHERE lms_user_id = ?))
+                    ORDER BY id
+                """, (lms_user_id, lms_user_id))
+                columns = [col[0] for col in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
         except sqlite3.Error as e:
-            logger.error(f"Error finding creator users by LMS identity: {e}")
-            return results
+            logger.error(f"Error finding LTI creator users by LMS user: {e}")
+            return []
         finally:
             connection.close()
 

@@ -55,10 +55,11 @@ MESSAGES = {
     "not_allowed": "This code belongs to an organization that your LMS is not connected to.",
     "account_disabled": "Your LAMB account in this organization is disabled.",
     "already_member": "You already have an account in this organization. Go back and choose it.",
+    "other_lms": "An account for this LMS user already exists in this organization, obtained from another LMS. Ask your LAMB administrator.",
     "failed": "The account could not be created. Open the activity from your LMS again, or contact your LAMB administrator.",
 }
 # Outcomes that tell the instructor to talk to someone: the organization's own text follows them.
-SHOW_ORGANIZATION_TEXT = {"disabled", "expired", "used_up", "not_allowed", "account_disabled"}
+SHOW_ORGANIZATION_TEXT = {"disabled", "expired", "used_up", "not_allowed", "account_disabled", "other_lms"}
 
 
 def migrate(cursor, prefix):
@@ -273,6 +274,40 @@ def allowed_organizations(db, ticket: Dict[str, Any]) -> Optional[List[int]]:
 
 
 # ---------------------------------------------------------------------------
+# Who an LTI 1.1 launch is
+# ---------------------------------------------------------------------------
+
+def _identity(protocol: str, lms_user_id: str) -> str:
+    return hashlib.sha256(f"{protocol}:{lms_user_id}".encode()).hexdigest()
+
+
+def instances_of(db, lms_user_id: str) -> Dict[int, set]:
+    """For an LTI 1.1 user id: the LMS instances each account was obtained from with a creator
+    code, {creator_user_id: {instance, ...}}. An account that is not there was not obtained
+    with a code."""
+    obtained: Dict[int, set] = {}
+    for row in _rows(db, "SELECT creator_user_id, lms_instance FROM {p}lti_creator_code_redemptions WHERE identity_hash=?",
+                     (_identity("1.1", lms_user_id),)):
+        obtained.setdefault(row["creator_user_id"], set()).add(row["lms_instance"])
+    return obtained
+
+
+def accounts_of_instance(db, accounts: List[Dict[str, Any]], lms_user_id: str, lms_instance: str) -> List[Dict[str, Any]]:
+    """Of the LTI creator accounts tied to an LTI 1.1 user id, those a launch from this LMS
+    instance may act as (Marc, 15 November 2026: identity is the organization, the LMS user
+    and the LMS instance, never the email).
+
+    The global key is shared by every LMS, and a user id is only that LMS's own number: an
+    account obtained with a creator code belongs to the instance it was obtained from. An
+    account made by the organization's own LTI Creator tool carries no record of an instance
+    and is recognised by the user id, as that tool recognises it.
+    """
+    obtained = instances_of(db, lms_user_id)
+    here = str(lms_instance or "").strip()
+    return [account for account in accounts if account["id"] not in obtained or here in obtained[account["id"]]]
+
+
+# ---------------------------------------------------------------------------
 # Redemption
 # ---------------------------------------------------------------------------
 
@@ -290,7 +325,7 @@ class Redemption:
 
 
 def _identity_hash(ticket: Dict[str, Any]) -> str:
-    return hashlib.sha256(f"{ticket['lti_protocol']}:{ticket['lti_lms_user_id']}".encode()).hexdigest()
+    return _identity(ticket['lti_protocol'], ticket['lti_lms_user_id'])
 
 
 def _instance(claims: Dict[str, Any]) -> str:
@@ -357,15 +392,22 @@ def redeem(db, manager, ticket: Dict[str, Any], code: str) -> Redemption:
     existing = db.get_creator_user_by_lti(organization["id"], lms_user_id)
     if existing and not existing.get("enabled", True):
         return _refuse(db, ticket, "account_disabled", organization, row["id"])
-    # Accounts this person already has, in any organization. Never two in one organization.
+    # The LTI creator accounts this launch already is, in any organization. Never two in one
+    # organization. The email decides nothing here: a password account with the same address
+    # is another matter, and does not stand in the way.
     try:
-        known = manager.identify_instructor(lms_user_id=lms_user_id, lms_email=ticket.get("lti_lms_email") or None)
+        known = manager.identify_instructor(lms_user_id=lms_user_id, lms_instance=_instance(ticket))
     except ValueError:
         known = []
     if any(account["organization_id"] == organization["id"] for account in known):
         return _refuse(db, ticket, "already_member", organization, row["id"])
-    # `existing` without being known: an LTI creator account whose link to this LMS identity
-    # went missing. The code links it again and takes no use.
+    if existing and ticket["lti_protocol"] == "1.1" and instances_of(db, lms_user_id).get(existing["id"]):
+        # The account of this user id in this organization was obtained from another LMS
+        # instance: the same number there is another person. A code does not hand it over.
+        return _refuse(db, ticket, "other_lms", organization, row["id"])
+    # `existing` without being known and without a record of an instance: an account made by
+    # the organization's LTI Creator tool, or one whose link went missing. The code links it
+    # and takes no use; from now on it belongs to this instance.
 
     creator_id = existing["id"] if existing else None
     if not existing:
@@ -425,37 +467,23 @@ def creator_access(db, manager, claims: Dict[str, Any]) -> List[Dict[str, Any]]:
     """LTI creator accounts this instructor may enter LAMB Creator as, or switch to.
 
     An LTI creator has no password and enters LAMB only through the LMS (Marc, 14 November
-    2026). Offered: the enabled LTI creator accounts LAMB identifies for the LMS user of
-    `claims` (a setup, dashboard or return token, or the identity kept in a Creator session),
-    within four hours of the launch. An account obtained with a creator code is offered only
-    to the LMS instance and email it was obtained from; an account made by the organization's
-    own LTI Creator tool is recognised by the LMS user alone, as that tool recognises it.
-    Never offered: an account matched only by the email the LMS asserts, a regular account
-    with a password, a disabled account. Regular creators sign in on the login page.
+    2026). Offered: every account the launch identifies (LtiActivityManager.identify_instructor:
+    the LMS user and, on LTI 1.1, the LMS instance), within four hours of the launch, whatever
+    email the launch carries: the same LMS user enters any of their organizations (Marc,
+    15 November 2026). `claims`: a setup, dashboard or return token, or the identity kept in a
+    Creator session. Regular creators sign in on the login page and are never offered here.
     """
     if not within_session(claims):
         return []
     lms_user_id = claims.get("lti_lms_user_id") or ""
     if not lms_user_id:
         return []
-    protocol = "1.3" if is_scoped(lms_user_id) else "1.1"
-    identity = hashlib.sha256(f"{protocol}:{lms_user_id}".encode()).hexdigest()
-    obtained: Dict[int, set] = {}
-    for row in _rows(db, "SELECT creator_user_id, lms_instance, lms_email FROM {p}lti_creator_code_redemptions WHERE identity_hash=?", (identity,)):
-        obtained.setdefault(row["creator_user_id"], set()).add((row["lms_instance"], row["lms_email"]))
     try:
-        # Without the email: only accounts bound to this LMS user, and on LTI 1.3 only in the
-        # organizations of the registration.
-        identified = manager.identify_instructor(lms_user_id=lms_user_id, lms_email=None)
+        identified = manager.identify_instructor(lms_user_id=lms_user_id, lms_instance=_instance(claims))
     except ValueError:
         return []
-    here = (_instance(claims), _email(claims))
     accounts = []
     for account in identified:
-        if account.get("auth_provider") != "lti_creator" or not account.get("enabled", True):
-            continue
-        if account["id"] in obtained and here not in obtained[account["id"]]:
-            continue
         organization = db.get_organization_by_id(account["organization_id"]) or {}
         accounts.append({"creator_user_id": account["id"], "organization_id": account["organization_id"],
                          "organization_name": organization.get("name") or "",

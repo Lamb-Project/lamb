@@ -32,8 +32,11 @@ def env(tmp_path, monkeypatch):
     db.get_creator_user_by_id = creator
     db.get_organization_by_id = lambda oid: {'id': oid, 'name': 'Organization'} if oid in (1, 2) else None
     with db.get_connection() as c:
-        c.execute('CREATE TABLE T_Creator_users (id INTEGER PRIMARY KEY, organization_id INTEGER, user_email TEXT, user_name TEXT, enabled INTEGER)')
-        c.executemany('INSERT INTO T_Creator_users VALUES (?,?,?,?,?)', [(1,1,'teacher@example.edu','Teacher',1), (2,2,'other@example.edu','Other',1)])
+        c.execute('CREATE TABLE T_Creator_users (id INTEGER PRIMARY KEY, organization_id INTEGER, user_email TEXT, user_name TEXT, enabled INTEGER, auth_provider TEXT)')
+        # 1 and 2 are LTI creator accounts (2 in an organization the registration does not serve); 3 signs in with a password.
+        c.executemany('INSERT INTO T_Creator_users VALUES (?,?,?,?,?,?)', [
+            (1,1,'lti_creator_one_teacher@lamb-lti.local','Teacher',1,'lti_creator'), (2,2,'lti_creator_two_other@lamb-lti.local','Other',1,'lti_creator'),
+            (3,1,'teacher@example.edu','Teacher with a password',1,'password')])
         c.execute('CREATE TABLE T_lti_activities (id INTEGER PRIMARY KEY, resource_link_id TEXT UNIQUE, organization_id INTEGER, status TEXT, activity_type TEXT)')
         c.execute("INSERT INTO T_lti_activities VALUES (1,'old-resource',1,'active','chat')")
         migrate(c.cursor(), 'T_')
@@ -175,7 +178,15 @@ def test_instructor_identity_requires_confirmed_link_and_allowed_org(env):
     assert env.store.creators(user) == [] # even though email matches an existing creator
     with pytest.raises(ValueError):
         env.store.link_creator(user, 2)
+    # Only LTI creator accounts take part in LTI endpoints: the account with a password, whose
+    # address is the one the launch carries, is not linked (15 November 2026).
+    with pytest.raises(ValueError, match='Only an LTI creator account'):
+        env.store.link_creator(user, 3)
     env.store.link_creator(user, 1)
+    assert [u['id'] for u in env.store.creators(user)] == [1]
+    # A link to such an account made before this rule grants nothing when read.
+    with env.db.get_connection() as c:
+        c.execute('INSERT INTO T_lti13_identity_links (user_id, creator_user_id, linked_at) VALUES (?,?,?)', (user, 3, 1))
     assert [u['id'] for u in env.store.creators(user)] == [1]
     with env.db.get_connection() as c:
         c.execute('UPDATE T_Creator_users SET enabled=0 WHERE id=1')
@@ -314,16 +325,14 @@ def test_valid_launch_dispatches_every_module(api, env, monkeypatch, module_name
     assert response.json() == {'instructor':teacher,'type':module_name,'version':'1.3.0'}
 
 
-def test_unlinked_instructor_gets_the_creator_code_page_which_keeps_the_explicit_account_link(api, env):
-    # Since #562 the launch returns the creator-code page; linking an existing account stays one click away.
+def test_unlinked_instructor_gets_the_creator_code_page_with_no_way_to_link_a_password_account(api, env):
+    # Since #562 the launch returns the creator-code page. The page that tied an account with a
+    # password to the LMS identity by signing in is gone (15 November 2026).
     response = api.client.post('/lamb/v1/lti/launch', data=launch(env,{CLAIM+'roles':[next(iter(protocol.INSTRUCTOR_ROLES))]}),follow_redirects=False)
     assert response.status_code == 200, response.text
     assert 'name="ticket"' in response.text and 'Creator code' in response.text
-    href = response.text.split('id="link-existing-account"')[1].split('href="')[1].split('"')[0]
-    assert urlsplit(href).path == '/lamb/v1/lti/link-account'
-    token = parse_qs(urlsplit(href).query)['token'][0]
-    page = api.client.get('/lamb/v1/lti/link-account', params={'token':token})
-    assert page.status_code == 200 and 'password' in page.text
+    assert 'link-existing-account' not in response.text and 'link-account' not in response.text
+    assert api.client.get('/lamb/v1/lti/link-account', params={'token': 'any'}).status_code == 404
 
 
 def test_lti11_reserved_ids_and_mixed_protocol_rejected(api, env, monkeypatch):

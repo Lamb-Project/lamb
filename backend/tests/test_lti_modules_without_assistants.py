@@ -29,6 +29,8 @@ def env(monkeypatch):
         get_published_assistants_for_org_user=lambda *a: [], get_lti_activity_by_resource_link=lambda rl: created.get(rl),
         delete_lti_activity=lambda i: calls.append(('delete', i)), get_assistant_by_id=lambda i: None)
     monkeypatch.setattr(lti_router, 'db_manager', db)
+    # The instructor is identified from the LMS user of the token, never from a list in it.
+    monkeypatch.setattr(lti_router.manager, 'identify_instructor', lambda **kw: [CU] if kw.get('lms_user_id') == 'teacher-1' else [])
     monkeypatch.setattr(lti_router.manager, 'get_published_assistants_for_instructor', lambda cus: {})
     monkeypatch.setattr(lti_router.manager, 'configure_activity',
                         lambda **kw: calls.append(('create', kw['activity_type'], kw['assistant_ids'])) or
@@ -92,8 +94,7 @@ def test_module_redirects_use_the_deployment_public_host(monkeypatch):
 def test_same_named_organizations_are_told_apart_by_slug(env, monkeypatch):
     users = {5: {**CU, 'organization_id': 3}, 6: {**CU, 'id': 6, 'organization_id': 4}}
     orgs = {3: {'name': 'UPC', 'slug': 'upc-a'}, 4: {'name': 'UPC', 'slug': 'upc-b'}}
-    monkeypatch.setattr(lti_router, '_validate_lti_jwt', lambda token, kind: {**JWT, 'lti_creator_user_ids': [5, 6]})
-    monkeypatch.setattr(lti_router.db_manager, 'get_creator_user_by_id', users.get, raising=False)
+    monkeypatch.setattr(lti_router.manager, 'identify_instructor', lambda **kw: list(users.values()))
     monkeypatch.setattr(lti_router.db_manager, 'get_organization_by_id', orgs.get, raising=False)
     info = env.client.get('/lamb/v1/lti/setup/info', params={'token': 't'}).json()
     assert info['needs_org_selection'] and info['org_names'] == {'3': 'UPC (upc-a)', '4': 'UPC (upc-b)'}

@@ -116,21 +116,24 @@ class LtiActivityManager:
     # Instructor Identification
     # =========================================================================
 
-    def identify_instructor(self, lms_user_id: str,
-                             lms_email: str = None) -> List[Dict[str, Any]]:
+    def identify_instructor(self, lms_user_id: str, lms_instance: str = "") -> List[Dict[str, Any]]:
         """
-        Identify LAMB Creator users matching an LMS identity.
-        Uses waterfall: email match → lti_user_id match → identity links.
-        Returns list of Creator user dicts (may span multiple orgs).
+        The LAMB accounts an LTI launch may act as: the one way every LTI endpoint identifies
+        an instructor (Marc, 15 November 2026).
+
+        Identity is the LMS user, never the email the LMS sends. Only LTI creator accounts
+        take part: an account that signs in with a password has nothing to do with LTI
+        endpoints. On LTI 1.3 the identity is scoped to the registration. On LTI 1.1 it is
+        the user id together with the LMS instance, because every LMS on the global key
+        numbers its own users. Returns enabled accounts, possibly in several organizations.
         """
         from lamb.lti13 import is_scoped
         if is_scoped(lms_user_id):
             from lamb.lti13.store import Store
             return Store(self.db_manager).creators(lms_user_id)
-        return self.db_manager.get_creator_users_by_lms_identity(
-            lms_user_id=lms_user_id,
-            lms_email=lms_email
-        )
+        from lamb import lti_onboarding
+        accounts = self.db_manager.get_lti_creator_users_by_lms_user(lms_user_id)
+        return lti_onboarding.accounts_of_instance(self.db_manager, accounts, lms_user_id, lms_instance)
 
     def link_identity(self, lms_user_id: str, creator_user_id: int,
                        lms_email: str = None) -> Optional[int]:
@@ -145,33 +148,6 @@ class LtiActivityManager:
             creator_user_id=creator_user_id,
             lms_email=lms_email
         )
-
-    def verify_creator_credentials(self, email: str, password: str) -> Optional[Dict[str, Any]]:
-        """
-        Verify Creator user credentials for the identity-linking flow.
-        Returns a normalized Creator user dict if valid, None otherwise.
-        Keys: id, organization_id, user_email, user_name, user_type, enabled
-        """
-        # Check password via OWI
-        verified = self.owi_user_manager.verify_user(email, password)
-        if not verified:
-            return None
-        # Get the Creator user from LAMB DB
-        creator_user = self.db_manager.get_creator_user_by_email(email)
-        if not creator_user:
-            return None
-        if not creator_user.get('enabled', True):
-            return None
-        # Normalize field names (get_creator_user_by_email uses 'email'/'name',
-        # but the rest of the LTI code uses 'user_email'/'user_name')
-        return {
-            'id': creator_user['id'],
-            'organization_id': creator_user['organization_id'],
-            'user_email': creator_user.get('email') or creator_user.get('user_email'),
-            'user_name': creator_user.get('name') or creator_user.get('user_name'),
-            'user_type': creator_user.get('user_type', 'creator'),
-            'enabled': creator_user.get('enabled', True),
-        }
 
     # =========================================================================
     # Published Assistants
@@ -293,11 +269,12 @@ class LtiActivityManager:
         return f"{safe_user}_{safe_rlid}@lamb-lti.local"
 
     def determine_is_owner(self, activity: Dict[str, Any],
-                            lms_user_id: str, lms_email: str = None) -> bool:
+                            lms_user_id: str, lms_instance: str = "") -> bool:
         """
-        Check if the LMS user is the owner of the activity by resolving
-        their LMS identity to a Creator user and comparing with owner_email.
-        Fixes the pre-existing bug where lms_email != lti_creator email.
+        Whether this launch is the owner of the activity: one of the LTI creator accounts the
+        launch identifies (identify_instructor) is the account that set the activity up, in
+        the activity's organization. The email of the launch plays no part: it changes with
+        the LMS's privacy settings, and it is a statement by the LMS, not a proof.
         """
         owner_email = activity.get('owner_email')
         if not owner_email:
@@ -314,24 +291,14 @@ class LtiActivityManager:
                 user = store.object(lms_user_id, 'user')
                 if (resource['registration_id'], resource['deployment_id']) != (user['registration_id'], user['deployment_id']):
                     return False
-                return any(cu['user_email'] == owner_email and cu['organization_id'] == activity['organization_id']
-                           for cu in store.creators(lms_user_id))
             except ValueError:
                 return False
-
-        # Quick check: direct email match (works for regular password creators)
-        if lms_email and lms_email == owner_email:
-            return True
-
-        # Full resolution: find Creator users for this LMS identity
-        creator_users = self.db_manager.get_creator_users_by_lms_identity(
-            lms_user_id=lms_user_id,
-            lms_email=lms_email
-        )
-        return any(
-            cu.get('user_email') == owner_email
-            for cu in (creator_users or [])
-        )
+        try:
+            accounts = self.identify_instructor(lms_user_id, lms_instance)
+        except ValueError:
+            return False
+        return any(cu.get('user_email') == owner_email and cu.get('organization_id') == activity.get('organization_id')
+                   for cu in accounts)
 
     # =========================================================================
     # URL helpers

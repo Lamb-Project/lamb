@@ -42,7 +42,7 @@ const two = {
 	orgs_with_assistants: { 4: [assistant], 9: [assistant, { ...assistant, id: 2 }] },
 	creator_access: [tutorial, riverside]
 };
-/** Two organizations; in Riverside College the instructor has a regular account, with a password. */
+/** Two organizations; Riverside College cannot be entered from this page (the answer offers no account for it). */
 const mixed = { ...two, creator_access: [tutorial] };
 
 /** @param {unknown} data */
@@ -110,7 +110,7 @@ describe('choosing the organization of an activity', () => {
 		expect(screen.getByText(en.setupHub.creator)).toBeInTheDocument();
 		expect(screen.getAllByRole('button')).toHaveLength(1);
 		expect(screen.getByRole('button')).toHaveAccessibleName('Open LAMB Creator');
-		expect(screen.queryByText(en.setupHub.signIn)).toBeNull();
+		expect(screen.queryByText(en.setupHub.reopen)).toBeNull();
 	});
 
 	it('offers a choice between several organizations, and LAMB Creator for the chosen one', async () => {
@@ -135,7 +135,7 @@ describe('choosing the organization of an activity', () => {
 		// Nothing leads to LAMB Creator before an organization is chosen.
 		expect(screen.queryByRole('button')).toBeNull();
 		expect(screen.queryByText(en.setupHub.creator)).toBeNull();
-		expect(screen.queryByText(en.setupHub.signIn)).toBeNull();
+		expect(screen.queryByText(en.setupHub.reopen)).toBeNull();
 
 		await fireEvent.click(screen.getByRole('radio', { name: /Riverside College/ }));
 		expect(screen.getByRole('radio', { name: /Riverside College/ })).toBeChecked();
@@ -209,21 +209,23 @@ describe('choosing the organization of an activity', () => {
 		}
 	});
 
-	it('sends to the login page for an organization that cannot be entered from here', async () => {
+	it('sends back to the LMS, never to a login page, for an organization that cannot be entered from here', async () => {
 		show(mixed, {}, '4');
 
 		expect(screen.queryByRole('button')).toBeNull();
 		expect(screen.queryByText(en.setupHub.creator)).toBeNull();
-		const link = screen.getByRole('link', { name: 'LAMB Creator' });
-		expect(link).toHaveAttribute('href', '/');
-		expect(link).not.toHaveAttribute('target');
-		expect(link.closest('p')).toHaveTextContent(
-			'Sign in to LAMB Creator with your LAMB account to build assistants for this organization.'
+		const note = document.querySelector('[data-reopen-from-lms]');
+		expect(note).toHaveTextContent(
+			'To build assistants for this organization, open the activity from your LMS again: LAMB Creator is entered from there.'
 		);
+		// These accounts have no password: nothing sends the instructor to sign in.
+		expect(screen.queryByRole('link', { name: 'LAMB Creator' })).toBeNull();
+		expect(document.querySelector('a[href="/"]')).toBeNull();
+		expect(document.body.textContent).not.toMatch(/sign in|password|LAMB account/i);
 
 		// The other organization of the same instructor is entered from here.
 		await fireEvent.click(screen.getByRole('radio', { name: /LAMB Tutorial University/ }));
-		expect(screen.queryByRole('link', { name: 'LAMB Creator' })).toBeNull();
+		expect(document.querySelector('[data-reopen-from-lms]')).toBeNull();
 		expect(screen.getByRole('button')).toHaveAccessibleName('Open LAMB Creator');
 		expect(screen.getByText(en.setupHub.creator)).toBeInTheDocument();
 	});
@@ -275,8 +277,8 @@ describe('choosing the organization of an activity', () => {
 			expect(texts).not.toContain("'");
 			expect(messages.setupHub.assistantCount).toContain('count');
 			expect(messages.setupHub.organizationFallback).toContain('{id}');
-			// The product name carries the link to the login page.
-			expect(messages.setupHub.signIn).toContain('LAMB Creator');
+			expect(messages.setupHub.reopen).toContain('LAMB Creator');
+			expect(messages.setupHub.reopen).toContain('LMS');
 
 			await locale.set(code);
 			const single = show(one);
@@ -292,9 +294,7 @@ describe('choosing the organization of an activity', () => {
 			expect(screen.getByRole('radio', { name: /Riverside College/ })).toHaveAccessibleName(
 				`Riverside College ${count}`
 			);
-			expect(screen.getByRole('link', { name: 'LAMB Creator' }).closest('p')).toHaveTextContent(
-				messages.setupHub.signIn
-			);
+			expect(document.querySelector('[data-reopen-from-lms]')).toHaveTextContent(messages.setupHub.reopen);
 			several.unmount();
 		}
 	});

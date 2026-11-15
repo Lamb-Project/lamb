@@ -121,6 +121,9 @@ def page(dealer, monkeypatch):
         assistant_has_rubric_for_eval=lambda cb: True,
         delete_lti_activity=lambda i: calls.append(('delete', i)))
     monkeypatch.setattr(lti_router, 'db_manager', db)
+    # The instructor is identified from the LMS user of the token, never from a list in it.
+    monkeypatch.setattr(lti_router.manager, 'identify_instructor',
+                        lambda **kw: list(USERS.values()) if kw.get('lms_user_id') == 'teacher-1' else [])
     monkeypatch.setattr(lti_router.manager, 'get_published_assistants_for_instructor',
                         lambda cus: {cu['organization_id']: list(published[cu['organization_id']])
                                      for cu in cus if published[cu['organization_id']]})

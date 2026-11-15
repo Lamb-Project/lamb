@@ -13,7 +13,7 @@
 		"assistantCount": "{count, plural, one {# asistente publicado} other {# asistentes publicados}}",
 		"addOrganization": "Añadir una organización con un código de creador",
 		"creator": "Los asistentes se crean y se publican en LAMB Creator.",
-		"signIn": "Inicia sesión en LAMB Creator con tu cuenta de LAMB para crear asistentes en esta organización.",
+		"reopen": "Para crear asistentes en esta organización, vuelve a abrir la actividad desde tu LMS: a LAMB Creator se entra desde ahí.",
 		"nothingTitle": "Todavía no se puede crear nada en esta organización.",
 		"nothingBody": "Una actividad con asistentes necesita uno publicado. Crea un asistente en LAMB Creator, publícalo y vuelve a esta actividad."
 	}

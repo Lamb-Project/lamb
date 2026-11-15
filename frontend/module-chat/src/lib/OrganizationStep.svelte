@@ -22,7 +22,6 @@
 	// chosen, and a way to add another with a creator code. Under the chosen organization, the way
 	// into LAMB Creator for it, where assistants are built; the setup form follows on the page.
 
-	const PRODUCT = 'LAMB Creator';
 	const LINK =
 		'underline decoration-gray-300 underline-offset-2 transition-colors hover:text-blue-700 hover:decoration-blue-400';
 
@@ -154,17 +153,10 @@
 				{/key}
 			</div>
 		{:else if selected}
-			<!-- A regular account, with a password: no entry from here, the login page instead.
-			     The product name, which every language writes the same, carries the link. -->
-			{@const sentence = $_('setupHub.signIn')}
-			{@const parts = sentence.split(PRODUCT)}
-			<p class="mt-4 text-sm text-gray-600">
-				{#if parts.length === 2}
-					{parts[0]}<a href="/" class={LINK}>{PRODUCT}</a>{parts[1]}
-				{:else}
-					<a href="/" class={LINK}>{sentence}</a>
-				{/if}
-			</p>
+			<!-- No account to enter from this page: the four hours of the launch are over. The
+			     instructor's accounts have no password, so the way in is the LMS, never a login
+			     page (15 November 2026: only LTI creator accounts take part in LTI pages). -->
+			<p class="mt-4 text-sm text-gray-600" data-reopen-from-lms>{$_('setupHub.reopen')}</p>
 		{/if}
 	</div>
 {/if}
