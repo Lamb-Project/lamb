@@ -447,7 +447,8 @@
                         <strong>Not saved:</strong> {saveError}
                     </div>
                 {/if}
-                <!-- Submit -->
+                <!-- Submit: only when there is a kind of activity to save. -->
+                {#if selectedActivity}
                 <div class="flex justify-end pt-4 border-t border-gray-100">
                     <button type="submit" 
                         class="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
@@ -463,6 +464,7 @@
                         {/if}
                     </button>
                 </div>
+                {/if}
             </form>
         {/if}
     </div>
