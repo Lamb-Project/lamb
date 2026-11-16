@@ -1,26 +1,12 @@
 """Tests for content serving endpoints: pages, images, metadata, source_ref, original file."""
 
-import asyncio
 import io
-import time
 
 import pytest
 from httpx import AsyncClient
+from polling import wait_for_ready
 
 AUTH_HEADERS = {"Authorization": "Bearer test-token"}
-_POLL_TIMEOUT = 15
-
-
-async def _wait_for_ready(client, lib_id, item_id, timeout=_POLL_TIMEOUT):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        resp = await client.get(
-            f"/libraries/{lib_id}/items/{item_id}/status", headers=AUTH_HEADERS
-        )
-        if resp.json()["status"] in ("ready", "failed"):
-            return resp.json()["status"]
-        await asyncio.sleep(0.5)
-    return "timeout"
 
 
 async def _upload_md(client, lib_id, content, title="Test Doc", filename="test.md"):
@@ -31,7 +17,7 @@ async def _upload_md(client, lib_id, content, title="Test Doc", filename="test.m
         data={"plugin_name": "simple_import", "title": title},
     )
     item_id = resp.json()["item_id"]
-    await _wait_for_ready(client, lib_id, item_id)
+    await wait_for_ready(client, lib_id, item_id)
     return item_id
 
 

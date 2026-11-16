@@ -67,3 +67,6 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "slow: timing-sensitive or long-running tests (deselect with -m \"not slow\")",
+]

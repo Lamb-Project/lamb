@@ -13,18 +13,18 @@ import time
 
 import pytest
 from httpx import AsyncClient
+from polling import POLL_TIMEOUT
 
 AUTH_HEADERS = {"Authorization": "Bearer test-token"}
 
 _NUM_FILES = 20
-_POLL_TIMEOUT = 60
 
 
 async def _wait_all_ready(
     client: AsyncClient,
     lib_id: str,
     item_ids: list[str],
-    timeout: float = _POLL_TIMEOUT,
+    timeout: float = POLL_TIMEOUT,
 ) -> dict[str, str]:
     """Poll until all items leave pending/processing state.
 
@@ -48,6 +48,7 @@ async def _wait_all_ready(
     return statuses
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_concurrent_imports(client: AsyncClient, library: dict):
     """Upload 20 files concurrently and verify all complete successfully."""

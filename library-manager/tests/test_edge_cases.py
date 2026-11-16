@@ -5,27 +5,13 @@ empty files, malformed JSON params, stale job recovery, and source type
 validation.
 """
 
-import asyncio
 import io
-import time
 
 import pytest
 from httpx import AsyncClient
+from polling import wait_for_ready
 
 AUTH_HEADERS = {"Authorization": "Bearer test-token"}
-_POLL_TIMEOUT = 15
-
-
-async def _wait_for_ready(client, lib_id, item_id, timeout=_POLL_TIMEOUT):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        resp = await client.get(
-            f"/libraries/{lib_id}/items/{item_id}/status", headers=AUTH_HEADERS
-        )
-        if resp.json()["status"] in ("ready", "failed"):
-            return resp.json()["status"]
-        await asyncio.sleep(0.5)
-    return "timeout"
 
 
 # -----------------------------------------------------------------------
@@ -74,7 +60,7 @@ async def test_unicode_filename(client: AsyncClient, library: dict):
     assert resp.status_code == 202
     item_id = resp.json()["item_id"]
 
-    status = await _wait_for_ready(client, lib_id, item_id)
+    status = await wait_for_ready(client, lib_id, item_id)
     assert status == "ready"
 
     resp = await client.get(
@@ -97,7 +83,7 @@ async def test_filename_with_spaces(client: AsyncClient, library: dict):
     assert resp.status_code == 202
     item_id = resp.json()["item_id"]
 
-    status = await _wait_for_ready(client, lib_id, item_id)
+    status = await wait_for_ready(client, lib_id, item_id)
     assert status == "ready"
 
 
@@ -119,7 +105,7 @@ async def test_path_traversal_in_page_name(client: AsyncClient, library: dict):
         data={"plugin_name": "simple_import", "title": "Safe"},
     )
     item_id = resp.json()["item_id"]
-    await _wait_for_ready(client, lib_id, item_id)
+    await wait_for_ready(client, lib_id, item_id)
 
     resp = await client.get(
         f"/libraries/{lib_id}/items/{item_id}/content/pages/../../metadata.json",
@@ -140,7 +126,7 @@ async def test_path_traversal_in_image_name(client: AsyncClient, library: dict):
         data={"plugin_name": "simple_import", "title": "Safe"},
     )
     item_id = resp.json()["item_id"]
-    await _wait_for_ready(client, lib_id, item_id)
+    await wait_for_ready(client, lib_id, item_id)
 
     resp = await client.get(
         f"/libraries/{lib_id}/items/{item_id}/content/images/../../../metadata.json",
@@ -161,7 +147,7 @@ async def test_path_traversal_in_original_name(client: AsyncClient, library: dic
         data={"plugin_name": "simple_import", "title": "Safe"},
     )
     item_id = resp.json()["item_id"]
-    await _wait_for_ready(client, lib_id, item_id)
+    await wait_for_ready(client, lib_id, item_id)
 
     resp = await client.get(
         f"/libraries/{lib_id}/items/{item_id}/original/../../metadata.json",
@@ -189,7 +175,7 @@ async def test_empty_file_import(client: AsyncClient, library: dict):
     assert resp.status_code == 202
     item_id = resp.json()["item_id"]
 
-    status = await _wait_for_ready(client, lib_id, item_id)
+    status = await wait_for_ready(client, lib_id, item_id)
     # May be "ready" (empty content stored) or "failed" (plugin rejects empty).
     assert status in ("ready", "failed")
 

@@ -1,32 +1,15 @@
 """Tests for library export and import via ZIP files."""
 
-import asyncio
 import io
 import json
-import time
 import zipfile
 
 import pytest
 from httpx import AsyncClient
+from polling import wait_for_ready
 
 AUTH_HEADERS = {"Authorization": "Bearer test-token"}
 
-_POLL_TIMEOUT = 15
-
-
-async def _wait_for_ready(client, lib_id, item_id, timeout=_POLL_TIMEOUT):
-    """Poll until item is ready or failed."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        resp = await client.get(
-            f"/libraries/{lib_id}/items/{item_id}/status",
-            headers=AUTH_HEADERS,
-        )
-        status = resp.json()["status"]
-        if status in ("ready", "failed"):
-            return status
-        await asyncio.sleep(0.5)
-    return "timeout"
 
 
 @pytest.mark.asyncio
@@ -43,7 +26,7 @@ async def test_export_library(client: AsyncClient, library: dict):
         data={"plugin_name": "simple_import", "title": "Export Test Doc"},
     )
     item_id = resp.json()["item_id"]
-    await _wait_for_ready(client, lib_id, item_id)
+    await wait_for_ready(client, lib_id, item_id)
 
     # Export.
     resp = await client.get(f"/libraries/{lib_id}/export", headers=AUTH_HEADERS)
@@ -80,7 +63,7 @@ async def test_import_library_from_zip(client: AsyncClient, library: dict):
         data={"plugin_name": "simple_import", "title": "Roundtrip Doc"},
     )
     item_id = resp.json()["item_id"]
-    await _wait_for_ready(client, lib_id, item_id)
+    await wait_for_ready(client, lib_id, item_id)
 
     # Export.
     resp = await client.get(f"/libraries/{lib_id}/export", headers=AUTH_HEADERS)

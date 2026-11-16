@@ -13,48 +13,14 @@ Plugins that require external services (url_import → Firecrawl) test the
 error path instead, since the external service is not available in CI.
 """
 
-import asyncio
 import io
-import time
 
 import pytest
 from httpx import AsyncClient
+from polling import wait_for_ready
 
 AUTH_HEADERS = {"Authorization": "Bearer test-token"}
 
-# Maximum time (seconds) to wait for an import job to complete.
-_POLL_TIMEOUT = 20
-_POLL_INTERVAL = 0.5
-
-
-async def _wait_for_ready(
-    client: AsyncClient,
-    lib_id: str,
-    item_id: str,
-    timeout: float = _POLL_TIMEOUT,
-) -> str:
-    """Poll item status until it leaves 'pending'/'processing'.
-
-    Args:
-        client: HTTP client.
-        lib_id: Library ID.
-        item_id: Content item ID.
-        timeout: Max seconds to wait.
-
-    Returns:
-        Final status string ('ready' or 'failed').
-    """
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        resp = await client.get(
-            f"/libraries/{lib_id}/items/{item_id}/status",
-            headers=AUTH_HEADERS,
-        )
-        status = resp.json()["status"]
-        if status in ("ready", "failed"):
-            return status
-        await asyncio.sleep(_POLL_INTERVAL)
-    return "timeout"
 
 
 # -----------------------------------------------------------------------
@@ -84,7 +50,7 @@ async def test_simple_import_markdown(client: AsyncClient, library: dict):
     assert resp.status_code == 202
     item_id = resp.json()["item_id"]
 
-    status = await _wait_for_ready(client, lib_id, item_id)
+    status = await wait_for_ready(client, lib_id, item_id)
     assert status == "ready", f"Expected ready, got {status}"
 
     # Verify markdown content.
@@ -156,7 +122,7 @@ async def test_simple_import_html(client: AsyncClient, library: dict):
     assert resp.status_code == 202
     item_id = resp.json()["item_id"]
 
-    status = await _wait_for_ready(client, lib_id, item_id)
+    status = await wait_for_ready(client, lib_id, item_id)
     assert status == "ready"
 
     resp = await client.get(
@@ -183,7 +149,7 @@ async def test_simple_import_txt(client: AsyncClient, library: dict):
     assert resp.status_code == 202
     item_id = resp.json()["item_id"]
 
-    status = await _wait_for_ready(client, lib_id, item_id)
+    status = await wait_for_ready(client, lib_id, item_id)
     assert status == "ready"
 
     resp = await client.get(
@@ -220,7 +186,7 @@ async def test_markitdown_import(client: AsyncClient, library: dict):
     assert resp.status_code == 202
     item_id = resp.json()["item_id"]
 
-    status = await _wait_for_ready(client, lib_id, item_id)
+    status = await wait_for_ready(client, lib_id, item_id)
     assert status == "ready"
 
     resp = await client.get(
@@ -275,7 +241,7 @@ async def test_markitdown_plus_import(client: AsyncClient, library: dict):
     assert resp.status_code == 202
     item_id = resp.json()["item_id"]
 
-    status = await _wait_for_ready(client, lib_id, item_id)
+    status = await wait_for_ready(client, lib_id, item_id)
     assert status == "ready"
 
     # Verify markdown.
@@ -335,7 +301,7 @@ async def test_url_import_no_firecrawl(client: AsyncClient, library: dict):
     assert resp.status_code == 202
     item_id = resp.json()["item_id"]
 
-    status = await _wait_for_ready(client, lib_id, item_id, timeout=15)
+    status = await wait_for_ready(client, lib_id, item_id)
     assert status == "failed", "Expected failure without Firecrawl service"
 
     # Verify error is recorded.
@@ -369,6 +335,7 @@ async def test_url_import_source_type_validation(client: AsyncClient, library: d
 # -----------------------------------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_youtube_import(client: AsyncClient, library: dict):
     """youtube_transcript_import should download and convert a transcript.
@@ -390,8 +357,7 @@ async def test_youtube_import(client: AsyncClient, library: dict):
     assert resp.status_code == 202
     item_id = resp.json()["item_id"]
 
-    # YouTube downloads can take time — allow up to 30s.
-    status = await _wait_for_ready(client, lib_id, item_id, timeout=30)
+    status = await wait_for_ready(client, lib_id, item_id)
 
     if status == "failed":
         # YouTube may rate-limit in CI — check that error was recorded properly.
