@@ -57,6 +57,7 @@ Before touching any infrastructure, the agent MUST collect these from the user u
 | Enable signup? | `SIGNUP_ENABLED` | `true` |
 | Enable dev mode? | `DEV_MODE` | `true` for test, `false` for production |
 | Enable Ollama? | Adds `--profile ollama` to compose | `false` |
+| NVIDIA GPU host? | Adds `-f docker-compose.next.gpu.yaml` and builds OpenWebUI with CUDA (see Phase 5.4) | `false`. Standard Hetzner Cloud servers have no GPU. |
 | Existing data? | Is this server replacing an old LAMB installation with data to migrate? | `yes` or `no`. If yes, see Phase 4.6. |
 
 ---
@@ -237,6 +238,7 @@ SIGNUP_ENABLED=true
 DEV_MODE=false                  # false for production
 GLOBAL_LOG_LEVEL=WARNING
 WEBUI_SECRET_KEY=change-me      # important for production sessions
+# OWI_CUDA_VER=cu124            # NVIDIA GPU hosts only, see Phase 5.4
 ```
 
 > **🔴 CRITICAL: `LAMB_KB_SERVER_TOKEN` and `LAMB_API_KEY` must be the SAME value.**  
@@ -382,6 +384,29 @@ docker compose -f docker-compose.next.yaml up -d
 docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml --profile ollama up -d
 ```
 
+### 5.4 — With CUDA/GPU (NVIDIA GPU hosts only)
+
+On a host with NVIDIA GPUs and the NVIDIA Container Toolkit installed, add the GPU override file. It builds OpenWebUI with CUDA-enabled PyTorch and gives the `openwebui` and `ollama` containers access to all GPUs (equivalent to `--gpus=all`):
+
+```bash
+docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml -f docker-compose.next.gpu.yaml up -d --build openwebui
+docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml -f docker-compose.next.gpu.yaml up -d
+```
+
+With Ollama + GPU, add `--profile ollama` to both commands.
+
+**What the GPU override does:**
+- Passes `USE_CUDA=true` to the OpenWebUI Dockerfile build, which installs CUDA-enabled PyTorch instead of CPU-only PyTorch
+- Adds `deploy.resources.reservations.devices` with `driver: nvidia, count: all, capabilities: [gpu]` to the `openwebui` and `ollama` services
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OWI_CUDA_VER` | `cu124` | PyTorch CUDA version index (e.g., `cu124` for CUDA 12.4, `cu130` for CUDA 13.0). CUDA drivers are backward-compatible, so `cu124` works on CUDA 13.x hosts. |
+
+> **Insight:** `--build` is required. The image published at `ghcr.io/lamb-project/openwebui:latest` is CPU-only, and `USE_CUDA` / `OWI_CUDA_VER` are build arguments: without `--build`, Compose pulls the published image and the override only adds the GPU device reservation. The local build takes several minutes and needs memory (see Appendix C, Gotcha #11).
+
+> **Insight:** Do NOT use the GPU override on hosts without NVIDIA GPUs — the stack fails to start because the `nvidia` device driver isn't available. The main `docker-compose.next.yaml` defaults to CPU-only and is safe for all platforms.
+
 ---
 
 ## Phase 6: Verify the Deployment
@@ -463,6 +488,12 @@ cd /opt/lamb && docker compose -f docker-compose.next.yaml -f docker-compose.nex
 cd /opt/lamb && docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml pull && docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml up -d
 ```
 
+### Update on a GPU host (CUDA hosts only)
+```bash
+cd /opt/lamb && git pull && docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml -f docker-compose.next.gpu.yaml pull lamb kb library-manager && docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml -f docker-compose.next.gpu.yaml up -d --build openwebui && docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml -f docker-compose.next.gpu.yaml up -d
+```
+Do not `pull` the `openwebui` image on a GPU host: it would replace the locally built CUDA image with the published CPU-only one. If that happens, run the command above again to rebuild it.
+
 ### View logs
 ```bash
 cd /opt/lamb && docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml logs -f lamb
@@ -536,6 +567,10 @@ SIGNUP_ENABLED=true
 DEV_MODE=false
 GLOBAL_LOG_LEVEL=WARNING
 WEBUI_SECRET_KEY=change-me
+
+# --- CUDA / GPU (NVIDIA GPU hosts only, with docker-compose.next.gpu.yaml) ---
+# OWI_USE_CUDA=true                 # set by the GPU override; only needed when building without it
+# OWI_CUDA_VER=cu124
 ```
 
 ## Appendix B: Architecture Reference
@@ -577,6 +612,9 @@ WEBUI_SECRET_KEY=change-me
 9. **DNS is a hard prerequisite for TLS:** Caddy requires DNS to be correctly pointed at the server before it can obtain Let's Encrypt certificates. Launching the stack with incorrect DNS will result in TLS failures. Always verify DNS resolution (Phase 4.5) before starting the stack. If using the production overlay (`docker-compose.next.prod.yaml`), missing or incorrect DNS will cause Caddy to fail the ACME challenge and the site will be unreachable over HTTPS.
 
 10. **`LAMB_KB_SERVER_TOKEN` and `LAMB_API_KEY` must match:** These are the same shared secret seen from two sides: LAMB uses it to talk to the KB server, the KB server uses it to validate requests. The compose file defaults both to `0p3n-w3bu!`. If you override one, you MUST override the other. A mismatch causes KB create/update/delete to return 401, which triggers the frontend's session-expiry handler and logs the user out — even though their session is perfectly valid. The KB server's `/health` endpoint does NOT require auth (so health checks pass even with mismatched tokens), but `/collections` POST/PATCH/DELETE and all ingestion endpoints DO.
+11. **OpenWebUI build may run out of memory:** This only applies when OpenWebUI is built on the server (`--build`, e.g. on GPU hosts); the default flow pulls a prebuilt image. The OpenWebUI Dockerfile bundles heavy dependencies (`pyodide`, `onnxruntime-web`) that can exceed Node.js's default ~2 GB heap during `npm run build`, causing `JavaScript heap out of memory`. LAMB's vendored `open-webui/Dockerfile` includes `ENV NODE_OPTIONS=--max-old-space-size=4096` to prevent this. That raises the heap limit to 4 GB, so the build needs a server with 8 GB of RAM or more; on a 4 GB server (cpx22) the build process can still be killed.
+
+12. **GPU override is platform-specific:** `docker-compose.next.gpu.yaml` uses `driver: nvidia` for GPU access. This only works on hosts with NVIDIA GPUs and the NVIDIA Container Toolkit installed; on any other host, omit this file from the compose command. It also requires building OpenWebUI locally with `--build` (Phase 5.4), because the published image is CPU-only.
 
 ## Appendix D: Agent Workflow Checklist
 
@@ -585,7 +623,7 @@ The agent should follow this sequence and check off each step:
 - [ ] **0.1** — Ask server type, location, name
 - [ ] **0.2** — Ask main domain, OWI domain, ACME email
 - [ ] **0.3** — Ask API keys, secrets, model names
-- [ ] **0.4** — Ask feature toggles (signup, dev mode, Ollama), existing data
+- [ ] **0.4** — Ask feature toggles (signup, dev mode, Ollama, NVIDIA GPU host), existing data
 - [ ] **1.1** — Check/register SSH key in Hetzner
 - [ ] **1.3** — Create server, capture IPv4
 - [ ] **2.1** — SSH as root, install Docker + Compose
@@ -594,7 +632,7 @@ The agent should follow this sequence and check off each step:
 - [ ] **4** — Create `/opt/lamb/.env` with all collected variables
 - [ ] **4.5** — Verify DNS: both LAMB_PUBLIC_HOST and OWI_PUBLIC_HOST resolve to server IP (GATE — STOP if incorrect)
 - [ ] **4.6** — (If existing data) Migrate old data to named volumes following migration doc
-- [ ] **5** — Run `docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml up -d`
+- [ ] **5** — Run `docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml up -d` (with `--profile ollama` if needed; on NVIDIA GPU hosts follow Phase 5.4 instead)
 - [ ] **6.1** — Verify all containers are Up and healthy
 - [ ] **6.2** — Check logs for startup errors
 - [ ] **6.3** — Report access URLs to user
