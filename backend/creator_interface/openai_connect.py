@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import json
 from typing import Dict, Any
 from lamb.logging_config import get_logger
+from lamb.completions.generation_options import generation_options
 
 # Configure logging
 logger = get_logger(__name__, component="API")
@@ -74,8 +75,8 @@ The description should:
                         {"role": "system", "content": "You are a helpful AI that writes clear, concise assistant descriptions."},
                         {"role": "user", "content": prompt}
                     ],
-                    max_tokens=100,
-                    temperature=0.7
+                    **generation_options(self.model, base_url=self.client.base_url,
+                                         max_tokens=4000, temperature=0.7)
                 )
                 
                 # Extract and return the generated description
@@ -95,4 +96,4 @@ The description should:
             raise HTTPException(
                 status_code=500,
                 detail=f"Error generating description: {str(e)}"
-            ) 
+            )

@@ -15,6 +15,7 @@ import os
 from .prompt_loader import get_rubric_generation_prompt
 from .rubric_validator import RubricValidator
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
+from lamb.completions.generation_options import generation_options
 
 logger = logging.getLogger(__name__)
 
@@ -164,8 +165,8 @@ class AIRubricGenerator:
                 messages=[
                     {"role": "user", "content": prompt}
                 ],
-                temperature=temperature,
-                max_tokens=4000  # Generous limit for complete rubric
+                **generation_options(model, base_url=self.base_url,
+                                     max_tokens=4000, temperature=temperature)
             )
             
             response_text = completion.choices[0].message.content
@@ -670,4 +671,3 @@ def generate_rubric_ai(
             "error": f"Configuration error: {str(e)}",
             "allow_manual_edit": False
         }
-
