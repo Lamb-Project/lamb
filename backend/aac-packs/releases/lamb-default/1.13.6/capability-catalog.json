@@ -1,0 +1,94 @@
+{
+  "rag_processors": [
+    {
+      "id": "context_aware_rag",
+      "description": "Uses conversation context and a model to reformulate the retrieval query."
+    },
+    {
+      "id": "hierarchical_rag",
+      "description": "Retrieves hierarchical knowledge-base chunks using a model-generated query."
+    },
+    {
+      "id": "no_rag",
+      "description": "Uses no external grounding context."
+    },
+    {
+      "id": "rubric_rag",
+      "description": "Formats the selected rubric as grounding context."
+    },
+    {
+      "id": "simple_rag",
+      "description": "Queries selected knowledge bases using the last user message."
+    },
+    {
+      "id": "single_file_rag",
+      "description": "Loads the assistant owner’s selected single file as grounding context."
+    }
+  ],
+  "prompt_processors": [
+    {
+      "id": "simple_augment",
+      "description": "Assembles system instructions and a prompt template with user input and retrieved context."
+    }
+  ],
+  "connectors": [
+    {
+      "id": "banana_img",
+      "description": "Generates images through the configured image-generation connector."
+    },
+    {
+      "id": "bypass",
+      "description": "Returns assembled input for inspection instead of generating a final answer."
+    },
+    {
+      "id": "ollama",
+      "description": "Sends completions to the configured Ollama endpoint."
+    },
+    {
+      "id": "openai",
+      "description": "Sends completions to the configured OpenAI-compatible endpoint."
+    }
+  ],
+  "ingestion_plugins": [
+    {
+      "id": "hierarchical_ingest",
+      "description": "Ingest Markdown files with parent-child chunking strategy for better structural queries"
+    },
+    {
+      "id": "markitdown_ingest",
+      "description": "Ingest various file formats by converting to Markdown using MarkItDown with configurable chunking"
+    },
+    {
+      "id": "markitdown_hierarchical_ingest",
+      "description": "Convert files to Markdown with MarkItDown and apply hierarchical parent-child chunking for better RAG"
+    },
+    {
+      "id": "markitdown_plus_ingest",
+      "description": "Enhanced file ingestion with optional LLM image descriptions and multiple chunking strategies"
+    },
+    {
+      "id": "mockai_json_ingest",
+      "description": "Ingest MockAI structured JSON data with complete metadata preservation"
+    },
+    {
+      "id": "parent_child_query",
+      "description": "Query plugin that returns parent chunk context for child chunk matches"
+    },
+    {
+      "id": "simple_ingest",
+      "description": "Ingest text files with configurable chunking options"
+    },
+    {
+      "id": "simple_query",
+      "description": "Simple similarity search on a collection"
+    },
+    {
+      "id": "url_ingest",
+      "description": "Ingest web content from URLs with configurable chunking"
+    },
+    {
+      "id": "youtube_transcript_ingest",
+      "description": "Ingest YouTube transcripts via yt-dlp, with optional uploaded SRT subtitle fallback"
+    }
+  ]
+}

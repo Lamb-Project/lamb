@@ -68,3 +68,23 @@ def test_all_course_discovery_paths_return_roles(stores,key,params):
     assert result[0]['my_roles']==[{'shortname':'teacher'}]
     assert result[0]['my_roles_status']=='available'
     assert len(calls)==2
+
+
+TRANSFORMERS = {'id': 197, 'shortname': 'TLRA-2026', 'fullname': 'Transformers, LLMs, RAG and Agents: From Theory to Production'}
+CYBER = {'id': 5, 'shortname': 'Curs CYBS', 'fullname': 'Taller de bones pràctiques en Ciberseguretat'}
+
+
+@pytest.mark.parametrize('query,course,expected', [
+    ('Transformers ...', TRANSFORMERS, True),         # fragment with ellipsis (#547)
+    ('transformers llms', TRANSFORMERS, True),        # words, other punctuation and case
+    ('RAG agents', TRANSFORMERS, True),               # word order
+    ('transf', TRANSFORMERS, True),                   # prefix of a word
+    ('tlra', TRANSFORMERS, True),                     # short name
+    ('practiques ciberseguretat', CYBER, True),       # accents ignored
+    ('storage', TRANSFORMERS, False),                 # unrelated word
+    ('transformers vision', TRANSFORMERS, False),     # every word must match
+    ('...', TRANSFORMERS, False),                     # no words, no match
+])
+def test_course_search_matches_name_fragments(query, course, expected):
+    from lamb.moodle.runtime import course_name_matches
+    assert course_name_matches(query, course) is expected
