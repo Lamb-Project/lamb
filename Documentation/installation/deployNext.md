@@ -424,7 +424,9 @@ Once DNS resolves, visit:
 
 ### 6.4 — Connect OpenWebUI to the LAMB backend
 
-**Do not skip this step on a fresh installation.** A healthy OpenWebUI container does not mean its model connection points to LAMB. OpenWebUI may initially show `https://api.openai.com/v1` under **Admin Panel → Settings → Connections**, and Ollama may be enabled even when no Ollama service was started.
+`docker-compose.next.yaml` seeds this connection on a fresh installation: it starts OpenWebUI with `OPENAI_API_BASE_URL=http://lamb:9099/v1`, `OPENAI_API_KEY` set to `LAMB_BEARER_TOKEN`, and the Ollama API disabled (set `OWI_ENABLE_OLLAMA_API=true` in `.env` to enable it, `OWI_OPENAI_API_BASE_URL` to change the URL). OpenWebUI stores these values in its database the first time it starts, so they are **not** applied to an existing `openwebui-data` volume, and later changes to `.env` (including a rotated `LAMB_BEARER_TOKEN`) do not reach it.
+
+**Do not skip the verification below**, and follow the manual steps when upgrading an existing installation. A healthy OpenWebUI container does not mean its model connection points to LAMB. An installation created before these variables were added may still show `https://api.openai.com/v1` under **Admin Panel → Settings → Connections**, with Ollama enabled even when no Ollama service was started.
 
 1. Sign in to LAMB as the bootstrap administrator (`OWI_ADMIN_EMAIL` / `OWI_ADMIN_PASSWORD` from `.env`) and use the link to open OWI as admin. Open **Admin Panel → Settings → Connections**.
 2. Under **OpenAI API**, leave the feature enabled. Replace the default `https://api.openai.com/v1` connection with **`http://lamb:9099/v1`**. The hostname `lamb` is the service name in `docker-compose.next.yaml`; use the actual backend service name if a custom Compose file changes it. This is an internal Docker URL, not `https://lamb.example.com`.
