@@ -16,8 +16,14 @@ values from #553 are retained. Storage keeps the existing schema-35 table name
 `conversation_state.py`.
 
 Older chats with no retained prompt, including the old unfiltered `null` sentinel,
-return 409 asking for a new conversation. No original prompt can be reconstructed
-reliably from the current assistant definition. The old chat is not deleted.
+can continue when the assistant has no enabled prompt filters. The first
+continuation atomically saves the assistant's current system instructions while
+preserving the conversation and its messages. Later turns, reloads and restarts
+reuse that saved prompt, even if the assistant is edited. This restores access
+to the conversation; it does not reconstruct unavailable historical instructions.
+If filters are enabled, a missing scenario still returns 409 asking for a new
+conversation, to avoid silently drawing new random values. Existing retained
+prompts and realized scenarios are never overwritten by this compatibility path.
 
 ## Calls without a saved conversation ID
 

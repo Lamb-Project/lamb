@@ -53,7 +53,7 @@ def test_legacy_null_snapshot_is_not_invented(tmp_path, owi):
     with sqlite3.connect(path) as conn:
         conn.execute(f"INSERT INTO {prefix}prompt_filter_states VALUES ('a',5,'7',9,'','null')")
     with pytest.raises(HTTPException) as error:
-        execute(path, prefix, context, metadata={})
+        execute(path, prefix, context, metadata=config())
     assert error.value.status_code == 409
     with sqlite3.connect(path) as conn:
         assert conn.execute(f"SELECT definition FROM {prefix}prompt_filter_states").fetchone()[0] == "null"

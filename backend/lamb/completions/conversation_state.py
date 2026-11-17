@@ -66,13 +66,13 @@ def resolve(connection, prefix, context, assistant, config, request):
         chat = _chat(cursor, prefix, context, context.id, assistant.id)
         row = cursor.execute(f"SELECT system_prompt, owner, organization_id, definition FROM {table} "
                              "WHERE chat_id = ? AND assistant_id = ?", (context.id, assistant.id)).fetchone()
-        if row:
-            if row[1:3] != (context.owner, org):
-                raise HTTPException(404, "Conversation scenario not found.")
-            if row[3] == "null":
-                raise HTTPException(409, "This legacy conversation has no retained system prompt. Start a new conversation.")
+        if row and row[1:3] != (context.owner, org):
+            raise HTTPException(404, "Conversation scenario not found.")
+        if row and row[3] != "null":
             result = row[0]
         else:
+            history = chat.get("history", {}).get("messages", {})
+            continuing = bool(row) or has_prior_answer(history.values()) or has_prior_answer(request.get("messages", []))
             # Native OWI forks carry an originalChatId. Only inherit a verified owner's scenario.
             parent = chat.get("originalChatId") if context.source == "owi" else None
             inherited = None
@@ -82,25 +82,29 @@ def resolve(connection, prefix, context, assistant, config, request):
                     raise HTTPException(409, "Invalid conversation ancestry.")
                 seen.add(parent)
                 ancestor = _chat(cursor, prefix, context, parent, assistant.id, ancestor=True)
+                continuing = continuing or has_prior_answer(ancestor.get("history", {}).get("messages", {}).values())
                 inherited = cursor.execute(f"SELECT system_prompt, definition FROM {table} "
                     "WHERE chat_id = ? AND assistant_id = ? AND organization_id = ?",
                     (parent, assistant.id, org)).fetchone()
                 if inherited:
                     break
                 parent = ancestor.get("originalChatId")
-            if inherited:
+            if inherited and inherited[1] != "null":
                 result, definition = inherited
             else:
-                history = chat.get("history", {}).get("messages", {})
-                if has_prior_answer(history.values()) or has_prior_answer(request.get("messages", [])):
-                    raise HTTPException(409, "This conversation has no retained system prompt. Start a new conversation.")
                 items = validated_items(config, assistant.system_prompt)
+                if (continuing or inherited) and any(item["enabled"] for item in items):
+                    raise HTTPException(409, "This conversation has no retained system prompt. Start a new conversation.")
+                # Pre-lifecycle chats retain their transcript and initialize the current
+                # plain instructions once. Never invent a missing randomized scenario.
                 result = run_filters(assistant.system_prompt or "", items)
                 definition = json.dumps(config.get("prompt_filters") or {"version": 1, "items": []})
-            if definition == "null":
-                raise HTTPException(409, "This legacy conversation has no retained system prompt. Start a new conversation.")
-            cursor.execute(f"INSERT INTO {table} VALUES (?, ?, ?, ?, ?, ?)",
-                           (context.id, assistant.id, context.owner, org, result, definition))
+            if row:
+                cursor.execute(f"UPDATE {table} SET system_prompt=?, definition=? WHERE chat_id=? AND assistant_id=?",
+                               (result, definition, context.id, assistant.id))
+            else:
+                cursor.execute(f"INSERT INTO {table} VALUES (?, ?, ?, ?, ?, ?)",
+                               (context.id, assistant.id, context.owner, org, result, definition))
         connection.commit()
         return assistant.model_copy(update={"system_prompt": result})
     except Exception:
