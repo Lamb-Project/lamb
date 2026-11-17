@@ -368,6 +368,21 @@ async def process_lti_connection(request: Request):
             raise HTTPException(
                 status_code=401, detail="Invalid OAuth signature")
 
+        from lamb import lti_access
+        try:
+            origin = lti_access.lti11_origin(post_data)
+            lti_access.require_global(db_manager, origin)
+            published = db_manager.get_published_assistant_by_oauth_consumer(post_data.get("oauth_consumer_key", ""))
+            if not published:
+                raise ValueError("Published assistant not found.")
+            assistant = db_manager.get_assistant_by_id(published['assistant_id'])
+            if not assistant:
+                raise ValueError("Published assistant not found.")
+            organization_id = assistant.organization_id if hasattr(assistant, 'organization_id') else assistant.get('organization_id')
+            lti_access.require_organization(db_manager, db_manager.get_organization_by_id(organization_id), origin)
+        except (ValueError, AttributeError) as exc:
+            raise HTTPException(403, str(exc)) from exc
+
         # Extract relevant LTI parameters
         #email = post_data.get("lis_person_contact_email_primary", "")
         # URL decode the email if needed
@@ -449,6 +464,8 @@ async def process_lti_connection(request: Request):
             logger.info(f"Redirecting to: {redirect_url}")
             return RedirectResponse(url=redirect_url, status_code=303)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in process_lti_connection: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

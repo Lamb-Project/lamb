@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
-from lamb import auth as lamb_auth
+from lamb import auth as lamb_auth, lti_access
 from lamb.logging_config import get_logger
 from lamb.lti13 import is_scoped
 
@@ -57,6 +57,7 @@ MESSAGES = {
     "already_member": "You already have an account in this organization. Go back and choose it.",
     "other_lms": "An account for this LMS user already exists in this organization, obtained from another LMS. Ask your LAMB administrator.",
     "failed": "The account could not be created. Open the activity from your LMS again, or contact your LAMB administrator.",
+    "replayed": "This launch has already been used. Open the activity from your LMS again.",
 }
 # Outcomes that tell the instructor to talk to someone: the organization's own text follows them.
 SHOW_ORGANIZATION_TEXT = {"disabled", "expired", "used_up", "not_allowed", "account_disabled", "other_lms"}
@@ -149,6 +150,7 @@ def create_code(db, organization_id: int, label: str = "", expires_at: Optional[
                 max_uses: Optional[int] = None, created_by: Optional[int] = None) -> Dict[str, Any]:
     """Create a code for one organization. The clear value is returned once and never stored."""
     organization = db.get_organization_by_id(organization_id)
+    lti_access.require_organization(db, organization, lti_access.organization_url(organization))
     if not organization:
         raise ValueError("Organization not found")
     if organization.get("is_system"):
@@ -299,12 +301,23 @@ def accounts_of_instance(db, accounts: List[Dict[str, Any]], lms_user_id: str, l
 
     The global key is shared by every LMS, and a user id is only that LMS's own number: an
     account obtained with a creator code belongs to the instance it was obtained from. An
-    account made by the organization's own LTI Creator tool carries no record of an instance
-    and is recognised by the user id, as that tool recognises it.
+    account made by the organization's own LTI Creator tool carries no record of an instance.
+    Every account, including those legacy accounts, now requires the organization's Moodle
+    binding and global platform policy. Existing origin records add a consistency check.
     """
+    try:
+        here = lti_access.instance_url(lms_instance)
+    except ValueError:
+        return []
     obtained = instances_of(db, lms_user_id)
-    here = str(lms_instance or "").strip()
-    return [account for account in accounts if account["id"] not in obtained or here in obtained[account["id"]]]
+    def matches(instance):
+        try:
+            return lti_access.instance_url(instance) == here
+        except ValueError:
+            return False
+    return [account for account in accounts
+            if lti_access.organization_allowed(db, account["organization_id"], here)
+            and (account["id"] not in obtained or any(matches(v) for v in obtained[account["id"]]))]
 
 
 # ---------------------------------------------------------------------------
@@ -364,7 +377,7 @@ def redeem(db, manager, ticket: Dict[str, Any], code: str) -> Redemption:
     now = int(time.time())
     identity = _identity_hash(ticket)
     failed = _rows(db, '''SELECT COUNT(*) AS n FROM {p}lti_onboarding_attempts
-        WHERE identity_hash=? AND attempted_at>? AND outcome!='ok' ''', (identity, now - ATTEMPT_WINDOW_SECONDS))[0]["n"]
+        WHERE identity_hash=? AND attempted_at>? AND outcome NOT IN ('ok','claimed') ''', (identity, now - ATTEMPT_WINDOW_SECONDS))[0]["n"]
     if failed >= MAX_FAILED_ATTEMPTS:
         logger.warning(f"Creator code attempts limited for launch identity {identity[:12]}")
         return Redemption(False, "rate_limited")
@@ -382,6 +395,8 @@ def redeem(db, manager, ticket: Dict[str, Any], code: str) -> Redemption:
     if status != "active":
         return _refuse(db, ticket, status, organization, row["id"])
     try:
+        origin = lti_access.identity_origin(db, ticket["lti_lms_user_id"], _instance(ticket))
+        lti_access.require_organization(db, organization, origin)
         allowed = allowed_organizations(db, ticket)
     except ValueError:
         return _refuse(db, ticket, "not_allowed", organization, row["id"])
@@ -409,6 +424,16 @@ def redeem(db, manager, ticket: Dict[str, Any], code: str) -> Redemption:
     # the organization's LTI Creator tool, or one whose link went missing. The code links it
     # and takes no use; from now on it belongs to this instance.
 
+    # One atomic database statement claims the launch before any provisioning.
+    # Other workers see the claim even while the OWI account call is in progress.
+    claimed = _write(db, '''INSERT INTO {p}lti_onboarding_attempts
+        (identity_hash, launch_id, outcome, attempted_at)
+        SELECT ?, ?, 'claimed', ?
+        WHERE NOT EXISTS (SELECT 1 FROM {p}lti_onboarding_attempts WHERE launch_id=? AND outcome='claimed')
+          AND NOT EXISTS (SELECT 1 FROM {p}lti_creator_code_redemptions WHERE launch_id=?)''',
+        (identity, ticket["lti_launch_id"], now, ticket["lti_launch_id"], ticket["lti_launch_id"]))
+    if claimed.rowcount != 1:
+        return _refuse(db, ticket, "replayed")
     creator_id = existing["id"] if existing else None
     if not existing:
         # Take one use only if the code is still active at this instant; two instructors
@@ -433,7 +458,7 @@ def redeem(db, manager, ticket: Dict[str, Any], code: str) -> Redemption:
     except ValueError:
         return _refuse(db, ticket, "not_allowed", organization, row["id"])
 
-    _write(db, '''INSERT OR IGNORE INTO {p}lti_creator_code_redemptions
+    _write(db, '''INSERT INTO {p}lti_creator_code_redemptions
         (code_id, creator_user_id, identity_hash, launch_id, protocol, redeemed_at, lms_instance, lms_email)
         VALUES (?,?,?,?,?,?,?,?)''',
         (row["id"], creator_id, identity, ticket["lti_launch_id"], ticket["lti_protocol"], now,

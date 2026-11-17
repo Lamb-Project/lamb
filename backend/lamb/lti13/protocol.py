@@ -211,6 +211,8 @@ def validate_launch(form, store=None):
         raise ValueError('Invalid grade service scopes')
     endpoint = {k: network.service_url(endpoint[k], reg) for k in ('lineitem', 'lineitems') if k in endpoint} | {'scope': scopes}
     # Everything above is read-only. Replay consumption is the first durable write.
+    from lamb import lti_access
+    lti_access.require_global(store.db, reg['issuer'])
     store.consume(transaction)
     user_key = store.object_id(reg['id'], deployment, 'user', subject)
     resource_key = store.object_id(reg['id'], deployment, 'resource', resource_id)

@@ -7,13 +7,61 @@ and its text is the deployment's default.
 """
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Request, Depends
+from pydantic import BaseModel, Field, StrictBool
 
-from lamb import lti_onboarding
+from lamb import lti_onboarding, lti_access
+from lamb.auth_context import AuthContext, get_auth_context
 from .organization_router import db_manager, verify_organization_admin_access
 
 router = APIRouter()
+
+
+class LmsWhitelist(BaseModel):
+    whitelist_enabled: StrictBool = False
+    allowed_origins: list[str] = Field(default_factory=list, max_length=100)
+
+
+class OrganizationMoodle(BaseModel):
+    moodle_url: str = Field("", max_length=2048)
+
+
+@router.get('/lti-access', tags=['Admin - LTI'])
+async def get_lms_whitelist(auth: AuthContext = Depends(get_auth_context)):
+    auth.require_system_admin()
+    return lti_access.global_settings(db_manager)
+
+
+@router.put('/lti-access', tags=['Admin - LTI'])
+async def set_lms_whitelist(body: LmsWhitelist, auth: AuthContext = Depends(get_auth_context)):
+    auth.require_system_admin()
+    try:
+        settings = lti_access.validate_global(body.model_dump())
+        system = db_manager.get_organization_by_slug('lamb')
+        lti_access.save_settings(db_manager, system['id'], settings)
+        return settings
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get('/org-admin/settings/lti-access', tags=['Organization Admin - Settings'])
+async def get_organization_moodle(request: Request, org: Optional[str] = None):
+    _, organization = await _organization(request, org)
+    return {'moodle_url': lti_access.organization_url(organization), 'is_system': bool(organization.get('is_system')),
+            **lti_access.global_settings(db_manager)}
+
+
+@router.put('/org-admin/settings/lti-access', tags=['Organization Admin - Settings'])
+async def set_organization_moodle(request: Request, body: OrganizationMoodle, org: Optional[str] = None):
+    _, organization = await _organization(request, org)
+    if organization.get('is_system'):
+        raise HTTPException(400, 'Configure Moodle on a regular organization.')
+    try:
+        origin = lti_access.require_global(db_manager, body.moodle_url) if body.moodle_url.strip() else ''
+        lti_access.save_settings(db_manager, organization['id'], {'moodle_url': origin})
+        return {'moodle_url': origin, **lti_access.global_settings(db_manager)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 class NewCreatorCode(BaseModel):

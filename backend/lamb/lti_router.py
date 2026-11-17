@@ -19,7 +19,7 @@ from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
-from lamb import auth as lamb_auth
+from lamb import auth as lamb_auth, lti_access
 from lamb.lti_activity_manager import LtiActivityManager
 from lamb.database_manager import LambDatabaseManager
 from lamb.logging_config import get_logger
@@ -193,7 +193,10 @@ async def lti_launch(request: Request):
 
             if any(is_scoped(v) for v in (resource_link_id, lms_user_id, context_id, username)):
                 raise HTTPException(400, "Reserved LTI identifier")
-            lms_instance = (post_data.get("tool_consumer_instance_guid") or "").strip()
+            try:
+                lms_instance = lti_access.require_global(db_manager, lti_access.lti11_origin(post_data))
+            except ValueError as exc:
+                raise HTTPException(403, str(exc)) from exc
             ctx = LTIContext(
                 resource_link_id=resource_link_id, lms_user_id=lms_user_id, lms_email=lms_email,
                 username=username, display_name=display_name, roles=roles,
@@ -207,9 +210,12 @@ async def lti_launch(request: Request):
 
         activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
 
-        if activity and is_lti13:
+        if activity:
             try:
-                Store().assert_org(resource_link_id, activity['organization_id'])
+                if is_lti13:
+                    Store().assert_org(resource_link_id, activity['organization_id'])
+                else:
+                    lti_access.require_organization(db_manager, db_manager.get_organization_by_id(activity['organization_id']), lms_instance)
             except ValueError as exc:
                 raise HTTPException(403, str(exc)) from exc
 

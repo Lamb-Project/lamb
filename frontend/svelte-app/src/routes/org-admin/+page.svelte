@@ -16,6 +16,7 @@
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import OrgApiAccessSettings from '$lib/components/admin/OrgApiAccessSettings.svelte';
     import OrgCreatorCodes from '$lib/components/admin/OrgCreatorCodes.svelte';
+    import LtiAccessSettings from '$lib/components/admin/LtiAccessSettings.svelte';
     import Pagination from '$lib/components/common/Pagination.svelte';
     import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
     // BulkUserImport component not yet implemented
@@ -4355,6 +4356,7 @@
 
                         <!-- LTI Creator Settings Tab -->
                         {#if settingsSubView === 'lti-creator'}
+                        {#key targetOrgSlug}<LtiAccessSettings org={targetOrgSlug} />{/key}
                         <div class="bg-white overflow-hidden shadow rounded-lg">
                             <div class="px-4 py-5 sm:p-6">
                                 <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">LTI Creator Access</h3>

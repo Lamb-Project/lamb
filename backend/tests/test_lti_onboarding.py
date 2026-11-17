@@ -30,8 +30,9 @@ class FakeDb:
         with self.get_connection() as c:
             c.execute('CREATE TABLE T_organizations (id INTEGER PRIMARY KEY, slug TEXT, name TEXT, is_system INTEGER, config TEXT)')
             c.executemany('INSERT INTO T_organizations VALUES (?,?,?,?,?)', [
-                (SYSTEM, 'lamb', 'System', 1, '{}'), (ORG_A, 'alpha', 'Alpha University', 0, '{}'),
-                (ORG_B, 'beta', 'Beta College', 0, json.dumps({'features': {'signup_enabled': True, 'signup_key': 'beta-signup-key'}}))])
+                (SYSTEM, 'lamb', 'System', 1, '{}'),
+                (ORG_A, 'alpha', 'Alpha University', 0, json.dumps({'lti_access': {'moodle_url': 'https://moodle.school.example'}})),
+                (ORG_B, 'beta', 'Beta College', 0, json.dumps({'lti_access': {'moodle_url': 'https://moodle.school.example'}, 'features': {'signup_enabled': True, 'signup_key': 'beta-signup-key'}}))])
             c.execute('''CREATE TABLE T_Creator_users (id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id INTEGER,
                 user_email TEXT UNIQUE, user_name TEXT, user_type TEXT, lti_user_id TEXT, auth_provider TEXT,
                 enabled INTEGER, role TEXT)''')
@@ -178,7 +179,7 @@ def test_wrong_disabled_expired_and_used_up_codes_say_so_and_create_nothing(db, 
     assert outcomes['invalid'].organization is None and outcomes['disabled'].organization['id'] == ORG_A
     assert db.count('Creator_users') == 1 and db.count('lti_identity_links') == 1
     # Attempts are recorded and logged, never with the code itself.
-    assert db.count('lti_onboarding_attempts') == 5
+    assert db._one("SELECT count(*) AS n FROM T_lti_onboarding_attempts WHERE outcome != 'claimed'")['n'] == 5
     logged = caplog.text + json.dumps([list(r) for r in sqlite3.connect(db.db_path).execute('SELECT * FROM T_lti_onboarding_attempts')])
     for secret in ('AAAA-BBBB-CCCC', disabled['code'], expired['code'], used['code']):
         assert secret not in logged and onboarding.normalize(secret) not in logged
@@ -240,6 +241,7 @@ def test_a_disabled_account_is_not_revived_by_a_code(db, manager):
 
 @pytest.fixture
 def lti13(db, monkeypatch):
+    db.update_organization_config(ORG_A, {'lti_access': {'moodle_url': 'https://moodle.example'}})
     # Tokens that carry an LTI 1.3 identity are stamped with their registration from the default store.
     monkeypatch.setattr('lamb.database_manager.LambDatabaseManager', lambda: db)
     store = Store(db)
@@ -350,7 +352,7 @@ def test_a_first_account_goes_on_to_lamb_creator_and_can_come_back_to_the_activi
     creator = db._one('SELECT * FROM T_Creator_users')
     session = lamb_auth.decode_token(session_token)
     assert lamb_auth.is_creator_session(session) and session['sub'] == str(creator['id']) and creator['organization_id'] == ORG_A
-    assert session['lti_identity']['lms_user_id'] == 'teacher-1' and session['lti_identity']['lms_instance'] == INSTANCE
+    assert session['lti_identity']['lms_user_id'] == 'teacher-1' and session['lti_identity']['lms_instance'] == 'https://' + INSTANCE
     # Back from Creator: the activity is not set up yet, so the way back leads to its setup.
     back = client.get('/lamb/v1/lti/return', params={'token': activity})
     assert back.status_code == 303 and '/m/chat/setup?token=' in back.headers['location']
@@ -575,7 +577,7 @@ def test_accounts_with_a_password_take_no_part_and_lti_creators_of_the_older_too
     assert [(a['id'], a['organization_id']) for a in identified] == [(older, ORG_B)]   # neither password account, so no system organization
     offered = onboarding.creator_access(db, manager, launch_claims())
     assert [(a['creator_user_id'], a['organization_name']) for a in offered] == [(older, 'Beta College')]   # he is in (Marc, 14 November 2026)
-    assert onboarding.creator_access(db, manager, launch_claims(instance='elsewhere', email='x@y.example'))[0]['creator_user_id'] == older
+    assert onboarding.creator_access(db, manager, launch_claims(instance='elsewhere', email='x@y.example')) == []
     for row in sqlite3.connect(db.db_path).execute('SELECT id FROM T_Creator_users WHERE auth_provider != ?', ('lti_creator',)).fetchall():
         assert onboarding.creator_session(db, manager, launch_claims(), row[0]) is None
     # The email alone identifies nobody at all.
@@ -609,7 +611,7 @@ def test_the_creator_entry_route_takes_the_token_of_the_launch_and_nothing_else(
     setup_token = launch(client).headers['location'].split('token=')[1]   # the next launch: straight to the setup
     creator = db._one('SELECT * FROM T_Creator_users')
     claims = lamb_auth.decode_token(setup_token)
-    assert claims['lti_lms_instance'] == INSTANCE and claims['lti_launched_at'] > 0
+    assert claims['lti_lms_instance'] == 'https://' + INSTANCE and claims['lti_launched_at'] > 0
     assert [a['creator_user_id'] for a in onboarding.creator_access(db, lti_router.manager, claims)] == [creator['id']]
     opened = client.post('/lamb/v1/lti/creator-session', json={'token': setup_token, 'creator_user_id': creator['id']})
     assert opened.status_code == 200 and '/assistants?token=' in opened.json()['url'] and '&activity=' in opened.json()['url']
@@ -651,7 +653,7 @@ def test_the_same_user_id_from_another_lms_is_another_person(db, manager):
     assert onboarding.creator_session(db, manager, launch_claims(instance=elsewhere), ana['id']) is None
     # The organization's code does not hand Ana's account over to that other person either.
     refused = onboarding.redeem(db, manager, ticket(instance=elsewhere), code)
-    assert refused.reason == 'other_lms' and not refused.ok
+    assert refused.reason == 'not_allowed' and not refused.ok
     assert db.count('Creator_users') == 1 and db.count('lti_identity_links') == 1 and db.count('lti_creator_code_redemptions') == 1
     assert onboarding.list_codes(db, ORG_A)[0]['use_count'] == 1
     assert onboarding.MESSAGES['other_lms'].startswith('An account for this LMS user already exists')
@@ -662,8 +664,9 @@ def test_an_account_of_the_lti_creator_tool_is_bound_to_an_instance_once_a_code_
     with db.get_connection() as c:
         older = c.execute("INSERT INTO T_Creator_users (organization_id,user_email,user_name,user_type,lti_user_id,auth_provider,enabled,role) VALUES (?,?,?,?,?,?,1,'user')",
                           (ORG_A, 'lti_creator_alpha_teacher-1@lamb-lti.local', 'Ana of the older tool', 'creator', 'teacher-1', 'lti_creator')).lastrowid
-    # As that tool recognises it: by the user id, from any instance. A code of its own organization is not needed.
-    assert [a['id'] for a in manager.identify_instructor(lms_user_id='teacher-1', lms_instance='anywhere')] == [older]
+    # The organization's configured Moodle also bounds accounts created by the older tool.
+    assert manager.identify_instructor(lms_user_id='teacher-1', lms_instance='anywhere') == []
+    assert [a['id'] for a in manager.identify_instructor(lms_user_id='teacher-1', lms_instance=INSTANCE)] == [older]
     assert onboarding.redeem(db, manager, ticket(), onboarding.create_code(db, ORG_A)['code']).reason == 'already_member'
 
 

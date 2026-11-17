@@ -185,15 +185,18 @@ class Store:
         return value
 
     def creators(self, user_id):
+        from lamb import lti_access
         user = self.object(user_id, 'user')
         reg = self.registration(user['registration_id'], user['deployment_id'])
         with self.connection() as c:
             rows = c.execute(f'''SELECT cu.* FROM {self.p}Creator_users cu
                 JOIN {self.p}lti13_identity_links link ON link.creator_user_id=cu.id
                 WHERE link.user_id=? AND cu.enabled=1 AND cu.auth_provider=?''', (user_id, 'lti_creator')).fetchall()
-        return [dict(row) for row in rows if row['organization_id'] in reg['organization_ids']]
+        return [dict(row) for row in rows if row['organization_id'] in reg['organization_ids']
+                and lti_access.organization_allowed(self.db, row['organization_id'], reg['issuer'])]
 
     def link_creator(self, user_id, creator_id):
+        from lamb import lti_access
         user = self.object(user_id, 'user')
         reg = self.registration(user['registration_id'], user['deployment_id'])
         creator = self.db.get_creator_user_by_id(creator_id)
@@ -202,15 +205,18 @@ class Store:
         # Only LTI creator accounts take part in LTI endpoints (Marc, 15 November 2026).
         if creator.get('auth_provider') != 'lti_creator':
             raise ValueError('Only an LTI creator account can be linked to an LMS identity')
+        lti_access.require_organization(self.db, self.db.get_organization_by_id(creator['organization_id']), reg['issuer'])
         with self.connection() as c:
             c.execute(f'''INSERT OR IGNORE INTO {self.p}lti13_identity_links
                 (user_id,creator_user_id,linked_at) VALUES (?,?,?)''', (user_id, creator_id, int(time.time())))
 
     def assert_org(self, resource_id, organization_id):
+        from lamb import lti_access
         resource = self.object(resource_id, 'resource')
         reg = self.registration(resource['registration_id'], resource['deployment_id'])
         if organization_id not in reg['organization_ids']:
             raise ValueError('Organization is not allowed for this LMS registration')
+        lti_access.require_organization(self.db, self.db.get_organization_by_id(organization_id), reg['issuer'])
 
     def save_grade_target(self, resource_id, user_id, student_email, endpoint):
         with self.connection() as c:

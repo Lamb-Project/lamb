@@ -19,6 +19,7 @@
     
     // Import admin components
     import AdminDashboard from '$lib/components/admin/AdminDashboard.svelte';
+    import LtiAccessSettings from '$lib/components/admin/LtiAccessSettings.svelte';
     import UserDashboard from '$lib/components/UserDashboard.svelte';
     import UserForm from '$lib/components/admin/shared/UserForm.svelte';
     import ChangePasswordModal from '$lib/components/admin/shared/ChangePasswordModal.svelte';
@@ -2884,6 +2885,7 @@
     </div>
 
     {:else if currentView === 'lti-settings'}
+        <LtiAccessSettings global={true} />
         <!-- Global LTI Settings View -->
         <div class="mb-6">
             <h2 class="text-xl font-semibold text-gray-800 mb-2">LTI Tool Configuration</h2>
@@ -3604,4 +3606,4 @@
 
 <style>
     /* Add specific styles if needed, though Tailwind should cover most */
-</style> 
+</style>
