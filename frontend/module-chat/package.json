@@ -53,5 +53,8 @@
     "marked": "^15.0.12",
     "openai": "^4.53.3",
     "svelte-i18n": "^4.0.1"
+  },
+  "overrides": {
+    "rollup": "4.68.5"
   }
 }
