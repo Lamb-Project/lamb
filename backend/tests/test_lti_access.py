@@ -49,16 +49,59 @@ def test_global_and_organization_rules_intersect(db):
     assert not access.organization_allowed(db, ORG_A, B)
 
 
-def test_legacy_org_requires_setup_and_preserves_account(db, manager):
+@pytest.mark.parametrize('config', [{}, {'lti_access': {}}, {'lti_access': {'moodle_url': ''}}])
+def test_legacy_org_keeps_access_until_bound_and_preserves_account(db, manager, config):
     uid = db.create_lti_creator_user(ORG_A, 'teacher-1', 'legacy@example.test', 'Legacy')
-    access.save_settings(db, ORG_A, {'moodle_url': ''})
-    assert manager.identify_instructor(lms_user_id='teacher-1', lms_instance=INSTANCE) == []
-    with pytest.raises(ValueError):
-        onboarding.create_code(db, ORG_A)
+    db.update_organization_config(ORG_A, config)
+    assert [a['id'] for a in manager.identify_instructor(lms_user_id='teacher-1', lms_instance=INSTANCE)] == [uid]
+    assert onboarding.create_code(db, ORG_A)['code']
+    assert access.organization_allowed(db, ORG_A, B)
     access.save_settings(db, ORG_A, {'moodle_url': A})
     assert [a['id'] for a in manager.identify_instructor(lms_user_id='teacher-1', lms_instance=INSTANCE)] == [uid]
     assert manager.identify_instructor(lms_user_id='teacher-1', lms_instance='other.example') == []
     assert db.count('Creator_users') == 1
+
+
+def test_unset_binding_still_enforces_global_policy_and_organization_state(db, manager):
+    access.save_settings(db, ORG_A, {'moodle_url': ''})
+    code = onboarding.create_code(db, ORG_A)['code']
+    whitelist(db, [A])
+    assert access.organization_allowed(db, ORG_A, A)
+    assert not access.organization_allowed(db, ORG_A, B)
+    assert onboarding.redeem(db, manager, ticket(instance='other.example'), code).reason == 'not_allowed'
+    assert onboarding.list_codes(db, ORG_A)[0]['use_count'] == 0
+    whitelist(db, [])
+    assert not access.organization_allowed(db, ORG_A, A)
+    whitelist(db, [], enabled=False)
+    assert not access.organization_allowed(db, SYSTEM, A)
+    assert not access.organization_allowed(db, 9999, A)
+    inactive = {**db.get_organization_by_id(ORG_A), 'status': 'inactive'}
+    with pytest.raises(ValueError, match='does not accept'):
+        access.require_organization(db, inactive, A)
+
+
+def test_unset_binding_allows_new_account_but_keeps_ticket_and_account_origin(db, manager):
+    for org in (ORG_A, ORG_B):
+        access.save_settings(db, org, {'moodle_url': ''})
+    codes = [onboarding.create_code(db, org)['code'] for org in (ORG_A, ORG_B)]
+    claims = ticket()
+    assert onboarding.redeem(db, manager, claims, codes[0]).ok
+    assert onboarding.redeem(db, manager, claims, codes[1]).reason == 'replayed'
+    assert onboarding.creator_access(db, manager, launch_claims(instance='other.example')) == []
+    assert db.count('Creator_users') == 1
+    assert onboarding.redeem(db, manager, ticket(), codes[1]).ok
+
+
+def test_existing_student_activity_launch_continues_without_binding(client, db, monkeypatch):
+    from fastapi.responses import HTMLResponse
+    access.save_settings(db, ORG_A, {'moodle_url': ''})
+    module = SimpleNamespace(on_student_launch=Mock(return_value=HTMLResponse('student activity')))
+    monkeypatch.setattr(db, 'get_lti_activity_by_resource_link', lambda _: {'id': 8, 'organization_id': ORG_A, 'status': 'active'})
+    monkeypatch.setattr(lti_router, '_get_activity_module', lambda _: module)
+    response = launch(client, roles='Learner', tool_consumer_instance_url=B)
+    assert response.status_code == 200
+    assert response.text == 'student activity'
+    module.on_student_launch.assert_called_once()
 
 
 def test_origin_check_precedes_code_use_or_creation(db, manager):
@@ -171,6 +214,10 @@ def test_settings_permissions_and_saved_policy(db, monkeypatch):
     assert client.put(path + '?org=beta', json={'moodle_url': A}).status_code == 403
     assert client.put(path, json={'moodle_url': A + '/'}).json()['moodle_url'] == A
     assert client.get(path).json()['moodle_url'] == A
+    # Clearing the binding is allowed, including when a global restriction exists.
+    assert client.put(path, json={'moodle_url': ''}).json()['moodle_url'] == ''
+    assert access.organization_allowed(db, ORG_A, A)
+    assert not access.organization_allowed(db, ORG_A, B)
     assert client.put('/admin/lti-access', json={'whitelist_enabled': False}).status_code == 403
     # Feature-specific writes do not discard other organization configuration.
     before = db.get_organization_by_id(ORG_B)['config']['features']
@@ -207,3 +254,13 @@ def test_legacy_endpoints_enforce_binding_and_global_whitelist(db, monkeypatch, 
     assert send(A).status_code == 403
     whitelist(db, [A])
     assert send(A).status_code == 303
+
+
+def test_lti13_organization_without_binding_keeps_registration_checks(env):
+    from lamb.lti13 import protocol
+    context = protocol.validate_launch(launch13(env), env.store)
+    env.db.get_organization_by_id = lambda oid: {'id': oid, 'config': {}}
+    env.store.assert_org(context['resource_link_id'], 1)
+    env.db.get_organization_by_id = lambda oid: {'id': oid, 'config': {'lti_access': {'moodle_url': B}}}
+    with pytest.raises(ValueError, match='not connected'):
+        env.store.assert_org(context['resource_link_id'], 1)

@@ -2203,6 +2203,7 @@
         // Get view from URL params
         const urlView = $page.url.searchParams.get('view') || 'dashboard';
         currentView = urlView;
+        if ($page.url.searchParams.get('section') === 'lti-creator') settingsSubView = 'lti-creator';
 
         // Get target organization from URL params (for system admin)
         targetOrgSlug = $page.url.searchParams.get('org');

@@ -150,11 +150,15 @@ def create_code(db, organization_id: int, label: str = "", expires_at: Optional[
                 max_uses: Optional[int] = None, created_by: Optional[int] = None) -> Dict[str, Any]:
     """Create a code for one organization. The clear value is returned once and never stored."""
     organization = db.get_organization_by_id(organization_id)
-    lti_access.require_organization(db, organization, lti_access.organization_url(organization))
     if not organization:
         raise ValueError("Organization not found")
     if organization.get("is_system"):
         raise ValueError("Creator codes cannot be created for the system organization")
+    if organization.get("status", "active") != "active":
+        raise ValueError("This organization does not accept LTI access.")
+    origin = lti_access.organization_url(organization)
+    if origin:
+        lti_access.require_organization(db, organization, origin)
     now = int(time.time())
     if expires_at is not None and int(expires_at) <= now:
         raise ValueError("The expiry date must be in the future")

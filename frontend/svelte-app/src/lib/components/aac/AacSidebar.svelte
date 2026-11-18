@@ -8,6 +8,7 @@
     import { createSession, getSessions } from '$lib/services/aacService';
     import { sidebarSize } from '$lib/utils/aacLayout';
     import AacTerminal from './AacTerminal.svelte';
+    import AacAdminReminder from './AacAdminReminder.svelte';
     import { goto } from '$app/navigation';
     import { base } from '$app/paths';
     import { listScenarios, selectedScenario } from '$lib/services/learningScenarios';
@@ -149,6 +150,7 @@
     {#if $sidebarMobile && $frontendDestination}
     <button class="destination" onclick={hide}>{#if $frontendDestination.resource === 'learning-scenario'}{scenarioLabels.singular}: {selection?.scenario?.title || ''}{:else}Open in LAMB: {$frontendDestination.resource} {$frontendDestination.id} {$frontendDestination.tab}{/if}</button>
     {/if}
+    <AacAdminReminder />
     {#if error}<p role="alert" class="error">{error}</p>{/if}
     {#if $activeTabId && !scenarioPicker}<button class="destination" onclick={()=>openScenarios(selection?.scenario?.id)}>{scenarioLabels.singular}: {selection?.scenario?.title || (selection?.unavailable ? scenarioLabels.unavailable : scenarioLabels.none)}</button>{/if}
     {#if scenarioPicker}

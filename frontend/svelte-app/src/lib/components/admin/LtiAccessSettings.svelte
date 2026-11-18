@@ -53,6 +53,7 @@
                 ? { whitelist_enabled: enabled, allowed_origins: origins.split('\n').map(v => v.trim()).filter(Boolean) }
                 : { moodle_url: moodleUrl.trim() }));
             notice = 'LMS access settings saved.';
+            window.dispatchEvent(new CustomEvent('lamb-lti-access-changed'));
         } catch (e) { error = e instanceof Error ? e.message : 'Could not save LMS access settings.'; }
         finally { saving = false; }
     }
@@ -61,8 +62,8 @@
 <section class="my-6 rounded-lg border border-gray-200 bg-white p-5" data-lti-access={global ? 'global' : 'organization'}>
     <h3 class="text-lg font-medium text-gray-900 mb-2">{global ? 'Allowed LMS installations' : 'Moodle installation'}</h3>
     <p class="text-sm text-gray-600 mb-4">
-        {global ? 'Limit which LMS installations can connect to LAMB through LTI. Each organization must also configure its own Moodle.'
-            : 'Creator codes and LTI logins for this organization work only from this Moodle installation. Existing organizations must complete this setup too.'}
+        {global ? 'Limit which LMS installations can connect to LAMB through LTI. This restriction also applies to organizations that have not set their Moodle URL.'
+            : 'Set the Moodle installation allowed to use this organization’s Creator codes and LTI logins. Once saved, only this installation is accepted.'}
     </p>
     {#if error}<p role="alert" class="mb-3 text-red-700">{error}</p>{/if}
     {#if notice}<p role="status" class="mb-3 text-green-700">{notice}</p>{/if}
@@ -83,7 +84,7 @@
                     Moodle URL
                     <input type="url" bind:value={moodleUrl} placeholder="https://moodle.example.edu" class="mt-1 w-full rounded border border-gray-300 p-2" />
                 </label>
-                <p class="text-sm text-gray-600">Use the installation's full URL, including its subdirectory if applicable. Leaving it empty blocks new LTI access to this organization.</p>
+                <p class="text-sm text-gray-600">Use the installation's full URL, including its subdirectory if applicable. If empty, LTI access continues without an organization origin check. The global LMS whitelist still applies. LEGATUS will remind organization administrators to complete this setting.</p>
                 {#if restrict}
                     <p class="text-sm text-gray-600">The system administrator allows: {allowed.join(', ') || 'no LMS installations'}.</p>
                 {/if}

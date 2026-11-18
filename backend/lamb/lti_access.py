@@ -81,9 +81,9 @@ def require_organization(db, organization, origin):
     if not organization or organization.get("is_system") or organization.get("status", "active") != "active":
         raise ValueError("This organization does not accept LTI access.")
     expected = organization_url(organization)
-    if not expected:
-        raise ValueError("The organization administrator must configure its Moodle installation before LTI access.")
-    if origin != expected:
+    # Unconfigured organizations retain their existing access during upgrades.
+    # The global whitelist above remains independent of this optional binding.
+    if expected and origin != expected:
         raise ValueError("This LMS is not connected to the organization.")
     return origin
 

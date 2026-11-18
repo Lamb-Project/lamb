@@ -238,6 +238,12 @@ async def create_session(
     return result
 
 
+@router.get('/admin-reminders')
+async def get_admin_reminders(auth: AuthContext = Depends(get_auth_context)):
+    from lamb.aac.admin_reminders import admin_reminders
+    return {'reminders': admin_reminders(auth)}
+
+
 @router.get('/policy')
 async def get_agent_policy(language: str = 'en', auth: AuthContext = Depends(get_auth_context)):
     from lamb.aac.preferences import response_policy, language_code
@@ -746,6 +752,11 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
         pending_action=agent.pending_action, skill_info=agent.skill_state, tool_audit=agent.tool_audit)
     from lamb.aac.learning_scenarios import apply_scenario
     apply_scenario(agent, auth)
+
+    # Recompute from this request's organization and role, never pin this to a pack
+    # or save it in the conversation: resolving a setting removes the reminder.
+    from lamb.aac.admin_reminders import reminder_context
+    agent.system_prompt += reminder_context(auth)
 
     # Pure pack and prefix validation must finish before allocating an HTTP client.
     agent.llm_client, agent.model = _resolve_agent_llm(user_email)
