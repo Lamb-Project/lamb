@@ -62,18 +62,6 @@ def get_available_llms(assistant_owner: Optional[str] = None):
     Args:
         assistant_owner: Optional assistant owner email to get org-specific models
     """
-    # If no assistant owner provided, fall back to env vars (for backward compatibility)
-    if not assistant_owner:
-        if os.getenv("OPENAI_ENABLED", "true").lower() != "true":
-            logger.info("OPENAI_ENABLED is false, skipping model list fetch")
-            return []
-        
-        import config
-        models = os.getenv("OPENAI_MODELS") or config.OPENAI_MODEL
-        if not models:
-            return [os.getenv("OPENAI_MODEL") or config.OPENAI_MODEL]
-        return [model.strip() for model in models.split(",") if model.strip()]
-    
     # Use organization-specific configuration
     try:
         config_resolver = OrganizationConfigResolver(assistant_owner)
@@ -377,61 +365,21 @@ Returns:
             yield f"data: {json.dumps(error_chunk)}\n\n"
             yield "data: [DONE]\n\n"
 
-    # Get organization-specific configuration
-    api_key = None
-    base_url = None
-    import config
-    default_model = config.OPENAI_MODEL
-    org_name = "Unknown"
-    config_source = "env_vars"
-    
-    if assistant_owner:
-        try:
-            config_resolver = OrganizationConfigResolver(assistant_owner)
-            org_name = config_resolver.organization.get('name', 'Unknown')
-            
-            # Handle small-fast-model logic
-            if use_small_fast_model:
-                small_fast_config = config_resolver.get_small_fast_model_config()
-                
-                if small_fast_config.get('provider') == 'openai' and small_fast_config.get('model'):
-                    llm = small_fast_config['model']
-                    logger.info(f"Using small-fast-model: {llm}")
-                    multimodal_logger.info(f"🚀 Using small-fast-model: {llm}")
-                else:
-                    logger.warning("Small-fast-model requested but not configured for OpenAI, using default")
-            
-            openai_config = config_resolver.get_provider_config("openai")
-            
-            if openai_config:
-                api_key = openai_config.get("api_key")
-                base_url = openai_config.get("base_url")
-                import config
-                default_model = openai_config.get("default_model") or config.OPENAI_MODEL
-                config_source = "organization"
-                multimodal_logger.info(f"Using organization: '{org_name}' (owner: {assistant_owner})")
-                logger.info(f"Using organization config for {assistant_owner} (org: {org_name})")
-            else:
-                multimodal_logger.warning(f"No config found for organization '{org_name}', falling back to environment variables")
-                logger.warning(f"No OpenAI config found for {assistant_owner} (org: {org_name}), falling back to env vars")
-        except Exception as e:
-            multimodal_logger.error(f"Error getting organization config for {assistant_owner}: {e}")
-            logger.error(f"Error getting org config for {assistant_owner}: {e}, falling back to env vars")
-
-    # Fallback to environment variables if no org config
-    if not api_key:
-        api_key = os.getenv("OPENAI_API_KEY")
-        base_url = os.getenv("OPENAI_BASE_URL")
-        import config
-        default_model = os.getenv("OPENAI_MODEL") or config.OPENAI_MODEL
-        if not assistant_owner:
-            multimodal_logger.info("Using environment variable configuration (no assistant owner provided)")
-        else:
-            multimodal_logger.info(f"Using environment variable configuration (fallback for {assistant_owner})")
-        logger.info("Using environment variable configuration")
-    
-    if not api_key:
-        raise ValueError("No OpenAI API key found in organization config or environment variables")
+    config_resolver = OrganizationConfigResolver(assistant_owner)
+    org_name = config_resolver.organization.get('name', 'Unknown')
+    openai_config = config_resolver.get_provider_config("openai")
+    if not openai_config or not openai_config.get("enabled", True):
+        raise ValueError("OpenAI is not enabled for this organization")
+    api_key = openai_config.get("api_key")
+    base_url = openai_config.get("base_url")
+    default_model = openai_config.get("default_model")
+    config_source = "organization"
+    if use_small_fast_model:
+        small_fast = config_resolver.get_small_fast_model_config()
+        if small_fast.get("provider") == "openai" and small_fast.get("model"):
+            llm = small_fast["model"]
+    if not api_key or not base_url:
+        raise ValueError("OpenAI credentials or endpoint missing from organization configuration")
 
     # Phase 3: Model resolution and fallback logic
     resolved_model = llm or default_model

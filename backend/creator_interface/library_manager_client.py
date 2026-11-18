@@ -51,29 +51,14 @@ class LibraryManagerClient:
             )
 
         user_email = creator_user.get("email")
-        if user_email:
-            try:
-                resolver = OrganizationConfigResolver(user_email)
-                lib_config = resolver.get_library_config()
-                if lib_config and lib_config.get("server_url"):
-                    return {
-                        "url": lib_config["server_url"],
-                        "token": lib_config.get("api_token") or self.global_token,
-                        "allowed_plugins": lib_config.get("allowed_import_plugins", []),
-                        "external_keys": lib_config.get("external_service_keys", {}),
-                    }
-            except Exception as e:
-                logger.warning(
-                    f"Error resolving library config for {user_email}: {e}")
-
-        if not self.global_server_url:
-            raise ValueError(
-                "Library Manager not configured (set LAMB_LIBRARY_SERVER)")
+        resolver = OrganizationConfigResolver(user_email)
+        lib_config = resolver.get_library_config()
+        if not lib_config.get("server_url") or not lib_config.get("api_token"):
+            raise ValueError("Library Manager connection is not configured for this organization")
         return {
-            "url": self.global_server_url,
-            "token": self.global_token,
-            "allowed_plugins": [],
-            "external_keys": {},
+            "url": lib_config["server_url"], "token": lib_config["api_token"],
+            "allowed_plugins": lib_config.get("allowed_import_plugins", []),
+            "external_keys": lib_config.get("external_service_keys", {}),
         }
 
     def _headers(self, token: str) -> Dict[str, str]:

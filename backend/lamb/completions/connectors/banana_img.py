@@ -80,15 +80,18 @@ def get_connector_metadata() -> Dict[str, Any]:
 def get_available_llms(assistant_owner: Optional[str] = None) -> List[str]:
     """
     Return available image generation models for this connector.
-    Models are loaded from GEMINI_MODELS environment variable.
+    Models are resolved from the saved organization configuration.
 
     Args:
-        assistant_owner: Optional assistant owner email (unused, kept for interface compatibility)
+        assistant_owner: Optional owner email; omitted selects the system organization
         
     Returns:
         List of model IDs (actual Google API model names)
     """
-    return GEMINI_MODELS.copy()
+    settings = OrganizationConfigResolver(assistant_owner).get_provider_config("google")
+    if not settings or not settings.get("enabled", True):
+        return []
+    return settings.get("models", [settings["default_model"]] if settings.get("default_model") else [])
 
 
 def get_available_llms_with_metadata(assistant_owner: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -97,13 +100,13 @@ def get_available_llms_with_metadata(assistant_owner: Optional[str] = None) -> L
     Since we use actual API model names, metadata is minimal.
     
     Args:
-        assistant_owner: Optional assistant owner email (unused, kept for interface compatibility)
+        assistant_owner: Optional owner email; omitted selects the system organization
         
     Returns:
         List of model metadata dictionaries
     """
     models = []
-    for model_id in GEMINI_MODELS:
+    for model_id in get_available_llms(assistant_owner):
         model_info = {
             "id": model_id,
             "display_name": model_id,  # Use actual model name as display name
@@ -423,13 +426,15 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
     
     # Validate model name - use actual API model names from env config
     available_models = get_available_llms(assistant_owner)
-    model = llm or GEMINI_DEFAULT_MODEL
+    google_config = OrganizationConfigResolver(assistant_owner).get_provider_config("google")
+    default_model = google_config.get("default_model")
+    model = llm or default_model
     logger.info(f"🖼️ Model validation: requested='{model}', available={available_models}")
     
     # If model not in available list, fall back to default model
     if model not in available_models:
         logger.warning(f"⚠️ Model '{model}' not in available models, falling back to default: {GEMINI_DEFAULT_MODEL}")
-        model = GEMINI_DEFAULT_MODEL
+        model = default_model
     
     # Final validation - ensure default model is valid
     if model not in available_models:
@@ -466,33 +471,7 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
     logger.info(f"✅ Model '{model}' validated successfully")
     logger.info(f"🔧 Getting organization config for owner: {assistant_owner}")
 
-    # Get organization-specific configuration
-    api_key = None
-    org_name = "Unknown"
-    config_source = "env_vars"
-
-    if assistant_owner:
-        try:
-            config_resolver = OrganizationConfigResolver(assistant_owner)
-            org_name = config_resolver.organization.get('name', 'Unknown')
-            google_config = config_resolver.get_provider_config("google")
-
-            if google_config and google_config.get("enabled", True):
-                api_key = google_config.get("api_key")
-                config_source = "organization"
-                logger.info(f"Using organization: '{org_name}' (owner: {assistant_owner})")
-            else:
-                logger.warning(f"Google Gen AI disabled for organization of user {assistant_owner}")
-        except Exception as e:
-            logger.error(f"Error getting Google Gen AI config for {assistant_owner}: {e}")
-
-    # Fallback to environment variables
-    if not api_key:
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        if not assistant_owner:
-            logger.info("Using environment variable configuration (no assistant owner provided)")
-        else:
-            logger.info(f"Using environment variable configuration (fallback for {assistant_owner})")
+    api_key = google_config.get("api_key") if google_config.get("enabled", True) else None
 
     if not api_key:
         error_msg = (
@@ -500,7 +479,7 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
             "Please configure one of the following:\n"
             "1. Organization config: Set 'google.api_key' in organization settings\n"
             "2. Environment variable: Set GEMINI_API_KEY or GOOGLE_API_KEY\n\n"
-            f"Current status: Google Gen AI disabled for organization '{org_name}' (owner: {assistant_owner or 'N/A'})"
+            f"Current status: no configured Google Gen AI key for owner {assistant_owner or 'system organization'}"
         )
         logger.error(f"❌ {error_msg}")
         # Return a proper error response instead of raising

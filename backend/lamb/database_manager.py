@@ -74,11 +74,12 @@ class LambDatabaseManager:
             # Initialize system organization AFTER migrations so that
             # Creator_users columns (enabled, password_hash, role) exist.
             # Guard with a class-level flag so this only runs once per process —
-            # sync_system_org_with_env overwrites provider config from .env and must
+            # explicitly enabled startup overrides must
             # not run on every per-request LambDatabaseManager() instantiation.
-            if not LambDatabaseManager._system_org_initialized:
-                self.initialize_system_organization()
-                LambDatabaseManager._system_org_initialized = True
+            with self._initialization_lock:
+                if not LambDatabaseManager._system_org_initialized:
+                    self.initialize_system_organization()
+                    LambDatabaseManager._system_org_initialized = True
 
         except Exception as e:
             logger.error(f"Error during initialization: {e}")
@@ -610,130 +611,107 @@ class LambDatabaseManager:
                 connection.close()
                 logger.debug("Database connection closed")
 
-    def create_admin_user(self):
-        """Create the system admin user in both OWI and LAMB systems"""
-        owi_manager = OwiUserManager()
-
-        # Create or verify OWI admin user
-        owi_user = owi_manager.get_user_by_email(config.OWI_ADMIN_EMAIL)
-        if not owi_user:
-            owi_manager.create_user(
-                name=config.OWI_ADMIN_NAME,
-                email=config.OWI_ADMIN_EMAIL,
-                password=config.OWI_ADMIN_PASSWORD,
-                role="admin"
-            )
-            logger.info(f"Created OWI admin user: {config.OWI_ADMIN_EMAIL}")
-        else:
-            # Ensure the user has admin role in OWI
-            if owi_user.get('role') != 'admin':
-                owi_manager.update_user_role_by_email(
-                    config.OWI_ADMIN_EMAIL, 'admin')
-                logger.info(
-                    f"Updated OWI user to admin role: {config.OWI_ADMIN_EMAIL}")
-
-        # Note: LAMB creator user will be created in initialize_system_organization
-        # to ensure it's created with the correct organization_id
-
     def initialize_system_organization(self):
-        """Initialize the system organization and admin user"""
-        logger.info("Initializing system organization")
-
-        # Check if system organization exists
-        system_org = self.get_organization_by_slug("lamb")
-
-        if not system_org:
-            # Create system organization from environment
-            system_org_id = self.create_system_organization()
-            if not system_org_id:
-                logger.error("Failed to create system organization")
-                return
+        """Seed missing settings; replace saved values only under an explicit flag."""
+        from .startup_configuration import StartupConfiguration
+        policy = StartupConfiguration()
+        org = self.get_organization_by_slug("lamb")
+        # Validate before writing organization or account settings.
+        lti_pair = policy.lti_credentials(self.get_lti_global_config())
+        if policy.overrides["ADMIN"]:
+            if not config.OWI_ADMIN_EMAIL or not config.OWI_ADMIN_PASSWORD:
+                raise ValueError("ADMIN recovery requires an email and nonempty password")
+            if len(config.OWI_ADMIN_PASSWORD.encode("utf-8")) > 72:
+                raise ValueError("ADMIN recovery password exceeds bcrypt's 72-byte limit")
+        if org:
+            self.sync_system_org_with_env(org['id'], policy)
+            org_id = org['id']
         else:
-            system_org_id = system_org['id']
-            # Update system organization config from .env
-            self.sync_system_org_with_env(system_org_id)
-            logger.info(
-                "System organization configuration updated from environment")
+            org_id = self.create_system_organization(policy)
+            if not org_id:
+                raise RuntimeError("Could not initialize the system organization")
+        if lti_pair and not self.set_lti_global_config(*lti_pair, updated_by="startup"):
+            raise RuntimeError("Could not save startup LTI credentials")
+        self.ensure_system_admin(org_id, recover=policy.overrides["ADMIN"])
+        for group, enabled in policy.overrides.items():
+            if enabled:
+                logger.info("Startup override enabled: %s (reapplies until disabled)", group)
 
-        # Always ensure admin user exists and has proper roles
-        self.ensure_system_admin(system_org_id)
+    def ensure_system_admin(self, system_org_id: int, recover=False):
+        """Bootstrap missing accounts; preserve existing account policy by default.
 
-    def ensure_system_admin(self, system_org_id: int):
-        """Ensure the system admin exists with system role 'admin' AND an 'admin'
-        organization role in the system org.
-
-        Idempotent and self-healing: runs on every startup, verifies the end state,
-        and repairs anything missing. Return values are checked and any incomplete
-        bootstrap is logged at WARNING (not swallowed), so a half-provisioned admin
-        — which silently hides the Admin menu — becomes visible and is fixed on the
-        next boot rather than persisting forever. (#405)
+        Recovery preserves existing names and organization membership. The target
+        becomes system admin and admin of its own organization; former admins are
+        untouched. Only explicit recovery resets existing passwords/enabled state.
         """
-        # First, ensure OWI admin exists
-        self.create_admin_user()
-
-        # Check if LAMB creator user exists
-        admin_user = self.get_creator_user_by_email(config.OWI_ADMIN_EMAIL)
-
-        if not admin_user:
-            # Create LAMB creator user with system organization
-            admin_user_id = self.create_creator_user(
-                user_email=config.OWI_ADMIN_EMAIL,
-                user_name=config.OWI_ADMIN_NAME,
-                password=config.OWI_ADMIN_PASSWORD,
-                organization_id=system_org_id
-            )
-            if not admin_user_id:
-                # First-boot races (e.g. migration/column visibility) can land here.
-                # Bail loudly; the next startup re-runs this and self-heals.
-                logger.warning(
-                    f"ensure_system_admin: could not create LAMB admin user "
-                    f"{config.OWI_ADMIN_EMAIL}; will retry on next startup")
-                return
-            logger.info(f"Created LAMB admin user: {config.OWI_ADMIN_EMAIL}")
-            # Re-fetch so we self-heal against the persisted row below.
-            admin_user = self.get_creator_user_by_email(config.OWI_ADMIN_EMAIL) or {}
-            admin_user_id = admin_user.get('id', admin_user_id)
+        mirror = OwiUserManager()
+        admin = self.get_creator_user_by_email(config.OWI_ADMIN_EMAIL)
+        created = not admin
+        if created:
+            user_id = self.create_creator_user(
+                config.OWI_ADMIN_EMAIL, config.OWI_ADMIN_NAME,
+                config.OWI_ADMIN_PASSWORD, organization_id=system_org_id)
+            if not user_id:
+                raise RuntimeError("Could not create the designated LAMB administrator")
+            admin = self.get_creator_user_by_email(config.OWI_ADMIN_EMAIL)
+        if not recover and not created:
+            return
+        if recover:
+            self._recover_startup_admin(admin, mirror)
         else:
-            admin_user_id = admin_user['id']
-            # Ensure the admin sits in the system organization
-            if admin_user.get('organization_id') != system_org_id:
-                self.update_user_organization(admin_user_id, system_org_id)
-                logger.info("ensure_system_admin: moved admin user to system org")
+            if not self.update_creator_user_role(config.OWI_ADMIN_EMAIL, "admin"):
+                raise RuntimeError("Could not set the initial administrator role")
+            owi = mirror.get_user_by_email(config.OWI_ADMIN_EMAIL)
+            if not owi:
+                owi = mirror.create_user(config.OWI_ADMIN_NAME, config.OWI_ADMIN_EMAIL,
+                                         config.OWI_ADMIN_PASSWORD, "admin")
+            if not owi:
+                logger.warning("Open WebUI administrator mirror unavailable during initial setup")
+            elif owi.get("role") != "admin" and not mirror.update_user_role_by_email(
+                    config.OWI_ADMIN_EMAIL, "admin"):
+                logger.warning("Could not set the initial Open WebUI administrator role")
+        organization_id = admin.get("organization_id") or system_org_id
+        if self.get_user_organization_role(admin['id'], organization_id) != "admin":
+            if not self.assign_organization_role(organization_id, admin['id'], "admin"):
+                raise RuntimeError("Could not set the administrator organization role")
 
-        # Self-heal the organization role (the row found empty in #405).
-        if self.get_user_organization_role(admin_user_id, system_org_id) != "admin":
-            if self.assign_organization_role(
-                    organization_id=system_org_id, user_id=admin_user_id, role="admin"):
-                logger.info("ensure_system_admin: assigned admin org-role in system org")
-            else:
-                logger.warning(
-                    f"ensure_system_admin: FAILED to assign admin org-role to user "
-                    f"{admin_user_id} in org {system_org_id}")
+    def _recover_startup_admin(self, admin, mirror):
+        """Write both password hashes in one attached SQLite transaction.
 
-        # Self-heal the LAMB-side system role (bootstrap admin must be system admin).
-        if (admin_user or {}).get('role') != 'admin':
-            if not self.update_creator_user_role(config.OWI_ADMIN_EMAIL, 'admin'):
-                logger.warning(
-                    f"ensure_system_admin: FAILED to set system role 'admin' for "
-                    f"{config.OWI_ADMIN_EMAIL}")
+        SQLite rolls back both on an ordinary SQL failure. With WAL, a host crash
+        is not guaranteed atomic across attached databases; recovery is repeatable
+        on the next startup. No network call or long-running work in the write.
+        """
+        from .auth import hash_password
+        hashed = hash_password(config.OWI_ADMIN_PASSWORD)
+        owi = mirror.get_user_by_email(config.OWI_ADMIN_EMAIL)
+        if not owi:
+            owi = mirror.create_user(admin['name'], config.OWI_ADMIN_EMAIL,
+                                     config.OWI_ADMIN_PASSWORD, "admin")
+        if not owi:
+            raise RuntimeError("Could not create the recovery Open WebUI account")
+        connection = self.get_connection()
+        if connection is None:
+            raise RuntimeError("Could not open administrator recovery transaction")
+        try:
+            connection.execute("ATTACH DATABASE ? AS recovery_owi", (mirror.db.db_path,))
+            with connection:
+                connection.execute(
+                    f"UPDATE {self.table_prefix}Creator_users SET password_hash=?, "
+                    "enabled=1, role='admin', auth_provider='password', updated_at=? WHERE id=?",
+                    (hashed, int(time.time()), admin['id']))
+                connection.execute("UPDATE recovery_owi.user SET role='admin' WHERE id=?", (owi['id'],))
+                connection.execute("INSERT INTO recovery_owi.auth (id, email, password, active) "
+                                   "VALUES (?, ?, ?, 1) ON CONFLICT(id) DO UPDATE SET "
+                                   "password=excluded.password, active=1, email=excluded.email",
+                                   (owi['id'], config.OWI_ADMIN_EMAIL, hashed))
+        except Exception:
+            # Never include passwords, hashes or SQL parameters in diagnostics.
+            raise RuntimeError("Administrator recovery failed; password transaction rolled back") from None
+        finally:
+            connection.close()
 
-        # Final verification — loud if still incomplete, so the #405 silent-failure
-        # chain can't hide a non-admin admin (no Admin menu) again.
-        final = self.get_creator_user_by_email(config.OWI_ADMIN_EMAIL) or {}
-        final_org_role = (
-            self.get_user_organization_role(admin_user_id, system_org_id)
-            if admin_user_id else None)
-        if final.get('role') != 'admin' or final_org_role != 'admin':
-            logger.warning(
-                f"ensure_system_admin INCOMPLETE for {config.OWI_ADMIN_EMAIL}: "
-                f"system_role={final.get('role')!r}, org_role={final_org_role!r}. "
-                f"Admin menu will not appear; will retry on next startup.")
-        else:
-            logger.info(
-                f"ensure_system_admin: verified {config.OWI_ADMIN_EMAIL} has "
-                f"system role + org role = admin")
-
-    def create_system_organization(self) -> Optional[int]:
+    def create_system_organization(self, policy=None) -> Optional[int]:
         """Create the 'lamb' system organization from .env configuration"""
         import os
         from datetime import datetime
@@ -749,11 +727,10 @@ class LambDatabaseManager:
                 "default": {
                     "name": "System Default",
                     "is_default": True,
-                    "providers": self._load_providers_from_env(),
-                    "knowledge_base": self._load_kb_config_from_env()
+                    "providers": {}
                 }
             },
-            "features": self._load_features_from_env(),
+            "features": {},
             "limits": {
                 "usage": {
                     "tokens_per_month": -1,  # -1 represents unlimited for system
@@ -763,12 +740,9 @@ class LambDatabaseManager:
             }
         }
 
-        # Seed assistant defaults from defaults.json
-        try:
-            config_data['assistant_defaults'] = self._load_assistant_defaults_from_file()
-        except Exception as e:
-            logger.warning(
-                f"Could not load assistant defaults for system org: {e}")
+        from .startup_configuration import StartupConfiguration
+        policy = policy or StartupConfiguration()
+        config_data = policy.organization_config(config_data, self._load_assistant_defaults_from_file(), self._provider_startup_defaults())
 
         return self.create_organization(
             slug="lamb",
@@ -776,63 +750,6 @@ class LambDatabaseManager:
             is_system=True,
             config=config_data
         )
-
-    def _load_providers_from_env(self) -> Dict[str, Any]:
-        """Load provider configurations from environment variables"""
-        import os
-        providers = {}
-
-        # OpenAI configuration
-        if os.getenv("OPENAI_API_KEY"):
-            providers["openai"] = {
-                "api_key": os.getenv("OPENAI_API_KEY"),
-                "base_url": os.getenv("OPENAI_BASE_URL") or config.OPENAI_BASE_URL,
-                "models": os.getenv("OPENAI_MODELS", "").split(",") if os.getenv("OPENAI_MODELS") else [],
-                "default_model": os.getenv("OPENAI_MODEL") or config.OPENAI_MODEL
-            }
-
-        # Ollama configuration
-        if os.getenv("OLLAMA_BASE_URL"):
-            providers["ollama"] = {
-                "base_url": os.getenv("OLLAMA_BASE_URL"),
-            }
-            # Ollama models are discovered dynamically via the Ollama API
-            # (get_available_llms in connectors/ollama.py). Do NOT hardcode
-            # a models list here — it would override the live model list
-            # on every restart.
-            if os.getenv("OLLAMA_MODEL"):
-                providers["ollama"]["models"] = os.getenv("OLLAMA_MODEL").split(",")
-
-        return providers
-
-    def _load_kb_config_from_env(self) -> Dict[str, Any]:
-        """Load knowledge base configuration from environment variables"""
-        import os
-        return {
-            "server_url": os.getenv("LAMB_KB_SERVER", ""),
-            "api_token": os.getenv("LAMB_KB_SERVER_TOKEN", "")
-        }
-
-    def _load_features_from_env(self) -> Dict[str, Any]:
-        """Load feature flags from environment variables"""
-        import os
-        features = {
-            "signup_enabled": os.getenv("SIGNUP_ENABLED", "false").lower() == "true",
-            "dev_mode": os.getenv("DEV_MODE", "false").lower() == "true",
-            "mcp_enabled": True,  # Always enabled for system org
-            "lti_publishing": True,
-            "rag_enabled": True,
-            # Per-creator API keys for the OpenAI-compatible facade. Default
-            # off — an org owner/admin turns it on explicitly.
-            "api_access": os.getenv("API_ACCESS_ENABLED", "false").lower() == "true"
-        }
-
-        # Add signup key if signup is enabled and key is available
-        signup_key = os.getenv("SIGNUP_SECRET_KEY")
-        if features["signup_enabled"] and signup_key:
-            features["signup_key"] = signup_key.strip()
-
-        return features
 
     def _load_assistant_defaults_from_file(self) -> Dict[str, Any]:
         """Load assistant defaults from /backend/static/json/defaults.json"""
@@ -875,72 +792,20 @@ class LambDatabaseManager:
                 "rag_processor": "No RAG"
             }
 
-    def _ensure_assistant_defaults_in_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        """Ensure assistant_defaults exists in config, merging with file defaults"""
-        if 'assistant_defaults' not in config:
-            config['assistant_defaults'] = self._load_assistant_defaults_from_file()
-        else:
-            # Merge new keys from file without overwriting existing values
-            file_defaults = self._load_assistant_defaults_from_file()
-            for key, value in file_defaults.items():
-                if key not in config['assistant_defaults']:
-                    config['assistant_defaults'][key] = value
-        return config
+    @staticmethod
+    def _provider_startup_defaults():
+        return {"google": {"models": [m.strip() for m in config.GEMINI_MODELS.split(",") if m.strip()],
+                           "default_model": config.GEMINI_DEFAULT_MODEL}}
 
-    def sync_system_org_with_env(self, org_id: int):
-        """Update system organization configuration from environment variables"""
+    def sync_system_org_with_env(self, org_id: int, policy=None):
+        from .startup_configuration import StartupConfiguration
         org = self.get_organization_by_id(org_id)
         if not org or not org.get('is_system'):
-            logger.warning("Cannot sync non-system organization")
             return
-
-        # Update config with latest env values
-        config = org['config']
-        config["setups"]["default"]["providers"] = self._load_providers_from_env()
-        config["setups"]["default"]["knowledge_base"] = self._load_kb_config_from_env()
-        config["features"] = self._load_features_from_env()
-
-        # Ensure assistant defaults exist and include any new keys from defaults.json
-        try:
-            config = self._ensure_assistant_defaults_in_config(config)
-        except Exception as e:
-            logger.warning(
-                f"Could not ensure assistant_defaults during system sync: {e}")
-
-        # Sync global default model from environment
-        global_default_provider = os.getenv(
-            'GLOBAL_DEFAULT_MODEL_PROVIDER', '').strip()
-        global_default_model = os.getenv(
-            'GLOBAL_DEFAULT_MODEL_NAME', '').strip()
-
-        if global_default_provider and global_default_model:
-            if 'default' not in config['setups']:
-                config['setups']['default'] = {}
-
-            config['setups']['default']['global_default_model'] = {
-                "provider": global_default_provider,
-                "model": global_default_model
-            }
-            logger.info(
-                f"Synced global-default-model: {global_default_provider}/{global_default_model}")
-
-        # Sync small fast model from environment
-        small_fast_provider = os.getenv(
-            'SMALL_FAST_MODEL_PROVIDER', '').strip()
-        small_fast_model = os.getenv('SMALL_FAST_MODEL_NAME', '').strip()
-
-        if small_fast_provider and small_fast_model:
-            if 'default' not in config['setups']:
-                config['setups']['default'] = {}
-
-            config['setups']['default']['small_fast_model'] = {
-                "provider": small_fast_provider,
-                "model": small_fast_model
-            }
-            logger.info(
-                f"Synced small-fast-model: {small_fast_provider}/{small_fast_model}")
-
-        self.update_organization_config(org_id, config)
+        policy = policy or StartupConfiguration()
+        updated = policy.organization_config(org['config'], self._load_assistant_defaults_from_file(), self._provider_startup_defaults())
+        if updated != org['config'] and not self.update_organization_config(org_id, updated):
+            raise RuntimeError("Could not save startup organization configuration")
 
     # Organization Management Methods
 

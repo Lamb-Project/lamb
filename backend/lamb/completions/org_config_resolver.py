@@ -2,15 +2,13 @@
 Organization Configuration Resolver for LAMB
 
 This module provides organization-aware configuration resolution for LLM providers.
-It handles the hierarchy of configuration sources and provides fallback to environment
-variables for backward compatibility with the system organization.
+Startup seeds deployment defaults. Runtime requests read the saved organization
+configuration, including explicit disables and cleared values.
 """
 
-import os
 import logging
 from typing import Dict, Any, Optional
 from lamb.database_manager import LambDatabaseManager
-import config
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +16,7 @@ logger = logging.getLogger(__name__)
 class OrganizationConfigResolver:
     """Resolves configuration for providers based on organization context"""
     
-    def __init__(self, assistant_owner: str, setup_name: str = "default"):
+    def __init__(self, assistant_owner: Optional[str] = None, setup_name: str = "default"):
         """
         Initialize the configuration resolver
         
@@ -35,6 +33,10 @@ class OrganizationConfigResolver:
     @property
     def organization(self):
         """Lazy load organization data from assistant owner"""
+        if self._org is None and self.assistant_owner is None:
+            self._org = self.db_manager.get_organization_by_slug("lamb")
+            if not self._org:
+                raise ValueError("System organization not found")
         if self._org is None:
             # Get user by email to find their organization
             user = self.db_manager.get_creator_user_by_email(self.assistant_owner)
@@ -56,7 +58,7 @@ class OrganizationConfigResolver:
     
     def get_provider_config(self, provider: str) -> Dict[str, Any]:
         """
-        Get provider configuration with fallback hierarchy
+        Get saved provider configuration
         
         Args:
             provider: Provider name (e.g., "openai", "ollama")
@@ -75,11 +77,6 @@ class OrganizationConfigResolver:
         providers = setup.get('providers', {})
         config = providers.get(provider, {})
         
-        # If not found and this is the system organization, fallback to env vars
-        if not config and self.organization.get('is_system', False):
-            logger.info(f"Falling back to environment variables for {provider}")
-            config = self._load_from_env(provider)
-            
         # Cache the result
         if config:
             self._config_cache[cache_key] = config
@@ -91,43 +88,30 @@ class OrganizationConfigResolver:
         org_config = self.organization.get('config', {})
         setups = org_config.get('setups', {})
         setup = setups.get(self.setup_name, {})
-        # Support both current and legacy shapes.
-        # - Newer docs/configs: org_config.kb_server.{url, api_key}
-        # - Older configs: setups[setup_name].knowledge_base.{server_url, api_token}
-        # Merge both, with kb_server (newer) taking priority for overlapping keys.
-        kb_config = {**setup.get("knowledge_base", {}), **org_config.get("kb_server", {})}
-        
-        # Fallback to env vars for system org
-        if not kb_config and self.organization.get('is_system', False):
-            kb_config = {
-                "server_url": os.getenv('LAMB_KB_SERVER') or (config.OWI_BASE_URL.replace(':8080', ':9090') if hasattr(config, 'OWI_BASE_URL') else None),
-                "api_token": os.getenv('LAMB_KB_SERVER_TOKEN') or config.LAMB_BEARER_TOKEN
-            }
+        legacy = setup.get("knowledge_base", {})
+        current = org_config.get("kb_server", {})
+        def first(mapping, names):
+            return next((mapping[key] for key in names if key in mapping), None)
+        # Normalize aliases before merging, so legacy server_url cannot beat a
+        # saved current url and explicit empty credentials never trigger fallback.
+        result = {
+            "server_url": first(legacy, ("server_url", "url")),
+            "api_token": first(legacy, ("api_token", "api_key", "token")),
+        }
+        for field, names in (("server_url", ("url", "server_url")),
+                              ("api_token", ("api_key", "api_token", "token"))):
+            if any(name in current for name in names):
+                result[field] = first(current, names)
+        for field in ("embedding_model", "collection_defaults"):
+            if field in current or field in legacy:
+                result[field] = current.get(field, legacy.get(field))
+        return result if legacy or current else {}
 
-        # Normalize keys so callers can rely on server_url/api_token.
-        if kb_config:
-            server_url = kb_config.get("server_url") or kb_config.get("url")
-            api_token = kb_config.get("api_token") or kb_config.get("api_key") or kb_config.get("token")
-            result = {
-                "server_url": server_url,
-                "api_token": api_token,
-            }
-            # Include embedding model and collection defaults if configured
-            embedding_model = kb_config.get("embedding_model")
-            if embedding_model:
-                result["embedding_model"] = embedding_model
-            collection_defaults = kb_config.get("collection_defaults")
-            if collection_defaults:
-                result["collection_defaults"] = collection_defaults
-            return result
-
-        return {}
-    
     def get_library_config(self) -> Dict[str, Any]:
         """Get Library Manager configuration for this organization.
 
         Resolves from ``setups[setup_name].library`` in org config.
-        Falls back to environment variables for the system org.
+        Startup seeds missing system-organization connection settings.
 
         Returns:
             Dict with ``server_url``, ``api_token``, ``allowed_import_plugins``,
@@ -138,16 +122,10 @@ class OrganizationConfigResolver:
         setup = setups.get(self.setup_name, {})
         lib_config = setup.get("library", {})
 
-        if not lib_config and self.organization.get('is_system', False):
-            lib_config = {
-                "server_url": os.getenv('LAMB_LIBRARY_SERVER', 'http://library-manager:9091'),
-                "api_token": os.getenv('LAMB_LIBRARY_TOKEN', ''),
-            }
-
         if lib_config:
             return {
-                "server_url": lib_config.get("server_url") or lib_config.get("url"),
-                "api_token": lib_config.get("api_token") or lib_config.get("token"),
+                "server_url": lib_config.get("server_url", lib_config.get("url")),
+                "api_token": lib_config.get("api_token", lib_config.get("token")),
                 "allowed_import_plugins": lib_config.get("allowed_import_plugins", []),
                 "external_service_keys": lib_config.get("external_service_keys", {}),
             }
@@ -176,11 +154,6 @@ class OrganizationConfigResolver:
         provider = global_default_config.get('provider', '')
         model = global_default_config.get('model', '')
         
-        # If not configured and this is system org, try env vars
-        if (not provider or not model) and self.organization.get('is_system', False):
-            provider = os.getenv('GLOBAL_DEFAULT_MODEL_PROVIDER', '').strip()
-            model = os.getenv('GLOBAL_DEFAULT_MODEL_NAME', '').strip()
-        
         return {
             "provider": provider,
             "model": model
@@ -201,11 +174,6 @@ class OrganizationConfigResolver:
         
         provider = small_fast_config.get('provider', '')
         model = small_fast_config.get('model', '')
-        
-        # If not configured and this is system org, try env vars
-        if (not provider or not model) and self.organization.get('is_system', False):
-            provider = os.getenv('SMALL_FAST_MODEL_PROVIDER', '').strip()
-            model = os.getenv('SMALL_FAST_MODEL_NAME', '').strip()
         
         return {
             "provider": provider,
@@ -252,75 +220,6 @@ class OrganizationConfigResolver:
                 return select(provider, catalog[0])
         raise ValueError('No enabled model and connector configured for this organization')
 
-    def _load_from_env(self, provider: str) -> Dict[str, Any]:
-        """Load provider configuration from environment variables"""
-        if provider == "openai":
-            return self._load_openai_from_env()
-        elif provider == "ollama":
-            return self._load_ollama_from_env()
-        elif provider == "google":
-            return self._load_google_from_env()
-        elif provider == "llm":
-            return self._load_llm_from_env()
-        else:
-            return {}
-    
-    def _load_openai_from_env(self) -> Dict[str, Any]:
-        """Load OpenAI configuration from environment variables"""
-        provider_config = {}
-        
-        if os.getenv("OPENAI_API_KEY"):
-            provider_config["api_key"] = os.getenv("OPENAI_API_KEY")
-            provider_config["base_url"] = os.getenv("OPENAI_BASE_URL") or config.OPENAI_BASE_URL
-            
-            # Handle models
-            models_str = os.getenv("OPENAI_MODELS", "")
-            if models_str:
-                provider_config["models"] = [m.strip() for m in models_str.split(",") if m.strip()]
-            else:
-                provider_config["models"] = [os.getenv("OPENAI_MODEL") or config.OPENAI_MODEL]
-                
-            provider_config["default_model"] = os.getenv("OPENAI_MODEL") or config.OPENAI_MODEL
-            provider_config["enabled"] = os.getenv("OPENAI_ENABLED", "true").lower() == "true"
-            
-        return provider_config
-    
-    def _load_ollama_from_env(self) -> Dict[str, Any]:
-        """Load Ollama configuration from environment variables"""
-        config = {}
-        
-        if os.getenv("OLLAMA_BASE_URL"):
-            config["base_url"] = os.getenv("OLLAMA_BASE_URL")
-            config["models"] = [os.getenv("OLLAMA_MODEL", "llama3.1")]
-            config["enabled"] = os.getenv("OLLAMA_ENABLED", "false").lower() == "true"
-            
-        return config
-    
-    def _load_llm_from_env(self) -> Dict[str, Any]:
-        """Load LLM CLI configuration from environment variables"""
-        config = {}
-
-        config["default_model"] = os.getenv("LLM_DEFAULT_MODEL", "o1-mini")
-        config["enabled"] = os.getenv("LLM_ENABLED", "false").lower() == "true"
-
-        return config
-
-    def _load_google_from_env(self) -> Dict[str, Any]:
-        """Load Google Vertex AI configuration from environment variables"""
-        config = {}
-
-        # Vertex AI uses project_id and location instead of API key
-        project_id = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("VERTEX_PROJECT_ID")
-        location = os.getenv("GOOGLE_CLOUD_LOCATION") or os.getenv("VERTEX_LOCATION", "us-central1")
-
-        if project_id:
-            config["project_id"] = project_id
-            config["location"] = location
-            config["models"] = ["imagen-3.0-generate-001", "imagen-3.0-fast-generate-001"]
-            config["default_model"] = "imagen-3.0-generate-001"
-            config["enabled"] = os.getenv("VERTEX_ENABLED", "true").lower() == "true"
-
-        return config
 
 
 class OrganizationContext:

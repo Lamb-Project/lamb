@@ -642,3 +642,65 @@ The agent should follow this sequence and check off each step:
 ## Optional: Moodle connector
 
 The Moodle connector is disabled by default. To enable it (encryption key, organization settings, creator connection by token or QR image), follow [moodle-connector.md](./moodle-connector.md).
+
+
+## Startup overrides and administrator recovery
+
+A normal restart preserves saved organization settings and existing administrator
+passwords, names, enabled states and roles. Missing configuration fields are
+initialized from supplied environment values or packaged defaults. Explicit saved
+values such as `false`, an empty string or an empty list remain saved values.
+
+To replace settings at startup, enable only the required group below. Every flag
+is `false` by default. The scope is the system organization's default setup, except
+for administrator accounts and the global LTI credential pair. Other organizations,
+other named setups and existing assistants are unchanged.
+
+| Flag suffix after `LAMB_STARTUP_OVERRIDE_` | Inputs applied when supplied |
+|---|---|
+| `ADMIN` | `OWI_ADMIN_EMAIL` identifies the recovery account; `OWI_ADMIN_PASSWORD` resets both LAMB and Open WebUI passwords. `OWI_ADMIN_NAME` is used only when creating a missing account. |
+| `PROVIDER_CONNECTIONS` | `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OLLAMA_BASE_URL`; Google API key from `GEMINI_API_KEY` or `GOOGLE_API_KEY`, project from `GOOGLE_CLOUD_PROJECT` or `VERTEX_PROJECT_ID`, location from `GOOGLE_CLOUD_LOCATION` or `VERTEX_LOCATION`. First alias present wins, including an explicit empty value. |
+| `MODELS` | `OPENAI_ENABLED`, `OPENAI_MODELS`, `OPENAI_MODEL`; `OLLAMA_ENABLED`, `OLLAMA_MODEL` (comma-separated catalog), `OLLAMA_DEFAULT_MODEL`; `VERTEX_ENABLED`, `GEMINI_MODELS`, `GEMINI_DEFAULT_MODEL`; `LLM_ENABLED`, `LLM_MODELS`, `LLM_DEFAULT_MODEL`; the `GLOBAL_DEFAULT_MODEL_PROVIDER`/`GLOBAL_DEFAULT_MODEL_NAME` and `SMALL_FAST_MODEL_PROVIDER`/`SMALL_FAST_MODEL_NAME` pairs. |
+| `KNOWLEDGE_CONNECTIONS` | `LAMB_KB_SERVER`, `LAMB_KB_SERVER_TOKEN`, `LAMB_LIBRARY_SERVER`, `LAMB_LIBRARY_TOKEN`. Embedding models, collection defaults, import plugins and external service keys are preserved. |
+| `FEATURES` | `SIGNUP_ENABLED`, `SIGNUP_SECRET_KEY`, `API_ACCESS_ENABLED`, `MCP_ENABLED`, `LTI_PUBLISHING_ENABLED`, `RAG_ENABLED`. |
+| `ASSISTANT_DEFAULTS` | `LAMB_ASSISTANT_DEFAULT_` followed by `CONNECTOR`, `LLM`, `PROMPT_PROCESSOR`, `RAG_PROCESSOR`, `SYSTEM_PROMPT`, `PROMPT_TEMPLATE`, `RAG_PLACEHOLDERS`, `LAMB_HELPER_ASSISTANT`, `SURFER_SYSTEM_PROMPT` or `SURFER_PROMPT_TEMPLATE`. |
+| `LTI_CREDENTIALS` | `LTI_GLOBAL_CONSUMER_KEY` and `LTI_GLOBAL_SECRET`, supplied together and nonempty. Existing LMS installations must use the same new credentials. LTI 1.3 registrations and signing keys are unaffected. |
+
+Missing inputs leave fields unchanged, even with an override enabled. An explicitly
+empty optional string clears that field; an empty model catalog becomes `[]`.
+`RAG_PLACEHOLDERS` is a JSON array of strings; use `[]` to clear it. Boolean inputs
+accept `true` or `false`, case-insensitively. Global and small/fast model pairs must
+be supplied together; clear a pair by explicitly setting both values empty.
+Administrator passwords and the global LTI credentials cannot be cleared. Invalid
+values report the input name without its value and prevent startup from applying
+the organization changes. Existing mandatory deployment inputs still apply.
+
+Flags apply on **every restart until disabled**, including restarts of individual
+workers. To recover access, set `LAMB_STARTUP_OVERRIDE_ADMIN=true` with the target
+email and a nonempty password of at most 72 UTF-8 bytes, restart, verify access,
+then set the flag back to `false`. Recovery enables the LAMB account, enables its
+Open WebUI authentication record, restores administrator roles and enables password
+authentication. Existing display names and organization membership are preserved;
+the account becomes admin of its existing organization. Other administrators are
+not renamed, removed or demoted. If one account record is missing it is created.
+The two password hashes are updated together in an attached SQLite transaction:
+ordinary SQL failures roll back both; SQLite WAL does not guarantee cross-database
+atomicity after a host crash, so rerun recovery after such an interruption.
+
+On first setup, the effective legacy global LTI pair is saved once, using `lamb`
+for an omitted consumer key and `LTI_SECRET` as the legacy secret fallback. Further
+restarts preserve that saved pair unless the LTI override is enabled.
+
+Provider credentials and model policy are separate groups: rotating a key does
+not reset model selection. Current KB-screen connection fields take precedence
+over legacy KB fields, including explicit empty values. Runtime provider and KB
+requests use the saved organization settings; a cleared key does not fall back to
+an environment credential.
+
+The stock Compose file forwards the flags and optional inputs. Optional entries
+without defaults preserve the difference between absent and empty values. Existing
+Compose defaults are actual inputs in the container environment and therefore
+participate in an enabled override; review them when enabling a group. Custom
+Compose files must forward the selected variables too. Deployment URLs, worker
+counts, timeouts, logging, maintenance, `DEV_MODE`, frontend toggles and signing or
+encryption keys retain their normal deployment behavior.

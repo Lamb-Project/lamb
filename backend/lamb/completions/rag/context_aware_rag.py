@@ -255,51 +255,12 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
     # Get the top_k value or use a default
     top_k = getattr(assistant, 'RAG_Top_k', 3)
 
-    # Setup for KB server API requests - use organization-specific configuration
-    KB_SERVER_URL = None
-    KB_API_KEY = None
-    org_name = "Unknown"
-    config_source = "env_vars"
-
-    try:
-        # Get organization-specific KB configuration
-        config_resolver = OrganizationConfigResolver(assistant.owner)
-        org_name = config_resolver.organization.get('name', 'Unknown')
-        kb_config = config_resolver.get_knowledge_base_config()
-
-        if kb_config:
-            KB_SERVER_URL = kb_config.get("server_url")
-            KB_API_KEY = kb_config.get("api_token")
-            config_source = "organization"
-            logger.info(
-                f"Using organization: '{org_name}' (owner: {assistant.owner})")
-            logger.info(
-                f"Using organization KB config for {assistant.owner} (org: {org_name})")
-        else:
-            logger.warning(
-                f"No config found for organization '{org_name}', falling back to environment variables")
-            logger.warning(
-                f"No KB config found for {assistant.owner} (org: {org_name}), falling back to env vars")
-    except Exception as e:
-        logger.error(
-            f"Error getting organization config for {assistant.owner}: {e}")
-        logger.error(
-            f"Error getting org KB config for {assistant.owner}: {e}, falling back to env vars")
-
-    # Fallback to environment variables
-    if not KB_SERVER_URL:
-        import config
-        KB_SERVER_URL = os.getenv('LAMB_KB_SERVER')
-        if not KB_SERVER_URL:
-            raise ValueError("LAMB_KB_SERVER environment variable is required")
-        KB_API_KEY = os.getenv(
-            'LAMB_KB_SERVER_TOKEN') or config.LAMB_BEARER_TOKEN
-        print(
-            f"🔧 [RAG/KB] Using environment variable configuration (fallback for {assistant.owner})")
-        logger.info("Using environment variable KB configuration")
-
-    print(
-        f"🚀 [RAG/KB] Server: {KB_SERVER_URL} | Config: {config_source} | Organization: {org_name} | Collections: {len(collections)}")
+    config_resolver = OrganizationConfigResolver(assistant.owner)
+    kb_config = config_resolver.get_knowledge_base_config()
+    KB_SERVER_URL = kb_config.get("server_url")
+    KB_API_KEY = kb_config.get("api_token")
+    if not KB_SERVER_URL or not KB_API_KEY:
+        raise ValueError("Knowledge Base connection is not configured for this organization")
 
     headers = {
         "Authorization": f"Bearer {KB_API_KEY}",

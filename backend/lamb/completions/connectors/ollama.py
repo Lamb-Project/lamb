@@ -54,38 +54,19 @@ async def get_available_llms(assistant_owner: Optional[str] = None): # Make asyn
     Args:
         assistant_owner: Optional assistant owner email to get org-specific models
     """
-    base_url = None
-
-    # Get organization-specific configuration if available
-    if assistant_owner:
-        try:
-            config_resolver = OrganizationConfigResolver(assistant_owner)
-            ollama_config = config_resolver.get_provider_config("ollama")
-
-            if ollama_config and ollama_config.get("enabled", True):
-                base_url = ollama_config.get("base_url")
-                # If models are pre-configured, return them
-                if "models" in ollama_config:
-                    return ollama_config["models"]
-            else:
-                logger.info(f"Ollama disabled for organization of user {assistant_owner}")
-                return []
-        except Exception as e:
-            logger.warning(f"Error resolving organization Ollama config for {assistant_owner}: {e}. "
-                           f"Falling back to environment variables.")
-            # Fall through to env var fallback instead of returning empty list
-            base_url = None
-
-    # Fallback to environment variables only when no assistant_owner (backward compat)
-    if not base_url:
-        if os.getenv("OLLAMA_ENABLED", "false").lower() != "true":
-            logger.info("OLLAMA_ENABLED is false, skipping model list fetch")
+    try:
+        resolver = OrganizationConfigResolver(assistant_owner)
+        settings = resolver.get_provider_config("ollama")
+        if not settings or not settings.get("enabled", True):
             return []
-
-        base_url = os.getenv("OLLAMA_BASE_URL")
+        if "models" in settings:
+            return settings["models"]
+        base_url = settings.get("base_url")
         if not base_url:
-            logger.error("OLLAMA_BASE_URL is not defined")
             return []
+    except Exception:
+        logger.warning("Could not resolve organization Ollama configuration")
+        return []
 
     try:
         session = _get_ollama_session(base_url)
@@ -127,56 +108,22 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
         assistant_owner: Email of assistant owner for org config
         use_small_fast_model: If True, use organization's small-fast-model
     """
-    # Get organization-specific configuration
-    base_url = None
-    model = None
-    org_name = "Unknown"
-    config_source = "env_vars"
-
-    if assistant_owner:
-        try:
-            config_resolver = OrganizationConfigResolver(assistant_owner)
-            org_name = config_resolver.organization.get('name', 'Unknown')
-
-            # Handle small-fast-model logic
-            if use_small_fast_model:
-                small_fast_config = config_resolver.get_small_fast_model_config()
-
-                if small_fast_config.get('provider') == 'ollama' and small_fast_config.get('model'):
-                    llm = small_fast_config['model']
-                    logger.info(f"Using small-fast-model: {llm}")
-                    print(f"🚀 [Ollama] Using small-fast-model: {llm}")
-                else:
-                    logger.warning("Small-fast-model requested but not configured for Ollama, using default")
-
-            ollama_config = config_resolver.get_provider_config("ollama")
-
-            if ollama_config:
-                base_url = ollama_config.get("base_url")
-                if not llm and ollama_config.get("models"):
-                    model = ollama_config["models"][0]  # Use first model as default
-                config_source = "organization"
-                print(f"🏢 [Ollama] Using organization: '{org_name}' (owner: {assistant_owner})")
-                logger.info(f"Using organization config for {assistant_owner} (org: {org_name})")
-            else:
-                print(f"⚠️  [Ollama] No config found for organization '{org_name}', falling back to environment variables")
-                logger.warning(f"No Ollama config found for {assistant_owner} (org: {org_name}), falling back to env vars")
-        except Exception as e:
-            print(f"❌ [Ollama] Error getting organization config for {assistant_owner}: {e}")
-            logger.error(f"Error getting org config for {assistant_owner}: {e}, falling back to env vars")
-
-    # Fallback to environment variables
+    config_resolver = OrganizationConfigResolver(assistant_owner)
+    org_name = config_resolver.organization.get('name', 'Unknown')
+    ollama_config = config_resolver.get_provider_config("ollama")
+    if not ollama_config or not ollama_config.get("enabled", True):
+        raise ValueError("Ollama is not enabled for this organization")
+    base_url = ollama_config.get("base_url")
     if not base_url:
-        import config
-        base_url = os.getenv("OLLAMA_BASE_URL") or config.OLLAMA_BASE_URL
-        if not assistant_owner:
-            print(f"🔧 [Ollama] Using environment variable configuration (no assistant owner provided)")
-        else:
-            print(f"🔧 [Ollama] Using environment variable configuration (fallback for {assistant_owner})")
-        logger.info("Using environment variable configuration")
-
-    if not model:
-        model = llm or os.getenv("OLLAMA_MODEL", "llama3.1")
+        raise ValueError("Ollama endpoint missing from organization configuration")
+    config_source = "organization"
+    if use_small_fast_model:
+        small_fast = config_resolver.get_small_fast_model_config()
+        if small_fast.get("provider") == "ollama" and small_fast.get("model"):
+            llm = small_fast["model"]
+    model = llm or ollama_config.get("default_model")
+    if not model and ollama_config.get("models"):
+        model = ollama_config["models"][0]
 
     # Phase 3: Model resolution and fallback logic following the hierarchy:
     # 1. Explicit model specified → use that (if available)

@@ -61,44 +61,16 @@ class KBServerManager:
                 'token': self.global_kb_server_token
             }
         
-        try:
-            # Resolve organization-specific configuration
-            config_resolver = OrganizationConfigResolver(user_email)
-            kb_config = config_resolver.get_knowledge_base_config()
-            
-            if kb_config and kb_config.get('server_url'):
-                org_name = config_resolver.organization.get('name', 'Unknown')
-                logger.info(f"Using organization-specific KB config for user {user_email} (org: {org_name})")
-                api_token = kb_config.get('api_token')
-                if not api_token:
-                    api_token = self.global_kb_server_token
-                result = {
-                    'url': kb_config.get('server_url'),
-                    'token': api_token
-                }
-                # Pass through embedding model and collection defaults if configured
-                embedding_model = kb_config.get('embedding_model')
-                if embedding_model:
-                    result['embedding_model'] = embedding_model
-                    logger.info(f"Using org embedding model: {embedding_model}")
-                collection_defaults = kb_config.get('collection_defaults')
-                if collection_defaults:
-                    result['collection_defaults'] = collection_defaults
-                return result
-            else:
-                logger.info(f"No organization KB config for {user_email}, using global config")
-                
-        except Exception as e:
-            logger.warning(f"Error resolving organization KB config for {user_email}: {e}, falling back to global")
-        
-        # Fallback to global environment variables
-        if not self.global_kb_server_url:
-            raise ValueError("LAMB_KB_SERVER environment variable is required")
-        return {
-            'url': self.global_kb_server_url,
-            'token': self.global_kb_server_token
-        }
-        
+        resolver = OrganizationConfigResolver(user_email)
+        kb = resolver.get_knowledge_base_config()
+        if not kb.get("server_url") or not kb.get("api_token"):
+            raise ValueError("Knowledge Base connection is not configured for this organization")
+        result = {"url": kb["server_url"], "token": kb["api_token"]}
+        for key in ("embedding_model", "collection_defaults"):
+            if key in kb:
+                result[key] = kb[key]
+        return result
+
     async def is_kb_server_available(self, creator_user: Dict[str, Any] = None):
         """Check if KB server is available by making a simple request"""
         # Resolve KB config for user (preferred) or global (fallback).

@@ -802,59 +802,12 @@ async def signup(
                     "error": result["error"]
                 }
 
-        # Step 2: Fallback to system organization signup
-        elif SIGNUP_ENABLED and secret_key == SIGNUP_SECRET_KEY:
-            # Legacy system signup
-            logger.info(
-                "Creating user in system organization using legacy signup key")
-
-            # Get system organization
-            system_org = db_manager.get_organization_by_slug("lamb")
-            if not system_org:
-                return {
-                    "success": False,
-                    "error": "System organization not found"
-                }
-
-            user_creator = UserCreatorManager()
-            result = await user_creator.create_user(
-                email=email,
-                name=name,
-                password=password,
-                organization_id=system_org['id']
-            )
-
-            if result["success"]:
-                # Assign member role to user in the system organization
-                if db_manager.assign_organization_role(system_org['id'], result.get('user_id'), "member"):
-                    logger.info(
-                        f"Assigned member role to user {email} in system organization")
-                else:
-                    logger.warning(
-                        f"Failed to assign role to user {email} in system organization")
-
-                return {
-                    "success": True,
-                    "message": "Account created successfully"
-                }
-            else:
-                return {
-                    "success": False,
-                    "error": result["error"]
-                }
-
-        # Step 3: No valid signup method found
-        else:
-            if not SIGNUP_ENABLED:
-                return {
-                    "success": False,
-                    "error": "Signup is currently disabled. Please contact your administrator or use a valid organization signup key."
-                }
-            else:
-                return {
-                    "success": False,
-                    "error": "Invalid signup key. Please check your signup key or contact your organization administrator."
-                }
+        # The system organization participates in the same saved-settings lookup.
+        # An environment fallback would bypass an administrator's saved disable.
+        return {
+            "success": False,
+            "error": "Invalid signup key or signup is disabled. Please contact your organization administrator."
+        }
 
     except Exception as e:
         logger.error(f"Signup error: {str(e)}")
