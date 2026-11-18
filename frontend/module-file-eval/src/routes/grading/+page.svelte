@@ -420,9 +420,10 @@
 							<svg class="h-5 w-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
 						</div>
 						<div>
-							<h1 class="text-xl font-bold text-gray-900">{data.activity_info.title || $_('fileEval.grading.title')}</h1>
+							<a href="/activities" class="text-sm text-blue-700">Activities</a>
+                            <h1 class="text-xl font-bold text-gray-900">{data.activity_info.title || $_('fileEval.grading.title')}</h1>
 							<p class="text-sm text-gray-500">
-								{#if data.activity_info.context_title}{data.activity_info.context_title}{/if}{#if data.activity_info.context_title && data.activity_info.org_name} · {/if}{#if data.activity_info.org_name}{data.activity_info.org_name}{/if}
+								{data.activity_info.org_name} / {data.activity_info.lms_origin || 'LMS not yet recorded'} / {data.activity_info.context_title || data.activity_info.context_id || 'Course not yet recorded'}
 							</p>
 							<p class="text-xs text-gray-400 mt-0.5">
 								{#if data.activity_info.owner_display}{$_('fileEval.grading.owner')}: {data.activity_info.owner_display}{/if}
@@ -438,7 +439,7 @@
 				<div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
 					<div class="flex items-center justify-between mb-4">
 						<h2 class="text-lg font-semibold text-gray-900">{$_('fileEval.grading.activityConfig')}</h2>
-						{#if editingConfig}
+						{#if editingConfig && data.activity_info?.is_owner}
 							<div class="flex gap-2">
 								<button onclick={saveConfig} class="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
 									<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
@@ -448,14 +449,14 @@
 									{$_('fileEval.grading.cancel')}
 								</button>
 							</div>
-						{:else}
+						{:else if data.activity_info.is_owner}
 							<button onclick={startEditConfig} class="rounded-lg bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100">
 								{$_('fileEval.grading.editConfig')}
 							</button>
 						{/if}
 					</div>
 
-					{#if editingConfig}
+					{#if editingConfig && data.activity_info?.is_owner}
 						<div class="space-y-4">
 							<div>
 								<label class="block text-sm font-medium text-gray-700 mb-1">{$_('fileEval.grading.description')}</label>

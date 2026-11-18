@@ -25,6 +25,7 @@ from lamb.database_manager import LambDatabaseManager
 from lamb.logging_config import get_logger
 from lamb.modules import get_all_modules, get_module
 import os
+import json
 import time
 from datetime import timedelta
 from lamb.modules.base import LTIContext
@@ -32,7 +33,7 @@ from lamb.lti13 import is_scoped
 from lamb.lti13.store import Store
 from lamb.lti13.protocol import browser_response, validate_launch
 from lamb.lti13.router import router as lti13_router
-from lamb import lti_onboarding
+from lamb import lti_onboarding, activity_access
 
 logger = get_logger(__name__, component="LTI_UNIFIED")
 
@@ -59,7 +60,7 @@ LTI_SETUP_JWT_EXPIRY = timedelta(hours=2)
 
 def _create_dashboard_jwt(activity, instructor_user, lms_user_id: str,
                            lms_email: str = "", username: str = "", lms_instance: str = "",
-                           launched_at: int = 0) -> str:
+                           launched_at: int = 0, creator_user_id: int = None) -> str:
     """Issue a LAMB JWT for instructor dashboard access."""
     return lamb_auth.create_token({
         "lti_type": "dashboard",
@@ -71,8 +72,9 @@ def _create_dashboard_jwt(activity, instructor_user, lms_user_id: str,
         "lti_lms_user_id": lms_user_id,
         "lti_lms_email": lms_email,
         "lti_lms_instance": lms_instance,
+        **({'activity_creator_id': creator_user_id} if creator_user_id is not None else {}),
         **({"lti_launched_at": int(launched_at)} if launched_at else {}),
-    }, expires_delta=LTI_DASHBOARD_JWT_EXPIRY)
+    }, expires_delta=timedelta(hours=1) if creator_user_id is not None else LTI_DASHBOARD_JWT_EXPIRY)
 
 
 def _create_setup_jwt(creator_users, lms_user_id: str, lms_email: str,
@@ -100,7 +102,7 @@ def _validate_lti_jwt(token: str, expected_type: str) -> dict | None:
     payload = lamb_auth.decode_token(token)
     if not payload:
         return None
-    if payload.get("lti_type") != expected_type:
+    if payload.get("lti_type") != expected_type or not activity_access.valid_creator_token(db_manager, payload):
         return None
     return payload
 
@@ -219,6 +221,12 @@ async def lti_launch(request: Request):
             except ValueError as exc:
                 raise HTTPException(403, str(exc)) from exc
 
+        if activity:
+            activity_access.record_launch(db_manager, activity, {
+                "lti_lms_user_id": lms_user_id, "lti_lms_instance": lms_instance,
+                "lti_context_id": context_id, "lti_context_title": context_title,
+            }, instructor=ctx.is_instructor)
+
         # Persist lis_outcome_service_url if we have it and activity exists
         if activity and lis_outcome_service_url:
             current_url = activity.get('lis_outcome_service_url')
@@ -313,11 +321,16 @@ async def lti_setup_info(request: Request, token: str = ""):
 
     resource_link_id = data.get("lti_resource_link_id")
 
+    existing = db_manager.get_lti_activity_by_resource_link(resource_link_id)
+    if existing:
+        activity_access.require_owner(db_manager, existing, data)
     creator_users = _creator_users_for(data)
 
     if not creator_users:
         return JSONResponse({"detail": "Could not identify your Creator account."}, status_code=403)
 
+    if existing:
+        creator_users = [c for c in creator_users if c['organization_id'] == existing['organization_id']]
     orgs_with_assistants = manager.get_published_assistants_for_instructor(creator_users)
     # Every organization where the instructor is a creator is offered, also one with nothing
     # published yet: the page names it, says what is missing and leads to LAMB Creator (#562).
@@ -331,6 +344,8 @@ async def lti_setup_info(request: Request, token: str = ""):
                  if m.unavailable_reason(org_id, assistants, _teacher_email(data, creator_users, org_id)) is None]
         for org_id, assistants in orgs_with_assistants.items()
     }
+    if existing:
+        org_modules = {existing['organization_id']: [existing.get('activity_type') or 'chat']}
     offered = {name for names in org_modules.values() for name in names}
     offered_modules = [m for m in get_all_modules() if m.name in offered]
 
@@ -355,10 +370,15 @@ async def lti_setup_info(request: Request, token: str = ""):
         return row
 
     return JSONResponse({
+        "existing_activity": ({**activity_access.context(db_manager, existing),
+            'organization_id': existing['organization_id'], 'activity_type': existing.get('activity_type') or 'chat',
+            'assistant_ids': [a['id'] for a in db_manager.get_activity_assistants(existing['id'])],
+            'setup_config': json.loads(existing.get('setup_config') or '{}'),
+            'chat_visibility_enabled': bool(existing.get('chat_visibility_enabled'))} if existing else None),
         "resource_link_id": resource_link_id,
         "context_title": data.get("lti_context_title", ""),
         "needs_org_selection": needs_org_selection,
-        "creator_access": lti_onboarding.creator_access(db_manager, manager, data),
+        "creator_access": [] if data.get("activity_creator_id") else lti_onboarding.creator_access(db_manager, manager, data),
         "can_add_organization": data.get("lti_type") == "setup" and lti_onboarding.within_session(data),
         "org_names": org_names,
         "orgs_with_assistants": orgs_with_assistants,
@@ -388,7 +408,7 @@ async def lti_configure_activity(request: Request):
     try:
         payload = await request.json()
         token = payload.get("token", "")
-        data = _validate_lti_jwt(token, "setup")
+        data = _validate_lti_jwt(token, "setup") or _validate_lti_jwt(token, "dashboard")
         if not data:
             return JSONResponse({"detail": "Session expired"}, status_code=403)
 
@@ -489,12 +509,19 @@ async def lti_configure_activity(request: Request):
                     "lms_email", "activity_name"}
         extras = {k: v for k, v in payload.items() if k not in reserved}
 
-        if existing_activity and is_scoped(resource_link_id):
-            if existing_activity['organization_id'] != organization_id or not manager.determine_is_owner(
-                    existing_activity, data.get('lti_lms_user_id', ''), data.get('lti_lms_instance', '')):
-                raise HTTPException(403, 'Only the activity owner can reconfigure this activity')
+        if existing_activity:
+            activity_access.require_owner(db_manager, existing_activity, data)
+            if existing_activity['organization_id'] != organization_id or existing_activity.get('activity_type', 'chat') != activity_type:
+                raise HTTPException(400, 'The activity organization and type cannot be changed')
+            if bool(existing_activity.get('chat_visibility_enabled')) != chat_visibility_enabled:
+                raise HTTPException(400, 'Chat visibility is fixed when the activity is created')
+        if activity_type == 'file_evaluation':
+            evaluator_id = payload.get('evaluator_id') or assistant_ids[0]
+            activity_access.validate_assistants(db_manager, {'organization_id': organization_id}, creator_user,
+                                               [evaluator_id], evaluator=True)
 
         if existing_activity:
+            activity_access.record_launch(db_manager, existing_activity, data)
             # Reconfigure existing activity
             logger.info(f"Activity {resource_link_id} already exists, reconfiguring")
             added_ids, removed_ids = manager.reconfigure_activity(existing_activity, assistant_ids)
@@ -532,7 +559,11 @@ async def lti_configure_activity(request: Request):
             **extras,
         }
         try:
-            module.on_activity_configured(activity['id'], setup_data)
+            if not existing_activity:
+                activity_access.record_launch(db_manager, activity, data)
+            # Reconfiguring a chat must retain its group and enrolled students.
+            if not existing_activity or activity_type != 'chat':
+                module.on_activity_configured(activity['id'], setup_data)
         except Exception:
             if not existing_activity:
                 # lamb-0.8: do not leave a half-configured link behind; the instructor can retry
@@ -556,11 +587,18 @@ async def lti_configure_activity(request: Request):
 
         dashboard_token = _create_dashboard_jwt(
             activity, instructor_user, lms_user_id, lms_email, username=username,
-            lms_instance=data.get("lti_lms_instance", ""), launched_at=lti_onboarding.launched_at(data) or 0)
+            lms_instance=data.get("lti_lms_instance", ""), launched_at=lti_onboarding.launched_at(data) or 0,
+            creator_user_id=data.get('activity_creator_id'))
 
         public_base = manager.get_public_base_url(request)
         at = activity.get("activity_type") or "chat"
-        module_redirect = module.configured_redirect(public_base, activity, lms_user_id, lms_email)
+        if at == 'llm_access' and data.get('activity_creator_id') is not None:
+            from lamb.token_dealer import lti as td_pages, wiring as td_wiring
+            td = td_wiring.store().get_activity_by_resource_link(resource_link_id)
+            td_token = td_pages.make_token({**data, 'type': 'manage', 'activity_id': td['id']})
+            return JSONResponse({'status': 'success', 'redirect_url': f'{public_base}{td_pages.PREFIX}/manage?token={td_token}'})
+        module_redirect = module.configured_redirect(public_base, activity, lms_user_id, lms_email,
+            lms_instance=data.get('lti_lms_instance', ''))
         if module_redirect:
             return JSONResponse({"status": "success", "redirect_url": module_redirect})
         if at == "file_evaluation":
@@ -612,6 +650,8 @@ def _creator_users_for(claims: dict):
     """The instructor's LTI creator accounts, identified from the LMS user and instance a launch
     token carries (a ticket, a setup, dashboard or return token). Read again each time: an
     organization just added is there, a disabled account is not."""
+    if 'activity_creator_id' in claims:
+        return activity_access.creators_for_payload(db_manager, claims)
     try:
         found = manager.identify_instructor(lms_user_id=claims.get("lti_lms_user_id") or "",
                                             lms_instance=claims.get("lti_lms_instance") or "")
@@ -781,22 +821,15 @@ async def lti_reconfigure_activity(request: Request):
         if not activity:
             return HTMLResponse("<h2>Error</h2><p>Activity not found.</p>", status_code=404)
 
-        # Dynamic owner check (resolves LMS identity -> Creator user -> compares with owner_email)
-        is_owner = manager.determine_is_owner(
-            activity,
-            lms_user_id=data.get("lti_lms_user_id", ""),
-            lms_instance=data.get("lti_lms_instance", "")
-        )
-        if not is_owner:
-            return HTMLResponse(
-                "<h2>Access Denied</h2><p>Only the activity owner can reconfigure assistants.</p>",
-                status_code=403
-            )
+        creator = activity_access.require_owner(db_manager, activity, data)
 
         assistant_ids_str = form_data.getlist("assistant_ids")
         assistant_ids = [int(x) for x in assistant_ids_str if x]
         if not assistant_ids:
             return HTMLResponse("<h2>Error</h2><p>Please select at least one assistant.</p>", status_code=400)
+
+        activity_access.validate_assistants(db_manager, activity, creator, assistant_ids,
+                                           evaluator=activity.get('activity_type') == 'file_evaluation')
 
         # Chat transcript visibility is fixed at initial configuration time.
         chat_visibility_str = form_data.get("chat_visibility_enabled")
@@ -821,6 +854,8 @@ async def lti_reconfigure_activity(request: Request):
             status_code=303
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error reconfiguring activity: {str(e)}", exc_info=True)
         return HTMLResponse(f"<h2>Error</h2><p>{str(e)}</p>", status_code=500)
@@ -880,16 +915,13 @@ async def lti_dashboard_info(request: Request, resource_link_id: str = "", token
     if not activity:
         return JSONResponse({"detail": "Activity not found"}, status_code=404)
 
-    is_owner = manager.determine_is_owner(
-        activity,
-        lms_user_id=data.get("lti_lms_user_id", ""),
-        lms_instance=data.get("lti_lms_instance", "")
-    )
+    is_owner = bool(activity_access.owner_for_payload(db_manager, activity, data))
 
     org = db_manager.get_organization_by_id(activity['organization_id'])
     org_name = org.get('name', 'Unknown') if org else 'Unknown'
 
     return JSONResponse({
+        **activity_access.context(db_manager, activity),
         "activity_name": activity.get('activity_name', 'LTI Activity'),
         "context_title": activity.get('context_title', ''),
         "org_name": org_name,
@@ -897,7 +929,7 @@ async def lti_dashboard_info(request: Request, resource_link_id: str = "", token
         "created_at": activity.get('created_at'),
         "chat_visibility_enabled": bool(activity.get('chat_visibility_enabled')),
         "is_owner": is_owner,
-        "creator_access": lti_onboarding.creator_access(db_manager, manager, data),
+        "creator_access": [] if data.get("activity_creator_id") else lti_onboarding.creator_access(db_manager, manager, data),
     })
 
 

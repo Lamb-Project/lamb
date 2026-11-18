@@ -29,6 +29,7 @@ def env(monkeypatch):
         get_published_assistants_for_org_user=lambda *a: [], get_lti_activity_by_resource_link=lambda rl: created.get(rl),
         delete_lti_activity=lambda i: calls.append(('delete', i)), get_assistant_by_id=lambda i: None)
     monkeypatch.setattr(lti_router, 'db_manager', db)
+    monkeypatch.setattr(lti_router.activity_access, 'record_launch', lambda *a, **kw: None)
     # The instructor is identified from the LMS user of the token, never from a list in it.
     monkeypatch.setattr(lti_router.manager, 'identify_instructor', lambda **kw: [CU] if kw.get('lms_user_id') == 'teacher-1' else [])
     monkeypatch.setattr(lti_router.manager, 'get_published_assistants_for_instructor', lambda cus: {})
@@ -58,7 +59,7 @@ def test_chat_still_needs_an_assistant(env):
 def test_llm_access_is_configured_without_assistants_and_redirects_to_its_page(env, monkeypatch):
     mod = get_module('llm_access')
     monkeypatch.setattr(mod, 'on_activity_configured', lambda aid, data: env.calls.append(('module', aid, data['pool_tokens'])))
-    monkeypatch.setattr(mod, 'configured_redirect', lambda base, a, u, e: f'{base}/lamb/v1/modules/llm_access/manage?token=x')
+    monkeypatch.setattr(mod, 'configured_redirect', lambda base, a, u, e, **kw: f'{base}/lamb/v1/modules/llm_access/manage?token=x')
     r = env.client.post('/lamb/v1/lti/configure', json={'token': 't', 'organization_id': 3, 'activity_type': 'llm_access',
                                                          'pool_tokens': '5000'})
     assert r.status_code == 200 and r.json()['redirect_url'].endswith('/llm_access/manage?token=x')
@@ -104,7 +105,7 @@ def test_setup_extras_cannot_override_verified_identity_or_resource(env, monkeyp
     mod = get_module('llm_access')
     received = {}
     monkeypatch.setattr(mod, 'on_activity_configured', lambda aid, data: received.update(data))
-    monkeypatch.setattr(mod, 'configured_redirect', lambda *args: '/llm-access')
+    monkeypatch.setattr(mod, 'configured_redirect', lambda *args, **kw: '/llm-access')
     r = env.client.post('/lamb/v1/lti/configure', json={
         'token':'t', 'organization_id':3, 'activity_type':'llm_access',
         'resource_link_id':'another-registration-resource', 'configured_by_email':'other@example.edu',

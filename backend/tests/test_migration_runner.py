@@ -43,6 +43,7 @@ def old_database(path, versions, named=False):
     with sqlite3.connect(path) as c:
         # Version 25 includes chats; later migrations attach deletion triggers to them.
         c.execute('CREATE TABLE T_lamb_chats (id TEXT PRIMARY KEY)')
+        c.execute('CREATE TABLE T_lti_activities (id INTEGER PRIMARY KEY)')
         c.execute('CREATE TABLE T_schema_version (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)')
         c.executemany('INSERT INTO T_schema_version VALUES (?, ?)', [(v, int(time.time())) for v in versions])
     return Db(path)

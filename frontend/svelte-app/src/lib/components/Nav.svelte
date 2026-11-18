@@ -1,5 +1,6 @@
 <script>
   import { scenarioText } from '$lib/utils/learningScenarioText';
+  import { activitiesText } from '$lib/utils/activities';
   import { moodleStatus } from '$lib/services/moodleService';
   import { apiKeysEnabled } from '$lib/services/apiKeysService';
   import { apiKeysText } from '$lib/utils/apiKeysText';
@@ -177,6 +178,8 @@
 
 
           {#if $user.isLoggedIn}
+          <a href="{base}/activities" aria-current={$page.url.pathname === base + '/activities' ? 'page' : undefined}
+             class="inline-flex items-center px-2 pt-1 border-b-2 text-sm font-medium whitespace-nowrap {$page.url.pathname === base + '/activities' ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}">{activitiesText($locale).title}</a>
           <a href="{base}/learning-scenarios" aria-current={$page.url.pathname === base + '/learning-scenarios' ? 'page' : undefined}
              class="inline-flex items-center px-2 pt-1 border-b-2 text-sm font-medium whitespace-nowrap {$page.url.pathname === base + '/learning-scenarios' ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}">{scenarioText($locale).plural}</a>
           {#if moodleEnabled}<a href="{base}/moodle" class="px-2 py-2 text-sm font-medium text-[#173f64]" aria-current={$page.url.pathname === base + '/moodle' ? 'page' : undefined}>Moodle</a>{/if}
@@ -252,6 +255,7 @@
       </div>
       
       {#if $user.isLoggedIn}
+      <a href="{base}/activities" class="sm:hidden order-last w-full py-2 text-sm font-medium text-[#173f64]">{activitiesText($locale).title}</a>
       <a href="{base}/learning-scenarios" class="sm:hidden order-last w-full py-2 text-sm font-medium text-[#173f64]" aria-current={$page.url.pathname === base + '/learning-scenarios' ? 'page' : undefined}>{scenarioText($locale).plural}</a>
       {#if moodleEnabled}<a href="{base}/moodle" class="sm:hidden order-last w-full py-2 text-sm font-medium text-[#173f64]">Moodle</a>{/if}
       {#if keysEnabled}<a href="{base}/api-keys" class="sm:hidden order-last w-full py-2 text-sm font-medium text-[#173f64]">{apiKeysText($locale).nav}</a>{/if}

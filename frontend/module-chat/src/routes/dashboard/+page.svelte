@@ -129,8 +129,7 @@
                         <div>
                             <h1 class="text-xl font-bold text-gray-900">{activityInfo.activity_name || 'LTI Activity'}</h1>
                             <p class="text-sm text-gray-500">
-                                {#if activityInfo.context_title}{activityInfo.context_title} · {/if}
-                                {activityInfo.org_name || ''}
+                                {activityInfo.org_name || ''} / {activityInfo.lms_origin || 'LMS not yet recorded'} / {activityInfo.context_title || activityInfo.context_id || 'Course not yet recorded'}
                             </p>
                             <p class="text-xs text-gray-400 mt-0.5">
                                 Owner: {activityInfo.owner_name}
@@ -144,6 +143,7 @@
                             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                             Open Chat
                         </a>
+                        <a href="/activities" class="text-sm text-blue-700">Activities</a>
                         <CreatorAccess {token} accounts={activityInfo.creator_access} />
                     </div>
                 </div>

@@ -41,7 +41,11 @@ def env(tmp_path, monkeypatch):
             (3,1,'teacher@example.edu','Teacher with a password',1,'password')])
         c.execute('CREATE TABLE T_lti_activities (id INTEGER PRIMARY KEY, resource_link_id TEXT UNIQUE, organization_id INTEGER, status TEXT, activity_type TEXT)')
         c.execute("INSERT INTO T_lti_activities VALUES (1,'old-resource',1,'active','chat')")
+        c.execute("ALTER TABLE T_lti_activities ADD COLUMN context_id TEXT")
+        c.execute("ALTER TABLE T_lti_activities ADD COLUMN context_title TEXT")
         migrate(c.cursor(), 'T_')
+        from lamb.activity_access import migrate as migrate_activity_access
+        migrate_activity_access(c.cursor(), 'T_')
     store = Store(db)
     config = dict(name='Platform', issuer='https://platform.example', client_id='client-1',
                   authorization_url='https://platform.example/authorize', token_url='https://platform.example/token',

@@ -143,6 +143,9 @@ router.include_router(prompt_templates_router, prefix="/prompt-templates")
 # Include the analytics router
 router.include_router(analytics_router, prefix="/analytics")
 
+from creator_interface.activities_router import router as activities_router
+router.include_router(activities_router, prefix="/activities")
+
 # Include the chats router for internal chat persistence
 router.include_router(chats_router, prefix="/chats")
 

@@ -54,7 +54,8 @@ class FileEvalModule(ActivityModule):
 
     def _create_file_eval_jwt(self, activity: Dict[str, Any], user_email: str,
                                display_name: str, lms_user_id: str,
-                               is_instructor: bool, lis_result_sourcedid: str = None) -> str:
+                               is_instructor: bool, lis_result_sourcedid: str = None,
+                               lms_instance: str = '') -> str:
         data = {
             "lti_type": "file_eval",
             "lti_resource_link_id": activity["resource_link_id"],
@@ -62,6 +63,7 @@ class FileEvalModule(ActivityModule):
             "lti_user_email": user_email,
             "lti_display_name": display_name,
             "lti_lms_user_id": lms_user_id,
+            "lti_lms_instance": lms_instance,
             "is_instructor": is_instructor,
         }
         if lis_result_sourcedid:
@@ -219,6 +221,7 @@ class FileEvalModule(ActivityModule):
         token = self._create_file_eval_jwt(
             activity, instructor_email, ctx.display_name,
             ctx.lms_user_id, is_instructor=True,
+            lms_instance=ctx.lms_instance,
         )
 
         public_base = module_public_base()

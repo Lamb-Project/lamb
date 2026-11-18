@@ -30,6 +30,11 @@ def env(tmp_path, monkeypatch):
         c.execute('CREATE TABLE T_organizations (id INTEGER PRIMARY KEY)')
         c.execute('INSERT INTO T_organizations VALUES (1)')
         MigrationRunner(db)._migration_33(c.cursor())
+    db.get_lti_activity_by_resource_link = lambda rid: LTI_ACTIVITY if rid == 'rl-9' else None
+    db.get_organization_by_id = lambda oid: {'name': 'Test organization'}
+    from lamb import activity_access
+    monkeypatch.setattr(activity_access, 'creators_for_payload', lambda db, data:
+        [{'id': 1, 'organization_id': 1, 'user_email': 't@x.edu'}] if data.get('lti_lms_user_id') == 'teacher-1' else [])
     store, proxy = TokenDealerStore(db), FakeProxy()
     settings = {'s': SETTINGS}
     monkeypatch.setattr(wiring, 'store', lambda: store)

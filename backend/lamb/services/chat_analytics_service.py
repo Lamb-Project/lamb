@@ -14,7 +14,7 @@ Features:
 
 Privacy:
 - Organization configuration determines if user data is anonymized (default: yes)
-- Chat content is always accessible to assistant owners
+- Unified activity conversations also require activity teaching access and enabled transcript visibility
 
 Created: December 27, 2025
 Updated: December 29, 2025 - Added LAMB internal chat support
@@ -37,6 +37,27 @@ class ChatAnalyticsService:
         self.owi_db = OwiDatabaseManager()
         self.lamb_db = LambDatabaseManager()
 
+    def for_auth(self, auth):
+        """A request-local view: assistant ownership does not grant activity access."""
+        from copy import copy
+        from contextlib import closing
+        scoped = copy(self)
+        with closing(self.lamb_db.get_connection()) as conn:
+            p = self.lamb_db.table_prefix
+            rows = conn.execute(f'''SELECT DISTINCT u.owi_user_id FROM {p}lti_activity_users u
+                JOIN {p}lti_activities a ON a.id=u.activity_id
+                WHERE u.owi_user_id IS NOT NULL AND u.owi_user_id != '' AND
+                (a.organization_id != ? OR a.status != 'active' OR a.chat_visibility_enabled != 1 OR
+                 (a.owner_email != ? AND NOT EXISTS (SELECT 1 FROM {p}activity_instructors i
+                    WHERE i.activity_id=a.id AND i.creator_user_id=?)))''',
+                (auth.organization.get('id'), auth.user.get('user_email') or auth.user.get('email') or '', auth.user['id'])).fetchall()
+        scoped._excluded_activity_users = [r[0] for r in rows]
+        return scoped
+
+    def _activity_filter(self):
+        excluded = getattr(self, '_excluded_activity_users', [])
+        return ('c.user_id NOT IN (SELECT value FROM json_each(?))', [json.dumps(excluded)]) if excluded else ('1=1', [])
+
     def analysis_inventory(self, assistant_id, start_date=None, end_date=None, limit=20):
         """Bounded two-source sample with uncapped counts and explicit source failures."""
         from contextlib import closing
@@ -45,6 +66,10 @@ class ChatAnalyticsService:
             ('owi', self.owi_db, 'chat', "EXISTS (SELECT 1 FROM json_each(c.chat, '$.models') AS m WHERE m.value=?)", f'lamb_assistant.{assistant_id}'),
             ('lamb_internal', self.lamb_db, f'{self.lamb_db.table_prefix}lamb_chats', 'c.assistant_id=?', assistant_id)):
             params = [identifier]
+            if source == 'owi':
+                boundary, boundary_params = self._activity_filter()
+                predicate += ' AND ' + boundary
+                params.extend(boundary_params)
             for name, bound, operator in [('created_at', start_date, '>='), ('created_at', end_date, '<=')]:
                 if bound:
                     predicate += f' AND c.{name}{operator}?'
@@ -121,6 +146,9 @@ class ChatAnalyticsService:
                 where_clauses.append("c.chat LIKE ?")
                 params.append(f'%{search_content}%')
             
+            boundary, boundary_params = self._activity_filter()
+            where_clauses.append(boundary)
+            params.extend(boundary_params)
             where_sql = " AND ".join(where_clauses)
             
             # Count total
@@ -295,7 +323,8 @@ class ChatAnalyticsService:
         try:
             model_pattern = f'lamb_assistant.{assistant_id}'
 
-            query = """
+            boundary, boundary_params = self._activity_filter()
+            query = f"""
                 SELECT
                     c.id,
                     c.user_id,
@@ -307,10 +336,10 @@ class ChatAnalyticsService:
                     u.email as user_email
                 FROM chat c
                 LEFT JOIN user u ON c.user_id = u.id
-                WHERE c.id = ? AND EXISTS (SELECT 1 FROM json_each(c.chat, '$.models') AS chat_model WHERE chat_model.value = ?)
+                WHERE c.id = ? AND EXISTS (SELECT 1 FROM json_each(c.chat, '$.models') AS chat_model WHERE chat_model.value = ?) AND {boundary}
             """
 
-            result = self._execute_query(query, (chat_id, model_pattern), fetch_one=True)
+            result = self._execute_query(query, (chat_id, model_pattern, *boundary_params), fetch_one=True)
 
             if not result:
                 return None
@@ -498,6 +527,9 @@ class ChatAnalyticsService:
                 where_clauses.append("c.created_at <= ?")
                 params.append(end_date.timestamp())
             
+            boundary, boundary_params = self._activity_filter()
+            where_clauses.append(boundary)
+            params.extend(boundary_params)
             where_sql = " AND ".join(where_clauses)
             
             # Get basic stats
@@ -620,6 +652,9 @@ class ChatAnalyticsService:
                 where_clauses.append("c.created_at <= ?")
                 params.append(end_date.timestamp())
             
+            boundary, boundary_params = self._activity_filter()
+            where_clauses.append(boundary)
+            params.extend(boundary_params)
             where_sql = " AND ".join(where_clauses)
             
             # Determine date format based on period

@@ -121,6 +121,8 @@ def page(dealer, monkeypatch):
         assistant_has_rubric_for_eval=lambda cb: True,
         delete_lti_activity=lambda i: calls.append(('delete', i)))
     monkeypatch.setattr(lti_router, 'db_manager', db)
+    monkeypatch.setattr(lti_router.activity_access, 'record_launch', lambda *a, **kw: None)
+    monkeypatch.setattr(lti_router.activity_access, 'creators_for_payload', lambda *a: list(USERS.values()))
     # The instructor is identified from the LMS user of the token, never from a list in it.
     monkeypatch.setattr(lti_router.manager, 'identify_instructor',
                         lambda **kw: list(USERS.values()) if kw.get('lms_user_id') == 'teacher-1' else [])
@@ -135,7 +137,7 @@ def page(dealer, monkeypatch):
     monkeypatch.setattr(lti_router.manager, 'get_public_base_url', lambda req: 'https://lamb.x')
     for name in ('chat', 'file_evaluation', 'llm_access'):
         monkeypatch.setattr(get_module(name), 'on_activity_configured', lambda aid, data: None)
-        monkeypatch.setattr(get_module(name), 'configured_redirect', lambda *a: '/done')
+        monkeypatch.setattr(get_module(name), 'configured_redirect', lambda *a, **kw: '/done')
     app = FastAPI()
     app.include_router(lti_router.router, prefix='/lamb/v1/lti')
     client = TestClient(app)
@@ -199,7 +201,7 @@ def test_saving_an_offered_kind_still_works(page):
 
 def test_an_existing_activity_can_still_be_saved_when_its_kind_is_no_longer_offered(page, monkeypatch):
     page.dealer.settings[4] = Settings(**ON, policy='pool', teacher_allowance_tokens=0)
-    page.created['rl-new'] = {'id': 9, 'resource_link_id': 'rl-new', 'activity_type': 'llm_access', 'organization_id': 4}
+    page.created['rl-new'] = {'id': 9, 'resource_link_id': 'rl-new', 'activity_type': 'llm_access', 'organization_id': 4, 'owner_email': USERS[6]['user_email']}
     monkeypatch.setattr(lti_router.manager, 'reconfigure_activity', lambda activity, ids: ([], []))
     monkeypatch.setattr(get_module('llm_access'), 'on_activity_reconfigured', lambda *a: None)
     r = page.save(organization_id=4, activity_type='llm_access', pool_tokens='100')

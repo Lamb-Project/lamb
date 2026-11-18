@@ -169,6 +169,12 @@ def require_analysis_access(auth, assistant_id):
         raise HTTPException(403, 'Analysis reports require access to conversation content')
 
 
+def require_report_activity_access(auth, assistant_id, report):
+    service = analytics_service.for_auth(auth)
+    if any(not service.get_chat_detail(ref['chat_id'], assistant_id) for ref in report.get('evidence', [])):
+        raise HTTPException(403, 'This report includes conversations you can no longer access')
+
+
 class AnalysisReportInput(BaseModel):
     title: str = Field(min_length=1, max_length=250)
     content: str = Field(min_length=1, max_length=100000)
@@ -185,7 +191,7 @@ def analysis_context(assistant_id: int, response: Response, start_date: Optional
     require_analysis_access(auth, assistant_id)
     scenario = ScenarioStore(auth).get(scenario_id) if scenario_id else None
     response.headers['Cache-Control'] = 'private, no-store'
-    return AnalysisStore().prepare(auth, assistant_id, analytics_service, start=start_date, end=end_date,
+    return AnalysisStore().prepare(auth, assistant_id, analytics_service.for_auth(auth), start=start_date, end=end_date,
         dimensions=DIMENSIONS if dimensions == 'full' else dimensions.split(','), limit=limit, scenario=scenario)
 
 
@@ -194,7 +200,16 @@ def analysis_reports(assistant_id: int, response: Response, auth: AuthContext = 
     from lamb.services.activity_analysis import AnalysisStore
     require_analysis_access(auth, assistant_id)
     response.headers['Cache-Control'] = 'private, no-store'
-    return AnalysisStore().list(auth, assistant_id)
+    store = AnalysisStore()
+    visible = []
+    for summary in store.list(auth, assistant_id):
+        try:
+            require_report_activity_access(auth, assistant_id, store.get(auth, assistant_id, summary['id']))
+            visible.append(summary)
+        except HTTPException as exc:
+            if exc.status_code != 403:
+                raise
+    return visible
 
 
 @router.get('/assistant/{assistant_id}/analysis-reports/{report_id}')
@@ -203,7 +218,9 @@ def analysis_report(assistant_id: int, report_id: str, response: Response, draft
     from lamb.services.activity_analysis import AnalysisStore
     require_analysis_access(auth, assistant_id)
     response.headers['Cache-Control'] = 'private, no-store'
-    return AnalysisStore().get(auth, assistant_id, report_id, draft=draft)
+    report = AnalysisStore().get(auth, assistant_id, report_id, draft=draft)
+    require_report_activity_access(auth, assistant_id, report)
+    return report
 
 
 @router.post('/assistant/{assistant_id}/analysis-reports/{report_id}')
@@ -212,7 +229,9 @@ def save_analysis_report(assistant_id: int, report_id: str, body: AnalysisReport
     from lamb.services.activity_analysis import AnalysisStore
     require_analysis_access(auth, assistant_id)
     response.headers['Cache-Control'] = 'private, no-store'
-    return AnalysisStore().save_report(auth, assistant_id, report_id, body.title, body.content, body.reviewed_chat_ids)
+    store = AnalysisStore()
+    require_report_activity_access(auth, assistant_id, store.get(auth, assistant_id, report_id, draft=True))
+    return store.save_report(auth, assistant_id, report_id, body.title, body.content, body.reviewed_chat_ids)
 
 @router.get(
     "/assistant/{assistant_id}/chats",
@@ -257,7 +276,7 @@ async def list_assistant_chats(
     anonymize = get_anonymize_setting(user)
     
     # Get chats
-    result = analytics_service.get_chats_for_assistant(
+    result = analytics_service.for_auth(auth).get_chats_for_assistant(
         assistant_id=assistant_id,
         start_date=start_dt,
         end_date=end_dt,
@@ -301,7 +320,7 @@ async def get_chat_detail(
     anonymize = get_anonymize_setting(user)
     
     # Get chat detail
-    result = analytics_service.get_chat_detail(
+    result = analytics_service.for_auth(auth).get_chat_detail(
         chat_id=chat_id,
         assistant_id=assistant_id,
         anonymize_users=anonymize
@@ -347,7 +366,7 @@ async def get_assistant_stats(
         raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
     
     # Get stats
-    result = analytics_service.get_assistant_stats(
+    result = analytics_service.for_auth(auth).get_assistant_stats(
         assistant_id=assistant_id,
         start_date=start_dt,
         end_date=end_dt
@@ -398,7 +417,7 @@ async def get_assistant_timeline(
         raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
     
     # Get timeline
-    result = analytics_service.get_assistant_timeline(
+    result = analytics_service.for_auth(auth).get_assistant_timeline(
         assistant_id=assistant_id,
         period=period,
         start_date=start_dt,

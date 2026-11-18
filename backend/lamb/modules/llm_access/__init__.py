@@ -102,9 +102,9 @@ class LlmAccessModule(ActivityModule):
     def on_activity_reconfigured(self, activity, added_ids, removed_ids) -> None:
         return None        # no assistants; limits change on the management page
 
-    def configured_redirect(self, public_base, activity, lms_user_id, lms_email) -> Optional[str]:
+    def configured_redirect(self, public_base, activity, lms_user_id, lms_email, lms_instance="") -> Optional[str]:
         td = wiring.store().get_activity_by_resource_link(activity['resource_link_id'])
-        t = pages.make_token({'type': 'manage', 'activity_id': td['id'], 'lms_user_id': lms_user_id, 'lms_email': lms_email})
+        t = pages.make_token({'type': 'manage', 'activity_id': td['id'], 'lms_user_id': lms_user_id, 'lms_email': lms_email, 'lms_instance': lms_instance})
         return f'{public_base}{pages.PREFIX}/manage?token={t}'
 
     # ── launches ───────────────────────────────────────────────────────
@@ -120,7 +120,7 @@ class LlmAccessModule(ActivityModule):
 
     def on_instructor_launch(self, ctx: LTIContext) -> RedirectResponse:
         td = self._td_activity(ctx.resource_link_id)
-        return pages.launch_redirect('', td, True, ctx.lms_user_id, ctx.lms_email, ctx.display_name)
+        return pages.launch_redirect('', td, True, ctx.lms_user_id, ctx.lms_email, ctx.display_name, ctx.lms_instance)
 
     def launch_user(self, activity, username, display_name, lms_user_id, is_instructor=False,
                     lis_result_sourcedid=None) -> Optional[str]:

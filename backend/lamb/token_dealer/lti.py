@@ -8,7 +8,7 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -41,17 +41,36 @@ def read_token(token, kind):
     data = lamb_auth.decode_token(token) if token else None
     if not data or data.get('scope') != SCOPE or data.get('type') != kind:
         return None
+    if 'activity_creator_id' in data:
+        from lamb import activity_access
+        if not activity_access.valid_creator_token(wiring.store().db, data):
+            return None
     return data
+
+
+def management_context(data, activity, *, owner_required=False):
+    from lamb import activity_access
+    db = wiring.store().db
+    unified = db.get_lti_activity_by_resource_link(activity['resource_link_id'])
+    if not unified:
+        raise HTTPException(404, 'Activity not found')
+    payload = {**data, 'lti_lms_user_id': data.get('lti_lms_user_id') or data.get('lms_user_id', ''),
+               'lti_lms_instance': data.get('lti_lms_instance') or data.get('lms_instance', '')}
+    if owner_required:
+        activity_access.require_owner(db, unified, payload)
+    return {**activity_access.context(db, unified),
+            'is_owner': bool(activity_access.owner_for_payload(db, unified, payload))}
 
 
 def expired():
     return HTMLResponse('<h2>Session expired.</h2><p>Open the activity from your course again.</p>', status_code=403)
 
 
-def launch_redirect(public_base, activity, roles_is_instructor, lms_user_id, email, name):
+def launch_redirect(public_base, activity, roles_is_instructor, lms_user_id, email, name, lms_instance=''):
     """Called by lti_router for a link that is an LLM-access activity."""
     if roles_is_instructor:
-        t = make_token({'type': 'manage', 'activity_id': activity['id'], 'lms_user_id': lms_user_id, 'lms_email': email})
+        t = make_token({'type': 'manage', 'activity_id': activity['id'], 'lms_user_id': lms_user_id,
+                        'lms_email': email, 'lms_instance': lms_instance})
         return RedirectResponse(f'{public_base}{PREFIX}/manage?token={t}', status_code=303)
     t = make_token({'type': 'student', 'activity_id': activity['id'], 'lms_user_id': lms_user_id, 'lms_email': email, 'name': name})
     return RedirectResponse(f'{public_base}{PREFIX}/student?token={t}', status_code=303)
@@ -88,6 +107,7 @@ async def configure(request: Request):
         return expired()
     svc = wiring.service()
     a = svc.store.get_activity(data['activity_id'])
+    management_context(data, a, owner_required=True)
     mode = form.get('mode', 'always')
     schedule = {'timezone': form.get('timezone') or 'UTC', 'mode': mode,
                 'from': form.get('from') or None, 'until': form.get('until') or None}
@@ -119,6 +139,7 @@ async def manage_page(request: Request, token: str = ''):
     keys = svc.store.list_keys(activity_id=a['id'], statuses=('active', 'blocked'))
     rows = [{**k, 'total': totals.get(k['id'], {}), 'slot': this_slot.get(k['id'], {})} for k in keys]
     return templates.TemplateResponse('llm_access_manage.html', {
+        'activity_context': management_context(data, a),
         'request': request, 'token': token, 'a': a, 'state': _state(a), 'rows': rows, 'policy': s.policy,
         'warnings': svc.warnings(a['id']), 'endpoint': s.public_url, 'days': list(enumerate(DAYS)),
         'used': sum(v.get('tokens', 0) for v in totals.values()), 'models': s.models,
@@ -132,6 +153,7 @@ async def override(request: Request):
     data = read_token(form.get('token', ''), 'manage')
     if not data:
         return expired()
+    management_context(data, wiring.store().get_activity(data['activity_id']), owner_required=True)
     # Blocking proxy calls, one per key that changes: off the event loop.
     await run_in_threadpool(wiring.service().set_override, data['activity_id'], form.get('override', 'auto'))
     return RedirectResponse(f"manage?token={form.get('token')}", status_code=303)

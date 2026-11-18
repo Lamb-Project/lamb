@@ -4742,6 +4742,8 @@ async def list_lti_activities(request: Request, org: Optional[str] = None, auth:
         if not (auth.is_system_admin or auth.is_org_admin):
             raise HTTPException(status_code=403, detail="Organization admin required")
 
+        if org_id != auth.organization.get('id') and not auth.is_system_admin:
+            raise HTTPException(403, 'Organization access required')
         activities = db_manager.get_lti_activities_by_org(org_id)
 
         # Enrich with assistant counts
@@ -4790,6 +4792,10 @@ async def update_lti_activity(activity_id: int, request: Request, auth: AuthCont
         # Check admin access via AuthContext
         if not (auth.is_system_admin or auth.is_org_admin):
             raise HTTPException(status_code=403, detail="Organization admin required")
+
+        from lamb.activity_access import is_owner
+        if not is_owner(activity, auth.user):
+            raise HTTPException(403, 'Only the activity owner can change settings')
 
         # Apply updates
         updates = {}

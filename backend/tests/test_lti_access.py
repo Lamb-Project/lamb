@@ -98,6 +98,7 @@ def test_existing_student_activity_launch_continues_without_binding(client, db, 
     module = SimpleNamespace(on_student_launch=Mock(return_value=HTMLResponse('student activity')))
     monkeypatch.setattr(db, 'get_lti_activity_by_resource_link', lambda _: {'id': 8, 'organization_id': ORG_A, 'status': 'active'})
     monkeypatch.setattr(lti_router, '_get_activity_module', lambda _: module)
+    monkeypatch.setattr(lti_router.activity_access, 'record_launch', lambda *a, **kw: None)
     response = launch(client, roles='Learner', tool_consumer_instance_url=B)
     assert response.status_code == 200
     assert response.text == 'student activity'
@@ -163,6 +164,7 @@ def test_configured_activity_is_checked_before_module_dispatch(client, db, monke
     module = SimpleNamespace(on_instructor_launch=Mock(), on_student_launch=Mock())
     monkeypatch.setattr(db, 'get_lti_activity_by_resource_link', lambda _: {'id': 8, 'organization_id': ORG_A, 'status': 'active'})
     monkeypatch.setattr(lti_router, '_get_activity_module', lambda _: module)
+    monkeypatch.setattr(lti_router.activity_access, 'record_launch', lambda *a, **kw: None)
     response = launch(client, roles='Learner', tool_consumer_instance_url=B)
     assert response.status_code == 403
     module.on_student_launch.assert_not_called()

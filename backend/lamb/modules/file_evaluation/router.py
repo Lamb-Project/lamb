@@ -11,7 +11,7 @@ import os
 import json
 import sqlite3
 
-from lamb import auth as lamb_auth
+from lamb import auth as lamb_auth, activity_access
 from lamb.logging_config import get_logger
 
 from .service import FileEvalService
@@ -55,6 +55,9 @@ def _decode_jwt(request: Request, token: Optional[str] = None) -> dict:
     # Creator sessions and other modules' tokens carry the same signature; they are not ours.
     if payload.get("lti_type") not in FILE_EVAL_TOKEN_TYPES:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    if not activity_access.valid_creator_token(_service.db, payload):
+        raise HTTPException(status_code=403, detail="Activity access is no longer available")
 
     return payload
 
@@ -104,6 +107,12 @@ async def get_activity_view(activity_id: int, request: Request, token: str = "")
     cfg = _service.get_setup_config(activity_id)
     activity_info = _service.get_activity_info(activity_id)
 
+    activity = activity_access.activity_by_id(_service.db, activity_id)
+    if not activity or activity.get('activity_type') != 'file_evaluation':
+        raise HTTPException(404, 'File evaluation activity not found')
+    activity_info.update(activity_access.context(_service.db, activity))
+    activity_info['is_owner'] = bool(is_instructor and activity_access.owner_for_payload(_service.db, activity, payload))
+
     if is_instructor:
         subs = _service.get_submissions_by_activity(activity_id)
         stats = _service.get_dashboard_stats(activity_id)
@@ -124,6 +133,13 @@ async def update_setup_config(
     payload = _decode_jwt(request, token)
     _require_instructor(payload)
     _assert_activity(payload, activity_id)
+
+    activity = activity_access.activity_by_id(_service.db, activity_id)
+    if not activity or activity.get('activity_type') != 'file_evaluation':
+        raise HTTPException(404, 'File evaluation activity not found')
+    creator = activity_access.require_owner(_service.db, activity, payload)
+    if 'evaluator_id' in body:
+        activity_access.validate_assistants(_service.db, activity, creator, [body['evaluator_id']], evaluator=True)
 
     # Allowed fields to update
     allowed_fields = {"evaluator_id", "description", "deadline", "submission_type", "max_group_size", "language"}

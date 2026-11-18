@@ -41,6 +41,13 @@
 
             // The only organization, or the one just added with a creator code (`&org=`).
             selectedOrg = initialOrganization(setupData, $page.url.searchParams.get('org'));
+            if (setupData.existing_activity) {
+                const activity = setupData.existing_activity;
+                selectedOrg = String(activity.organization_id);
+                selectedActivity = activity.activity_type;
+                includeRubricAssistants = true;
+                dynamicOptions = { ...activity.setup_config, chat_visibility_enabled: activity.chat_visibility_enabled };
+            }
         } catch (e) {
             error = e instanceof Error ? e.message : String(e);
         } finally {
@@ -105,8 +112,8 @@
 
     // Clear assistant selection when activity type changes
     $effect(() => {
-        selectedActivity;
-        selectedAssistants = [];
+        selectedAssistants = setupData?.existing_activity?.activity_type === selectedActivity
+            ? [...setupData.existing_activity.assistant_ids] : [];
     });
 
     // Default first option for select/radio fields (options come from /lti/setup/info)
@@ -331,7 +338,8 @@
                                 {#if f.type === 'checkbox'}
                                     <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors">
                                         <input type="checkbox" 
-                                            name={f.name} 
+                                            name={f.name}
+                                            disabled={!!setupData.existing_activity && f.name === 'chat_visibility_enabled'}
                                             bind:checked={dynamicOptions[f.name]}
                                             class="mt-1 text-blue-600 rounded focus:ring-blue-500">
                                         <div>

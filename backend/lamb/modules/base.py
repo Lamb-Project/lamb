@@ -70,7 +70,7 @@ class ActivityModule(ABC):
         return None
 
     def configured_redirect(self, public_base: str, activity: Dict[str, Any],
-                            lms_user_id: str, lms_email: str) -> Optional[str]:
+                            lms_user_id: str, lms_email: str, lms_instance: str = "") -> Optional[str]:
         """lamb-0.8: where to send the instructor after setup; None keeps the router's default."""
         return None
     

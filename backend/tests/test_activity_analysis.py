@@ -18,6 +18,7 @@ def fixture(tmp_path):
     auth = SimpleNamespace(user={'id': 2}, organization={'id': 3}, is_system_admin=False,
                            can_access_assistant=lambda _: 'owner')
     service = Mock()
+    service.for_auth.return_value = service
     service.analysis_inventory.return_value = {'total': 4, 'sources_complete': True, 'chats': [
         {'id': 'chat-a', 'created_at': '2026-11-01', 'source': 'owi'},
         {'id': 'chat-b', 'created_at': '2026-11-01', 'source': 'lamb_internal'}]}
