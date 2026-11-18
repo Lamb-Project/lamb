@@ -348,3 +348,16 @@ def test_google_model_discovery_and_metadata_use_saved_catalog(monkeypatch):
     settings['enabled'] = False
     assert banana_img.get_available_llms('teacher@example.test') == []
     assert banana_img.get_available_llms_with_metadata('teacher@example.test') == []
+
+
+
+def test_required_model_defaults_do_not_enable_a_provider_without_credentials():
+    env = {'OPENAI_BASE_URL': 'http://synthetic', 'OPENAI_MODEL': 'synthetic-model'}
+    seeded = StartupConfiguration(env).organization_config({}, {})
+    provider = seeded['setups']['default']['providers']['openai']
+    assert provider['enabled'] is False
+    # Once saved, a credential override does not implicitly change model policy.
+    env.update(OPENAI_API_KEY='new-key', LAMB_STARTUP_OVERRIDE_PROVIDER_CONNECTIONS='true')
+    after = StartupConfiguration(env).organization_config(seeded, {})
+    assert after['setups']['default']['providers']['openai']['api_key'] == 'new-key'
+    assert after['setups']['default']['providers']['openai']['enabled'] is False

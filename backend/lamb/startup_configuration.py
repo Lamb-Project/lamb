@@ -92,6 +92,16 @@ class StartupConfiguration:
                 put("MODELS", values, field, name, parser)
             if values or provider in providers:
                 merge_missing(values, (provider_defaults or {}).get(provider, {}))
+                # Required deployment defaults (e.g. OPENAI_MODEL) alone do not
+                # make an unconfigured provider usable. Seed an enabled flag only
+                # when absent; later key rotation never changes a saved disable.
+                usable = {
+                    "openai": bool(values.get("api_key") and values.get("base_url")),
+                    "ollama": bool(values.get("base_url")),
+                    "google": bool(values.get("api_key") or values.get("project_id")),
+                    "llm": False,
+                }
+                values.setdefault("enabled", usable[provider])
                 providers[provider] = values
 
         for field, prefix in (("global_default_model", "GLOBAL_DEFAULT_MODEL"),

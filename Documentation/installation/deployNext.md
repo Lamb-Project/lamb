@@ -692,7 +692,9 @@ for an omitted consumer key and `LTI_SECRET` as the legacy secret fallback. Furt
 restarts preserve that saved pair unless the LTI override is enabled.
 
 Provider credentials and model policy are separate groups: rotating a key does
-not reset model selection. Current KB-screen connection fields take precedence
+not reset model selection or enable a saved disabled provider. When the enabled
+field is absent, a provider without its required connection credentials is seeded
+as disabled unless an enabled flag is explicitly supplied. Current KB-screen connection fields take precedence
 over legacy KB fields, including explicit empty values. Runtime provider and KB
 requests use the saved organization settings; a cleared key does not fall back to
 an environment credential.
