@@ -214,7 +214,6 @@ class LTIGradePassback:
                 return {"success": False, "error": "No graded submissions with a grade-return target", "sent": 0, "failed": 0}
 
             sent, failed, results = 0, 0, []
-            now = int(_time.time())
             for row in rows:
                 if is_lti13:
                     from lamb.lti13.grades import send_score
@@ -237,10 +236,14 @@ class LTIGradePassback:
                     "status_code": res.get("status_code"),
                 })
                 if res["success"]:
-                    conn.execute(
-                        "UPDATE mod_file_eval_student_submissions SET sent_to_moodle = 1, sent_to_moodle_at = ? WHERE id = ?",
-                        (now, row["ss_id"]),
-                    )
+                    # Commit each result before the next LMS request. SQLite's
+                    # writer is shared by every table and organization, so no
+                    # network wait may run inside this write transaction.
+                    with conn:
+                        conn.execute(
+                            "UPDATE mod_file_eval_student_submissions SET sent_to_moodle = 1, sent_to_moodle_at = ? WHERE id = ?",
+                            (int(_time.time()), row["ss_id"]),
+                        )
                     sent += 1
                 else:
                     failed += 1
@@ -251,7 +254,6 @@ class LTIGradePassback:
                         err_detail,
                     )
 
-            conn.commit()
             all_ok = failed == 0
             summary_error = None
             if not all_ok:
