@@ -227,7 +227,12 @@
             <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-xl shrink-0">🚀</div>
             <div>
                 <h1 class="text-xl font-bold text-gray-900">LAMB Activity Setup</h1>
-                {#if setupData?.context_title}
+                {#if setupData?.existing_activity}
+                    <p class="text-sm font-medium text-gray-700">{setupData.existing_activity.activity_name}</p>
+                    <p class="text-sm text-gray-500 break-words">
+                        {setupData.existing_activity.org_name} / {setupData.existing_activity.lms_origin || 'LMS not yet recorded'} / {setupData.existing_activity.context_title || setupData.existing_activity.context_id || 'Course not yet recorded'}
+                    </p>
+                {:else if setupData?.context_title}
                     <p class="text-sm text-gray-500">Course: {setupData.context_title}</p>
                 {/if}
             </div>
