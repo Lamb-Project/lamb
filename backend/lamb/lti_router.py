@@ -377,6 +377,7 @@ async def lti_setup_info(request: Request, token: str = ""):
             'chat_visibility_enabled': bool(existing.get('chat_visibility_enabled'))} if existing else None),
         "resource_link_id": resource_link_id,
         "context_title": data.get("lti_context_title", ""),
+        "creator_session": data.get("activity_creator_id") is not None,
         "needs_org_selection": needs_org_selection,
         "creator_access": [] if data.get("activity_creator_id") else lti_onboarding.creator_access(db_manager, manager, data),
         "can_add_organization": data.get("lti_type") == "setup" and lti_onboarding.within_session(data),

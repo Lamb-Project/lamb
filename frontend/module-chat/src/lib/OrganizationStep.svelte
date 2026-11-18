@@ -156,7 +156,11 @@
 			<!-- No account to enter from this page: the four hours of the launch are over. The
 			     instructor's accounts have no password, so the way in is the LMS, never a login
 			     page (15 November 2026: only LTI creator accounts take part in LTI pages). -->
-			<p class="mt-4 text-sm text-gray-600" data-reopen-from-lms>{$_('setupHub.reopen')}</p>
+			{#if info?.creator_session}
+				<a href="/activities" class="mt-4 inline-block text-sm text-blue-700">Activities</a>
+			{:else}
+				<p class="mt-4 text-sm text-gray-600" data-reopen-from-lms>{$_('setupHub.reopen')}</p>
+			{/if}
 		{/if}
 	</div>
 {/if}
