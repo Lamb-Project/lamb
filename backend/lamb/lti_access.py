@@ -1,113 +1,150 @@
-"""LTI platform admission and organization-to-Moodle binding.
+"""Optional LMS admission for LTI 1.1 launches.
 
-Only consume platform claims after protocol authentication. LTI 1.1 authenticates
-the signed launch with its configured secret; deployments sharing that secret
-also share trust in the instance claims. HTTP Origin/Referer are never identity.
+Off by default (Marc, 18 November 2026): with no whitelist and no organization lock LAMB
+does not compare the installation a launch names, and launches behave as they did in 0.8.
+A system administrator may restrict LAMB to a whitelist of installations; an organization
+administrator may lock the organization to the installations it is used from.
+
+LTI 1.1 authenticates a launch with a shared secret, and the installation identifier is a
+claim signed with it. These checks keep honest installations that share credentials apart;
+they do not stop an operator who holds the secret. LTI 1.3 launches are governed by their
+registration and take no part here. Identifiers are compared as the LMS sends them: nothing
+is parsed, so an LMS that names itself with a site id or a free text works like any other.
 """
 import json
-import re
-from urllib.parse import urlsplit, urlunsplit
+import sqlite3
 
 KEY = "lti_access"
+LIMIT = 100
+MAX_LENGTH = 255
+LEGACY_KEYS = ("moodle_url", "allowed_origins")  # URL settings of the 17 November dev build; never read
 
 
-def normalize_url(value):
-    if not isinstance(value, str) or not value.strip() or len(value) > 2048:
-        raise ValueError("Enter the Moodle installation's full URL.")
-    value = value.strip()
-    if any(c.isspace() or ord(c) < 32 for c in value) or "\\" in value:
-        raise ValueError("Invalid Moodle URL.")
-    try:
-        parts = urlsplit(value)
-        if (parts.scheme not in ("http", "https") or not parts.hostname or parts.username is not None
-                or parts.password is not None or parts.query or parts.fragment):
-            raise ValueError()
-        host = parts.hostname.encode("idna").decode("ascii").lower()
-        if not re.fullmatch(r"[a-z0-9.-]+", host) or any(not x or x.startswith('-') or x.endswith('-') for x in host.split('.')):
-            raise ValueError()
-        port = parts.port
-        if port == 0:
-            raise ValueError()
-        authority = host + (f":{port}" if port and (parts.scheme, port) not in (("https", 443), ("http", 80)) else "")
-        path = parts.path.rstrip("/")
-        if any(p in (".", "..") for p in path.split('/')) or '%' in path or '//' in path:
-            raise ValueError()
-        return urlunsplit((parts.scheme, authority, path, "", ""))
-    except (ValueError, UnicodeError):
-        raise ValueError("Use a full Moodle URL without credentials, query parameters or fragments.") from None
+def instance_id(parameters) -> str:
+    """What an LTI 1.1 launch calls its installation; empty when the LMS does not say."""
+    return str(parameters.get("tool_consumer_instance_guid") or "").strip()
 
 
-def instance_url(value):
-    """Compatibility with the hostname GUID carried by older signed Moodle launches."""
-    return normalize_url(value if "://" in str(value) else "https://" + str(value or ""))
+def same_instance(one, other) -> bool:
+    """Whether two identifiers name the same installation. Dev builds of 17 and 18 November
+    2026 stored and signed 'https://<identifier>'; those records and sessions still match."""
+    one, other = str(one or "").strip(), str(other or "").strip()
+    if one == other:
+        return True
+    return bool(one and other) and (one.lower() == "https://" + other.lower() or other.lower() == "https://" + one.lower())
 
 
-def lti11_origin(parameters):
-    supplied = parameters.get("tool_consumer_instance_url")
-    return normalize_url(supplied) if supplied else instance_url(parameters.get("tool_consumer_instance_guid"))
+def _listed(instance, instances) -> bool:
+    return any(same_instance(instance, entry) for entry in instances)
 
+
+def _stored(values):
+    return [v.strip() for v in values if isinstance(v, str) and v.strip()] if isinstance(values, list) else []
+
+
+def validate_instances(values):
+    if not isinstance(values, list) or len(values) > LIMIT:
+        raise ValueError(f"Use at most {LIMIT} LMS installations.")
+    cleaned = []
+    for value in values:
+        if (not isinstance(value, str) or not value.strip() or len(value) > MAX_LENGTH
+                or any(ord(c) < 32 for c in value)):
+            raise ValueError("Invalid LMS installation identifier.")
+        cleaned.append(value.strip())
+    return list(dict.fromkeys(cleaned))
+
+
+# -- the system whitelist -------------------------------------------------------------
 
 def global_settings(db):
     system = db.get_organization_by_slug("lamb")
-    if not system:
-        raise ValueError("System LTI settings are unavailable.")
-    settings = (system.get("config") or {}).get(KEY) or {}
-    return validate_global(settings)
+    settings = ((system or {}).get("config") or {}).get(KEY) or {}
+    return {"whitelist_enabled": settings.get("whitelist_enabled") is True and "allowed_instances" in settings,
+            "allowed_instances": _stored(settings.get("allowed_instances"))}
 
 
 def validate_global(settings):
     enabled = settings.get("whitelist_enabled", False)
-    origins = settings.get("allowed_origins", [])
-    if type(enabled) is not bool or not isinstance(origins, list) or len(origins) > 100:
-        raise ValueError("Use a whitelist switch and at most 100 LMS installation URLs.")
-    return {"whitelist_enabled": enabled, "allowed_origins": list(dict.fromkeys(normalize_url(url) for url in origins))}
+    if type(enabled) is not bool:
+        raise ValueError("Use a whitelist switch and a list of LMS installations.")
+    return {"whitelist_enabled": enabled, "allowed_instances": validate_instances(settings.get("allowed_instances", []))}
 
 
-def require_global(db, origin):
-    origin = normalize_url(origin)
+def require_global(db, instance):
     policy = global_settings(db)
-    if policy["whitelist_enabled"] and origin not in policy["allowed_origins"]:
+    if policy["whitelist_enabled"] and not _listed(instance, policy["allowed_instances"]):
         raise ValueError("This LMS is not allowed by the LAMB administrator.")
-    return origin
+    return instance
 
 
-def organization_url(organization):
-    raw = ((organization or {}).get("config") or {}).get(KEY, {}).get("moodle_url", "")
-    return normalize_url(raw) if raw else ""
+# -- the organization lock ------------------------------------------------------------
+
+def locked_instances(organization):
+    return _stored((((organization or {}).get("config") or {}).get(KEY) or {}).get("locked_instances"))
 
 
-def require_organization(db, organization, origin):
-    origin = require_global(db, origin)
-    if not organization or organization.get("is_system") or organization.get("status", "active") != "active":
-        raise ValueError("This organization does not accept LTI access.")
-    expected = organization_url(organization)
-    # Unconfigured organizations retain their existing access during upgrades.
-    # The global whitelist above remains independent of this optional binding.
-    if expected and origin != expected:
+def require_organization(db, organization, instance):
+    """Refuse an LTI 1.1 launch into this organization only where an administrator asked for it."""
+    require_global(db, instance)
+    if not organization:
+        raise ValueError("Organization not found.")
+    if organization.get("status") == "suspended":
+        raise ValueError("This organization is suspended.")
+    lock = locked_instances(organization)
+    if lock and not _listed(instance, lock):
         raise ValueError("This LMS is not connected to the organization.")
-    return origin
+    return instance
 
 
-def organization_allowed(db, organization_id, origin):
+def organization_allowed(db, organization_id, instance):
     try:
-        require_organization(db, db.get_organization_by_id(organization_id), origin)
+        require_organization(db, db.get_organization_by_id(organization_id), instance)
         return True
     except ValueError:
         return False
 
 
-def identity_origin(db, user_id, instance):
+# -- what an administrator can choose from ----------------------------------------------
+
+def session_instance(token_payload) -> str:
+    """The installation an LTI 1.1 Creator session was opened from; empty for a password
+    session, an LTI 1.3 session, or an LMS that does not name itself."""
     from lamb.lti13 import is_scoped
-    if is_scoped(user_id):
-        from lamb.lti13.store import Store
-        store = Store(db)
-        user = store.object(user_id, "user")
-        return normalize_url(store.registration(user["registration_id"], user["deployment_id"])["issuer"])
-    return instance_url(instance)
+    identity = (token_payload or {}).get("lti_identity")
+    if not isinstance(identity, dict) or not identity.get("lms_user_id") or is_scoped(identity["lms_user_id"]):
+        return ""
+    instance = str(identity.get("lms_instance") or "").strip()
+    return "" if "://" in instance else instance  # a session of the 17 November dev build
+
+
+def seen_instances(db, organization_id=None):
+    """Installations whose verified LTI 1.1 launches reached this organization (or any): the
+    ones recorded on its activities and on the accounts obtained with its creator codes."""
+    p = db.table_prefix
+    org = (organization_id,) if organization_id is not None else ()
+    queries = (
+        (f"SELECT DISTINCT lms_origin FROM {p}lti_activities WHERE lms_scope LIKE '[\"1.1\"%'"
+         + (" AND organization_id=?" if org else ""), org),
+        (f"SELECT DISTINCT r.lms_instance FROM {p}lti_creator_code_redemptions r "
+         f"JOIN {p}lti_creator_codes c ON c.id=r.code_id WHERE r.protocol='1.1'"
+         + (" AND c.organization_id=?" if org else ""), org))
+    found = set()
+    connection = db.get_connection()
+    if connection is None:
+        return []
+    try:
+        for sql, params in queries:
+            try:
+                found.update(str(row[0] or "").strip() for row in connection.execute(sql, params))
+            except sqlite3.Error:
+                continue  # a table of a later migration
+    finally:
+        connection.close()
+    return sorted(v for v in found if v and "://" not in v)[:LIMIT]
 
 
 def save_settings(db, organization_id, settings):
-    """Patch only this feature under a write lock, preserving unrelated settings."""
+    """Patch only this feature's keys under a write lock, preserving every other setting."""
     connection = db.get_connection()
     if connection is None:
         raise ValueError("Organization settings storage is unavailable.")
@@ -118,7 +155,8 @@ def save_settings(db, organization_id, settings):
         if not row:
             raise ValueError("Organization not found.")
         config = json.loads(row[0] or '{}')
-        config[KEY] = settings
+        current = config.get(KEY) if isinstance(config.get(KEY), dict) else {}
+        config[KEY] = {k: v for k, v in {**current, **settings}.items() if k not in LEGACY_KEYS}
         connection.execute(f"UPDATE {table} SET config=? WHERE id=?", (json.dumps(config), organization_id))
         connection.commit()
     except Exception:

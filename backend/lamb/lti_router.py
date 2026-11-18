@@ -195,8 +195,10 @@ async def lti_launch(request: Request):
 
             if any(is_scoped(v) for v in (resource_link_id, lms_user_id, context_id, username)):
                 raise HTTPException(400, "Reserved LTI identifier")
+            # Stored as the LMS sends it. Compared only where an administrator enabled a check.
+            lms_instance = lti_access.instance_id(post_data)
             try:
-                lms_instance = lti_access.require_global(db_manager, lti_access.lti11_origin(post_data))
+                lti_access.require_global(db_manager, lms_instance)
             except ValueError as exc:
                 raise HTTPException(403, str(exc)) from exc
             ctx = LTIContext(

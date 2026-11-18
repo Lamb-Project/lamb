@@ -20,8 +20,8 @@ describe('LEGATUS organization reminder', () => {
     it('shows the setup link without starting a conversation and clears after settings save', async () => {
         request.mockResolvedValueOnce(pending);
         render(Reminder);
-        expect(await screen.findByRole('link', { name: 'Set Moodle URL' })).toHaveAttribute('href', pending.reminders[0].settings_path);
-        expect(screen.getByText(/LTI access currently continues/)).toBeInTheDocument();
+        expect(await screen.findByRole('link', { name: 'Open the LMS lock' })).toHaveAttribute('href', pending.reminders[0].settings_path);
+        expect(screen.getByText(/Locking it to the installation you use is optional/)).toBeInTheDocument();
         request.mockResolvedValueOnce({ reminders: [] });
         await fireEvent(window, new CustomEvent('lamb-lti-access-changed'));
         await waitFor(() => expect(screen.queryByRole('link')).not.toBeInTheDocument());

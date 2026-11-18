@@ -110,7 +110,7 @@ def test_verified_instructor_can_read_but_not_change_settings(env):
     token = bridge(env, user=2)
     info = env.client.get('/lti/dashboard/info', params={'token': token, 'resource_link_id': 'resource-1'})
     assert info.status_code == 200 and info.json()['is_owner'] is False
-    assert info.json()['lms_origin'] == 'https://moodle.school.example'
+    assert info.json()['lms_origin'] == 'moodle.school.example'
     assert env.client.get('/lti/setup/info', params={'token': token}).status_code == 403
     assert env.client.post('/lti/reconfigure', data={'token': token, 'assistant_ids': 11}).status_code == 403
     assert env.client.get('/lti/dashboard/chats', params={'token': token, 'resource_link_id': 'resource-1'}).status_code == 403
@@ -152,7 +152,7 @@ def test_legacy_context_is_unknown_until_verified_and_cannot_be_rebound(env):
     with pytest.raises(Exception) as exc:
         access.record_launch(env.db, access.activity_by_id(env.db, 1), {'lti_lms_instance': 'other.example'}, instructor=False)
     assert exc.value.status_code == 403
-    assert access.activity_by_id(env.db, 1)['lms_origin'] == 'https://moodle.school.example'
+    assert access.activity_by_id(env.db, 1)['lms_origin'] == 'moodle.school.example'
 
 
 def test_removing_assistant_share_blocks_replacement_but_does_not_transfer_activity(env):

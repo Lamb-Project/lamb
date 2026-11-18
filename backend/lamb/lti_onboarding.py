@@ -152,13 +152,10 @@ def create_code(db, organization_id: int, label: str = "", expires_at: Optional[
     organization = db.get_organization_by_id(organization_id)
     if not organization:
         raise ValueError("Organization not found")
-    if organization.get("is_system"):
-        raise ValueError("Creator codes cannot be created for the system organization")
-    if organization.get("status", "active") != "active":
-        raise ValueError("This organization does not accept LTI access.")
-    origin = lti_access.organization_url(organization)
-    if origin:
-        lti_access.require_organization(db, organization, origin)
+    # The system organization may have codes: it can be the only organization of a small
+    # installation (Marc, 18 November 2026). Its members by code are plain users.
+    if organization.get("status") == "suspended":
+        raise ValueError("This organization is suspended.")
     now = int(time.time())
     if expires_at is not None and int(expires_at) <= now:
         raise ValueError("The expiry date must be in the future")
@@ -305,23 +302,17 @@ def accounts_of_instance(db, accounts: List[Dict[str, Any]], lms_user_id: str, l
 
     The global key is shared by every LMS, and a user id is only that LMS's own number: an
     account obtained with a creator code belongs to the instance it was obtained from. An
-    account made by the organization's own LTI Creator tool carries no record of an instance.
-    Every account, including those legacy accounts, now requires the organization's Moodle
-    binding and global platform policy. Existing origin records add a consistency check.
+    account made by the organization's own LTI Creator tool carries no record of an instance
+    and is recognised by the user id. The instance is compared as the LMS sends it. Where an
+    administrator enabled the whitelist or locked the organization (lti_access), an account
+    of an organization this installation may not enter is left out.
     """
-    try:
-        here = lti_access.instance_url(lms_instance)
-    except ValueError:
-        return []
+    here = str(lms_instance or "").strip()
     obtained = instances_of(db, lms_user_id)
-    def matches(instance):
-        try:
-            return lti_access.instance_url(instance) == here
-        except ValueError:
-            return False
     return [account for account in accounts
             if lti_access.organization_allowed(db, account["organization_id"], here)
-            and (account["id"] not in obtained or any(matches(v) for v in obtained[account["id"]]))]
+            and (account["id"] not in obtained
+                 or any(lti_access.same_instance(v, here) for v in obtained[account["id"]]))]
 
 
 # ---------------------------------------------------------------------------
@@ -393,14 +384,16 @@ def redeem(db, manager, ticket: Dict[str, Any], code: str) -> Redemption:
         return _refuse(db, ticket, "invalid")
     row = rows[0]
     organization = db.get_organization_by_id(row["organization_id"])
-    if not organization or organization.get("is_system"):
+    if not organization:
         return _refuse(db, ticket, "invalid", code_id=row["id"])
     status = _status(row, now)
     if status != "active":
         return _refuse(db, ticket, status, organization, row["id"])
     try:
-        origin = lti_access.identity_origin(db, ticket["lti_lms_user_id"], _instance(ticket))
-        lti_access.require_organization(db, organization, origin)
+        if not is_scoped(ticket["lti_lms_user_id"]):
+            # LTI 1.1: the optional whitelist and organization lock. LTI 1.3 is governed
+            # by its registration, below.
+            lti_access.require_organization(db, organization, _instance(ticket))
         allowed = allowed_organizations(db, ticket)
     except ValueError:
         return _refuse(db, ticket, "not_allowed", organization, row["id"])
@@ -452,7 +445,7 @@ def redeem(db, manager, ticket: Dict[str, Any], code: str) -> Redemption:
         creator_id = db.create_lti_creator_user(
             organization_id=organization["id"], lti_user_id=lms_user_id,
             user_email=_generated_email(organization, lms_user_id),
-            user_name=ticket.get("lti_display_name") or "LTI User")
+            user_name=ticket.get("lti_display_name") or "LTI User", allow_system=True)
         if not creator_id:
             _write(db, "UPDATE {p}lti_creator_codes SET use_count=use_count-1 WHERE id=? AND use_count>0", (row["id"],))
             return _refuse(db, ticket, "failed", organization, row["id"])

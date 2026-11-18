@@ -4906,8 +4906,8 @@ class LambDatabaseManager:
             if connection:
                 connection.close()
 
-    def create_lti_creator_user(self, organization_id: int, lti_user_id: str, 
-                                 user_email: str, user_name: str) -> Optional[int]:
+    def create_lti_creator_user(self, organization_id: int, lti_user_id: str,
+                                 user_email: str, user_name: str, allow_system: bool = False) -> Optional[int]:
         """
         Create a new LTI creator user.
         
@@ -4918,7 +4918,9 @@ class LambDatabaseManager:
         - Are identified by (organization_id, lti_user_id)
         
         Args:
-            organization_id: The organization ID (must not be system org)
+            organization_id: The organization ID
+            allow_system: accept the system organization. Only a creator code does (a small
+                installation may have no other organization); the LTI Creator tool never does.
             lti_user_id: The LTI user ID from LMS
             user_email: Generated email for the user
             user_name: Display name from LMS
@@ -4931,7 +4933,7 @@ class LambDatabaseManager:
         if not org:
             logger.error(f"Organization {organization_id} not found")
             return None
-        if org.get('is_system'):
+        if org.get('is_system') and not allow_system:
             logger.error("Cannot create LTI creator user in system organization")
             return None
 

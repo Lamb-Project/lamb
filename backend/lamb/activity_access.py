@@ -106,9 +106,21 @@ def launch_scope(db, resource_link_id, lms_instance):
         obj = store.object(resource_link_id, 'resource')
         registration = store.registration(obj['registration_id'], obj['deployment_id'])
         return registration['issuer'], json.dumps(['1.3', obj['registration_id'], obj['deployment_id']])
-    from lamb.lti_access import instance_url
-    origin = instance_url(lms_instance) if lms_instance else ''
+    origin = str(lms_instance or '').strip()  # as the LMS sends it, never parsed
     return origin, json.dumps(['1.1', origin]) if origin else ''
+
+
+def same_scope(recorded, launched):
+    """Whether a launch comes from the installation an activity is recorded on."""
+    if recorded == launched:
+        return True
+    try:
+        old, new = json.loads(recorded), json.loads(launched)
+    except (TypeError, ValueError):
+        return False
+    from lamb.lti_access import same_instance
+    return (isinstance(old, list) and isinstance(new, list) and len(old) == len(new) == 2
+            and old[0] == new[0] == '1.1' and same_instance(old[1], new[1]))
 
 
 def record_launch(db, activity, payload, *, instructor=True):
@@ -119,7 +131,7 @@ def record_launch(db, activity, payload, *, instructor=True):
     accounts = creators_for_payload(db, payload) if instructor else []
     with closing(db.get_connection()) as conn, conn:
         current = conn.execute(f'SELECT lms_scope FROM {db.table_prefix}lti_activities WHERE id=?', (activity['id'],)).fetchone()
-        if current and current[0] and current[0] != scope:
+        if current and current[0] and not same_scope(current[0], scope):
             raise HTTPException(403, 'This activity belongs to another LMS installation')
         if scope:
             conn.execute(f'''UPDATE {db.table_prefix}lti_activities SET lms_origin=?, lms_scope=? WHERE id=?''',

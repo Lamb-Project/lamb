@@ -30,9 +30,7 @@ def env(tmp_path, monkeypatch):
             row = conn.execute('SELECT * FROM T_Creator_users WHERE id=?', (uid,)).fetchone()
             return dict(row) if row else None
     db.get_creator_user_by_id = creator
-    db.get_organization_by_id = lambda oid: {'id': oid, 'name': 'Organization',
-        'config': {'lti_access': {'moodle_url': 'https://platform.example'}}} if oid in (1, 2) else None
-    db.get_organization_by_slug = lambda slug: {'id': 0, 'is_system': True, 'config': {}} if slug == 'lamb' else None
+    db.get_organization_by_id = lambda oid: {'id': oid, 'name': 'Organization'} if oid in (1, 2) else None
     with db.get_connection() as c:
         c.execute('CREATE TABLE T_Creator_users (id INTEGER PRIMARY KEY, organization_id INTEGER, user_email TEXT, user_name TEXT, enabled INTEGER, auth_provider TEXT)')
         # 1 and 2 are LTI creator accounts (2 in an organization the registration does not serve); 3 signs in with a password.

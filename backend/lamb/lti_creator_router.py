@@ -151,9 +151,9 @@ async def lti_creator_launch(request: Request):
         
         logger.debug("OAuth signature validated successfully")
         from lamb import lti_access
+        lms_instance = lti_access.instance_id(post_data)
         try:
-            lms_origin = lti_access.lti11_origin(post_data)
-            lti_access.require_organization(db_manager, org, lms_origin)
+            lti_access.require_organization(db_manager, org, lms_instance)
         except ValueError as exc:
             raise HTTPException(403, str(exc)) from exc
         
@@ -214,7 +214,7 @@ async def lti_creator_launch(request: Request):
             # An LTI creator of this tool may switch among their own organizations in Creator (#562)
             "lti_identity": {"lms_user_id": lti_user_id,
                              "lms_email": (post_data.get("lis_person_contact_email_primary") or "").strip().lower(),
-                             "lms_instance": lms_origin,
+                             "lms_instance": lms_instance,
                              "launched_at": int(_time.time())},
         })
         if not auth_token:
@@ -263,7 +263,7 @@ async def lti_creator_info():
         ],
         "notes": [
             "Consumer key and secret are configured per-organization in LAMB admin settings",
-            "The organization must configure its Moodle URL; users are identified within that installation",
+            "Users are identified by user_id; an organization administrator may lock the organization to its LMS installations",
             "LTI creator users are created as members by default but can be promoted to org admin by a system admin"
         ]
     })

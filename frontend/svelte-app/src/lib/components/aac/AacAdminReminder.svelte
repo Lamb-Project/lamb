@@ -12,10 +12,10 @@
     let refresh = $state(0);
     /** @type {Record<string, string[]>} */
     const text = {
-        en: ['Please set your organization’s Moodle URL.', 'LTI access currently continues without checking the organization’s LMS origin. Set it to restrict access to your Moodle. The global whitelist still applies.', 'Set Moodle URL'],
-        es: ['Configura la URL de Moodle de tu organización.', 'El acceso LTI continúa sin comprobar el origen del LMS de la organización. Configúralo para restringir el acceso a tu Moodle. La lista global de permitidos sigue aplicándose.', 'Configurar URL de Moodle'],
-        ca: ['Configura l’URL de Moodle de la teva organització.', 'L’accés LTI continua sense comprovar l’origen de l’LMS de l’organització. Configura’l per restringir l’accés al teu Moodle. La llista global de llocs permesos continua aplicant-se.', 'Configurar l’URL de Moodle'],
-        eu: ['Konfiguratu zure erakundearen Moodle URLa.', 'LTI sarbideak erakundearen LMS jatorria egiaztatu gabe jarraitzen du. Konfiguratu zure Moodlera mugatzeko. Baimendutako guneen zerrenda globala aplikatzen da.', 'Konfiguratu Moodle URLa']
+        en: ['You can lock your organization to your LMS.', 'This organization accepts LTI launches from any LMS installation that holds the credentials. Locking it to the installation you use is optional and takes one click. Any system whitelist still applies.', 'Open the LMS lock'],
+        es: ['Puedes bloquear tu organización a tu LMS.', 'Esta organización acepta lanzamientos LTI de cualquier instalación de LMS que tenga las credenciales. Bloquearla a la instalación que usas es opcional y se hace con un clic. La lista de instalaciones permitidas del sistema se sigue aplicando.', 'Abrir el bloqueo del LMS'],
+        ca: ['Pots bloquejar la teva organització al teu LMS.', 'Aquesta organització accepta llançaments LTI de qualsevol instal·lació d’LMS que tingui les credencials. Bloquejar-la a la instal·lació que fas servir és opcional i es fa amb un clic. La llista d’instal·lacions permeses del sistema es continua aplicant.', 'Obre el bloqueig de l’LMS'],
+        eu: ['Zure erakundea zure LMSra blokea dezakezu.', 'Erakunde honek kredentzialak dituen edozein LMS instalazioren LTI abiarazteak onartzen ditu. Erabiltzen duzun instalaziora blokeatzea aukerakoa da eta klik bakarrarekin egiten da. Sistemaren baimendutako instalazioen zerrenda aplikatzen da oraindik.', 'Ireki LMS blokeoa']
     };
     let labels = $derived(text[$locale || 'en'] || text.en);
     $effect(() => {

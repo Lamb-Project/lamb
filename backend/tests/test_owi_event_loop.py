@@ -61,7 +61,6 @@ ACTIVITY = {'id': 7, 'status': 'active', 'activity_type': 'chat', 'organization_
 
 def _launch_form(roles):
     return {'oauth_consumer_key': 'key', 'resource_link_id': 'rl-1', 'roles': roles, 'user_id': 'u1',
-            'tool_consumer_instance_url': 'https://moodle.example',
             'ext_user_username': 'ana', 'lis_person_name_full': 'Ana Example'}
 
 
@@ -72,9 +71,6 @@ def launch_app(monkeypatch):
     monkeypatch.setattr(lti_router.manager, 'get_lti_credentials', lambda: ('key', 'secret'))
     monkeypatch.setattr(lti_router.manager, 'validate_oauth_signature', lambda *a, **k: True)
     monkeypatch.setattr(lti_router.db_manager, 'get_lti_activity_by_resource_link', lambda rl: dict(ACTIVITY))
-    monkeypatch.setattr(lti_router.db_manager, 'get_organization_by_slug', lambda slug: {'config': {}})
-    monkeypatch.setattr(lti_router.db_manager, 'get_organization_by_id', lambda oid: {
-        'id': oid, 'config': {'lti_access': {'moodle_url': 'https://moodle.example'}}})
     monkeypatch.setattr(lti_router, '_get_activity_module', lambda activity: module)
     app = FastAPI()
     app.include_router(lti_router.router, prefix='/lamb/v1/lti')

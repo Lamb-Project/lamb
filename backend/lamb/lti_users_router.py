@@ -311,6 +311,19 @@ def generate_signature(params, http_method, base_url, consumer_secret, token_sec
 
     return computed_signature, base_string, encoded_params
 
+def _published_organization(consumer_key):
+    """The organization of the assistant a legacy launch names, or None when it cannot be told."""
+    try:
+        published = db_manager.get_published_assistant_by_oauth_consumer(consumer_key)
+        assistant = db_manager.get_assistant_by_id(published['assistant_id']) if published else None
+        organization_id = getattr(assistant, 'organization_id', None)
+        if organization_id is None and isinstance(assistant, dict):
+            organization_id = assistant.get('organization_id')
+        return db_manager.get_organization_by_id(organization_id) if organization_id else None
+    except Exception:
+        return None
+
+
 @router.post("/lti")
 async def process_lti_connection(request: Request):
     """
@@ -368,19 +381,17 @@ async def process_lti_connection(request: Request):
             raise HTTPException(
                 status_code=401, detail="Invalid OAuth signature")
 
+        # Optional admission (lti_access): nothing is refused unless an administrator enabled
+        # the whitelist or locked the assistant's organization. A launch whose assistant or
+        # organization cannot be resolved here continues as it always did.
         from lamb import lti_access
+        instance = lti_access.instance_id(post_data)
         try:
-            origin = lti_access.lti11_origin(post_data)
-            lti_access.require_global(db_manager, origin)
-            published = db_manager.get_published_assistant_by_oauth_consumer(post_data.get("oauth_consumer_key", ""))
-            if not published:
-                raise ValueError("Published assistant not found.")
-            assistant = db_manager.get_assistant_by_id(published['assistant_id'])
-            if not assistant:
-                raise ValueError("Published assistant not found.")
-            organization_id = assistant.organization_id if hasattr(assistant, 'organization_id') else assistant.get('organization_id')
-            lti_access.require_organization(db_manager, db_manager.get_organization_by_id(organization_id), origin)
-        except (ValueError, AttributeError) as exc:
+            lti_access.require_global(db_manager, instance)
+            organization = _published_organization(post_data.get("oauth_consumer_key", ""))
+            if organization:
+                lti_access.require_organization(db_manager, organization, instance)
+        except ValueError as exc:
             raise HTTPException(403, str(exc)) from exc
 
         # Extract relevant LTI parameters
