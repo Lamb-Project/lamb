@@ -2018,7 +2018,7 @@ async def update_organization_user(request: Request, user_id: int, user_data: Or
         # Update enabled status if provided
         if user_data.enabled is not None:
             # Prevent users from disabling themselves
-            current_user_email = admin_info.get('email')
+            current_user_email = admin_info.get('user_email')
             if user.get('user_email') == current_user_email and not user_data.enabled:
                 raise HTTPException(
                     status_code=403, 
@@ -2086,7 +2086,7 @@ async def change_user_password(request: Request, user_id: int, password_data: Or
             logger.error(f"Failed to update password for user {user_email}: {result.get('error')}")
             raise HTTPException(status_code=500, detail=result.get('error', 'Failed to update user password'))
         
-        logger.info(f"Organization admin {admin_info.get('email')} changed password for user {user_email}")
+        logger.info(f"Organization admin {admin_info.get('user_email')} changed password for user {user_email}")
         return {"message": "Password changed successfully"}
         
     except HTTPException:
@@ -2134,7 +2134,7 @@ async def delete_organization_user(request: Request, user_id: int, org: Optional
         user_email = user.get('user_email')
         
         # Prevent users from deleting themselves
-        current_user_email = admin_info.get('email')
+        current_user_email = admin_info.get('user_email')
         if user_email == current_user_email:
             raise HTTPException(
                 status_code=403, 
