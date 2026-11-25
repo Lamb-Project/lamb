@@ -153,3 +153,25 @@ async def test_navigation_checks_owner_before_emitting():
     ctx=SimpleNamespace(http=SimpleNamespace(get=AsyncMock(side_effect=ValueError('404'))),frontend=AsyncMock())
     with pytest.raises(ValueError):await frontend_open(ctx,['learning-scenario',key],{})
     ctx.frontend.assert_not_awaited()
+
+
+def test_a_scenario_created_in_a_conversation_becomes_its_scenario(store):
+    """Marc, 25 November 2026: after approval the new scenario is the conversation's scenario."""
+    from lamb.aac.liteshell.shell import ShellResult
+    earlier=store.create('Earlier','old goals')
+    agent=SimpleNamespace(skill_state={'learning_scenario_id':earlier['id']}, pending_action=None, conversation=[], scenario_notice=None)
+    ls.apply_scenario(agent,auth())
+    created=ShellResult(True, data=store.create('Rooftop Apiculture 204','real course content'))
+    ls.adopt_created(agent,'learning-scenario.create',created)
+    assert agent.skill_state['learning_scenario_id']==created.data['id']
+    assert created.data['selected_for_this_conversation'] is True
+    ls.apply_scenario(agent,auth())
+    assert 'real course content' in agent.conversation[-2]['content']
+    assert agent.scenario_notice=='Learning scenario in use: Rooftop Apiculture 204'
+    # Nothing else selects: a failed creation, another command, a result without an identifier.
+    for key,result in [('learning-scenario.create',ShellResult(False,error='refused')),
+                       ('learning-scenario.duplicate',ShellResult(True,data=store.create('Copy'))),
+                       ('learning-scenario.create',ShellResult(True,data={'title':'no id'}))]:
+        ls.adopt_created(agent,key,result)
+        assert agent.skill_state['learning_scenario_id']==created.data['id']
+    ls.adopt_created(SimpleNamespace(skill_state=None),'learning-scenario.create',created)

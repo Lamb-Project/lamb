@@ -1129,7 +1129,7 @@ async def learning_scenario_get(ctx, args, kwargs):
 
 @register('learning-scenario.create')
 async def learning_scenario_create(ctx, args, kwargs):
-    """Create TITLE --content TEXT. No local file; requires approval."""
+    """Create TITLE --content TEXT. No local file; requires approval. It becomes this conversation's scenario."""
     return _unwrap(await ctx.http.post('/creator/aac/learning-scenarios', json={'title':args[0], 'content':kwargs.get('content', ''), **({'links':{'moodle_course_id':int(kwargs['moodle_course_id'])}} if 'moodle_course_id' in kwargs else {})}))
 
 @register('learning-scenario.update')

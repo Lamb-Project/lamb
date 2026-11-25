@@ -33,6 +33,7 @@ from lamb.aac.authorization import ActionAuthorizer, DEFAULT_POLICY, classify_us
 from lamb.aac.liteshell.shell import LiteShell, CommandContext, ShellResult, prepare_command
 from lamb.aac.context_metrics import ContextSizeError, is_context_rejection, request_sizes, usage_counts
 from lamb.aac.session_logger import SessionLogger
+from lamb.aac.learning_scenarios import adopt_created
 from lamb.aac.skill_routing import SkillRouting, catalogue_prompt
 from lamb.logging_config import get_logger
 
@@ -955,6 +956,7 @@ class AgentLoop(SkillRouting):
         except BaseException:
             self._record_interrupted(command, action_key)
             raise
+        adopt_created(self, action_key, result)
         self._record_audit(command, action_key, result.success, result.elapsed_ms, result)
         self.note_unguided('succeeded' if result.success else 'failed')
         if self.session_logger:
@@ -1044,6 +1046,7 @@ class AgentLoop(SkillRouting):
                 self.conversation.append({"role": "user", "content":
                     "[System: Approved action interrupted. Outcome may be unknown. Read back state before retrying: " + action['command'] + "]"})
                 raise
+            adopt_created(self, action.get("action_key"), result)
             self._record_audit(action["command"], action.get("action_key"), result.success, result.elapsed_ms, result)
 
             if self.session_logger:

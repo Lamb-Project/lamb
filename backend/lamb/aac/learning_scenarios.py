@@ -116,6 +116,18 @@ class ScenarioStore:
         return self.get(key)['id'] if key else None
 
 
+def adopt_created(agent, action_key, result):
+    """A learning scenario created in a conversation becomes that conversation's scenario.
+    Only the selection changes here; apply_scenario gives the saved text to the model at the next turn."""
+    data = getattr(result, 'data', None)
+    state = getattr(agent, 'skill_state', None)
+    if (action_key != 'learning-scenario.create' or not getattr(result, 'success', False) or state is None
+            or not isinstance(data, dict) or not data.get('id')):
+        return
+    state['learning_scenario_id'] = data['id']
+    data['selected_for_this_conversation'] = True
+
+
 def apply_scenario(agent, auth):
     """Append context once per saved revision; never rewrite the prefix or pending action."""
     agent.scenario_notice = None

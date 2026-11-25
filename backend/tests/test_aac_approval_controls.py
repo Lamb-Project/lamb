@@ -108,3 +108,22 @@ def test_browser_review_uses_buttons_without_a_second_text_confirmation_prompt()
     a.interactive_approvals = True
     text = confirmation_fallback(a)
     assert 'Notes' in text and 'Respon sí o no' not in text
+
+
+def test_an_extended_plan_shows_only_the_steps_that_have_not_run():
+    """Marc, 25 November 2026: the review of an extension lists the new work, not what is already done."""
+    step = lambda name, status: {'id': name, 'title': 'Step ' + name, 'command': f'lamb kb create "{name}"', 'when': 'success', 'status': status}
+    plan = {'title': 'Course assistant', 'tool_estimate': 5, 'assistant_calls': 0,
+            'steps': [step('imported', 'completed'), step('broken', 'failed'), step('unneeded', 'skipped'),
+                      step('waiting', 'pending'), step('added', 'pending')]}
+    text = render_details({'command': 'lamb plan prepare', 'plan': plan}, 'en', False)
+    assert 'Earlier steps, already finished and not run again: 3' in text
+    for hidden in ('imported', 'broken', 'unneeded'):
+        assert hidden not in text
+    # A step that has not run is always reviewable, and keeps its place in the plan.
+    assert '4. Step waiting' in text and '5. Step added' in text
+    for language, words in [('es', 'ya terminados'), ('ca', 'ja acabats'), ('eu', 'amaituta')]:
+        assert words in render_details({'command': 'lamb plan prepare', 'plan': plan}, language, False)
+    fresh = {**plan, 'steps': [step('first', 'pending'), step('second', 'pending')]}
+    text = render_details({'command': 'lamb plan prepare', 'plan': fresh}, 'en', False)
+    assert 'Earlier steps' not in text and '1. Step first' in text and '2. Step second' in text

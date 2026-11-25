@@ -164,7 +164,18 @@ def render_details(action, language, advanced):
         if labels is None:
             return render_details(action, 'en', advanced)
         rows = [f'**{labels[0]}: {plain(plan["title"])}**']
+        # An extended plan carries its earlier steps. Those that finished are not run again, so the review
+        # counts them instead of listing them beside the new work. A step that has not run is always shown.
+        finished = sum(step.get('status') in {'completed', 'failed', 'skipped'} for step in plan['steps'])
+        if finished:
+            earlier = {'en': 'Earlier steps, already finished and not run again',
+                       'es': 'Pasos anteriores, ya terminados y que no se vuelven a ejecutar',
+                       'ca': 'Passos anteriors, ja acabats i que no es tornen a executar',
+                       'eu': 'Aurreko urratsak, amaituta daude eta ez dira berriro exekutatuko'}[language]
+            rows.append(f'{earlier}: {finished}')
         for n, step in enumerate(plan['steps'], 1):
+            if step.get('status') in {'completed', 'failed', 'skipped'}:
+                continue
             rows.append(f'{n}. {plain(step["title"])}')
             # Exact values are reviewable even in basic mode; never approve a hidden mutation.
             key = action_values({'command': step['command']})
