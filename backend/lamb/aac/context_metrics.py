@@ -15,6 +15,8 @@ def command_name(call: dict) -> str:
     from lamb.aac.liteshell.shell import prepare_command
     try:
         function = call['function']
+        if function['name'] == 'prepare_plan':  # the structured plan tool (#568)
+            return 'plan.extend' if json.loads(function['arguments']).get('extend') is True else 'plan.prepare'
         if function['name'] != 'execute_command':
             return 'unknown'
         command = json.loads(function['arguments'])['command']

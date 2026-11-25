@@ -1,6 +1,6 @@
 {
   "name": "lamb-default",
-  "version": "2.0-beta.1",
+  "version": "2.0-beta.2",
   "requires": "lamb >= 0.9.0",
   "compatibility": "knowledge-brief",
   "layers": {
@@ -34,7 +34,7 @@
     "methodology/design-publishing.md": "647e89e253c7a0384b58bccaf644e2517a207f19e1d48f178c8643dcde30f788",
     "methodology/design-rubrics.md": "4e856ceb14acf3ab8391b8fe0fef6eff3df57d486607b01cb304deae04af2205",
     "methodology/design-testing.md": "1f2c69f02a6a2515cf63f8f2b3f84128445432e711e4f7735f144a4e8b4db20f",
-    "persona.md": "a1882eb17031f2964794b13bdc0b1123e7b840221add678069c304f01ed00e06",
+    "persona.md": "6f75ae7edee7c2acf6ba053f0865aa3220f32dce0ddfe3c5b4c96407de84c797",
     "routing.yaml": "2674d936c6deb986cfdb7d57c55ba397855b9c140136a7a24d7c4727e70abcfb",
     "skills/about_lamb.md": "eac1abcae105e03445dd5bb2e31aa69fcc82ce9646a307ef8622efa8030b2013",
     "skills/chat_with_assistant.md": "a79fb6057c721238fc53ef63b5a8f28165c88302d1c71b47a74e8a2720741644",
@@ -52,7 +52,7 @@
     "skills/moodle_forums.md": "d8180eb3edd95af944e1d0a925db5029b5b13d3c67375344cb4379ce70bdcb66",
     "skills/moodle_triage.md": "cd0c48c70ad810322127cbb50052d66c7557f12140438a224b9c3d3a1dc86edf",
     "skills/publish_assistant.md": "4d04076cc10252ebb91dd92223cbe23a09df1731e538fda62ef3129c77c13eda",
-    "skills/test_and_evaluate.md": "af2cd8bd47affe13c18e2c50386fa5a7371ef7f32938941cda93ecae9619bb12",
+    "skills/test_and_evaluate.md": "0ea27c2a89c03b75848bc60077cc4552a12608a3c79052b84801249c73b2b321",
     "skills/test_lti_tools.md": "9e37c0f98dbb09f051760c41afea4241cd58be4f587694e33a1e7b4aea04cd96"
   },
   "skill_layers": {

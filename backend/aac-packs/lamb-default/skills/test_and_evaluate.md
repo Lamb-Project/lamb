@@ -163,12 +163,50 @@ Saved evaluations initialize the assistant system prompt, including conversation
 
 ## Auto plan example
 
-After reading assistant 7 and discovering that a useful new case is needed, prepare all case data and execution at once. Adapt IDs, content and counts to the actual task:
+After reading assistant 7 and discovering that a useful new case is needed, prepare all case data and execution at once with the prepare_plan tool. Every value is its own field, written as plain text. Adapt IDs, content and counts to the actual task:
 
-```aac-command
-lamb plan prepare --json '{"title":"Test assistant 7 and report","steps":[{"id":"normal","title":"Create a normal-use case","command":"lamb test add 7 Normal --message \"Explain photosynthesis\" --expected \"Explain light, water and carbon dioxide in age-appropriate language\""},{"id":"run_normal","title":"Run the normal-use case","command":"lamb test run 7 --case @normal.id","after":"normal"}],"assistant_calls":10,"tool_estimate":12,"evaluate":true,"report":{"title":"Assistant test report","assistant_id":"7"}}'
+```json
+{
+ "title": "Test assistant 7 and report",
+ "steps": [
+  {
+   "id": "normal",
+   "title": "Create a normal-use case",
+   "operation": "test add",
+   "arguments": [
+    7,
+    "Normal"
+   ],
+   "options": {
+    "message": "Explain photosynthesis",
+    "expected": "Explain light, water and carbon dioxide in age-appropriate language"
+   }
+  },
+  {
+   "id": "run_normal",
+   "title": "Run the normal-use case",
+   "operation": "test run",
+   "arguments": [
+    7
+   ],
+   "options": {
+    "case": {
+     "ref": "normal.id"
+    }
+   },
+   "after": "normal"
+  }
+ ],
+ "assistant_calls": 10,
+ "tool_estimate": 12,
+ "evaluate": true,
+ "report": {
+  "title": "Assistant test report",
+  "assistant_id": "7"
+ }
+}
 ```
 
-After approval, call `lamb plan execute`. Each test run must use a specific --case, including @step.id for cases created in the plan. A saved multi-turn fixture is one completion on its supplied history, not a simulation with one model call per supplied message. A retry must be an explicit additional step/branch and count toward the allowance.
+After approval, call `lamb plan execute`. Each test run must use a specific case, given as {"ref": "step.id"} for a case created in the plan. A saved multi-turn fixture is one completion on its supplied history, not a simulation with one model call per supplied message. A retry must be an explicit additional step/branch and count toward the allowance.
 
 Read each returned run. Use its verified IDs with `lamb test evaluate RUN_ID ASSISTANT_ID good --notes "Observed evidence and rationale"`, choosing good, bad or mixed honestly. These are LEGATUS evaluations, not human confirmations. Save a report that distinguishes execution errors, unmet expectations, hypotheses and verified causes with `lamb report save --content "Report with actual cases, run IDs, verdicts, evidence and limitations"`, then `lamb plan finish`. Do not ask the teacher to grade every answer, choose the next already-approved step, or confirm continuation.

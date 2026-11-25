@@ -20,6 +20,7 @@ LIMIT = 10
 MAX_STEPS = 50
 MAX_TOOLS = 250
 MAX_CALLS = 200
+PLAN_ATTEMPTS = 3  # rejected proposals in one turn before LEGATUS must stop and tell the user (#568)
 REF = re.compile(r'^@([a-z][a-z0-9_]{0,39})((?:\.[a-zA-Z0-9_]+)+)$')
 MUTATIONS = {'test.add', 'test.run', 'test.evaluate', 'report.save', 'change.restore'}
 CONTROL = {'plan.prepare', 'plan.extend', 'plan.execute', 'plan.status', 'plan.finish', 'plan.cancel', 'plan.reconcile', 'plan.allow-calls', 'change.list', 'change.get', 'report.get'}
@@ -46,7 +47,9 @@ def mutation(key, kwargs=None):
     return key in MUTATIONS or ActionAuthorizer().check(key) == 'ask'
 
 
-def substitute(command, steps, *, preview=False):
+def substitute(command, steps, *, preview=False, recovering=None):
+    """Replace @step.field tokens by the identifiers earlier steps returned. `recovering` names a step that
+    completed only in part and that this command is allowed to read, because it exists to recover from it."""
     tokens = shlex.split(command)
     for index, token in enumerate(tokens):
         match = REF.fullmatch(token)
@@ -59,7 +62,9 @@ def substitute(command, steps, *, preview=False):
         if preview:
             tokens[index] = '1'
             continue
-        if source.get('status') != 'completed':
+        if source.get('partial') and name != recovering:
+            raise ValueError(f'Referenced step {name} completed only in part; its result is not built on until it is whole')
+        if source.get('status') != 'completed' and not (source.get('partial') and name == recovering):
             raise ValueError(f'Referenced step {name} has not completed')
         value = source.get('result')
         for field in path[1:].split('.'):
@@ -90,6 +95,7 @@ class AutoWork:
         self.state = task_state(agent.skill_state)
         self.executing = None
         self.current_entry = None
+        self.rejections = 0  # proposals refused in this turn; a controller lives for one turn
 
     @property
     def task(self):
@@ -150,6 +156,38 @@ class AutoWork:
         return command
 
     async def prepare(self, payload, *, extend=False):
+        """Validate a proposal. Nothing is executed here; a refusal leaves everything as it was."""
+        if self.rejections >= PLAN_ATTEMPTS:
+            raise ValueError(f'{PLAN_ATTEMPTS} proposals were refused in this turn and no further one is accepted now. '
+                             'Nothing was executed. Tell the user what is blocking and ask how to proceed.')
+        try:
+            plan = await self._prepare(payload, extend=extend)
+        except ValueError:
+            self.rejections += 1
+            raise
+        self.rejections = 0
+        return plan
+
+    def repeated_creation(self, key, command):
+        """The journal entry of an identical creation already completed in this task, so that a corrected or
+        repeated plan cannot make a second knowledge base, import or assistant."""
+        if not (key.endswith('.create') or key.startswith('moodle.import.')) or any(REF.fullmatch(t) for t in shlex.split(command)):
+            return None
+        return next((e for e in self.state['journal'] if e['task_id'] == self.task['id'] and e['status'] == 'completed'
+                     and canonical(e['command']) == canonical(command)), None)
+
+    def writes(self):
+        """What this task has changed or tried to change, from the journal: the truth to plan a retry from."""
+        rows = []
+        for entry in self.state['journal']:
+            if entry['task_id'] != self.task['id']:
+                continue
+            result = entry.get('result') if isinstance(entry.get('result'), dict) else {}
+            rows.append({'step_id': entry.get('step_id'), 'operation': prepare_command(entry['command'])[0], 'status': entry['status'],
+                         'result': {k: result[k] for k in ('id', 'kb_id', 'assistant_id', 'batch_id', 'import_id', 'name') if k in result}})
+        return rows
+
+    async def _prepare(self, payload, *, extend=False):
         if not self.enabled:
             raise ValueError('Enable Auto in this conversation to prepare a batch plan.')
         if not isinstance(payload, dict) or set(payload) - {'title', 'steps', 'assistant_calls', 'tool_estimate', 'evaluate', 'report'}:
@@ -174,39 +212,58 @@ class AutoWork:
             if step['status'] == 'pending':
                 key, _, kwargs, _ = prepare_command(substitute(step['command'], steps, preview=True))
                 calls += call_count(key, kwargs)
-        for item in raw:
-            if not isinstance(item, dict) or set(item) - {'id', 'title', 'command', 'after', 'when'}:
-                raise ValueError('Each step has id, title, command, optional after and when=success|failure|always')
-            identifier = item.get('id', '')
-            if not re.fullmatch(r'[a-z][a-z0-9_]{0,39}', identifier) or any(s['id'] == identifier for s in steps):
-                raise ValueError('Step IDs must be unique lowercase identifiers')
-            command = item.get('command', '')
-            if not isinstance(command, str) or len(command) > 30000:
-                raise ValueError('Invalid step command')
-            after, when = item.get('after'), item.get('when', 'success')
-            if when not in {'success', 'failure', 'always'} or (after and not any(s['id'] == after for s in steps)):
-                raise ValueError('A conditional step must refer to an earlier step')
-            preview = substitute(command, steps, preview=True)
-            key, args, kwargs, help_requested = prepare_command(preview, self.agent.shell.allowlist)
-            allowed = self.agent.shell.allowed_commands
-            if allowed is not None and key not in allowed:
-                raise ValueError(f'{key} is outside your role')
-            if key.startswith(('plan.', 'report.', 'change.', 'skill.')) or help_requested or ActionAuthorizer().check(key) == 'never':
-                raise ValueError(f'{key} cannot be a plan step')
-            if key == 'test.run' and not any(k in kwargs for k in ('case', 'scenario', 's')):
-                raise ValueError('Plan test runs need --case ID or --case @earlier_step.id; list cases first. This freezes the selected set.')
-            command = await self.normalize(command)
-            key, args, kwargs, _ = prepare_command(substitute(command, steps, preview=True))
-            entry = {**item, 'command': command, 'title': str(item.get('title', identifier))[:250],
-                     'when': when, 'status': 'pending'}
-            # Freeze concrete external reviews at preparation, just like an exact action.
-            if key.startswith('moodle.') and mutation(key, kwargs):
-                if preview != shlex.join(shlex.split(command)) and any(REF.fullmatch(t) for t in shlex.split(command)):
-                    raise ValueError('External writes require concrete targets before plan approval')
-                entry['review'] = await self.review(key, kwargs)
+        for position, item in enumerate(raw):
+            # A refusal names its step, so that a correction touches that step and nothing else.
+            label = item['id'] if isinstance(item, dict) and isinstance(item.get('id'), str) and re.fullmatch(r'[a-z][a-z0-9_]{0,39}', item['id']) else f'#{position + 1}'
+            try:
+                entry, key, kwargs = await self._step(item, steps)
+            except ValueError as error:
+                raise ValueError(f'Step {label}: {error}') from None
             writes = writes or mutation(key, kwargs)
             calls += call_count(key, kwargs)
             steps.append(entry)
+        return await self._finish_proposal(payload, extend, current, title, steps, calls, writes)
+
+    async def _step(self, item, steps):
+        """Validate one step against the installed contracts. Returns its saved form; raises on the first problem."""
+        if not isinstance(item, dict) or set(item) - {'id', 'title', 'command', 'after', 'when'}:
+            raise ValueError('Each step has id, title, command, optional after and when=success|failure|always')
+        identifier = item.get('id', '')
+        if not re.fullmatch(r'[a-z][a-z0-9_]{0,39}', identifier) or any(s['id'] == identifier for s in steps):
+            raise ValueError('Step IDs must be unique lowercase identifiers')
+        command = item.get('command', '')
+        if not isinstance(command, str) or len(command) > 30000:
+            raise ValueError('Invalid step command')
+        after, when = item.get('after'), item.get('when', 'success')
+        if when not in {'success', 'failure', 'always'} or (after and not any(s['id'] == after for s in steps)):
+            raise ValueError('A conditional step must refer to an earlier step')
+        preview = substitute(command, steps, preview=True)
+        key, args, kwargs, help_requested = prepare_command(preview, self.agent.shell.allowlist)
+        allowed = self.agent.shell.allowed_commands
+        if allowed is not None and key not in allowed:
+            raise ValueError(f'{key} is outside your role')
+        if key.startswith(('plan.', 'report.', 'change.', 'skill.')) or help_requested or ActionAuthorizer().check(key) == 'never':
+            raise ValueError(f'{key} cannot be a plan step')
+        if key == 'test.run' and not any(k in kwargs for k in ('case', 'scenario', 's')):
+            raise ValueError('Plan test runs need --case ID or --case @earlier_step.id; list cases first. This freezes the selected set.')
+        command = await self.normalize(command)
+        key, args, kwargs, _ = prepare_command(substitute(command, steps, preview=True))
+        entry = {**item, 'command': command, 'title': str(item.get('title', identifier))[:250],
+                 'when': when, 'status': 'pending'}
+        # Freeze concrete external reviews at preparation, just like an exact action.
+        if key.startswith('moodle.') and mutation(key, kwargs):
+            if preview != shlex.join(shlex.split(command)) and any(REF.fullmatch(t) for t in shlex.split(command)):
+                raise ValueError('External writes require concrete targets before plan approval')
+            entry['review'] = await self.review(key, kwargs)
+        done = self.repeated_creation(key, command)
+        if done:
+            result = done.get('result') if isinstance(done.get('result'), dict) else {}
+            known = {k: result[k] for k in ('id', 'kb_id', 'assistant_id', 'batch_id', 'import_id', 'name') if k in result}
+            raise ValueError(f'this task already completed the same creation ({key}); its result is {json.dumps(known)}. '
+                             'Use that resource instead of creating it again.')
+        return entry, key, kwargs
+
+    async def _finish_proposal(self, payload, extend, current, title, steps, calls, writes):
         ceiling = payload.get('assistant_calls', max(LIMIT, self.task['calls'] + calls))
         if type(ceiling) is not int or not self.task['calls'] + calls <= ceiling <= MAX_CALLS:
             raise ValueError('assistant_calls must cover the cumulative task calls, including all possible branches, up to 200')
@@ -279,7 +336,8 @@ class AutoWork:
         if not self.enabled or plan.get('status') not in {'approved', 'running'} or plan.get('expires', 0) < stamp():
             return False
         if self.executing:
-            return canonical(command) == canonical(substitute(self.executing['command'], plan['steps']))
+            recovering = self.executing.get('after') if self.executing.get('when') in {'failure', 'always'} else None
+            return canonical(command) == canonical(substitute(self.executing['command'], plan['steps'], recovering=recovering))
         if key == 'test.evaluate':
             return self.evaluation_allowed(args)
         if key == 'report.save':
@@ -305,7 +363,9 @@ class AutoWork:
                 self.save()
                 continue
             try:
-                command = substitute(step['command'], plan['steps'])
+                # Only a step declared as the answer to a failure may read a step that completed in part.
+                recovering = step.get('after') if step.get('when') in {'failure', 'always'} else None
+                command = substitute(step['command'], plan['steps'], recovering=recovering)
                 step['status'] = 'running'
                 self.executing = step
                 self.save()
@@ -320,9 +380,16 @@ class AutoWork:
                     return {'success': False, 'pending_approval': True, 'steps': plan['steps']}
                 uncertain = any(e.get('step_id') == step['id'] and e['task_id'] == self.task['id'] and e['status'] == 'uncertain'
                                 for e in self.state['journal'])
-                step['status'] = 'uncertain' if uncertain else 'completed' if result.get('success') else 'failed'
-                step['result'] = result.get('data')
+                data = result.get('data')
+                # An import that ingested some files and not others did not succeed: nothing is built on it (#568).
+                partial = bool(result.get('success')) and isinstance(data, dict) and data.get('status') == 'partial'
+                step['status'] = 'uncertain' if uncertain else 'failed' if partial else 'completed' if result.get('success') else 'failed'
+                step['result'] = data
                 step['error'] = result.get('error')
+                if partial and not uncertain:
+                    step['partial'] = True
+                    step['error'] = (f"Completed only in part ({json.dumps(data.get('counts', {}))}). The steps that depend on it were not run. "
+                                     'Report what is missing; resume or repair it before anything is built on its result.')
                 if uncertain:
                     plan['status'] = 'uncertain'
                     self.save()
@@ -450,7 +517,7 @@ class AutoWork:
             self.save()
             return self.public()
         if key == 'plan.status':
-            return {**self.public(), 'plan_detail': self.task.get('plan')}
+            return {**self.public(), 'plan_detail': self.task.get('plan'), 'writes': self.writes()}
         if key == 'plan.execute':
             return await self.execute_plan()
         if key == 'plan.finish':
@@ -627,7 +694,12 @@ def render(key, args, kwargs):
     tokens = ['lamb', *key.split('.'), *map(str, args)]
     for name, value in kwargs.items():
         for item in value if isinstance(value, list) else [value]:
-            tokens.append('--' + name.replace('_', '-'))
-            if item is not True:
-                tokens.append(str(item).lower() if isinstance(item, bool) else str(item))
+            flag = '--' + name.replace('_', '-')
+            if item is True:
+                tokens.append(flag)
+            elif not isinstance(item, bool) and str(item).startswith('-') and not re.fullmatch(r'-\d+(\.\d+)?', str(item)):
+                # --name=TEXT keeps a text that starts with a dash from being read as an option (#568).
+                tokens.append(f'{flag}={item}')
+            else:
+                tokens += [flag, str(item).lower() if isinstance(item, bool) else str(item)]
     return shlex.join(tokens)

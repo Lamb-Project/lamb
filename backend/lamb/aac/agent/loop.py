@@ -16,6 +16,7 @@ The loop:
 from __future__ import annotations
 
 import json
+import re
 import anyio
 from contextlib import aclosing
 import time
@@ -66,6 +67,32 @@ TOOL_DEFINITIONS = [
         },
     }
 ]
+# A plan is given as fields, not as commands quoted inside JSON inside a command (#568).
+from lamb.aac.structured import PLAN_TOOL
+TOOL_DEFINITIONS.append(PLAN_TOOL)
+
+
+def model_command(tool_call: Any) -> str:
+    """The command a tool call stands for, for labels and saved results. Empty when it cannot be read."""
+    try:
+        if tool_call.function.name == "prepare_plan":
+            return "lamb plan extend" if json.loads(tool_call.function.arguments).get("extend") is True else "lamb plan prepare"
+        command = json.loads(tool_call.function.arguments).get("command", "")
+        return command if isinstance(command, str) else ""
+    except (ValueError, AttributeError, TypeError):
+        return ""
+
+
+def unparsed_command_error(command: str, error: str) -> str:
+    """Say what is wrong with a command that could not even be split, instead of the parser's two words."""
+    if error not in ("No closing quotation", "No escaped character"):
+        return error
+    if _parse_action_key(command) in ("plan.prepare", "plan.extend"):
+        return ("The command text has an unbalanced quotation mark, so it could not be read. Nothing was executed and "
+                "nothing changed. Do not shorten, rename or rewrite the content to work around this: call the "
+                "prepare_plan tool instead, which takes the title and each step as fields and needs no quoting.")
+    return ("The command text has an unbalanced quotation mark, so it could not be read. Nothing was executed. "
+            "Send the same command again with every quoted value closed; keep the text as you intended it.")
 
 # Human-readable descriptions for tool calls shown during streaming
 _TOOL_LABELS = {
@@ -122,8 +149,7 @@ def _parse_action_key(cmd: str) -> str:
 def _describe_tool_call(tc: Any) -> str:
     """Extract a human-readable description from a tool call."""
     try:
-        args = json.loads(tc.function.arguments)
-        cmd = args.get("command", "")
+        cmd = model_command(tc)
         key = _parse_action_key(cmd)
         label = _TOOL_LABELS.get(key, cmd[:50])
         # Add bypass note if present
@@ -610,17 +636,13 @@ class AgentLoop(SkillRouting):
                     else:
                         result = await self._execute_tool(tc)
                     waiting = waiting or bool(result.get("awaiting_user_confirmation") or result.get("skill_loaded"))
-                    try:
-                        model_command = json.loads(tc.function.arguments).get('command', '')
-                        if not isinstance(model_command, str): model_command = ''
-                    except (ValueError, AttributeError, TypeError):
-                        model_command = ''
-                    self.conversation.append(self._result_message(result, model_command, role="tool", tool_call_id=tc.id))
+                    issued = model_command(tc)
+                    self.conversation.append(self._result_message(result, issued, role="tool", tool_call_id=tc.id))
                     yield {"status": "tool_done", "command": command, "success": result.get("success", False),
                            "awaiting_user_confirmation": bool(result.get("awaiting_user_confirmation"))}
                     if result.get("success") and not result.get("awaiting_user_confirmation"):
                         from lamb.aac.language import changed_test_assistant
-                        changed = changed_test_assistant(model_command)
+                        changed = changed_test_assistant(issued)
                         if changed is not None:
                             # An open test tab for this assistant reloads its cases and runs.
                             yield {"status": "tests_changed", "assistant_id": changed}
@@ -709,8 +731,42 @@ class AgentLoop(SkillRouting):
                     '(for example, writing is off), or this LAMB version does not have it. It was not executed.')
         return 'This command is outside your role; ask the appropriate administrator'
 
+    async def _prepare_structured_plan(self, tool_call: Any) -> dict:
+        """A plan given as fields. LAMB writes its commands, then it follows the path of every plan:
+        the same validation, the same approval, the same execution (#568)."""
+        from types import SimpleNamespace
+        from lamb.aac.auto_work import PLAN_ATTEMPTS
+        from lamb.aac.structured import plan_from_structure, rejection, command_for
+        work = self.auto_work
+        if work is None:
+            return {"success": False, "executed": False, "error": "Plans are prepared inside a LEGATUS conversation."}
+        if work.rejections >= PLAN_ATTEMPTS:
+            return rejection([], attempt=work.rejections + 1, limit=PLAN_ATTEMPTS)
+        try:
+            plan, extend, problems = plan_from_structure(json.loads(tool_call.function.arguments))
+        except (json.JSONDecodeError, TypeError):
+            plan, extend, problems = None, False, [{"step": None, "field": "plan", "problem": "The tool arguments are not valid JSON."}]
+        if not problems:
+            call = SimpleNamespace(id=tool_call.id, function=SimpleNamespace(
+                name="execute_command", arguments=json.dumps({"command": command_for(plan, extend)})))
+            result = await self._execute_tool(call)
+            if result.get("success") or result.get("awaiting_user_confirmation"):
+                return result
+            # The plan machinery names the step it refused as "Step ID: reason".
+            match = re.fullmatch(r"Step ([a-z#][a-z0-9_]*): (.*)", result.get("error") or "", flags=re.S)
+            problems = [{"step": match.group(1) if match else None, "field": "operation" if match else "plan",
+                         "problem": match.group(2) if match else (result.get("error") or "Not accepted.")}]
+        else:
+            work.rejections += 1
+        if self.session_logger:
+            self.session_logger.log("plan_rejected", {"attempt": work.rejections, "problems": [
+                {"step": p.get("step"), "field": p.get("field")} for p in problems]})
+        return rejection(problems, attempt=work.rejections, limit=PLAN_ATTEMPTS)
+
     async def _execute_tool(self, tool_call: Any) -> dict:
         """Execute a tool call, checking authorization policy."""
+        if tool_call.function.name == "prepare_plan":
+            return await self._prepare_structured_plan(tool_call)
         if tool_call.function.name != "execute_command":
             return {"success": False, "error": "Unknown tool function"}
         try:
@@ -730,7 +786,9 @@ class AgentLoop(SkillRouting):
                 command = await self.auto_work.normalize(command)
             action_key, parsed_args, parsed_kwargs, help_requested = prepare_command(command, getattr(self.shell, "allowlist", None))
         except ValueError as error:
-            result = ShellResult(False, error=str(error), command=command)
+            result = ShellResult(False, error=unparsed_command_error(command, str(error)), command=command)
+            if self.auto_work and result.error != str(error) and _parse_action_key(command) in ("plan.prepare", "plan.extend"):
+                self.auto_work.rejections += 1  # a plan that could not be read counts as a rejected proposal
             self._record_audit(command, None, False, 0, result)
             if self.session_logger:
                 self.session_logger.log_tool_call(command=command, success=False, elapsed_ms=0, error=result.error)
@@ -747,7 +805,13 @@ class AgentLoop(SkillRouting):
             from lamb.aac.auto_work import mutation, MAX_CALLS
             try:
                 if action_key in {'plan.prepare', 'plan.extend'}:
-                    prepared_plan = await self.auto_work.prepare(json.loads(parsed_kwargs.get('json', '{}')), extend=action_key == 'plan.extend')
+                    try:
+                        proposed = json.loads(parsed_kwargs.get('json', '{}'))
+                    except json.JSONDecodeError:
+                        self.auto_work.rejections += 1
+                        raise ValueError('The plan after --json is not valid JSON, so it was not read. Nothing was executed. Call the '
+                                         'prepare_plan tool, which takes the title and each step as fields.') from None
+                    prepared_plan = await self.auto_work.prepare(proposed, extend=action_key == 'plan.extend')
                     if not prepared_plan['needs_approval']:
                         self.auto_work.approve(prepared_plan)
                         return {'success': True, 'data': self.auto_work.public(), 'message': 'Read-only plan ready. Execute it now; no approval needed.'}

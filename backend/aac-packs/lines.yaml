@@ -4,4 +4,4 @@
 stable: "1.13.6"    # the pack shipped with this LAMB version
 legacy: []    # at most two: the stable packs of the two previous LAMB versions
 rc: null    # one release candidate, or none
-beta: "2.0-beta.1"    # the pack being written in lamb-default/, or none
+beta: "2.0-beta.2"    # the pack being written in lamb-default/, or none
