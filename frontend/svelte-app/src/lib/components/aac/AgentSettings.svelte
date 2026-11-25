@@ -137,4 +137,6 @@
     .pack-about :global(table) { border-collapse: collapse; font-size: 0.85rem; }
     .pack-about :global(th), .pack-about :global(td) { border: 1px solid #d1d5db; padding: 0.3rem 0.5rem; text-align: left; vertical-align: top; }
     .pack-about :global(h2) { font-size: 1rem; font-weight: 600; margin: 0.9rem 0 0.3rem; }
+    /* The typography styles print backticks around inline code; a guide name is shown without them. */
+    .pack-about :global(code)::before, .pack-about :global(code)::after { content: none; }
 </style>
