@@ -24,8 +24,8 @@ from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="AAC")
 
-from lamb.aac.pack_loader import packs_root
-SKILLS_DIR = packs_root() / "lamb-default" / "skills"
+from lamb.aac.pack_loader import load_pack
+SKILLS_DIR = load_pack().skills_dir  # the stable pack, as for the default routing
 
 # Language directive appended to every skill prompt
 LANGUAGE_DIRECTIVE = """

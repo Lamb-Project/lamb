@@ -1,7 +1,7 @@
 {
   "name": "lamb-default",
-  "version": "1.13.6",
-  "requires": "lamb >= 0.8.0",
+  "version": "2.0-beta.1",
+  "requires": "lamb >= 0.9.0",
   "compatibility": "knowledge-brief",
   "layers": {
     "creator": [
@@ -19,7 +19,7 @@
   },
   "hashes": {
     "capability-catalog.json": "dc5906e7b0d734954150171986bb1f30e122c53ef4d84ed1317f5122a29ed212",
-    "compass.md": "c361d1645989b50ae46135b9d2e180f435b64e3dc356e1cc8a37bb6d015cea09",
+    "compass.md": "2e32748f63f62fd0df9b6b86fc7d6ae5de14f0bc79263353fc7db7a2672b2461",
     "glossary/ca.yaml": "fff960a53f92def13e8effd18649f58d104b513b2d48055a61babf88133b2c8b",
     "glossary/en.yaml": "a43eff1d511f338410255c5eea0fe4a119b65a5495da0a22492433916aab5685",
     "glossary/es.yaml": "3b452e40282b137009e0cc89bf951bd062bcf23ee86509e467817a976dd0e814",
@@ -34,7 +34,7 @@
     "methodology/design-publishing.md": "647e89e253c7a0384b58bccaf644e2517a207f19e1d48f178c8643dcde30f788",
     "methodology/design-rubrics.md": "4e856ceb14acf3ab8391b8fe0fef6eff3df57d486607b01cb304deae04af2205",
     "methodology/design-testing.md": "1f2c69f02a6a2515cf63f8f2b3f84128445432e711e4f7735f144a4e8b4db20f",
-    "persona.md": "81fbc44d2f12028d2578d61030456a9892653ddb03a008d2e03c9ee787ec5eae",
+    "persona.md": "a1882eb17031f2964794b13bdc0b1123e7b840221add678069c304f01ed00e06",
     "routing.yaml": "2674d936c6deb986cfdb7d57c55ba397855b9c140136a7a24d7c4727e70abcfb",
     "skills/about_lamb.md": "eac1abcae105e03445dd5bb2e31aa69fcc82ce9646a307ef8622efa8030b2013",
     "skills/chat_with_assistant.md": "a79fb6057c721238fc53ef63b5a8f28165c88302d1c71b47a74e8a2720741644",
@@ -50,13 +50,12 @@
     "skills/moodle_assessment_draft.md": "5e4df8cf1cf66ae5b1ba529add7e5eeb3e983624bf6db10476bc10ccff115120",
     "skills/moodle_course_documents.md": "05997078668dbd2a9aca9c318f5af82d687c71d0ad2516c718508be6e8a4ee2b",
     "skills/moodle_forums.md": "d8180eb3edd95af944e1d0a925db5029b5b13d3c67375344cb4379ce70bdcb66",
-    "skills/moodle_triage.md": "4087d803df929f3753c6caa4e86a0210d53e1f1dbf88e600091f976b2a4f20ee",
+    "skills/moodle_triage.md": "cd0c48c70ad810322127cbb50052d66c7557f12140438a224b9c3d3a1dc86edf",
     "skills/publish_assistant.md": "4d04076cc10252ebb91dd92223cbe23a09df1731e538fda62ef3129c77c13eda",
     "skills/test_and_evaluate.md": "af2cd8bd47affe13c18e2c50386fa5a7371ef7f32938941cda93ecae9619bb12",
     "skills/test_lti_tools.md": "9e37c0f98dbb09f051760c41afea4241cd58be4f587694e33a1e7b4aea04cd96"
   },
   "skill_layers": {
     "test-lti-tools": "admin"
-  },
-  "command_layers": {}
+  }
 }

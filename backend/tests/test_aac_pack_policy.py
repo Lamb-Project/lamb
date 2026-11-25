@@ -6,7 +6,7 @@ import shutil
 import tempfile
 from types import SimpleNamespace as N
 import unittest
-from lamb.aac.pack_loader import load_pack, packs_root, render_prefix
+from lamb.aac.pack_loader import load_pack, packs_root, render_prefix, installed_lines
 from lamb.aac.preferences import validate_settings, response_policy, apply_policy
 from lamb.aac.skill_routing import catalogue_prompt
 from lamb.aac.language import apply_ui_language, append_turn_language
@@ -25,7 +25,8 @@ class PolicyTests(unittest.TestCase):
         for settings in [None, {'provider':'google','model':'x'}, {'provider':'ollama'},
                          {'provider':'ollama','model':'absent'}, {'language_fallbacks':{'eu':['es']}},
                          {'language_fallbacks':{'eu':'eu'}},{'language_fallbacks':{'eu':'es','es':'eu'}},
-                         {'language_fallbacks':{'eu':'es','es':'en'}},{'pack_channel':'unknown'}, {'pack_version':'../evil'}]:
+                         {'language_fallbacks':{'eu':'es','es':'en'}},{'pack_channel':'unknown'}, {'pack_line':'../evil'}, {'pack_line':'beta'},
+                         {'pack_line':'rc','pack_dev_mode':False}, {'pack_line':'stable','pack_dev_mode':'yes'}, {'pack_version':7}]:
             with self.subTest(settings=settings),self.assertRaises(ValueError):validate_settings(settings,self.providers)
 
     def test_policy_appends_once_and_frontend_change_does_not_repin(self):
@@ -46,13 +47,18 @@ class PackTests(unittest.TestCase):
     def test_missing_glossary_and_modified_or_extra_content_fail(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)/'packs';shutil.copytree(packs_root(),root)
-            persona=root/'lamb-default/persona.md';original=persona.read_text();persona.write_text(original+'changed')
+            stable=root/'releases/lamb-default'/installed_lines(root)['stable']
+            self.assertEqual(load_pack(root=root).path,stable)
+            persona=stable/'persona.md';original=persona.read_text();persona.write_text(original+'changed')
             with self.assertRaises(ValueError):load_pack(root=root)
             persona.write_text(original)
-            extra=root/'lamb-default/skills/unlisted.md';extra.write_text('unverified')
+            extra=stable/'skills/unlisted.md';extra.write_text('unverified')
             with self.assertRaises(ValueError):load_pack(root=root)
             extra.unlink()
-            (root/'lamb-default/glossary/eu.yaml').unlink()
+            # The document for people is the one file outside the hashes: editing it is not a new release.
+            (stable/'ABOUT.md').write_text((stable/'ABOUT.md').read_text()+'\nA corrected typo.\n')
+            self.assertEqual(load_pack(root=root).path,stable)
+            (stable/'glossary/eu.yaml').unlink()
             with self.assertRaises(ValueError):load_pack(root=root)
 
     def test_unknown_version_and_path_traversal_fail(self):

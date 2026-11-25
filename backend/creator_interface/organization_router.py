@@ -4987,29 +4987,32 @@ async def get_agent_settings(request: Request, org: Optional[str] = None):
     providers = setup.get('providers', {})
     choices = {name: list(dict.fromkeys((p.get('models') or []) + ([p['default_model']] if p.get('default_model') else [])))
                for name, p in providers.items() if name in ('openai', 'ollama') and p.get('enabled') is not False}
-    from lamb.aac.pack_loader import load_pack, packs_root
+    from lamb.aac.pack_loader import lines_view, selected_line, development_mode
     warnings = []
     try:
         stored_settings = agent_settings(config)
     except ValueError as exc:
         stored_settings = {}
         warnings.append(str(exc))
-    versions = set()
     try:
-        versions.add(load_pack().version)
+        pack_lines, pack_warnings = lines_view()
+        warnings += pack_warnings
     except (ValueError, OSError) as exc:
-        warnings.append(f'The default knowledge pack is unavailable: {exc}')
-    releases = packs_root() / 'releases' / 'lamb-default'
-    if releases.is_dir():
-        for directory in releases.iterdir():
-            if directory.is_dir():
-                try:
-                    versions.add(load_pack(version=directory.name).version)
-                except (ValueError, OSError):
-                    warnings.append(f'An installed knowledge pack could not be verified: {directory.name}')
-    return {'settings': stored_settings, 'warnings': warnings, 'models': choices,
+        pack_lines = []
+        warnings.append(f'The knowledge packs are unavailable: {exc}')
+    # Settings saved before the lines existed are shown as the line they now follow.
+    shown = {key: value for key, value in stored_settings.items() if key not in ('pack_channel', 'pack_version')}
+    shown.update(pack_line=selected_line(stored_settings), pack_dev_mode=development_mode(stored_settings))
+    retired = stored_settings.get('pack_version') or None
+    from lamb.aac.authorization import allowed_commands
+    from lamb.aac.contract import command_reference
+    return {'settings': shown, 'warnings': warnings, 'models': choices,
             'inherited_model': setup.get('global_default_model', {}), 'languages': LANGUAGES,
-            'pack_versions':sorted(versions), 'pack_channels':['stable','rc','beta']}
+            'pack_lines': pack_lines,
+            # An exact version chosen earlier is no longer honoured; the form says so until the settings are saved.
+            'pack_notice': {'retired_version': retired, 'line': shown['pack_line']} if retired else None,
+            # Tools are LAMB's, not the pack's: the same for every line.
+            'tools_reference': command_reference(allowed_commands(['creator', 'lti', 'org_admin', 'admin']))}
 
 
 @router.put('/org-admin/settings/aac', dependencies=[Depends(security)])

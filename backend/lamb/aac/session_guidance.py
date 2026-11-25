@@ -9,7 +9,7 @@ def refresh_guidance(agent, state, session, skills_dir):
     pack_changed = pack and state.get('pack_version') != pack.version
     refresh = not previous or ((state.get('policy_version') != POLICY_VERSION or pack_changed) and not session.get('pending_action'))
     if not refresh:
-        if pack and state.get('pack_hash') and state['pack_hash'] != pack.fingerprint:
+        if pack and not pack_changed and state.get('pack_hash') and state['pack_hash'] != pack.fingerprint:
             raise ValueError('Pinned pack content changed without a new version')
         return None
     if pack and state.get('brief'):

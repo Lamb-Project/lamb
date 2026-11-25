@@ -30,7 +30,9 @@ def agent_settings(config):
 
 
 def validate_settings(settings, providers):
-    allowed = {'provider', 'model', 'language_fallbacks', 'pack_channel', 'pack_version', 'utility_provider', 'utility_model'}
+    # pack_channel and pack_version are what was saved before the lines existed: read, never written back.
+    allowed = {'provider', 'model', 'language_fallbacks', 'pack_line', 'pack_dev_mode', 'pack_channel', 'pack_version',
+               'utility_provider', 'utility_model'}
     if not isinstance(settings, dict) or set(settings) - allowed:
         raise ValueError('Unknown LAMB LEGATUS setting')
     result = {}
@@ -60,15 +62,15 @@ def validate_settings(settings, providers):
         if source == target or target in fallbacks:
             raise ValueError('Fallbacks must point directly to a supported language; no chains or cycles')
     result['language_fallbacks'] = dict(fallbacks)
-    channel, version = settings.get('pack_channel', 'stable'), settings.get('pack_version', '')
-    if channel not in ('stable', 'rc', 'beta') or not isinstance(version, str):
-        raise ValueError('Choose stable, rc or beta, or a released pack version')
-    result.update(pack_channel=channel, pack_version=version)
+    from lamb.aac.pack_loader import LINES, DEV_LINES, development_mode, selected_line
+    line = settings.get('pack_line', settings.get('pack_channel', 'stable'))
+    if line not in LINES or not isinstance(settings.get('pack_version', ''), str) or (
+            'pack_dev_mode' in settings and not isinstance(settings['pack_dev_mode'], bool)):
+        raise ValueError('Choose the stable knowledge pack, a previous one, or rc or beta in development mode')
+    if 'pack_line' in settings and line in DEV_LINES and not development_mode(settings):
+        raise ValueError('Turn on development mode to follow the rc or beta knowledge pack')
     # The pack loader validates availability and installed-engine compatibility.
-    if version:
-        import re
-        if not re.fullmatch(r'\d+\.\d+\.\d+', version):
-            raise ValueError('Pack version must be major.minor.patch')
+    result.update(pack_line=selected_line(settings), pack_dev_mode=development_mode(settings))
     return result
 
 

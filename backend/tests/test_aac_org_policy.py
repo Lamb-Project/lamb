@@ -22,7 +22,7 @@ class OrganizationPolicy(unittest.IsolatedAsyncioTestCase):
         auth.organization['config']['setups']['default']['aac'] = ['invalid stored data']
         with patch.object(r, '_build_auth_context', return_value=auth), patch.object(r, 'db_manager', db):
             result = await r.get_agent_settings(req)
-            self.assertEqual(result['settings'], {})
+            self.assertEqual(result['settings'], {'pack_line': 'stable', 'pack_dev_mode': False})
             self.assertTrue(result['warnings'])
             self.assertIn('ollama', result['models'])
             repaired = await r.update_agent_settings(req, {'provider':'ollama', 'model':'fixture'})
@@ -49,7 +49,7 @@ class OrganizationPolicy(unittest.IsolatedAsyncioTestCase):
     async def test_admin_writes_only_target_and_preserves_other_config(self):
         auth,db,req=self.fixture(True)
         with patch.object(r,'_build_auth_context',return_value=auth),patch.object(r,'db_manager',db):
-            result=await r.update_agent_settings(req,{'provider':'ollama','model':'fixture','language_fallbacks':{'eu':'es'},'pack_channel':'stable'},'own')
+            result=await r.update_agent_settings(req,{'provider':'ollama','model':'fixture','language_fallbacks':{'eu':'es'},'pack_line':'stable'},'own')
         org_id,saved=db.update_organization_config.call_args.args
         self.assertEqual(org_id,7);self.assertEqual(saved['untouched'],auth.organization['config']['untouched'])
         self.assertEqual(result['settings']['language_fallbacks'],{'eu':'es'})
@@ -60,7 +60,7 @@ class OrganizationPolicy(unittest.IsolatedAsyncioTestCase):
         with patch.object(r,'_build_auth_context',return_value=auth),patch.object(r,'db_manager',db):
             data=await r.get_agent_settings(req)
             self.assertNotIn('secret',str(data))
-            for settings in [{'provider':'google','model':'x'},{'pack_version':'99.0.0'},{'language_fallbacks':{'eu':'es','es':'eu'}}]:
+            for settings in [{'provider':'google','model':'x'},{'pack_line':'9.0'},{'pack_line':'beta'},{'pack_line':'rc','pack_dev_mode':False},{'language_fallbacks':{'eu':'es','es':'eu'}}]:
                 with self.assertRaises(HTTPException) as err:await r.update_agent_settings(req,settings)
                 self.assertEqual(err.exception.status_code,400)
             db.update_organization_config.assert_not_called()

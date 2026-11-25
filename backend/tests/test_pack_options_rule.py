@@ -7,8 +7,6 @@ def test_options_rule_with_its_two_exceptions():
     assert 'Fulfill the user\'s request before offering further possibilities' in persona
     assert 'no compulsory menu' in persona
     assert 'End every reply with numbered options' not in persona
-    assert 'give the likely answers as options' in load_pack(version='1.11.9').text('persona.md')  # frozen
-    assert 'When a useful next choice is needed' in load_pack(version='1.11.8').text('persona.md')  # frozen
 
 
 def test_persona_names_lamb_legatus_acting_for_the_teacher():

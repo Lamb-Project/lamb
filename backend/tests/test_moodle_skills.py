@@ -3,7 +3,7 @@ import pytest
 from tests.test_moodle_runtime import runtime
 from tests.test_moodle_store import stores
 from tests.test_aac_legacy import agent,tool
-from lamb.aac.pack_loader import load_pack,allowed_skills
+from lamb.aac.pack_loader import load_pack,allowed_skills,installed_lines
 from lamb.aac.pack_build import validate_routing
 from lamb.aac.contract import validate_skill_contracts
 from lamb.moodle.runtime import attach_to_agent
@@ -11,15 +11,12 @@ from lamb.moodle.runtime import attach_to_agent
 
 def test_moodle_recipes_and_generated_commands_validate():
     pack=load_pack()
-    assert pack.version=='1.11.17'
+    assert pack.version==installed_lines()['stable']
     validate_routing(pack)
     assert validate_skill_contracts(pack)
     names={'moodle-triage','moodle-forums','moodle-course-documents','moodle-assessment-draft'}
     assert names<=allowed_skills(pack,['creator'],['moodle'])
     assert not names & allowed_skills(pack,['creator'],[])
-    assert load_pack(version='1.2.4').version=='1.2.4'
-    assert load_pack(version='1.3.1').version=='1.3.1'
-    validate_routing(load_pack(version='1.4.0'))
 
 
 def test_restoration_pack_corrects_ids_and_dates_without_changing_old_release():
@@ -28,8 +25,6 @@ def test_restoration_pack_corrects_ids_and_dates_without_changing_old_release():
     assert 'discussion_id for posts reads' in forums
     assert 'first_post_id for replies' in forums
     assert 'not verified course defaults or individual student deadlines' in pack.text('skills/moodle_triage.md')
-    assert load_pack(version='1.11.1').version == '1.11.1'
-    assert 'Use the returned discussion ID' in load_pack(version='1.11.1').text('skills/moodle_forums.md')
 
 
 def test_triage_coverage_discipline_is_in_the_current_pack_only():
@@ -37,20 +32,21 @@ def test_triage_coverage_discipline_is_in_the_current_pack_only():
     triage = load_pack().text('skills/moodle_triage.md')
     for phrase in ['NOT INSPECTED, never "no data"', 'inspected N of M courses', 'Every count you give must come from a read']:
         assert phrase in triage
-    assert 'NOT INSPECTED' not in load_pack(version='1.11.4').text('skills/moodle_triage.md')
 
 
-@pytest.mark.parametrize('version', ['1.12.0', '1.28.0', '1.34.0'])
-def test_post_baseline_pack_pins_fail_explicitly_without_silent_fallback(version):
+@pytest.mark.parametrize('version', ['1.12.0', '1.28.0', '9.9'])
+def test_a_pack_that_is_not_installed_fails_explicitly_and_a_saved_exact_version_follows_its_line(version):
     with pytest.raises(ValueError, match='not installed'):
-        load_pack(settings={'pack_version': version})
+        load_pack(version=version)
+    # An organization no longer pins a version: what it saved before the lines existed follows its line.
+    assert load_pack(settings={'pack_version': version}).version == installed_lines()['stable']
+    assert load_pack(settings={'pack_version': version, 'pack_channel': 'stable'}).version == installed_lines()['stable']
 
 
 def test_new_task_pack_requires_an_engine_with_task_support(monkeypatch):
     monkeypatch.setattr('lamb.aac.pack_loader.ENGINE_VERSION', '0.7.0')
     with pytest.raises(ValueError, match='newer LAMB engine'):
         load_pack()
-    assert load_pack(version='1.3.1').version == '1.3.1'
 
 
 def test_runtime_guard_loads_recipe_before_execution_and_revokes_access(stores):

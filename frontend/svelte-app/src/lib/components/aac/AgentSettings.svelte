@@ -3,9 +3,20 @@
     import { _ } from 'svelte-i18n';
     import axios from 'axios';
     import { getApiUrl } from '$lib/config';
+    import { renderMarkdownSafe } from '$lib/utils/sanitize';
     let { org = null } = $props();
-    let settings = $state({provider:'', model:'', language_fallbacks:{},pack_channel:'stable',pack_version:'',utility_provider:'',utility_model:''});
-    let packVersions = $state([]);
+    const blank = () => ({provider:'', model:'', language_fallbacks:{},pack_line:'stable',pack_dev_mode:false,utility_provider:'',utility_model:''});
+    let settings = $state(blank());
+    // An organization follows a line of the knowledge pack (stable, a previous stable, rc or beta), never a version.
+    /** @type {{line:string, version:string|null, development:boolean, summary:string, about:string}[]} */
+    let packLines = $state([]);
+    /** @type {{retired_version:string, line:string}|null} */
+    let packNotice = $state(null);
+    let toolsReference = $state('');
+    let openLine = $state('');
+    const lineLabels = {stable:'aacSettings.stable', 'legacy-1':'aacSettings.legacy1', 'legacy-2':'aacSettings.legacy2', rc:'aacSettings.rc', beta:'aacSettings.beta'};
+    // rc and beta appear only in development mode; an empty previous-version line is not shown at all.
+    let visibleLines = $derived(packLines.filter(row => row.development ? settings.pack_dev_mode : (row.line === 'stable' || row.version)));
     let warnings = $state([]);
     let models = $state({});
     let inherited = $state({});
@@ -15,16 +26,21 @@
     const headers = () => ({Authorization: `Bearer ${localStorage.getItem('userToken')}`});
     onMount(async () => {
         try { const {data} = await axios.get(endpoint(), {headers:headers()});
-            settings = {provider:'',model:'',language_fallbacks:{},pack_channel:'stable',pack_version:'',utility_provider:'',utility_model:'',...data.settings}; models=data.models; inherited=data.inherited_model; packVersions=data.pack_versions || []; warnings=data.warnings || [];
+            settings = {...blank(),...data.settings}; models=data.models; inherited=data.inherited_model; warnings=data.warnings || [];
+            packLines=data.pack_lines || []; packNotice=data.pack_notice || null; toolsReference=data.tools_reference || '';
         } catch(e) { error=e.response?.data?.detail || e.message; } finally {loading=false;}
     });
     function setFallback(source, target) {
         const next={...settings.language_fallbacks};if(target)next[source]=target;else delete next[source];
         settings={...settings,language_fallbacks:next};saved=false;
     }
+    function setDevelopmentMode(on) {
+        const line = !on && packLines.find(row => row.line === settings.pack_line)?.development ? 'stable' : settings.pack_line;
+        settings={...settings,pack_dev_mode:on,pack_line:line};saved=false;
+    }
     async function save() {
         saving=true;error='';saved=false;
-        try { const {data}=await axios.put(endpoint(),settings,{headers:headers()});settings=data.settings;saved=true; }
+        try { const {data}=await axios.put(endpoint(),settings,{headers:headers()});settings={...blank(),...data.settings};saved=true;packNotice=null; }
         catch(e) { error=e.response?.data?.detail || e.message; } finally {saving=false;}
     }
 </script>
@@ -51,15 +67,41 @@
         {/if}
     </div>
     <h4 class="font-semibold mt-5">{$_('aacSettings.knowledgePack')}</h4>
-    <div class="grid sm:grid-cols-2 gap-4">
-        <label>{$_('aacSettings.channel')}<select aria-label={$_('aacSettings.channel')} class="block w-full rounded border p-2" bind:value={settings.pack_channel} disabled={!!settings.pack_version} onchange={() => saved=false}>
-            <option value="stable">{$_('aacSettings.stable')}</option><option value="rc">{$_('aacSettings.rc')}</option><option value="beta">{$_('aacSettings.beta')}</option>
-        </select></label>
-        <label>{$_('aacSettings.version')}<select aria-label={$_('aacSettings.version')} class="block w-full rounded border p-2" bind:value={settings.pack_version} onchange={() => saved=false}>
-            <option value="">{$_('aacSettings.followChannel')}</option>{#each packVersions as version}<option value={version}>{version}</option>{/each}
-            {#if settings.pack_version && !packVersions.includes(settings.pack_version)}<option value={settings.pack_version}>{settings.pack_version} ({$_('aacSettings.savedSelection')})</option>{/if}
-        </select></label>
+    <p class="text-sm my-2">{$_('aacSettings.packIntro')}</p>
+    {#if packNotice}<p role="note" class="my-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" data-pack-notice>{$_('aacSettings.retiredNotice', {values:{version:packNotice.retired_version, line:$_(lineLabels[packNotice.line] || lineLabels.stable)}})}</p>{/if}
+    <div role="radiogroup" aria-label={$_('aacSettings.packChoice')} class="space-y-2">
+        {#each visibleLines as row (row.line)}
+        <div class="rounded border bg-white p-3" data-pack-line={row.line}>
+            <label class="flex items-start gap-3">
+                <input type="radio" name="pack-line" class="mt-1" value={row.line} checked={settings.pack_line === row.line} disabled={!row.version}
+                    onchange={() => {settings={...settings,pack_line:row.line};saved=false;}} />
+                <span class="min-w-0">
+                    <span class="font-medium">{$_(lineLabels[row.line])}</span>
+                    {#if row.version}<code class="ml-2 text-sm">{row.version}</code>{:else}<span class="ml-2 text-sm text-gray-600">{$_('aacSettings.lineEmpty')}</span>{/if}
+                    {#if row.summary}<span class="block text-sm text-gray-700">{row.summary}</span>{/if}
+                </span>
+            </label>
+            {#if row.about}
+            <button type="button" class="ml-7 mt-1 text-sm text-blue-800 underline" aria-expanded={openLine === row.line}
+                onclick={() => openLine = openLine === row.line ? '' : row.line}>{$_(openLine === row.line ? 'aacSettings.hideVersion' : 'aacSettings.whatsInVersion')}</button>
+            {#if openLine === row.line}
+            <article class="pack-about prose prose-sm max-w-none mt-3 overflow-x-auto border-t pt-3" data-pack-about={row.line}>{@html renderMarkdownSafe(row.about, {breaks:false})}</article>
+            {/if}
+            {/if}
+        </div>
+        {/each}
     </div>
+    <label class="mt-3 flex items-start gap-2">
+        <input type="checkbox" class="mt-1" checked={settings.pack_dev_mode} onchange={e => setDevelopmentMode(e.currentTarget.checked)} />
+        <span>{$_('aacSettings.devMode')}<span class="block text-sm text-gray-700">{$_('aacSettings.devModeHelp')}</span></span>
+    </label>
+    {#if toolsReference}
+    <details class="mt-3 rounded border bg-white p-3">
+        <summary class="cursor-pointer font-medium">{$_('aacSettings.toolsTitle')}</summary>
+        <p class="my-2 text-sm text-gray-700">{$_('aacSettings.toolsIntro')}</p>
+        <pre class="max-h-80 overflow-auto whitespace-pre-wrap text-xs">{toolsReference}</pre>
+    </details>
+    {/if}
     <h4 class="font-semibold mt-5">{$_('aacSettings.utilityTitle')}</h4>
     <p class="text-sm my-2">{$_('aacSettings.utilityIntro')}</p>
     <div class="grid sm:grid-cols-2 gap-4">
@@ -90,3 +132,9 @@
     {#if saved}<span role="status" class="ml-3 text-green-800">{$_('aacSettings.settingsSaved')}</span>{/if}
     {/if}
 </section>
+
+<style>
+    .pack-about :global(table) { border-collapse: collapse; font-size: 0.85rem; }
+    .pack-about :global(th), .pack-about :global(td) { border: 1px solid #d1d5db; padding: 0.3rem 0.5rem; text-align: left; vertical-align: top; }
+    .pack-about :global(h2) { font-size: 1rem; font-weight: 600; margin: 0.9rem 0 0.3rem; }
+</style>

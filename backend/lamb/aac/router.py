@@ -721,9 +721,15 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
     from lamb.aac.authorization import allowed_commands
     from lamb.aac.preferences import agent_settings
     # Never change the interpretation of an action already awaiting confirmation.
+    selected = None
     if session.get('pending_action') and state.get('pack_version'):
-        selected = load_pack(version=state['pack_version'])
-    else:
+        try:
+            selected = load_pack(version=state['pack_version'])
+        except ValueError:
+            # That pack was retired (a replaced beta, a dropped legacy). The pending action is an
+            # exact command and stays valid; the conversation moves to the organization's pack.
+            selected = None
+    if selected is None:
         selected = load_pack(agent_settings(auth.organization.get('config', {})))
     agent.pack = selected
     shell.knowledge = {'pack':selected, 'brief':state.get('brief', {}), 'state':state}

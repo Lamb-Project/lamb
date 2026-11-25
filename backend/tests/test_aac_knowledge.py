@@ -52,18 +52,24 @@ class KnowledgeTests(unittest.IsolatedAsyncioTestCase):
                         self.assertFalse(result.success)
                         self.assertIn('outside your role', result.error)
 
-    async def test_pending_approval_keeps_old_pack_then_refreshes_on_next_turn_once(self):
+    async def test_pending_approval_survives_a_retired_pack_then_refreshes_on_next_turn_once(self):
+        """LAMB 0.7 shipped pack 1.11.17, and after an upgrade the conversations pinned to it answered
+        "pack 1.11.17 is not installed". Only the packs of the lines are installed now, so a pending
+        approval keeps its exact action and its text, and the conversation takes the organization's pack."""
         from lamb.aac import router
         auth = self.auth()
-        old = load_pack(version='1.0.0')
-        brief = session_brief(auth, 'en', CAPABILITIES, {}, old)
-        state = {'brief': brief, 'pack_version':old.version, 'pack_hash':old.fingerprint,
-                 'policy_version':POLICY_VERSION, 'system_prompt':render_prefix(old, brief), 'active_snapshot':'saved'}
+        with self.assertRaisesRegex(ValueError, 'not installed'):
+            load_pack(version='1.11.17')
+        brief = session_brief(auth, 'en', CAPABILITIES, {}, load_pack())
+        brief.update(pack_version='1.11.17', pack_hash='hash-of-the-retired-pack')
+        state = {'brief': brief, 'pack_version':'1.11.17', 'pack_hash':'hash-of-the-retired-pack',
+                 'policy_version':POLICY_VERSION, 'system_prompt':'The instructions the retired pack gave.', 'active_snapshot':'saved'}
         session = {'id':'fixture', 'skill_info':state, 'pending_action':{'command':'lamb assistant update 7 --description exact'},
                    'conversation':[{'role':'user','content':'Original request'}]}
         with patch.object(router, '_resolve_agent_llm', return_value=(N(), 'fake')), patch.object(router, 'SessionLogger'):
             pending = router._build_agent(auth, session)
-            self.assertEqual(pending.pack.version, '1.0.0')
+            self.assertEqual(pending.pack.version, load_pack().version)
+            self.assertEqual(pending.skill_state['pack_version'], '1.11.17')
             self.assertEqual(pending.pending_action, session['pending_action'])
             self.assertEqual(pending.system_prompt, state['system_prompt'])
             self.assertEqual(pending.conversation, session['conversation'])
@@ -80,8 +86,8 @@ class KnowledgeTests(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_pack_does_not_allocate_provider_client(self):
         from lamb.aac import router
         auth = self.auth()
-        auth.organization['config'] = {'setups':{'default':{'aac':{'pack_version':'99.0.0'}}}}
-        with patch.object(router, '_resolve_agent_llm') as allocate, patch.object(router, 'SessionLogger'):
+        with patch.object(router, '_resolve_agent_llm') as allocate, patch.object(router, 'SessionLogger'), \
+                patch('lamb.aac.pack_loader.load_pack', side_effect=ValueError('AAC pack 2.0 is not installed; ask the administrator')):
             with self.assertRaises(ValueError): router._build_agent(auth, {'id':'invalid','skill_info':{'brief':{}}})
             allocate.assert_not_called()
 

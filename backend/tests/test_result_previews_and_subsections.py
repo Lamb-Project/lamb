@@ -86,4 +86,3 @@ def test_pack_teaches_previews_and_subsections():
     pack = load_pack()
     assert 'complete: false is a preview' in pack.text('persona.md')
     assert 'subsection_of' in pack.text('skills/moodle_course_documents.md')
-    assert 'complete: false is a preview' not in load_pack(version='1.11.6').text('persona.md')

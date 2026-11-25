@@ -38,7 +38,6 @@ def test_pack_routes_inventory_and_teaches_it():
     pack = load_pack()
     assert pack.data('routing.yaml')['DEFAULT_SKILL']['moodle.course.inventory'] == 'moodle-triage'
     assert 'moodle course inventory' in pack.text('skills/moodle_course_documents.md')
-    assert 'moodle.course.inventory' not in load_pack(version='1.11.7').data('routing.yaml')['DEFAULT_SKILL']
 
 
 class BudgetFallback(unittest.IsolatedAsyncioTestCase):

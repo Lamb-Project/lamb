@@ -57,4 +57,3 @@ def test_improve_skill_queues_requested_changes_instead_of_prose_proposals():
     assert 'show the proposed changes and wait for approval' not in skill
     assert 'queue the complete update command in the same turn' in skill
     assert 'Copy user-supplied text exactly' in skill
-    assert 'wait for approval' in load_pack(version='1.11.5').text('skills/improve_assistant.md')

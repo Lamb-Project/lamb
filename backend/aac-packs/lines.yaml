@@ -1,0 +1,7 @@
+# Which knowledge pack each line holds. An organization follows a line, never a version.
+# Only the packs named here are installed; `python -m lamb.aac.pack_build` refuses any other.
+# Change this file with the build commands (--start, --bump, --promote), not by hand.
+stable: "1.13.6"    # the pack shipped with this LAMB version
+legacy: []    # at most two: the stable packs of the two previous LAMB versions
+rc: null    # one release candidate, or none
+beta: "2.0-beta.1"    # the pack being written in lamb-default/, or none

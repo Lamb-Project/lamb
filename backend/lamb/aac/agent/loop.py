@@ -38,7 +38,7 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="AAC")
 
 from lamb.aac.pack_loader import load_pack
-DEFAULT_SYSTEM_PROMPT = load_pack(version='1.0.0').text('persona.md')
+DEFAULT_SYSTEM_PROMPT = load_pack().text('persona.md')  # an agent given no pack speaks as the stable one
 
 # Bounded process-local capability cache, keyed by endpoint and model, never token.
 _STREAM_USAGE_UNSUPPORTED = OrderedDict()
