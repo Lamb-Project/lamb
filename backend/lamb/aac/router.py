@@ -717,7 +717,8 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
     # Pin the rendered prefix for this session. Skill transitions append to history.
     state = dict(session.get("skill_info") or {})
     from lamb.aac.session_guidance import refresh_guidance
-    from lamb.aac.pack_loader import load_pack, allowed_commands
+    from lamb.aac.pack_loader import load_pack
+    from lamb.aac.authorization import allowed_commands
     from lamb.aac.preferences import agent_settings
     # Never change the interpretation of an action already awaiting confirmation.
     if session.get('pending_action') and state.get('pack_version'):
@@ -726,7 +727,7 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
         selected = load_pack(agent_settings(auth.organization.get('config', {})))
     agent.pack = selected
     shell.knowledge = {'pack':selected, 'brief':state.get('brief', {}), 'state':state}
-    shell.allowed_commands = allowed_commands(selected, state.get('brief', {}).get('layers', ['creator']))
+    shell.allowed_commands = allowed_commands(state.get('brief', {}).get('layers', ['creator']))
     notice = refresh_guidance(agent, state, session, SKILLS_DIR)
     shell.knowledge['brief'] = state.get('brief', {})
     state.setdefault("context", {})

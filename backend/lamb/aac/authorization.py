@@ -18,6 +18,18 @@ from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="AAC")
 
+# Role layer a command needs. This is LAMB's policy (issue #567): a knowledge pack carries
+# guidance, never permission. A command not listed here is offered to every creator; its
+# endpoint still checks ownership and role, and writes still pass the confirmation below.
+COMMAND_LAYERS: dict[str, str] = {}
+
+
+def allowed_commands(layers) -> set[str]:
+    """Installed commands offered to a user holding these role layers."""
+    from lamb.aac.liteshell.shell import COMMAND_CONTRACTS
+    return {key for key in COMMAND_CONTRACTS if COMMAND_LAYERS.get(key, 'creator') in layers}
+
+
 # Default policy: which commands need confirmation
 DEFAULT_POLICY: dict[str, str] = {
     'plan.prepare': 'ask', 'plan.execute': 'auto', 'plan.status': 'auto', 'plan.finish': 'auto',

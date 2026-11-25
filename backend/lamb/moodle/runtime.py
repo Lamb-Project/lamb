@@ -347,7 +347,7 @@ def attach_to_agent(agent, store):
         line += ' Read-only Moodle commands are automatically authorized: perform the relevant reads for the user request without asking approval. Clarify only genuinely missing or ambiguous scope. Imports are LAMB writes and still require the application approval, even with read-only Moodle access. Never add a preliminary approval menu.'
         references=[spec.reference() for spec in (*task_specs().values(), *document_specs().values())]
         references += ['moodle course list: list your enrolled courses',
-                       'Raw Moodle operations are documented in the loaded workflow. Do not invent commands or discover a workflow by trial and error.']
+                       'Other Moodle commands enabled for this account are listed by lamb help, and lamb moodle GROUP VERB --help gives their arguments. A workflow, when one fits, describes the best procedure; without one you may still use these commands for what the user asks. Never invent a command.']
         references += ['Raw activity/individual commands need moodle course get COURSE_ID first. The news task resolves each course itself. A course ID in a learning scenario is a suggestion, not permission.',
                        'moodle import file FILE_ID --to kb ID | --single-file (confirmation required; use file_id from moodle file list, not a local path)',
                        'moodle sync COURSE_ID [--section course|forums|assignments|enrolment|calendar]',
@@ -356,7 +356,8 @@ def attach_to_agent(agent, store):
         if pack:
             from lamb.aac.skill_loader import list_skills
             workflows=[s for s in list_skills(pack.skills_dir) if s.get('requires_integration')=='moodle']
-            references += ['Load the appropriate workflow with lamb skill load ID before acting:'] + [s['id']+': '+s['description'] for s in workflows]
+            if workflows:
+                references += ['Workflows for Moodle tasks (load one with lamb skill load ID when it fits):'] + [s['id']+': '+s['description'] for s in workflows]
         text=line+'\nMoodle task commands and workflow entry points:\n'+'\n\n'.join(references)
     else:
         text='Moodle is disconnected or disabled. Previously supplied Moodle commands are unavailable.'

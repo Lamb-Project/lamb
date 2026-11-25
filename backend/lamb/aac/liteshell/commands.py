@@ -735,8 +735,8 @@ def help_cmd(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict[str, 
     pack = ctx.knowledge.get('pack')
     allowed = None
     if pack:
-        from lamb.aac.pack_loader import allowed_commands
-        allowed = allowed_commands(pack, ctx.knowledge['brief']['layers'])
+        from lamb.aac.authorization import allowed_commands
+        allowed = allowed_commands(ctx.knowledge['brief']['layers'])
     for key, func in sorted(COMMAND_REGISTRY.items()):
         if allowed is not None and key not in allowed:
             continue

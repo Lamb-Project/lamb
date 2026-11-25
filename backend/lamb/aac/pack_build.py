@@ -36,7 +36,8 @@ def generate_ui_glossaries(path, locale_root):
 
 
 def validate_routing(pack):
-    """Reject unusable recipes and invalid layer assignments at build time."""
+    """Reject unusable recipes at build time. Guides are checked where they exist; a command
+    needs none (issue #567), and which role may run a command is LAMB's policy, not the pack's."""
     import re
     from lamb.aac.skill_loader import list_skills, _parse_skill_file
     from lamb.aac.liteshell.shell import COMMAND_CONTRACTS
@@ -55,10 +56,11 @@ def validate_routing(pack):
         # Historical immutable packs predate the task vocabulary.
         if 'moodle.news' in routing['DEFAULT_SKILL']:
             commands |= {'moodle.'+key for key in task_specs() if 'moodle.'+key in routing['DEFAULT_SKILL']}
-    for field, known in [('skill_layers', skills), ('command_layers', commands)]:
-        for key, layer in pack.manifest.get(field, {}).items():
-            if key not in known or layer not in layers:
-                raise ValueError(f'Invalid layer assignment: {field}/{key}/{layer}')
+    if pack.manifest.get('command_layers'):
+        raise ValueError('A pack cannot assign commands to roles; that policy lives in lamb.aac.authorization.COMMAND_LAYERS')
+    for key, layer in pack.manifest.get('skill_layers', {}).items():
+        if key not in skills or layer not in layers:
+            raise ValueError(f'Invalid layer assignment: skill_layers/{key}/{layer}')
     if not set(routing['BOOTSTRAP']) <= commands:
         raise ValueError('Routing bootstrap names an unknown command')
     for skill, capabilities in routing['CAPABILITIES'].items():
@@ -67,9 +69,6 @@ def validate_routing(pack):
     for command, skill in routing['DEFAULT_SKILL'].items():
         if command not in commands or command not in routing['CAPABILITIES'].get(skill, []):
             raise ValueError(f'Default workflow cannot execute command: {command}/{skill}')
-    # Result readback is engine-provided, including for immutable older packs.
-    if commands - {'result.read', 'document.list', 'document.open', 'document.read', 'notebook.list', 'notebook.read', 'notebook.write'} - set(routing['BOOTSTRAP']) - set(routing['DEFAULT_SKILL']):
-        raise ValueError('Installed commands are missing workflow coverage')
     hints = routing.get('USER_ROUTING', {})
     for pattern in [hints.get('negative', ''), hints.get('assistant_id', ''),
                     *hints.get('read_only_constraints', []), *hints.get('facts', {}).values()]:

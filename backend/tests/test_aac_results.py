@@ -191,7 +191,7 @@ def test_read_result_enforces_current_owner_and_role(store):
         auth.user['id']=2
         with pytest.raises(PermissionError):read_result(auth,identity)
         auth.user['id']=1
-        with patch('lamb.aac.pack_loader.allowed_commands',return_value=set()):
+        with patch('lamb.aac.authorization.allowed_commands',return_value=set()):
             with pytest.raises(PermissionError):read_result(auth,identity)
 
 

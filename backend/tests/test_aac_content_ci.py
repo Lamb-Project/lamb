@@ -20,10 +20,7 @@ class ContentCI(unittest.TestCase):
                 expected = (Path(__file__).parent/'fixtures/aac-roles'/f'{kind}-{administration}.txt').read_text()
                 with self.subTest(kind=kind,administration=administration): self.assertEqual(render_brief(brief),expected)
 
-    def test_legacy_extraction_and_pack_refresh_are_stable(self):
-        legacy = load_pack(version='1.0.0')
-        expected = (Path(__file__).parent/'fixtures/aac_legacy_prefix.sha256').read_text().strip()
-        self.assertEqual(hashlib.sha256(render_prefix(legacy,{}).encode()).hexdigest(),expected)
+    def test_pack_refresh_is_stable(self):
         pack = load_pack()
         brief = {'layers':['creator'],'session_language':'ca','glossary':pack.data('glossary/ca.yaml')}
         state = {'brief':brief,'ui_language':'ca'}

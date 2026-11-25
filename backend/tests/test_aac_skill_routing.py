@@ -104,8 +104,10 @@ class Routing(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('active_snapshot',a.skill_state);s.execute.assert_not_awaited()
 
 class Recipes(unittest.TestCase):
-    def test_every_business_command_has_a_workflow(self):
-        self.assertEqual(set(COMMAND_REGISTRY)-BOOTSTRAP-set(DEFAULT_SKILL),set())
+    def test_guides_that_exist_are_usable_and_a_command_needs_none(self):
+        # #567: a guide is advice. Every guide named by the routing loads, and its commands are installed.
+        self.assertLessEqual(set(DEFAULT_SKILL), set(COMMAND_REGISTRY) | {key for key in DEFAULT_SKILL if key.startswith('moodle.')})
+        self.assertLessEqual(set(DEFAULT_SKILL.values()), set(CAPABILITIES))
         for skill in CAPABILITIES:
             self.assertTrue(load_skill(skill,{'assistant_id':1})['prompt'])
 

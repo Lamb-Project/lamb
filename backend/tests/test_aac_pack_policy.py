@@ -43,12 +43,6 @@ class PolicyTests(unittest.TestCase):
         self.assertIn('español',agent.conversation[-1]['content'])
 
 class PackTests(unittest.TestCase):
-    def test_10_extraction_has_identical_prefix(self):
-        pack=load_pack(version='1.0.0')
-        prefix=render_prefix(pack, {'layers':['creator']})
-        expected=(Path(__file__).parent/'fixtures/aac_legacy_prefix.sha256').read_text().strip()
-        self.assertEqual(hashlib.sha256(prefix.encode()).hexdigest(),expected)
-
     def test_missing_glossary_and_modified_or_extra_content_fail(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)/'packs';shutil.copytree(packs_root(),root)

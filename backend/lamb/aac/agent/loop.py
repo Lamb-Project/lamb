@@ -699,6 +699,16 @@ class AgentLoop(SkillRouting):
                     'model_bytes':len(encode(projected)), 'stored':projected['context_result']['stored']})
         return message
 
+    def unavailable_reason(self, key: str) -> str:
+        """Say why an installed command is not offered to this user. A missing guide is never the reason."""
+        if key.startswith('moodle.'):
+            if 'moodle' not in ((self.skill_state or {}).get('integrations') or []):
+                return ('Moodle is not connected for this account, or the organization has not enabled it. '
+                        'The command was not executed. The user connects Moodle on the Moodle page.')
+            return ("This Moodle operation is not enabled for this account by the organization's Moodle settings "
+                    '(for example, writing is off), or this LAMB version does not have it. It was not executed.')
+        return 'This command is outside your role; ask the appropriate administrator'
+
     async def _execute_tool(self, tool_call: Any) -> dict:
         """Execute a tool call, checking authorization policy."""
         if tool_call.function.name != "execute_command":
@@ -727,7 +737,7 @@ class AgentLoop(SkillRouting):
             return result.to_dict()
         allowed = getattr(self.shell, 'allowed_commands', None)
         if allowed is not None and action_key not in allowed:
-            return {'success':False, 'error':'This command is outside your role; ask the appropriate administrator'}
+            return {'success':False, 'error':self.unavailable_reason(action_key)}
         policy = "auto" if help_requested else self.authorizer.check(action_key)
         prepared_plan = None
         call_limit = None
@@ -784,7 +794,7 @@ class AgentLoop(SkillRouting):
                     instructions = self.required_skill(action_key, parsed_args, parsed_kwargs)
                     if instructions:
                         self._record_audit(command, action_key, False, 0, ShellResult(False, error="Required workflow loaded; command not executed."))
-                        return {"success": False, "error": "Required workflow loaded. The requested command was NOT executed. Read the recipe and reconsider the command before retrying.",
+                        return {"success": False, "error": "The workflow recipe for this command was loaded first. The command was NOT executed yet. Read the recipe, then run the command again if it still applies.",
                                 "skill_loaded": self.skill_state["skill_id"], "instructions": instructions}
             except ValueError as error:
                 return {"success": False, "error": str(error)}
@@ -845,6 +855,7 @@ class AgentLoop(SkillRouting):
             if review is not None:
                 self.pending_action['moodle_review'] = review
             self._record_audit(command, action_key, True, 0, None, queued=True)
+            self.note_unguided('awaiting_approval')
             if self.session_logger:
                 self.session_logger.log("action_queued", {
                     "command": command,
@@ -881,6 +892,7 @@ class AgentLoop(SkillRouting):
             self._record_interrupted(command, action_key)
             raise
         self._record_audit(command, action_key, result.success, result.elapsed_ms, result)
+        self.note_unguided('succeeded' if result.success else 'failed')
         if self.session_logger:
             self.session_logger.log_tool_call(
                 command=command,

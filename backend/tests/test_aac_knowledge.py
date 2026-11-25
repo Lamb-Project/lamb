@@ -4,7 +4,8 @@ import unittest
 from types import SimpleNamespace as N
 from unittest.mock import AsyncMock, patch
 from lamb.aac.brief import role_axes, session_brief, render_brief, processor_registry, capability_map
-from lamb.aac.pack_loader import load_pack, allowed_skills, allowed_commands, render_prefix, Pack
+from lamb.aac.pack_loader import load_pack, allowed_skills, render_prefix, Pack
+from lamb.aac.authorization import allowed_commands, COMMAND_LAYERS
 from lamb.aac.session_guidance import refresh_guidance, POLICY_VERSION
 from lamb.aac.liteshell.shell import LiteShell
 from tests.aac_knowledge_fixtures import CAPABILITIES
@@ -22,19 +23,22 @@ ROLE_FIXTURES = [
 
 class KnowledgeTests(unittest.IsolatedAsyncioTestCase):
     async def test_restricted_command_is_absent_and_cannot_execute_or_leak_help(self):
-        # Exercise the same pack layer contract across reference, menu and dispatch.
-        # No current educator command is administrative; a pack can restrict one.
+        # Exercise LAMB's own role contract across reference, menu and dispatch (#567: the pack
+        # assigns no command to a role). No current educator command is administrative.
         from lamb.aac.contract import command_reference
+        from lamb.aac.pack_build import validate_routing
         pack = load_pack()
         manifest = copy.deepcopy(pack.manifest)
         manifest['command_layers'] = {'assistant.config': 'org_admin'}
-        restricted = Pack(pack.path, manifest, 'role-fixture')
+        with self.assertRaisesRegex(ValueError, 'cannot assign commands to roles'):
+            validate_routing(Pack(pack.path, manifest, 'role-fixture'))
+        self.assertEqual(COMMAND_LAYERS, {})
         for layers, permitted in [(['creator'], False),
                                   (['creator', 'lti'], False),
                                   (['creator', 'org_admin'], True),
                                   (['creator', 'org_admin', 'admin'], True)]:
-            with self.subTest(layers=layers):
-                commands = allowed_commands(restricted, layers)
+            with self.subTest(layers=layers), patch.dict(COMMAND_LAYERS, {'assistant.config': 'org_admin'}):
+                commands = allowed_commands(layers)
                 self.assertEqual('assistant.config' in commands, permitted)
                 self.assertEqual('- lamb assistant config:' in command_reference(commands), permitted)
                 shell = LiteShell(server_url='unused', token='fake', user_email='teacher@test', organization_id=4)

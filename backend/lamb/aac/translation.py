@@ -19,8 +19,8 @@ def translation_request(knowledge, text, options):
         if lookup(brief.get('glossary', {}), text):
             raise ValueError('This term is already in the pinned glossary; use lamb glossary')
         command = options.get('command')
-        from lamb.aac.pack_loader import allowed_commands
-        if not command or command not in allowed_commands(knowledge['pack'], brief['layers']):
+        from lamb.aac.authorization import allowed_commands
+        if not command or command not in allowed_commands(brief['layers']):
             raise ValueError('Name the supported command whose choice is blocked with --command GROUP.VERB')
         if not isinstance(options.get('blocker'),str) or not options['blocker'].strip():
             raise ValueError('Explain how the missing term blocks the command choice with --blocker TEXT')

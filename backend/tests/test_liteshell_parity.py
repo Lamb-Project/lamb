@@ -17,8 +17,7 @@ class Surface(unittest.TestCase):
         self.assertEqual({k:list(v) for k,v in COMMAND_CONTRACTS.items()},m['shell_contracts'])
         self.assertEqual(set(COMMAND_REGISTRY),set(COMMAND_CONTRACTS))
         self.assertEqual(set(COMMAND_REGISTRY)-set(m['cli']),set(m['shell_only']))
-        for k in COMMAND_REGISTRY:
-            self.assertIn(k,BOOTSTRAP|set(DEFAULT_SKILL))
+        # A command needs no recipe to exist (#567); the recipes that exist are checked by the pack build.
         for k in m['cli']:
             if k in m.get('integrated_shell', {}):
                 from lamb.moodle.task_contract import task_specs
@@ -27,7 +26,6 @@ class Surface(unittest.TestCase):
                 specs = {**command_specs(), **task_specs(), **document_specs()}
                 canonical = m['integrated_shell'][k]
                 self.assertIn(canonical.removeprefix('moodle.'), specs)
-                self.assertIn(canonical, DEFAULT_SKILL)
                 self.assertEqual(ActionAuthorizer().check(canonical), specs[canonical.removeprefix('moodle.')].policy)
                 continue
             if k in m.get('cli_only_transport', {}):
