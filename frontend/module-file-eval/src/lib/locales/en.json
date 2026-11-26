@@ -1,5 +1,6 @@
 {
 	"fileEval": {
+		"activityName": "Supervised Assessment",
 		"upload": {
 			"title": "Submit your work",
 			"dropzone": "Drag a file here or use the button below.",
@@ -52,7 +53,7 @@
 			"groupJoinAlreadySubmitted": "You have already submitted to this activity."
 		},
 		"grading": {
-			"title": "File evaluation — instructor",
+			"title": "Supervised Assessment: instructor",
 			"stats": {
 				"total": "Submissions",
 				"evaluated": "AI evaluated",

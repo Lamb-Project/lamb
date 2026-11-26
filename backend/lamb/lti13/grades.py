@@ -66,7 +66,7 @@ def send_score(resource_id, student_email, score, comment='', store=None):
         url = urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip('/') + '/scores', parts.query, ''))
         value = float(score)
         if not math.isfinite(value) or not 0 <= value <= 10:
-            raise ValueError('File evaluation grades must be between 0 and 10')
+            raise ValueError('Supervised Assessment grades must be between 0 and 10')
         token = access_token(reg, {SCORE_SCOPE}, store)
         network.request('POST', url,
             headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/vnd.ims.lis.v1.score+json'},

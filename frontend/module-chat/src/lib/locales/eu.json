@@ -5,6 +5,7 @@
 		"failed": "Ezin izan da LAMB Creator ireki. Saiatu berriro, edo ireki jarduera berriro LMStik."
 	},
 	"setupHub": {
+		"supervisedAssessment": "Ebaluazio gainbegiratua",
 		"yourOrganization": "Zure erakundea",
 		"chooseOrganization": "Aukeratu erakundea",
 		"chooseIntro": "Erakunde batean baino gehiagotan dituzu kontuak. Aukeratu bat jarduera honetarako.",

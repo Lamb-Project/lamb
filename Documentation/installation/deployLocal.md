@@ -649,7 +649,7 @@ WEBUI_SECRET_KEY=
 - `docker-compose.next.prod.yaml` — Production overlay (Caddy and TLS)
 
 **Docker volumes:**
-- `lamb-data` — LAMB database (`lamb_v4.db`) and file-evaluation submissions (`uploads/file-eval/<activity id>/`), mounted at `/data/lamb`
+- `lamb-data` — LAMB database (`lamb_v4.db`) and Supervised Assessment submissions (`uploads/file-eval/<activity id>/`), mounted at `/data/lamb`
 - `lamb-static` — Backend static files (creator uploads and single-file RAG documents), mounted at `/app/backend/static`
 - `kb-data` — KB server database and vector store
 - `kb-static` — KB server static files
@@ -659,13 +659,13 @@ WEBUI_SECRET_KEY=
 - `frontend-npm-cache` — npm download cache (development overlay only)
 - `ollama-data` — Ollama models (only with Ollama profile)
 
-**What to back up:** every volume above except the two `frontend-*` caches and `ollama-data`. Student submissions to file-evaluation activities are kept in `lamb-data` under `uploads/file-eval/`, next to the database whose rows reference them (by a path relative to that directory), so a backup of `lamb-data` always carries both. Back the volume up as a whole, with the stack stopped, so the SQLite `-wal`/`-shm` sidecars are consistent.
+**What to back up:** every volume above except the two `frontend-*` caches and `ollama-data`. Student submissions to Supervised Assessment activities are kept in `lamb-data` under `uploads/file-eval/`, next to the database whose rows reference them (by a path relative to that directory), so a backup of `lamb-data` always carries both. Back the volume up as a whole, with the stack stopped, so the SQLite `-wal`/`-shm` sidecars are consistent.
 
-> **Upgrading a 0.8 / 0.9 pre-release that already has file-evaluation submissions:** those builds wrote them to `/app/backend/uploads/file-eval/` inside the container (or `backend/uploads/file-eval/` in a non-Docker checkout), outside every volume. Before replacing the container, copy that directory into the data directory; no database change is needed, existing rows are mapped to the new location:
+> **Upgrading a 0.8 / 0.9 pre-release that already has Supervised Assessment submissions:** those builds wrote them to `/app/backend/uploads/file-eval/` inside the container (or `backend/uploads/file-eval/` in a non-Docker checkout), outside every volume. Before replacing the container, copy that directory into the data directory; no database change is needed, existing rows are mapped to the new location:
 > ```bash
 > docker compose -f docker-compose.next.yaml exec lamb sh -c 'mkdir -p /data/lamb/uploads && cp -a /app/backend/uploads/file-eval /data/lamb/uploads/'
 > ```
-> No released version (0.7 or earlier) has file evaluation, so released installations need no migration.
+> No released version (0.7 or earlier) has Supervised Assessment, so released installations need no migration.
 
 ---
 

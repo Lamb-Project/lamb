@@ -251,6 +251,7 @@
 
 			<!-- Activity header -->
 			<div class="bg-white rounded-xl shadow-sm border p-6 mb-4">
+				<p class="text-sm font-medium text-purple-700 mb-1">{$_('fileEval.activityName')}</p>
 				<h1 class="text-2xl font-bold text-gray-900 mb-1">
 					{activityView?.activity_info?.title || $_('fileEval.upload.title')}
 				</h1>

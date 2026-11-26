@@ -1,5 +1,6 @@
 {
 	"fileEval": {
+		"activityName": "Evaluación supervisada",
 		"upload": {
 			"title": "Entrega de trabajo",
 			"dropzone": "Arrastra un archivo aquí o usa el botón.",
@@ -52,7 +53,7 @@
 			"groupJoinAlreadySubmitted": "Ya has realizado una entrega en esta actividad."
 		},
 		"grading": {
-			"title": "Evaluación de archivos — profesorado",
+			"title": "Evaluación supervisada: profesorado",
 			"stats": {
 				"total": "Entregas",
 				"evaluated": "Evaluadas por IA",

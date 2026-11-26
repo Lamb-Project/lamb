@@ -5,6 +5,7 @@
 		"failed": "No s’ha pogut obrir LAMB Creator. Torna-ho a provar o torna a obrir l’activitat des de l’LMS."
 	},
 	"setupHub": {
+		"supervisedAssessment": "Avaluació supervisada",
 		"yourOrganization": "La teva organització",
 		"chooseOrganization": "Tria una organització",
 		"chooseIntro": "Tens comptes en diverses organitzacions. Tria’n una per a aquesta activitat.",

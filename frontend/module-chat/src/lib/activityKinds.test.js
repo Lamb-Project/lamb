@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { keepOrFirst, kindsFor } from './activityKinds.js';
 
 const chat = { name: 'chat', display_name: 'AI Chat Activity', requires_assistants: true };
-const fileEvaluation = { name: 'file_evaluation', display_name: 'File Evaluation', requires_assistants: true };
+const fileEvaluation = { name: 'file_evaluation', display_name: 'Supervised Assessment', requires_assistants: true };
 const llmAccess = { name: 'llm_access', display_name: 'LLM access', requires_assistants: false };
 
 // Engineering has a published assistant and no LLM access; Education has LLM access and nothing

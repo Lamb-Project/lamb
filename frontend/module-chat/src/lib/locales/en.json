@@ -5,6 +5,7 @@
 		"failed": "LAMB Creator could not be opened. Try again, or open the activity from your LMS again."
 	},
 	"setupHub": {
+		"supervisedAssessment": "Supervised Assessment",
 		"yourOrganization": "Your Organization",
 		"chooseOrganization": "Choose Organization",
 		"chooseIntro": "You have accounts in multiple organizations. Choose one for this activity.",

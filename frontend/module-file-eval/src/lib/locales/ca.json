@@ -1,5 +1,6 @@
 {
 	"fileEval": {
+		"activityName": "Avaluació supervisada",
 		"upload": {
 			"title": "Lliurament de treball",
 			"dropzone": "Arrossega un fitxer o usa el botó.",
@@ -52,7 +53,7 @@
 			"groupJoinAlreadySubmitted": "Ja has fet un lliurament en aquesta activitat."
 		},
 		"grading": {
-			"title": "Avaluació de fitxers — professorat",
+			"title": "Avaluació supervisada: professorat",
 			"stats": {
 				"total": "Lliuraments",
 				"evaluated": "Avaluades per IA",

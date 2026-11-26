@@ -5,6 +5,7 @@
 		"failed": "No se ha podido abrir LAMB Creator. Vuelve a intentarlo o abre de nuevo la actividad desde tu LMS."
 	},
 	"setupHub": {
+		"supervisedAssessment": "Evaluación supervisada",
 		"yourOrganization": "Tu organización",
 		"chooseOrganization": "Elige una organización",
 		"chooseIntro": "Tienes cuentas en varias organizaciones. Elige una para esta actividad.",

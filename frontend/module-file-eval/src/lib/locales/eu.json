@@ -1,5 +1,6 @@
 {
 	"fileEval": {
+		"activityName": "Ebaluazio gainbegiratua",
 		"upload": {
 			"title": "Lana bidali",
 			"dropzone": "Arrastra fitxategi bat edo erabili botoia.",
@@ -52,7 +53,7 @@
 			"groupJoinAlreadySubmitted": "Dagoeneko bidalketa bat egin duzu jarduera honetan."
 		},
 		"grading": {
-			"title": "Fitxategien ebaluazioa — irakaslea",
+			"title": "Ebaluazio gainbegiratua: irakaslea",
 			"stats": {
 				"total": "Bidalketak",
 				"evaluated": "IAk ebaluatuak",

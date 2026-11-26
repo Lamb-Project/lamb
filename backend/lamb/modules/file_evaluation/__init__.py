@@ -37,7 +37,7 @@ def _activity_language(activity: Dict[str, Any]) -> str:
 
 class FileEvalModule(ActivityModule):
     name = "file_evaluation"
-    display_name = "File Evaluation"
+    display_name = "Supervised Assessment"
     description = "Students submit files; AI evaluates them; instructor reviews and sends grades to the LMS."
 
     def unavailable_reason(self, organization_id, assistants, teacher_email=""):

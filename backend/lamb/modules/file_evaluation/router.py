@@ -109,7 +109,7 @@ async def get_activity_view(activity_id: int, request: Request, token: str = "")
 
     activity = activity_access.activity_by_id(_service.db, activity_id)
     if not activity or activity.get('activity_type') != 'file_evaluation':
-        raise HTTPException(404, 'File evaluation activity not found')
+        raise HTTPException(404, 'Supervised Assessment activity not found')
     activity_info.update(activity_access.context(_service.db, activity))
     activity_info['is_owner'] = bool(is_instructor and activity_access.owner_for_payload(_service.db, activity, payload))
 
@@ -136,7 +136,7 @@ async def update_setup_config(
 
     activity = activity_access.activity_by_id(_service.db, activity_id)
     if not activity or activity.get('activity_type') != 'file_evaluation':
-        raise HTTPException(404, 'File evaluation activity not found')
+        raise HTTPException(404, 'Supervised Assessment activity not found')
     creator = activity_access.require_owner(_service.db, activity, payload)
     if 'evaluator_id' in body:
         activity_access.validate_assistants(_service.db, activity, creator, [body['evaluator_id']], evaluator=True)

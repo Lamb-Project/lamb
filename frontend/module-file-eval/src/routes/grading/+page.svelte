@@ -422,6 +422,9 @@
 						<div>
 							<a href="/activities" class="text-sm text-blue-700">Activities</a>
                             <h1 class="text-xl font-bold text-gray-900">{data.activity_info.title || $_('fileEval.grading.title')}</h1>
+							{#if data.activity_info.title}
+								<p class="text-sm font-medium text-purple-700">{$_('fileEval.activityName')}</p>
+							{/if}
 							<p class="text-sm text-gray-500">
 								{data.activity_info.org_name} / {data.activity_info.lms_origin || 'LMS not yet recorded'} / {data.activity_info.context_title || data.activity_info.context_id || 'Course not yet recorded'}
 							</p>

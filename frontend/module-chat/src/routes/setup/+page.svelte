@@ -280,7 +280,7 @@
                                     bind:group={selectedActivity}
                                     class="mt-1 text-blue-600 focus:ring-blue-500" required>
                                 <div>
-                                    <span class="font-medium text-gray-900 block mb-1">{mod.display_name}</span>
+                                    <span class="font-medium text-gray-900 block mb-1">{mod.name === 'file_evaluation' ? $_('setupHub.supervisedAssessment') : mod.display_name}</span>
                                     <span class="text-sm text-gray-500">{mod.description}</span>
                                 </div>
                             </label>
