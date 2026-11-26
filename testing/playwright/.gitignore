@@ -7,3 +7,7 @@ package-lock.json
 playwright-report/
 test-results/
 .auth/
+
+# Local credentials for the tests: copy .env.sample, never commit
+.env.local
+.env
