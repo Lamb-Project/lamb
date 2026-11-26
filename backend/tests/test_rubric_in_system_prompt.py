@@ -59,3 +59,21 @@ def test_the_grade_line_is_read_by_supervised_assessment():
     from lamb.modules.file_evaluation.evaluator_client import EvaluatorClient
     answer = '### Overall Feedback\nGood evidence. Score: 3/4 on the first criterion.\n\nFINAL SCORE: 7.5'
     assert EvaluatorClient._extract_score_and_feedback(answer)['score'] == 7.5
+
+
+def test_the_completion_workflow_sends_one_system_message_and_never_the_instructions_twice():
+    from lamb.completions.main import process_completion_request
+    from lamb.completions.pps import simple_augment
+    for template, system in (('{user_input}', None), ('', '')):
+        a = assistant(template) if system is None else assistant(template, system=system)
+        _, context = assembled(a, 'Submission.')
+        messages = process_completion_request({'messages': [{'role': 'user', 'content': 'Submission.'}]}, a,
+                                              {'prompt_processor': 'simple_augment'}, context, {'simple_augment': simple_augment.prompt_processor})
+        assert [m['role'] for m in messages] == ['system', 'user'], messages
+        assert messages[0]['content'].count('teaching assistant of this course') == (1 if a.system_prompt else 0)
+        assert messages[0]['content'].rstrip().splitlines()[-1].startswith('N is the final score') and messages[1]['content'] == 'Submission.'
+    earlier = assistant('Rubric:\n{context}\n\nSubmission: {user_input}')
+    _, context = assembled(earlier, 'Submission.')
+    messages = process_completion_request({'messages': [{'role': 'user', 'content': 'Submission.'}]}, earlier,
+                                          {'prompt_processor': 'simple_augment'}, context, {'simple_augment': simple_augment.prompt_processor})
+    assert messages[0] == {'role': 'system', 'content': earlier.system_prompt} and len(messages) == 2

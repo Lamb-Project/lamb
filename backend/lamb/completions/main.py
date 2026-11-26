@@ -414,10 +414,17 @@ def process_completion_request(request: Dict[str, Any], assistant_details: Any, 
     # processors may still emit it; collapse exact duplicates and preserve their
     # separate, turn-specific system messages. No filter runs on assembled content.
     base = assistant_details.system_prompt or ""
-    if base:
-        messages = [{"role": "system", "content": base}] + [
+    # A plugin that places its content at the end of the system prompt (the rubric, #577) extends that one
+    # message: the instructions are never sent twice.
+    extra = rag_context.get("system_context") if isinstance(rag_context, dict) else None
+    if extra:
+        owned = (base.rstrip() + "\n\n" if base.rstrip() else "") + extra
+    else:
+        owned = base
+    if owned:
+        messages = [{"role": "system", "content": owned}] + [
             message for message in messages
-            if not (message.get("role") == "system" and message.get("content") == base)
+            if not (message.get("role") == "system" and message.get("content") in (base, owned))
         ]
     logger.debug(f"Processed messages: {messages}")
     return messages
