@@ -154,7 +154,7 @@ def _describe_tool_call(tc: Any) -> str:
         key = _parse_action_key(cmd)
         label = _TOOL_LABELS.get(key, cmd[:50])
         # Add bypass note if present
-        if "--bypass" in cmd:
+        if "--bypass" in cmd or "--debug" in cmd:
             label += " (pipeline debug)"
         return label
     except Exception:
@@ -1107,7 +1107,7 @@ class AgentLoop(SkillRouting):
         """Record a structured tool use event."""
         from datetime import datetime
         intent = _TOOL_LABELS.get(action_key or "", command[:50])
-        if "--bypass" in command:
+        if "--bypass" in command or "--debug" in command:
             intent += " (pipeline debug)"
         if queued:
             intent += " [awaiting confirmation]"

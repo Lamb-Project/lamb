@@ -377,7 +377,7 @@ class AutoWork:
                 if result.get('awaiting_user_confirmation'):
                     step['status'] = 'pending'
                     self.save()
-                    return {'success': False, 'pending_approval': True, 'steps': plan['steps']}
+                    return self.answer(plan, success=False, pending_approval=True)
                 uncertain = any(e.get('step_id') == step['id'] and e['task_id'] == self.task['id'] and e['status'] == 'uncertain'
                                 for e in self.state['journal'])
                 data = result.get('data')
@@ -393,7 +393,7 @@ class AutoWork:
                 if uncertain:
                     plan['status'] = 'uncertain'
                     self.save()
-                    return {'success': False, 'uncertain': step['id'], 'steps': plan['steps']}
+                    return self.answer(plan, success=False, uncertain=step['id'])
             except Exception as error:
                 step.update(status='failed', error=str(error))
             except BaseException:
@@ -404,7 +404,40 @@ class AutoWork:
                 self.executing = None
                 self.save()
             await self.progress()
-        return {'plan_id': plan['id'], 'steps': plan['steps'], 'next': 'Read actual results, evaluate the runs if requested, save the report, then plan finish.'}
+        return self.answer(plan, plan_id=plan['id'], next='Read actual results, evaluate the runs if requested, save the report, then plan finish.')
+
+    def answer(self, plan, **fields):
+        """What the model gets back from a plan. Whole when it fits in one result. A larger one would be cut to a
+        preview with a reference that LAMB always refuses for a plan, so each step then keeps its state, the
+        identifiers it returned and the command that shows the rest (#574)."""
+        from lamb.aac.result_store import encode, RESULT_BYTES
+        whole = {**fields, 'steps': plan['steps']}
+        if len(encode(whole)) <= RESULT_BYTES - 256:
+            return whole
+        if 'next' in fields:
+            fields['next'] = ('The results are too large to return here and are not kept for lamb result read. `read` is the command '
+                              'that shows a step\'s full result: run it by itself, it changes nothing. ' + fields['next'])
+        return {**fields, 'steps': [self.outcome(plan, step) for step in plan['steps']]}
+
+    def outcome(self, plan, step):
+        out = {k: step[k] for k in ('id', 'title', 'status', 'error', 'partial') if step.get(k) not in (None, '')}
+        result, found = step.get('result'), runs(step.get('result'))
+        if found:
+            out['runs'] = [{'id': r['id'], 'case': r['scenario_id'],
+                            'read': f"lamb test run-detail {r['id']} --assistant {r['assistant_id']}"} for r in found]
+        elif isinstance(result, dict):
+            out['result'] = {k: str(result[k])[:160] if isinstance(result[k], str) else result[k] for k in IDENTIFIERS
+                             if isinstance(result.get(k), (str, int, float)) and result[k] != ''}
+        if step.get('status') == 'completed' and not found:
+            try:
+                command = substitute(step['command'], plan['steps'])
+                key = prepare_command(command)[0]
+                if (self.agent.authorizer.check(key) == 'auto' and key != 'assistant.chat'
+                        and not key.startswith(('plan.', 'report.', 'change.', 'notebook.'))):
+                    out['read'] = command
+            except (ValueError, TypeError, KeyError):
+                pass
+        return out
 
     async def snapshot(self, key, args):
         http = self.agent.shell._get_http()
@@ -679,8 +712,13 @@ class AutoWork:
         return self.public()
 
 
+IDENTIFIERS = ('id', 'name', 'title', 'status', 'kb_id', 'assistant_id', 'batch_id', 'import_id', 'count', 'total')
+
+
 def call_count(key, kwargs):
-    return int(key in {'assistant.chat', 'test.run'} and kwargs.get('bypass', kwargs.get('b')) not in (True, 'true'))
+    """A debug run assembles the prompt and calls no model, so it uses none of the allowance."""
+    debug = kwargs.get('debug', kwargs.get('bypass', kwargs.get('b')))
+    return int(key in {'assistant.chat', 'test.run'} and debug not in (True, 'true'))
 
 
 def runs(value):

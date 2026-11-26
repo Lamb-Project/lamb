@@ -206,14 +206,14 @@ def delete_scenario(
 def run_tests(
     assistant_id: int = typer.Argument(..., help="Assistant ID."),
     scenario_id: Optional[str] = typer.Option(None, "--case", "--scenario", "-s", help="Run a specific test case."),
-    bypass: bool = typer.Option(False, "--bypass", "-b", help="Debug bypass: show what the LLM sees instead of calling it."),
+    bypass: bool = typer.Option(False, "--debug", "--bypass", "-b", help="Debug mode: save what the model would receive (prompt and retrieved passages) instead of calling it."),
     timeout: float = typer.Option(900.0, "--timeout", min=1.0, help="Seconds to wait for the batch. A timeout does not cancel server work."),
     output: str = typer.Option(None, "-o", "--output", help="Output format."),
 ) -> None:
     """Run test cases against an assistant.
 
-    Use --bypass to see the full context (system prompt + RAG + processed messages)
-    without calling the LLM. Zero tokens consumed.
+    Use --debug to see the full context (system prompt + RAG + processed messages)
+    without calling the LLM. Zero tokens consumed. --bypass is the earlier name of the option.
     """
     fmt = output or get_output_format()
     body: dict = {}

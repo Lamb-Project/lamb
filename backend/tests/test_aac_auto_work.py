@@ -405,3 +405,48 @@ async def test_auto_analysis_approval_save_and_readback():
     assert report['destination']['tab'] == 'analysis'
     assert saved[0]['content'] == content
     assert len(saved) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_large_plan_answer_names_the_read_for_each_step_instead_of_a_cut_result():
+    """Issue 574: seven inspections do not fit in one result, and LAMB keeps no readable copy of a plan's result."""
+    from lamb.aac.result_store import encode, RESULT_BYTES
+    a, h, _ = agent()
+    old_post = h.post
+    async def post(path, json=None, **kwargs):
+        if path.endswith('/completions') and (json or {}).get('debug_bypass'):
+            messages = [{'role': 'system', 'content': 'Instructions'}, {'role': 'user', 'content': 'Retrieved passage. ' * 150}]
+            return {'model': 'debug-bypass', 'choices': [{'message': {'content': 'Messages:\n' + globals()['json'].dumps(messages)}}]}
+        if path.endswith('/tests/run'):
+            sent.append(json)
+        return await old_post(path, json=json, **kwargs)
+    sent = []
+    h.post = post
+    h.cases.append({'id': 'case_1', 'assistant_id': 7, 'messages': [{'role': 'user', 'content': 'hello'}]})
+    steps = [{'id': f'inspect_{i}', 'title': f'Inspect {i}', 'command': f'lamb assistant debug 7 --message "question {i}"'} for i in range(6)]
+    steps.append({'id': 'saved', 'title': 'Debug run of the saved case', 'command': 'lamb test run 7 --case case_1 --debug'})
+    await prepare(a, {'title': 'Inspect retrieval', 'steps': steps, 'assistant_calls': 0, 'tool_estimate': 8})
+    if a.pending_action:
+        await a._resolve_pending_action('yes')
+    result = await a._execute_tool(tool('lamb plan execute'))
+    assert result['success'], result
+    answer = result['data']
+    assert len(encode(answer)) <= RESULT_BYTES, 'the answer is returned whole, never as a cut preview'
+    assert [s['status'] for s in answer['steps']] == ['completed'] * 7
+    assert answer['steps'][0]['read'] == 'lamb assistant debug 7 --message "question 0"' or 'question 0' in answer['steps'][0]['read']
+    assert answer['steps'][6]['runs'] == [{'id': 'run_1', 'case': 'case_1', 'read': 'lamb test run-detail run_1 --assistant 7'}]
+    assert 'read' not in answer['steps'][6], 'a run is never repeated to read it'
+    assert len(sent) == 1 and sent[0]['debug_bypass'] is True and sent[0]['scenario_id'] == 'case_1', 'the debug option reaches the test endpoint'
+    assert 'lamb result read' in answer['next'] and 'not kept' in answer['next']
+    assert a.auto_work.task['calls'] == 0, 'a debug run uses none of the assistant-call allowance'
+    kept = a.auto_work.task['plan']['steps'][0]['result']
+    assert kept['assembled_messages'][1]['content'].startswith('Retrieved passage'), 'the saved plan still holds the full result'
+
+
+def test_debug_is_the_name_of_the_option_and_bypass_still_works():
+    from lamb.aac.auto_work import call_count
+    from lamb.aac.liteshell.shell import prepare_command
+    for flag in ('--debug', '--bypass'):
+        key, args, kwargs, _ = prepare_command(f'lamb test run 7 --case case_1 {flag}')
+        assert key == 'test.run' and call_count(key, kwargs) == 0
+    assert call_count(*prepare_command('lamb test run 7 --case case_1')[::2]) == 1

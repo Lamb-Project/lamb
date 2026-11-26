@@ -133,7 +133,7 @@ async def assistant_config(ctx: "CommandContext", args: list[str], kwargs: dict)
 
 @register("assistant.debug")
 async def assistant_debug(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
-    """Inspect this input through prompt assembly without saving a test or chat."""
+    """Inspect ONE question that is not a saved test; nothing is saved. For saved test cases use lamb test run ID --case CASE --debug."""
     if not args:
         raise ValueError("Usage: lamb assistant debug <id> --message \"text\"")
     assistant_id = args[0]
@@ -437,11 +437,11 @@ async def test_update(ctx: "CommandContext", args: list[str], kwargs: dict) -> A
 
 @register("test.run")
 async def test_run(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
-    """Run test cases through the real completion pipeline."""
+    """Run saved test cases and save each run. --debug: no model call; each run keeps the assembled prompt and the retrieved passages (lamb test run-detail RUN_ID)."""
     if not args:
-        raise ValueError("Usage: lamb test run <assistant_id> [--case <id>] [--bypass]")
+        raise ValueError("Usage: lamb test run <assistant_id> [--case <id>] [--debug]")
     assistant_id = args[0]
-    bypass = kwargs.get("bypass", kwargs.get("b", False))
+    bypass = kwargs.get("debug", kwargs.get("bypass", kwargs.get("b", False)))  # --bypass is the earlier name of --debug
     body: dict[str, Any] = {
         "debug_bypass": bypass is True or bypass == "true",
     }

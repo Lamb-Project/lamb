@@ -5488,6 +5488,7 @@
           "name": "bypass",
           "kind": "TyperOption",
           "opts": [
+            "--debug",
             "--bypass",
             "-b"
           ],

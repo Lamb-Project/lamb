@@ -17,13 +17,14 @@ saved fields and actual run results before reporting success.
 
 ## Diagnostic evidence
 
-For a one-off input use lamb assistant debug ID --message "exact question".
+For a one-off input that is not a saved test use lamb assistant debug ID --message "exact question".
 It returns assembled_messages for a NEW pipeline invocation without saving a test or chat.
 It bypasses the final answer model; preprocessing may still use auxiliary models.
 An empty/malformed debug response is a failed inspection, never proof of retrieval.
 A debug invocation is not a trace of an earlier answer and not an answer-quality test.
 Saved tests use lamb test add/run; claim saved tests only with actual scenario/run IDs.
-run without --bypass produces real answers; bypass runs inspect assembled input only.
+Saved tests in debug mode: lamb test run ID --case CASE --debug. Each debug run is saved with its case; read it with lamb test run-detail RUN_ID --assistant ID.
+run without --debug produces real answers; debug runs inspect assembled input only. --bypass is the earlier name of --debug.
 
 Report observations, hypotheses and untested suggestions separately. If a tool fails,
 say so before trying another method, and name the substituted method and its limits.

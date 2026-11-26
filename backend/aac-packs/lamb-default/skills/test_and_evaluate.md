@@ -35,7 +35,13 @@ cannot prove what an earlier answer received. Empty context alone does not
 identify the cause. Never infer omitted ranks/scores, a language mismatch cause,
 or a top-k fix from only the returned chunks. Label hypotheses and test them.
 Use saved test cases when the user wants repeatable tests, then compare actual
-bypass and real runs before reporting a fix or evaluating answer quality.
+debug and real runs before reporting a fix or evaluating answer quality.
+
+When the request is about saved test cases ("run the tests in debug mode", "inspect what
+the tests retrieve"), do not use the one-off inspection above: it saves nothing and loses the
+link to the case. Run `lamb test run ASSISTANT_ID --case CASE_ID --debug` for each case, then read
+each saved run with `lamb test run-detail RUN_ID --assistant ASSISTANT_ID` and report, case by
+case, what was retrieved and what the model would receive.
 
 ## If no test cases exist
 
@@ -55,18 +61,18 @@ Generate a test set based on the assistant's purpose and configuration:
 
 When running them is already requested, include their verified IDs in the plan and run them after its one approval. Do not offer the already-requested work back as a choice.
 
-For RAG assistants running a full test suite, suggest bypass first:
-1. Run `lamb test run {assistant_id} --bypass` to check the pipeline
-2. Analyze the bypass output:
+For RAG assistants running a full test suite, suggest debug mode first:
+1. Run `lamb test run {assistant_id} --debug` to check the pipeline (`--bypass` is the earlier name of the option)
+2. Read each saved debug run with `lamb test run-detail RUN_ID --assistant {assistant_id}` and analyze it:
    - Is `{context}` populated with actual content? If empty, report that observation; investigate retrieval, filtering and prompt assembly before attributing a cause
    - Are the retrieved chunks relevant text or just formatting/metadata?
    - Is the prompt template correctly structured?
 3. If pipeline issues found → report them, suggest fixes
 4. If pipeline looks good → run `lamb test run {assistant_id}` (real completions)
 
-For non-RAG assistants, just run the tests directly — no bypass needed.
+For non-RAG assistants, just run the tests directly — no debug run needed.
 
-If the user asks to run tests without bypass, do it. Don't refuse.
+If the user asks to run tests without a debug run, do it. Don't refuse.
 
 ## If test cases have runs but no evaluations
 

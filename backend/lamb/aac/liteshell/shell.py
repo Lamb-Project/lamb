@@ -106,7 +106,7 @@ COMMAND_CONTRACTS = {
     "template.list": (0, 0, "limit l offset"), "template.get": (1, 1, ""),
     "test.update": (2, 2, "title message m description d type t expected e"),
     "test.scenarios": (1, 1, ""), "test.add": (1, 2, "title message m messages description d type t expected e"),
-    "test.run": (1, 1, "bypass b case scenario s timeout"), "test.runs": (1, 1, "limit l"),
+    "test.run": (1, 1, "debug bypass b case scenario s timeout"), "test.runs": (1, 1, "limit l"),
     "test.run-detail": (1, 2, "assistant a"), "test.evaluate": (2, 3, "assistant a notes n"),
     "session.rename": (1, 1, "session s"), "skill.list": (0, 0, ""),
     "skill.load": (1, 1, "assistant a language"), "docs.index": (0, 0, ""),
@@ -501,7 +501,7 @@ class CommandContext:
     knowledge: dict = field(default_factory=dict)
 
 
-BOOLEAN_OPTIONS = {'random_filter', 'no_random_filter', 'bypass', 'b', 'persist', 'enable', 'disable', 'vision', 'no_vision',
+BOOLEAN_OPTIONS = {'random_filter', 'no_random_filter', 'debug', 'bypass', 'b', 'persist', 'enable', 'disable', 'vision', 'no_vision',
                    'image_generation', 'no_image_generation', 'shared', 'help', 'h'}
 
 

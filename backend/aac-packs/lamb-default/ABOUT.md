@@ -17,6 +17,7 @@ Compared with pack 1.13.6:
 - **Enrolled is not active.** Asked for your active Moodle courses, LEGATUS says which criterion it applies and what evidence supports it, and says so when Moodle gives no dates or activity to decide with.
 - **Plans as fields.** To prepare several steps for one approval, LEGATUS fills in a form (operation, values, options) and LAMB writes the commands. It no longer has to quote text inside text, which is what made it fail on a plan with a long instruction. When a plan is refused it corrects the named field and keeps your wording.
 - **Nothing is built on a partial import.** If some course documents did not finish ingesting, the assistant that depends on them is not created, and LEGATUS says which documents are missing.
+- **Saved tests in debug mode.** Asked to run your tests in debug mode, LEGATUS saves one debug run per test case, showing what was retrieved and what the model would receive, and reads each one back. It keeps the one-off inspection for a question that is not a saved test.
 - **No roles in the pack.** The pack no longer assigns tools to roles. That list was empty in 1.13.6; the possibility is now removed.
 
 ## Guides in this version
