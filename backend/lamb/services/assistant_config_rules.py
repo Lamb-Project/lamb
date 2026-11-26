@@ -30,8 +30,13 @@ def rule_inputs(metadata, prompt_template, rag_collections):
             (rag_collections or '').strip(), meta.get('file_path') or '', str(meta.get('rubric_id') or ''))
 
 
-def config_errors(metadata, prompt_template, rag_collections):
-    """Human-readable problems with this configuration; empty when it can work."""
+RUBRIC_TEMPLATE = '{user_input}'
+
+
+def config_errors(metadata, prompt_template, rag_collections, saved_template=None):
+    """Human-readable problems with this configuration; empty when it can work.
+    `saved_template` is the template a rubric assistant already had: one written the earlier way, with the
+    rubric at {context}, is accepted for as long as it is not changed (#577)."""
     processor, rag, template, collections, file_path, rubric = rule_inputs(metadata, prompt_template, rag_collections)
     if processor != 'simple_augment':
         return []
@@ -43,6 +48,14 @@ def config_errors(metadata, prompt_template, rag_collections):
         return errors
     if rag not in CONTEXT_RAG:
         return errors
+    if rag == 'rubric_rag':
+        earlier = saved_template is not None and template == saved_template and '{context}' in template and '{user_input}' in template
+        if template.strip() not in ('', RUBRIC_TEMPLATE) and not earlier:
+            errors.append("A rubric assistant's prompt template is {user_input} and nothing else: LAMB adds the rubric at the "
+                          "end of the system prompt. Put the assignment and every other instruction in the system prompt.")
+        if not rubric:
+            errors.append("Rubric RAG needs a rubric.")
+        return errors
     name = NAMES[rag]
     if '{user_input}' not in template:
         errors.append(f"{name} needs {{user_input}} in the prompt template, where the student's message goes.")
@@ -52,6 +65,4 @@ def config_errors(metadata, prompt_template, rag_collections):
         errors.append(f"{name} needs at least one knowledge base.")
     if rag == 'single_file_rag' and not file_path:
         errors.append("Single file RAG needs a file.")
-    if rag == 'rubric_rag' and not rubric:
-        errors.append("Rubric RAG needs a rubric.")
     return errors

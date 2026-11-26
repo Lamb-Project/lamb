@@ -120,6 +120,7 @@
       },
       "promptTemplate": {
         "label": "Plantilla de Prompt",
+        "rubricFixed": "Fijo en un asistente con rúbrica: LAMB añade la rúbrica al final del prompt de sistema. Escribe el enunciado y cualquier otra instrucción en el prompt de sistema.",
         "help": "Este procesador requiere una plantilla de prompt válida.",
         "placeholder": "ej. Usa el {context} para responder la pregunta: {user_input}"
       },

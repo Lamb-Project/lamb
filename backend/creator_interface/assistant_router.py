@@ -1407,7 +1407,9 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         # on settings saved before these rules existed (#335).
         if rule_inputs(new_body["api_callback"], new_body.get("prompt_template"), new_body.get("RAG_collections")) != \
                 rule_inputs(current.api_callback, current.prompt_template, current.RAG_collections):
-            problems = config_errors(new_body["api_callback"], new_body.get("prompt_template"), new_body.get("RAG_collections"))
+            problems = config_errors(new_body["api_callback"], new_body.get("prompt_template"), new_body.get("RAG_collections"),
+                                     saved_template=(current.prompt_template or '') if rule_inputs(
+                                         current.api_callback, current.prompt_template, current.RAG_collections)[1] == 'rubric_rag' else None)
             if problems:
                 raise HTTPException(status_code=400, detail=" ".join(problems))
 

@@ -39,7 +39,10 @@ One improvement at a time. For each:
 
 ## If assistant uses rubric_rag
 
-Load the rubric. Check prompt template has `{context}` and `{user_input}`.
+Load the rubric. LAMB adds the rubric, and after it the instruction for the final score line, at the
+end of the system prompt. The prompt template is `{user_input}` and nothing else, and the assignment and
+every other instruction belong in the system prompt. An assistant saved the earlier way has `{context}`
+in its template and receives the rubric there: leave it as it is unless the user asks to convert it.
 Only mention this if there's an actual problem.
 
 ## If assistant uses simple_rag or context_aware_rag

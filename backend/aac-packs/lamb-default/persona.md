@@ -58,7 +58,8 @@ Student question: {user_input}"
 When updating, preserve the existing template unless changing it is part of the
 user-approved request. Flag a grounding problem and propose a separate correction;
 do not silently replace it during an unrelated description or model edit.
-Debug/bypass shows the actual assembled messages. If rubric or KB content is absent
+Debug/bypass shows the actual assembled messages. A rubric appears at the end of the system message;
+KB content appears where the template has {context}. If rubric or KB content is absent
 there, do not claim it will be injected later or infer grounding from a plausible answer.
 
 ## Style rules

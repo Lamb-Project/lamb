@@ -271,6 +271,7 @@
       },
       "promptTemplate": {
         "label": "Prompt Txantiloia",
+        "rubricFixed": "Finkoa errubrika duen laguntzailean: LAMBek errubrika sistemaren promptaren amaieran gehitzen du. Idatzi zereginaren enuntziatua eta gainerako jarraibideak sistemaren promptean.",
         "help": "Prozesatzaile honek prompt txantiloi baliozko bat behar du.",
         "placeholder": "adib. Erabili {context} galderari erantzuteko: {user_input}"
       },

@@ -93,6 +93,19 @@ def prompt_processor(
     processed_messages = []
 
     if assistant:
+        # A plugin may place its content at the end of the system prompt instead of in the user message.
+        # The system message is then the same for every request and the user message is the input alone (#577).
+        system_context = rag_context.get("system_context") if isinstance(rag_context, dict) else None
+        if system_context:
+            system = (assistant.system_prompt or "").rstrip()
+            processed_messages.append({"role": "system", "content": (system + "\n\n" if system else "") + system_context})
+            processed_messages.extend(messages[:-1])
+            if isinstance(last_message, list) and not _has_vision_capability(assistant):
+                # Text only, as for every assistant without vision.
+                last_message = ' '.join(item.get('text', '') for item in last_message if item.get('type') == 'text')
+            processed_messages.append({"role": messages[-1]['role'], "content": last_message})
+            return processed_messages
+
         # Add system message from assistant if available
         if assistant.system_prompt:
             processed_messages.append({

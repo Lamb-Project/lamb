@@ -11,6 +11,7 @@
 		promptTemplate = $bindable(''),
 		ragPlaceholders = [],
 		selectedPromptProcessor = '',
+		templateFixed = false,
 		formState,
 		/** @type {(event: Event) => void} */
 		oninput,
@@ -87,7 +88,15 @@
 	<label for="prompt-template" class="block text-sm font-medium text-gray-700">
 		{$_('assistants.form.promptTemplate.label', { default: 'Prompt Template' })}
 	</label>
-	<div class="mt-1 mb-2">
+	{#if templateFixed}
+		<p class="mt-1 mb-2 text-xs text-gray-600" data-testid="rubric-template-fixed">
+			{$_('assistants.form.promptTemplate.rubricFixed', {
+				default:
+					'Fixed for a rubric assistant: LAMB adds the rubric at the end of the system prompt. Write the assignment and every other instruction in the system prompt.'
+			})}
+		</p>
+	{/if}
+	<div class="mt-1 mb-2" class:hidden={templateFixed}>
 		<span class="text-xs text-gray-600 dark:text-gray-400"
 			>{$_('insert_placeholder') || 'Insert placeholder:'}:</span
 		>
@@ -106,8 +115,9 @@
 		bind:value={promptTemplate}
 		oninput={oninput}
 		id="prompt_template"
-		rows="6"
-		class="mt-1 block w-full shadow-sm sm:text-sm border border-gray-300 rounded-md bg-white text-gray-900"
+		rows={templateFixed ? 1 : 6}
+		readonly={templateFixed}
+		class="mt-1 block w-full shadow-sm sm:text-sm border border-gray-300 rounded-md text-gray-900 {templateFixed ? 'bg-gray-100' : 'bg-white'}"
 		placeholder={$_('assistants.form.promptTemplate.placeholder', { default: 'e.g. Use the {context} to answer the question: {user_input}' })}
 	></textarea>
 	{#if promptTemplate}

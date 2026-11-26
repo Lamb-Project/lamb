@@ -1,7 +1,12 @@
 """
 Rubric RAG Processor
-Retrieves rubric and injects as context for assessment-focused assistants
-Supports both markdown and JSON formats for LLM context
+Retrieves the rubric of an assessment-focused assistant, as markdown or JSON.
+
+The rubric goes at the end of the system prompt ("system_context"), followed by the instruction for the
+grade line that Supervised Assessment reads. The instructions, the assignment and the rubric are then one
+fixed prefix for every submission, which a model server can keep in its KV cache; only the user message
+changes (#577). An assistant saved the earlier way, with {context} in its prompt template, still gets the
+rubric there ("context") and nothing else changes for it.
 
 Uses evaluation-optimized formats that include:
 - Scoring instructions explaining how level scores (4,3,2,1) work
@@ -129,8 +134,14 @@ def rag_processor(
 
         logger.info(f"Successfully retrieved rubric {rubric_id} as {rubric_format} evaluation context")
 
+        if '{context}' in (getattr(assistant, 'prompt_template', '') or ''):
+            return {
+                "context": context,
+                "sources": sources
+            }
         return {
-            "context": context,
+            "context": "",
+            "system_context": context.rstrip() + "\n\n" + grade_line(rubric_data),
             "sources": sources
         }
 
@@ -143,4 +154,21 @@ def rag_processor(
         }
 
 
+def grade_line(rubric_data: Dict[str, Any]) -> str:
+    """The last instruction of a rubric assistant: the line Supervised Assessment reads the grade from."""
+    lines = ["## FINAL SCORE LINE", "",
+             "End your answer with one last line in exactly this form, and write nothing after it:", "",
+             "FINAL SCORE: N", "",
+             "N is the final score on a scale from 0 to 10, as a number with at most two decimals. "
+             "Keep the words FINAL SCORE in English whatever the language of the feedback."]
+    try:
+        maximum = float(rubric_data.get('maxScore'))
+    except (TypeError, ValueError, AttributeError):
+        maximum = None
+    if maximum and maximum != 10:
+        lines.append(f"This rubric is scored out of {maximum:g}: divide the final score by {maximum:g} and multiply by 10.")
+    return "\n".join(lines)
+
+
+# Kept word for word: the installed knowledge packs carry this description and are verified against it.
 AAC_DESCRIPTION = 'Formats the selected rubric as grounding context.'

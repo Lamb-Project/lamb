@@ -12,7 +12,7 @@ Create with `lamb rubric create TITLE --criteria JSON`, optionally --description
 
 Criteria is a full replacement array: retain every criterion/level/ID the user did not ask to change. Never overwrite unrelated rubric fields silently.
 
-Read the saved rubric again and explain the actual criteria, levels and scoring. Bind it to an assistant with --rag-processor rubric_rag --rubric-id ID --rubric-format markdown; include {context} and {user_input} in the prompt template. Read back the assistant configuration. Use test-and-evaluate to assess strong, weak and partial sample submissions, storing runs and justified evaluations. A generated response is not proof that a rubric was saved or bound.
+Read the saved rubric again and explain the actual criteria, levels and scoring. Bind it to an assistant with --rag-processor rubric_rag --rubric-id ID --rubric-format markdown and the prompt template {user_input}, nothing else: LAMB adds the rubric at the end of the system prompt, followed by the instruction for the final score line. Put the assignment and every other instruction in the system prompt; do not write a score line yourself. Read back the assistant configuration. Use test-and-evaluate to assess strong, weak and partial sample submissions, storing runs and justified evaluations. A generated response is not proof that a rubric was saved or bound.
 
 
 ## Complete create example

@@ -47,6 +47,24 @@
 	// --- Reactive UI Logic ---
 	const showRubricSelector = $derived(isRubricRag(form.selectedRagProcessor));
 
+	/** A rubric assistant saved the earlier way, with the rubric at {context}, keeps its template (#577). */
+	function savedTheEarlierWay() {
+		const saved = form.initialAssistantData;
+		if (form.formState !== 'edit' || !saved || !(saved.prompt_template || '').includes('{context}')) return false;
+		try {
+			return isRubricRag(JSON.parse(saved.metadata || saved.api_callback || '{}').rag_processor);
+		} catch {
+			return false;
+		}
+	}
+	// LAMB adds the rubric at the end of the system prompt, so the template is the input and nothing else.
+	const rubricTemplateFixed = $derived(showRubricSelector && !savedTheEarlierWay());
+	$effect(() => {
+		if (rubricTemplateFixed && form.configInitialized && form.prompt_template !== '{user_input}') {
+			form.prompt_template = '{user_input}';
+		}
+	});
+
 	// --- Fetcher wrappers (bind state + isMounted guard) ---
 	async function doFetchKnowledgeBases() {
 		if (!isMounted) return;
@@ -418,6 +436,7 @@
 				<AssistantPromptFields
 					bind:systemPrompt={form.system_prompt}
 					bind:promptTemplate={form.prompt_template}
+					templateFixed={rubricTemplateFixed}
 					ragPlaceholders={form.ragPlaceholders}
 					selectedPromptProcessor={form.selectedPromptProcessor}
 					formState={form.formState}

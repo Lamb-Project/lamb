@@ -260,6 +260,7 @@
       },
       "promptTemplate": {
         "label": "Prompt Template",
+        "rubricFixed": "Fixed for a rubric assistant: LAMB adds the rubric at the end of the system prompt. Write the assignment and every other instruction in the system prompt.",
         "help": "This processor requires a valid prompt template.",
         "placeholder": "e.g. Use the {context} to answer the question: {user_input}"
       },

@@ -71,6 +71,14 @@ export function ragConfigErrors(form) {
 	}
 	const name = RAG_NAMES[rag];
 	if (!name) return [];
+	if (isRubricRag(rag)) {
+		// LAMB adds the rubric at the end of the system prompt. An assistant saved the earlier way keeps its template (#577).
+		const saved = form.formState === 'edit' ? form.initialAssistantData : null;
+		const earlier = !!saved && template === (saved.prompt_template || '') && template.includes('{context}') && template.includes('{user_input}');
+		return ['', '{user_input}'].includes(template.trim()) || earlier
+			? []
+			: ["A rubric assistant's prompt template is {user_input} and nothing else: LAMB adds the rubric at the end of the system prompt. Put the assignment and every other instruction in the system prompt."];
+	}
 	const errors = [];
 	if (!template.includes('{user_input}')) errors.push(`${name} needs {user_input} in the prompt template, where the student's message goes.`);
 	if (!template.includes('{context}')) errors.push(`${name} needs {context} in the prompt template, where the retrieved content goes.`);

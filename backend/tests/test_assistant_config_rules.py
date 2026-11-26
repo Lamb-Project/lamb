@@ -28,8 +28,21 @@ def test_knowledge_base_rags_need_both_placeholders_and_a_knowledge_base():
 def test_single_file_and_rubric_rags_need_their_source():
     assert config_errors(meta('single_file_rag', file_path='u/1/notes.md'), FULL, '') == []
     assert config_errors(meta('single_file_rag'), FULL, '') == ['Single file RAG needs a file.']
-    assert config_errors(meta('rubric_rag', rubric_id='7'), FULL, '') == []
-    assert config_errors(meta('rubric_rag'), FULL, '') == ['Rubric RAG needs a rubric.']
+    assert config_errors(meta('rubric_rag'), '{user_input}', '') == ['Rubric RAG needs a rubric.']
+
+
+def test_a_rubric_assistant_has_the_input_as_its_only_template():
+    """Issue 577: the rubric goes at the end of the system prompt, so the template is {user_input} and nothing else."""
+    rubric = meta('rubric_rag', rubric_id='7')
+    assert config_errors(rubric, '{user_input}', '') == [] and config_errors(rubric, '', '') == []
+    for template in (FULL, 'Grade this: {user_input}', '{context}'):
+        errors = config_errors(rubric, template, '')
+        assert len(errors) == 1 and 'system prompt' in errors[0], template
+    # An assistant saved the earlier way keeps its template for as long as it is not changed.
+    assert config_errors(rubric, FULL, '', saved_template=FULL) == []
+    assert config_errors(meta('rubric_rag', rubric_id='8'), FULL, '', saved_template=FULL) == [], 'another rubric, same template'
+    assert config_errors(rubric, FULL + ' Be kind.', '', saved_template=FULL), 'a changed template follows the new rule'
+    assert config_errors(rubric, 'Grade: {user_input}', '', saved_template='Grade: {user_input}'), 'only a template with {context} is the earlier way'
 
 
 def test_custom_prompt_processors_and_unknown_rags_are_not_checked():

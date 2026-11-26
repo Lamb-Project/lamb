@@ -14,6 +14,17 @@ describe('validateSubmission', () => {
 		expect(result).toContain('Name');
 	});
 
+	test('a rubric assistant has the input as its only template; one saved the earlier way keeps its own (#577)', () => {
+		const rubric = { name: 'test', selectedRagProcessor: 'rubric_rag', selectedRubricId: '7', selectedPromptProcessor: 'simple_augment' };
+		expect(validateSubmission({ ...rubric, prompt_template: '{user_input}' })).toBeNull();
+		expect(validateSubmission({ ...rubric, prompt_template: '' })).toBeNull();
+		expect(validateSubmission({ ...rubric, prompt_template: 'Rubric: {context} Submission: {user_input}' })).toContain('system prompt');
+		const earlier = 'Rubric: {context} Submission: {user_input}';
+		const saved = { prompt_template: earlier, metadata: JSON.stringify({ rag_processor: 'rubric_rag', rubric_id: '6' }), RAG_collections: '' };
+		expect(validateSubmission({ ...rubric, formState: 'edit', initialAssistantData: saved, prompt_template: earlier })).toBeNull();
+		expect(validateSubmission({ ...rubric, formState: 'edit', initialAssistantData: saved, prompt_template: earlier + ' Be kind.' })).toContain('system prompt');
+	});
+
 	test('returns error when rubric_rag selected without rubric', () => {
 		const result = validateSubmission({ name: 'test', selectedRagProcessor: 'rubric_rag', selectedRubricId: '' });
 		expect(result).toContain('rubric');
