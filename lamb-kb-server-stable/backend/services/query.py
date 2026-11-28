@@ -4,17 +4,60 @@ Query service for retrieving data from collections.
 This module provides services for querying collections using query plugins.
 """
 
+import re
 import time
+from pathlib import PurePosixPath
 from typing import Dict, List, Any, Optional
 
 from fastapi import HTTPException
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from plugins.base import PluginRegistry, QueryPlugin
 
 
+# A file is stored under a name of 32 hexadecimal characters; the name it was uploaded with is
+# in the file registry only.
+_STORED_NAME = re.compile(r"^[0-9a-f]{32}$")
+_SOURCE_KEYS = ("source", "filename", "file_url", "original_file_url", "markdown_file_url")
+
+
 class QueryService:
     """Service for querying collections."""
+
+    @staticmethod
+    def name_sources(db: Session, collection_id: int, results: Any) -> None:
+        """Add to each passage the name its file was uploaded with (`original_filename`).
+
+        A passage's own metadata carries only the name the file is stored under, which means
+        nothing to the person who uploaded it or to a model asked where a passage comes from
+        (Lamb-Project/lamb#584). The stored name is matched with the collection's file
+        registry. Passages that already carry the name, or that match no file, are left as
+        they are. A failure here never fails the query.
+        """
+        try:
+            wanted = {}
+            for result in results if isinstance(results, list) else []:
+                metadata = result.get("metadata") if isinstance(result, dict) else None
+                if not isinstance(metadata, dict) or metadata.get("original_filename"):
+                    continue
+                for key in _SOURCE_KEYS:
+                    stem = PurePosixPath(str(metadata.get(key) or "")).stem
+                    if _STORED_NAME.match(stem):
+                        wanted.setdefault(stem, []).append(metadata)
+                        break
+            if not wanted:
+                return
+            from database.models import FileRegistry
+            rows = db.query(FileRegistry.file_path, FileRegistry.original_filename).filter(
+                FileRegistry.collection_id == collection_id,
+                or_(*[FileRegistry.file_path.like(f"%{stem}%") for stem in wanted])).all()
+            for file_path, original_filename in rows:
+                for metadata in wanted.get(PurePosixPath(str(file_path or "")).stem, []):
+                    if original_filename:
+                        metadata["original_filename"] = original_filename
+        except Exception as exc:  # the passages are still good without their names
+            print(f"WARNING: [query_collection] could not name the sources: {exc}")
     
     @classmethod
     def get_plugin(cls, name: str) -> Optional[QueryPlugin]:
@@ -207,6 +250,8 @@ class QueryService:
             # Record end time
             end_time = time.time()
             elapsed_time = end_time - start_time
+
+            cls.name_sources(db, collection_id, results)
             
             return {
                 "results": results,

@@ -1734,13 +1734,13 @@
                                                                 rel="noopener noreferrer"
                                                                 class="text-[#2271b3] hover:text-[#195a91] hover:underline font-medium"
                                                                 style="color: #2271b3;"
-                                                                title={`Open file: ${result.metadata.filename}`}
+                                                                title={`Open file: ${result.metadata.original_filename || result.metadata.filename}`}
                                                             >
                                                                 
                                                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1 -mt-0.5" viewBox="0 0 20 20" fill="currentColor">
                                                                     <path fill-rule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0l-1.5-1.5a2 2 0 112.828-2.828l1.5 1.5a.5.5 0 00.707 0l1.5-1.5a.5.5 0 00-.707-.707l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0l1.5 1.5a.5.5 0 00.707 0l1.5-1.5a.5.5 0 00-.707-.707l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0l-1.5-1.5a2 2 0 112.828-2.828l1.5 1.5a.5.5 0 00.707 0l1.5-1.5a.5.5 0 00-.707-.707l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5a2 2 0 11-2.828-2.828z" clip-rule="evenodd" />
                                                                 </svg>
-                                                                {result.metadata.filename}
+                                                                {result.metadata.original_filename || result.metadata.filename}
                                                             </a>
                                                         </div>
                                                     {/if}

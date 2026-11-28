@@ -6,6 +6,7 @@ from lamb.lamb_classes import Assistant
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
 from lamb.logging_config import get_logger
 from lamb.completions.source_urls import kb_file_url
+from lamb.completions.passage_sources import passage, source_title
 
 logger = get_logger(__name__, component="RAG")
 
@@ -379,7 +380,7 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
 
                         if main_url:
                             source_entry = {
-                                "title": metadata.get("filename", metadata.get("original_filename", "Unknown")),
+                                "title": source_title(metadata),
                                 "url": main_url,
                                 "similarity": doc.get("similarity", 0)
                             }
@@ -400,7 +401,7 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
 
                     # Add the document content to contexts
                     if "data" in doc:
-                        contexts.append(doc["data"])
+                        contexts.append(passage(doc))
             else:
                 print(
                     f"Collection {cid}: {status} - {result.get('error', 'Unknown error')}")
