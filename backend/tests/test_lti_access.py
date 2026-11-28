@@ -179,9 +179,12 @@ def test_lti_13_is_governed_by_its_registration_not_by_the_whitelist_or_the_lock
     env.db.get_organization_by_slug = lambda _: {'id': 0, 'config': {'lti_access': {'whitelist_enabled': True, 'allowed_instances': []}}}
     env.db.get_organization_by_id = lambda oid: {'id': oid, 'config': {'lti_access': {'locked_instances': [B]}}} if oid in (1, 2) else None
     context = protocol.validate_launch(launch13(env), env.store)
-    env.store.assert_org(context['resource_link_id'], 1)
+    access.require_organization(env.db, env.db.get_organization_by_id(1), context['lms_instance'])
     with pytest.raises(ValueError, match='not allowed for this LMS registration'):
-        env.store.assert_org(context['resource_link_id'], 2)
+        access.require_organization(env.db, env.db.get_organization_by_id(2), context['lms_instance'])
+    assert access.organization_allowed(env.db, 1, context['lms_instance']) and not access.organization_allowed(env.db, 2, context['lms_instance'])
+    # The same installation on LTI 1.1 is under the whitelist and the lock.
+    assert not access.organization_allowed(env.db, 1, 'platform.example')
 
 
 # -- records of the 17 and 18 November dev builds ------------------------------------------
@@ -289,7 +292,7 @@ def test_an_organization_admin_locks_to_the_lms_they_came_from_and_cannot_lock_t
     assert client.put(path + '?org=beta', json={'locked_instances': [A]}).status_code == 403
     # Sessions that have no LTI 1.1 installation to offer: LTI 1.3, and the earlier dev build.
     from lamb.lti13 import PREFIX
-    for payload in (lti_session(A, user=PREFIX + 'x'), lti_session('https://' + A), {}, {'lti_identity': 'x'}):
+    for payload in (lti_session(A, user=PREFIX + 'x'), lti_session(PREFIX + 'i_handle'), lti_session('https://' + A), {}, {'lti_identity': 'x'}):
         assert access.session_instance(payload) == ''
 
 

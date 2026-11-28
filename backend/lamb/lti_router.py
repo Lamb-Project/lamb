@@ -155,9 +155,12 @@ async def lti_launch(request: Request):
             lms_email, username, display_name = ctx.lms_email, ctx.username, ctx.display_name
             roles, context_id, context_title = ctx.roles, ctx.context_id, ctx.context_title
             lis_result_sourcedid, lis_outcome_service_url = None, ""
-            lms_instance = ""  # the scoped identity already names the registration and deployment
-            Store().save_grade_target(resource_link_id, lms_user_id,
-                manager.generate_student_email(username, resource_link_id), verified['grade_endpoint'])
+            # A handle that names the installation and the registration the launch came through.
+            lms_instance = ctx.lms_instance
+            # The learner's grades now return through this launch's grade service.
+            Store().save_grade_endpoint(
+                resource_link_id, manager.generate_student_email(username, resource_link_id),
+                verified['registration_id'], verified['deployment_id'], lms_user_id, verified['grade_endpoint'])
         else:
             consumer_key = post_data.get("oauth_consumer_key")
             expected_key, _ = manager.get_lti_credentials()
@@ -196,11 +199,17 @@ async def lti_launch(request: Request):
             if any(is_scoped(v) for v in (resource_link_id, lms_user_id, context_id, username)):
                 raise HTTPException(400, "Reserved LTI identifier")
             # Stored as the LMS sends it. Compared only where an administrator enabled a check.
-            lms_instance = lti_access.instance_id(post_data)
             try:
+                lms_instance = lti_access.instance_id(post_data)
                 lti_access.require_global(db_manager, lms_instance)
             except ValueError as exc:
                 raise HTTPException(403, str(exc)) from exc
+            # One installation for LTI 1.1 and LTI 1.3 (#579): an activity first set up on
+            # LTI 1.3 from this installation is the same activity here, and the learner's
+            # grades return through Basic Outcomes again.
+            store = Store()
+            resource_link_id = store.legacy_activity_key(lms_instance, resource_link_id)
+            store.clear_grade_endpoint(resource_link_id, manager.generate_student_email(username, resource_link_id))
             ctx = LTIContext(
                 resource_link_id=resource_link_id, lms_user_id=lms_user_id, lms_email=lms_email,
                 username=username, display_name=display_name, roles=roles,
@@ -216,10 +225,8 @@ async def lti_launch(request: Request):
 
         if activity:
             try:
-                if is_lti13:
-                    Store().assert_org(resource_link_id, activity['organization_id'])
-                else:
-                    lti_access.require_organization(db_manager, db_manager.get_organization_by_id(activity['organization_id']), lms_instance)
+                # LTI 1.3: the organizations of the registration. LTI 1.1: the optional whitelist and lock.
+                lti_access.require_organization(db_manager, db_manager.get_organization_by_id(activity['organization_id']), lms_instance)
             except ValueError as exc:
                 raise HTTPException(403, str(exc)) from exc
 
@@ -261,7 +268,8 @@ async def lti_launch(request: Request):
 
         # -- INSTRUCTOR at unconfigured activity -> Setup flow --
         logger.info(f"Instructor setup flow for {resource_link_id}")
-        # Who the instructor is: the LMS user (and instance), never the email (15 November 2026).
+        # Who the instructor is: the LMS user and the installation, never the email
+        # (15 November 2026), and the same person on LTI 1.1 and LTI 1.3 (#579).
         creator_users = manager.identify_instructor(lms_user_id=lms_user_id, lms_instance=lms_instance)
 
         if not creator_users:
@@ -416,9 +424,10 @@ async def lti_configure_activity(request: Request):
             return JSONResponse({"detail": "Session expired"}, status_code=403)
 
         organization_id = int(payload.get("organization_id", 0))
-        if is_scoped(data.get("lti_resource_link_id")):
+        if is_scoped(data.get("lti_lms_instance")):
             try:
-                Store().assert_org(data["lti_resource_link_id"], organization_id)
+                lti_access.require_organization(db_manager, db_manager.get_organization_by_id(organization_id),
+                                                data["lti_lms_instance"])
             except ValueError as exc:
                 raise HTTPException(403, str(exc)) from exc
         assistant_ids_raw = payload.get("assistant_ids", [])
@@ -714,7 +723,8 @@ async def lti_onboarding_add_organization(request: Request, token: str = ""):
     ticket = lti_onboarding.issue_ticket(
         lms_user_id=lms_user_id, lms_email=data.get("lti_lms_email", ""), display_name=data.get("lti_display_name", ""),
         resource_link_id=data.get("lti_resource_link_id", ""), context_id=data.get("lti_context_id", ""),
-        context_title=data.get("lti_context_title", ""), protocol="1.3" if is_scoped(lms_user_id) else "1.1",
+        context_title=data.get("lti_context_title", ""),
+        protocol="1.3" if is_scoped(data.get("lti_lms_instance")) else "1.1",
         lms_instance=data.get("lti_lms_instance", ""), username=data.get("lti_username", ""),
         launched_at=lti_onboarding.launched_at(data))
     return await run_in_threadpool(_onboarding_page, request, ticket)
@@ -793,7 +803,7 @@ async def lti_return_to_activity(request: Request, token: str = ""):
                 roles="Instructor", is_instructor=True, context_id=data.get("lti_context_id", ""),
                 context_title=data.get("lti_context_title", ""), lms_instance=data.get("lti_lms_instance", ""),
                 launched_at=lti_onboarding.launched_at(data) or 0,
-                lti_version="1.3" if is_scoped(lms_user_id) else "1.1",
+                lti_version="1.3" if is_scoped(data.get("lti_lms_instance")) else "1.1",
                 registration_id=data.get("lti13_registration_id"), deployment_id=data.get("lti13_deployment_id"))
             return await run_in_threadpool(_get_activity_module(activity).on_instructor_launch, ctx)
         accounts = await run_in_threadpool(_creator_users_for, data)

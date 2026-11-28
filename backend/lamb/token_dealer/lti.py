@@ -72,7 +72,8 @@ def launch_redirect(public_base, activity, roles_is_instructor, lms_user_id, ema
         t = make_token({'type': 'manage', 'activity_id': activity['id'], 'lms_user_id': lms_user_id,
                         'lms_email': email, 'lms_instance': lms_instance})
         return RedirectResponse(f'{public_base}{PREFIX}/manage?token={t}', status_code=303)
-    t = make_token({'type': 'student', 'activity_id': activity['id'], 'lms_user_id': lms_user_id, 'lms_email': email, 'name': name})
+    t = make_token({'type': 'student', 'activity_id': activity['id'], 'lms_user_id': lms_user_id, 'lms_email': email, 'name': name,
+                    'lms_instance': lms_instance})
     return RedirectResponse(f'{public_base}{PREFIX}/student?token={t}', status_code=303)
 
 

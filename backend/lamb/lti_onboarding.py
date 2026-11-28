@@ -260,57 +260,58 @@ def read_ticket(token: str) -> Optional[Dict[str, Any]]:
         return None
     if payload.get("lti_protocol") not in ("1.1", "1.3"):
         return None
-    # A 1.3 identity is LAMB's scoped identifier, a 1.1 identity never is.
-    if is_scoped(payload["lti_lms_user_id"]) != (payload["lti_protocol"] == "1.3"):
+    # An LTI 1.3 launch carries the handle of its registration as its instance; an LTI 1.1
+    # launch never does. The user is the LMS's own identifier in both.
+    if is_scoped(payload.get("lti_lms_instance")) != (payload["lti_protocol"] == "1.3") or is_scoped(payload["lti_lms_user_id"]):
         return None
     return payload
 
 
 def allowed_organizations(db, ticket: Dict[str, Any]) -> Optional[List[int]]:
     """Organizations this launch may enter: those of its LTI 1.3 registration, or None (any) for LTI 1.1."""
-    if ticket["lti_protocol"] != "1.3":
-        return None
-    from lamb.lti13.store import Store
-    store = Store(db)
-    user = store.object(ticket["lti_lms_user_id"], "user")
-    return list(store.registration(user["registration_id"], user["deployment_id"])["organization_ids"])
+    registration = lti_access.registration_of(db, ticket.get("lti_lms_instance"))
+    return None if registration is None else list(registration["organization_ids"])
 
 
 # ---------------------------------------------------------------------------
-# Who an LTI 1.1 launch is
+# Who a launch is
 # ---------------------------------------------------------------------------
 
-def _identity(protocol: str, lms_user_id: str) -> str:
-    return hashlib.sha256(f"{protocol}:{lms_user_id}".encode()).hexdigest()
+def _identity(lms_user_id: str) -> str:
+    """The key of an LMS user in the records of codes and attempts. A person is the same on
+    LTI 1.1 and on LTI 1.3 (#579); the "1.1:" inside is how these keys were first written."""
+    return hashlib.sha256(f"1.1:{lms_user_id}".encode()).hexdigest()
 
 
 def instances_of(db, lms_user_id: str) -> Dict[int, set]:
-    """For an LTI 1.1 user id: the LMS instances each account was obtained from with a creator
+    """For an LMS user id: the LMS installations each account was obtained from with a creator
     code, {creator_user_id: {instance, ...}}. An account that is not there was not obtained
     with a code."""
     obtained: Dict[int, set] = {}
     for row in _rows(db, "SELECT creator_user_id, lms_instance FROM {p}lti_creator_code_redemptions WHERE identity_hash=?",
-                     (_identity("1.1", lms_user_id),)):
+                     (_identity(lms_user_id),)):
         obtained.setdefault(row["creator_user_id"], set()).add(row["lms_instance"])
     return obtained
 
 
 def accounts_of_instance(db, accounts: List[Dict[str, Any]], lms_user_id: str, lms_instance: str) -> List[Dict[str, Any]]:
-    """Of the LTI creator accounts tied to an LTI 1.1 user id, those a launch from this LMS
-    instance may act as (Marc, 15 November 2026: identity is the organization, the LMS user
-    and the LMS instance, never the email).
+    """Of the LTI creator accounts tied to an LMS user id, those a launch from this LMS
+    installation may act as (Marc, 15 November 2026: identity is the organization, the LMS
+    user and the LMS instance, never the email), on LTI 1.1 and on LTI 1.3 alike (#579).
 
-    The global key is shared by every LMS, and a user id is only that LMS's own number: an
-    account obtained with a creator code belongs to the instance it was obtained from. An
-    account made by the organization's own LTI Creator tool carries no record of an instance
-    and is recognised by the user id. The instance is compared as the LMS sends it. Where an
-    administrator enabled the whitelist or locked the organization (lti_access), an account
-    of an organization this installation may not enter is left out.
+    A user id is only that LMS's own number: an account obtained with a creator code belongs
+    to the installation it was obtained from. An account made by the organization's own LTI
+    Creator tool carries no record of an installation and is recognised by the user id. The
+    installation is compared as the LMS names itself. An account of an organization this
+    launch may not enter is left out: on LTI 1.3 the organizations of the registration, on
+    LTI 1.1 the whitelist and the organization lock where an administrator enabled them.
+    ValueError when the registration of an LTI 1.3 session is no longer enabled.
     """
-    here = str(lms_instance or "").strip()
+    from lamb.lti13.store import installation_of
+    here = installation_of(lms_instance, db)
     obtained = instances_of(db, lms_user_id)
     return [account for account in accounts
-            if lti_access.organization_allowed(db, account["organization_id"], here)
+            if lti_access.organization_allowed(db, account["organization_id"], lms_instance)
             and (account["id"] not in obtained
                  or any(lti_access.same_instance(v, here) for v in obtained[account["id"]]))]
 
@@ -333,7 +334,7 @@ class Redemption:
 
 
 def _identity_hash(ticket: Dict[str, Any]) -> str:
-    return _identity(ticket['lti_protocol'], ticket['lti_lms_user_id'])
+    return _identity(ticket['lti_lms_user_id'])
 
 
 def _instance(claims: Dict[str, Any]) -> str:
@@ -390,14 +391,12 @@ def redeem(db, manager, ticket: Dict[str, Any], code: str) -> Redemption:
     if status != "active":
         return _refuse(db, ticket, status, organization, row["id"])
     try:
-        if not is_scoped(ticket["lti_lms_user_id"]):
-            # LTI 1.1: the optional whitelist and organization lock. LTI 1.3 is governed
-            # by its registration, below.
-            lti_access.require_organization(db, organization, _instance(ticket))
-        allowed = allowed_organizations(db, ticket)
+        # LTI 1.1: the optional whitelist and organization lock. LTI 1.3: the organizations
+        # of the registration.
+        lti_access.require_organization(db, organization, _instance(ticket))
+        from lamb.lti13.store import installation_of
+        installation = installation_of(_instance(ticket), db)
     except ValueError:
-        return _refuse(db, ticket, "not_allowed", organization, row["id"])
-    if allowed is not None and organization["id"] not in allowed:
         return _refuse(db, ticket, "not_allowed", organization, row["id"])
 
     lms_user_id = ticket["lti_lms_user_id"]
@@ -413,7 +412,7 @@ def redeem(db, manager, ticket: Dict[str, Any], code: str) -> Redemption:
         known = []
     if any(account["organization_id"] == organization["id"] for account in known):
         return _refuse(db, ticket, "already_member", organization, row["id"])
-    if existing and ticket["lti_protocol"] == "1.1" and instances_of(db, lms_user_id).get(existing["id"]):
+    if existing and instances_of(db, lms_user_id).get(existing["id"]):
         # The account of this user id in this organization was obtained from another LMS
         # instance: the same number there is another person. A code does not hand it over.
         return _refuse(db, ticket, "other_lms", organization, row["id"])
@@ -459,7 +458,7 @@ def redeem(db, manager, ticket: Dict[str, Any], code: str) -> Redemption:
         (code_id, creator_user_id, identity_hash, launch_id, protocol, redeemed_at, lms_instance, lms_email)
         VALUES (?,?,?,?,?,?,?,?)''',
         (row["id"], creator_id, identity, ticket["lti_launch_id"], ticket["lti_protocol"], now,
-         _instance(ticket), _email(ticket)))
+         installation, _email(ticket)))
     _record(db, ticket, "ok")
     creator = db.get_creator_user_by_id(creator_id)
     logger.info(f"Creator code {row['id']} redeemed: creator user {creator_id} in organization {organization['id']}")
@@ -490,7 +489,7 @@ def creator_access(db, manager, claims: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     An LTI creator has no password and enters LAMB only through the LMS (Marc, 14 November
     2026). Offered: every account the launch identifies (LtiActivityManager.identify_instructor:
-    the LMS user and, on LTI 1.1, the LMS instance), within four hours of the launch, whatever
+    the LMS user and the LMS installation), within four hours of the launch, whatever
     email the launch carries: the same LMS user enters any of their organizations (Marc,
     15 November 2026). `claims`: a setup, dashboard or return token, or the identity kept in a
     Creator session. Regular creators sign in on the login page and are never offered here.

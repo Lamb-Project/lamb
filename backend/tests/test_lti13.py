@@ -31,6 +31,8 @@ def env(tmp_path, monkeypatch):
             return dict(row) if row else None
     db.get_creator_user_by_id = creator
     db.get_organization_by_id = lambda oid: {'id': oid, 'name': 'Organization'} if oid in (1, 2) else None
+    db.get_organization_by_slug = lambda slug: None
+    db.get_lti_creator_users_by_lms_user = lambda user: []
     with db.get_connection() as c:
         c.execute('CREATE TABLE T_Creator_users (id INTEGER PRIMARY KEY, organization_id INTEGER, user_email TEXT, user_name TEXT, enabled INTEGER, auth_provider TEXT)')
         # 1 and 2 are LTI creator accounts (2 in an organization the registration does not serve); 3 signs in with a password.
@@ -43,7 +45,9 @@ def env(tmp_path, monkeypatch):
         c.execute("ALTER TABLE T_lti_activities ADD COLUMN context_title TEXT")
         migrate(c.cursor(), 'T_')
         from lamb.activity_access import migrate as migrate_activity_access
+        from lamb.lti_onboarding import migrate as migrate_onboarding
         migrate_activity_access(c.cursor(), 'T_')
+        migrate_onboarding(c.cursor(), 'T_')
     store = Store(db)
     config = dict(name='Platform', issuer='https://platform.example', client_id='client-1',
                   authorization_url='https://platform.example/authorize', token_url='https://platform.example/token',
@@ -88,7 +92,13 @@ def test_valid_launch_stable_ids_optional_pii_and_exact_roles(env):
         assert first[field] == second[field]
     assert not second['is_instructor'] and second['lms_email'] == ''
     assert second['display_name'] == 'LMS user'
-    assert env.store.object(first['lms_user_id'])['external_id'] == 'same-subject'
+    # The person and the course are who the LMS says, as on LTI 1.1 (#579). The session
+    # carries a handle for the installation; the new activity gets an opaque key.
+    assert (first['lms_user_id'], first['username'], first['context_id']) == ('same-subject', 'same-subject', 'same-course')
+    assert env.store.instance(first['lms_instance'])[0] == 'https://platform.example'  # no name sent: the issuer
+    assert env.store.object(first['resource_link_id'], 'resource')['external_id'] == 'same-resource'
+    named = protocol.validate_launch(launch(env, {CLAIM+'ext': {'user_username': 'ana'}}), env.store)
+    assert named['username'] == 'ana' and named['lms_user_id'] == 'same-subject'
     teacher = protocol.validate_launch(launch(env, {CLAIM+'roles': [next(iter(protocol.INSTRUCTOR_ROLES))]}), env.store)
     assert teacher['is_instructor']
 
@@ -109,6 +119,9 @@ def test_valid_launch_stable_ids_optional_pii_and_exact_roles(env):
     ({AGS+'claim/endpoint':{'scope':'bad'}}, []),
     ({AGS+'claim/endpoint':{'scope':[SCORE_SCOPE], 'lineitem':'https://evil.example/lineitems/1'}}, []),
     ({AGS+'claim/endpoint':{'scope':[SCORE_SCOPE], 'lineitem':'http://platform.example/lineitems/1'}}, []),
+    ({'sub':'lti13_i_forged'}, []), ({CLAIM+'resource_link':{'id':'lti13_r_forged'}}, []),
+    ({CLAIM+'tool_platform':{'guid':'lti13_i_forged'}}, []), ({CLAIM+'tool_platform':'moodle'}, []),
+    ({CLAIM+'ext':{'user_username':'lti13_u_forged'}}, []),
 ])
 def test_invalid_launches_never_create_objects(env, changes, remove):
     form = launch(env, changes, remove)
@@ -168,46 +181,59 @@ def test_expired_transaction_and_registration_changes(env):
         protocol.validate_launch(form, env.store)
 
 
-def test_registration_and_deployment_identifiers_are_isolated(env):
+def test_each_registration_and_deployment_has_its_own_session_handle_and_new_activities(env):
     a = protocol.validate_launch(launch(env), env.store)
     rid = env.store.save_registration({**env.config, 'client_id':'client-2'})
     b = protocol.validate_launch(launch(env, registration=env.store.registration(rid)), env.store)
     c = protocol.validate_launch(launch(env, {CLAIM+'deployment_id':'deployment-2'}), env.store)
-    for field in ('resource_link_id', 'lms_user_id', 'context_id'):
+    # A session names the registration and the deployment it came through; an activity that
+    # is not set up yet gets a key of its own under each.
+    for field in ('resource_link_id', 'lms_instance'):
         assert len({a[field],b[field],c[field]}) == 3
+    # One LMS, one installation: the person and the course are the same through all three.
+    for field in ('lms_user_id', 'context_id'):
+        assert len({a[field],b[field],c[field]}) == 1
+    assert {env.store.instance(x['lms_instance'])[0] for x in (a, b, c)} == {'https://platform.example'}
 
 
-def test_instructor_identity_requires_confirmed_link_and_allowed_org(env):
-    user = protocol.validate_launch(launch(env), env.store)['lms_user_id']
-    assert env.store.creators(user) == [] # even though email matches an existing creator
+def test_the_installation_is_what_the_lms_calls_itself_recorded_once(env):
+    named = lambda guid, **kw: protocol.validate_launch(launch(env, {CLAIM+'tool_platform': {'guid': guid}}, **kw), env.store)
+    first = named('moodle.school.example')
+    assert env.store.instance(first['lms_instance'])[0] == 'moodle.school.example'
+    assert env.store.registration(env.rid)['installation'] == 'moodle.school.example'
+    assert env.store.registration(env.rid)['revision'] == env.reg['revision']  # sessions stay valid
+    # A platform cannot name another installation later.
+    assert env.store.instance(named('moodle.other.example')['lms_instance'])[0] == 'moodle.school.example'
+    # Another platform that names an installation already held is known by its own issuer.
+    other = env.store.save_registration({**env.config, 'issuer': 'https://impostor.example', 'client_id': 'c'})
+    impostor = named('moodle.school.example', registration=env.store.registration(other))
+    assert env.store.instance(impostor['lms_instance'])[0] == 'https://impostor.example'
+    # A second tool of the same LMS (same issuer) is the same installation.
+    second = env.store.save_registration({**env.config, 'client_id': 'client-2'})
+    assert env.store.instance(named('moodle.school.example', registration=env.store.registration(second))['lms_instance'])[0] == 'moodle.school.example'
+    # The system administrator may declare it.
+    declared = env.store.save_registration({**env.config, 'issuer': 'https://new.example', 'client_id': 'd', 'installation': 'moodle.school.example'})
+    assert env.store.registration(declared)['installation_declared'] is True
+    assert env.store.instance(named('whatever', registration=env.store.registration(declared))['lms_instance'])[0] == 'moodle.school.example'
     with pytest.raises(ValueError):
-        env.store.link_creator(user, 2)
-    # Only LTI creator accounts take part in LTI endpoints: the account with a password, whose
-    # address is the one the launch carries, is not linked (15 November 2026).
-    with pytest.raises(ValueError, match='Only an LTI creator account'):
-        env.store.link_creator(user, 3)
-    env.store.link_creator(user, 1)
-    assert [u['id'] for u in env.store.creators(user)] == [1]
-    # A link to such an account made before this rule grants nothing when read.
-    with env.db.get_connection() as c:
-        c.execute('INSERT INTO T_lti13_identity_links (user_id, creator_user_id, linked_at) VALUES (?,?,?)', (user, 3, 1))
-    assert [u['id'] for u in env.store.creators(user)] == [1]
-    with env.db.get_connection() as c:
-        c.execute('UPDATE T_Creator_users SET enabled=0 WHERE id=1')
-    assert env.store.creators(user) == []
+        env.store.save_registration({**env.config, 'client_id': 'e', 'installation': 'lti13_i_forged'})
 
 
 def test_module_sessions_are_revoked_on_registration_edit(env, monkeypatch):
     from lamb import auth
     monkeypatch.setattr(store_module, 'Store', lambda db=None: env.store)
     ctx = protocol.validate_launch(launch(env), env.store)
-    for data in ({'lti_lms_user_id':ctx['lms_user_id'], 'lti_resource_link_id':ctx['resource_link_id']},
-                 {'scope':'llm_access', 'lms_user_id':ctx['lms_user_id']},
-                 {'scope':'chat', 'resource_link_id':ctx['resource_link_id']}):
+    # The handle of the installation ties every token made from the launch to its registration.
+    for data in ({'lti_lms_user_id':ctx['lms_user_id'], 'lti_resource_link_id':ctx['resource_link_id'], 'lti_lms_instance':ctx['lms_instance']},
+                 {'scope':'llm_access', 'lms_user_id':ctx['lms_user_id'], 'lms_instance':ctx['lms_instance']},
+                 {'sub':'1', 'lti_identity':{'lms_user_id':ctx['lms_user_id'], 'lms_instance':ctx['lms_instance']}}):
         token = auth.create_token(data)
         assert auth.decode_token(token)['lti13_registration_id'] == env.rid
+    # An LTI 1.1 session of the same installation, in the same activity, belongs to no registration.
+    legacy = auth.create_token({'lti_lms_user_id':ctx['lms_user_id'], 'lti_resource_link_id':ctx['resource_link_id'], 'lti_lms_instance':'platform.example'})
+    assert 'lti13_registration_id' not in auth.decode_token(legacy)
     env.store.save_registration({**env.config, 'enabled':False}, env.rid)
-    assert auth.decode_token(token) is None
+    assert auth.decode_token(token) is None and auth.decode_token(legacy) is not None
     assert auth.decode_token(auth.create_token({'email':'ordinary@example.edu'}))['email'] == 'ordinary@example.edu'
 
 
@@ -253,7 +279,7 @@ def test_idempotent_upgrade_preserves_existing_rows(env):
 
 def test_ags_sends_real_subject_and_correct_score_without_excess_scopes(env, monkeypatch):
     ctx = protocol.validate_launch(launch(env), env.store)
-    env.store.save_grade_target(ctx['resource_link_id'], ctx['lms_user_id'], 'synthetic@lamb-lti.local', ctx['grade_endpoint'])
+    env.store.save_grade_endpoint(ctx['resource_link_id'], 'synthetic@lamb-lti.local', env.rid, 'deployment-1', ctx['lms_user_id'], ctx['grade_endpoint'])
     calls = []
     def request(method, url, **kw):
         calls.append((method,url,kw))
@@ -284,7 +310,7 @@ def test_ags_sends_real_subject_and_correct_score_without_excess_scopes(env, mon
     ({'scope':[SCORE_SCOPE],'lineitem':'https://platform.example/lineitems/1'},float('nan'))])
 def test_unavailable_or_invalid_grades_do_not_report_success(env, monkeypatch, endpoint, score):
     ctx = protocol.validate_launch(launch(env), env.store)
-    env.store.save_grade_target(ctx['resource_link_id'],ctx['lms_user_id'],'student',endpoint)
+    env.store.save_grade_endpoint(ctx['resource_link_id'],'student',env.rid,'deployment-1',ctx['lms_user_id'],endpoint)
     monkeypatch.setattr(network,'request',lambda *a,**kw: pytest.fail('No network request expected'))
     result = grades.send_score(ctx['resource_link_id'],'student',score,store=env.store)
     assert not result['success'] and result['error_message']
@@ -345,6 +371,10 @@ def test_lti11_reserved_ids_and_mixed_protocol_rejected(api, env, monkeypatch):
     response = api.client.post('/lamb/v1/lti/launch', data={'oauth_consumer_key':'lamb','resource_link_id':'lti13_r_attack','user_id':'u'})
     assert response.status_code == 400
     assert api.client.post('/lamb/v1/lti/launch',data={**launch(env),'oauth_consumer_key':'lamb'}).status_code == 400
+    # Nor may an LTI 1.1 launch name its installation with the handle of an LTI 1.3 session.
+    handle = protocol.validate_launch(launch(env), env.store)['lms_instance']
+    response = api.client.post('/lamb/v1/lti/launch', data={'oauth_consumer_key':'lamb','resource_link_id':'r','user_id':'u','tool_consumer_instance_guid':handle})
+    assert response.status_code == 403
 
 
 def test_admin_registration_requires_system_admin(api, env):
@@ -357,6 +387,15 @@ def test_admin_registration_requires_system_admin(api, env):
     api.app.dependency_overrides[api.admin.get_auth_context] = lambda: SimpleNamespace(require_system_admin=lambda:None)
     response = api.client.post('/lamb/v1/lti/registrations',json={**env.config,'client_id':'new'})
     assert response.status_code == 201
+    declared = api.client.post('/lamb/v1/lti/registrations',json={**env.config,'client_id':'declared','installation':'moodle.school.example'})
+    listed = {r['id']: r for r in api.client.get('/lamb/v1/lti/registrations').json()}
+    assert listed[declared.json()['id']]['installation'] == 'moodle.school.example' and listed[declared.json()['id']]['installation_declared']
+    assert listed[response.json()['id']]['installation'] == '' and not listed[response.json()['id']]['installation_declared']
+    # Saving again without the field keeps what is there.
+    assert api.client.put(f"/lamb/v1/lti/registrations/{declared.json()['id']}",json={**env.config,'client_id':'declared'}).status_code == 200
+    assert env.store.registration(declared.json()['id'])['installation'] == 'moodle.school.example'
+    # The call that linked one LTI 1.3 user to an account by hand is gone: the LMS user is the same on both versions (#579).
+    assert api.client.post('/lamb/v1/lti/registrations/1/identity-links',json={'deployment_id':'deployment-1','subject':'s','creator_user_id':1}).status_code in (404, 405)
     assert api.client.post('/lamb/v1/lti/registrations',json={**env.config,'client_id':'x','organization_ids':[999]}).status_code == 422
     assert api.client.post('/lamb/v1/lti/registrations',json={**env.config,'client_id':'x','jwks_url':'http://platform.example/jwks'}).status_code == 422
 
@@ -386,7 +425,7 @@ def test_deployment_hint_is_binding(env):
 
 def test_service_failure_does_not_report_grade_success(env, monkeypatch):
     ctx = protocol.validate_launch(launch(env), env.store)
-    env.store.save_grade_target(ctx['resource_link_id'],ctx['lms_user_id'],'student',ctx['grade_endpoint'])
+    env.store.save_grade_endpoint(ctx['resource_link_id'],'student',env.rid,'deployment-1',ctx['lms_user_id'],ctx['grade_endpoint'])
     def fail(*args, **kwargs):
         raise ValueError('Platform service returned HTTP 503')
     monkeypatch.setattr(network,'request',fail)

@@ -39,6 +39,7 @@ def make_token(activity, ctx) -> str:
         'scope': SCOPE, 'type': 'transcript_notice',
         'activity_id': activity['id'], 'resource_link_id': activity['resource_link_id'],
         'username': ctx.username, 'display_name': ctx.display_name, 'lms_user_id': ctx.lms_user_id,
+        'lms_instance': getattr(ctx, 'lms_instance', ''),
     }, expires_delta=timedelta(seconds=TOKEN_TTL))
 
 

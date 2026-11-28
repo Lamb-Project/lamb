@@ -187,6 +187,7 @@ class FileEvalModule(ActivityModule):
 
         manager = LtiActivityManager()
         student_email = manager.generate_student_email(ctx.username, ctx.resource_link_id)
+        self.service.remember_grade_target(activity["id"], student_email, ctx.lis_result_sourcedid)
 
         token = self._create_file_eval_jwt(
             activity,
@@ -195,6 +196,7 @@ class FileEvalModule(ActivityModule):
             ctx.lms_user_id,
             is_instructor=False,
             lis_result_sourcedid=ctx.lis_result_sourcedid,
+            lms_instance=ctx.lms_instance,
         )
 
         public_base = module_public_base()

@@ -385,8 +385,8 @@ async def process_lti_connection(request: Request):
         # the whitelist or locked the assistant's organization. A launch whose assistant or
         # organization cannot be resolved here continues as it always did.
         from lamb import lti_access
-        instance = lti_access.instance_id(post_data)
         try:
+            instance = lti_access.instance_id(post_data)
             lti_access.require_global(db_manager, instance)
             organization = _published_organization(post_data.get("oauth_consumer_key", ""))
             if organization:

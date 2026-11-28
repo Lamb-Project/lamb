@@ -10,7 +10,7 @@
     let busy = $state(false);
     let editing = $state(null);
     const empty = () => ({ name: '', issuer: '', client_id: '', authorization_url: '', token_url: '', jwks_url: '',
-        deployment_ids: '', organization_ids: [], service_origins: '', enabled: true });
+        deployment_ids: '', organization_ids: [], service_origins: '', enabled: true, installation: '' });
     let form = $state(empty());
 
     async function call(url, options = {}) {
@@ -39,7 +39,8 @@
         form = { name: row.name, issuer: row.issuer, client_id: row.client_id,
             authorization_url: row.authorization_url, token_url: row.token_url, jwks_url: row.jwks_url,
             deployment_ids: row.deployment_ids.join('\n'), organization_ids: [...row.organization_ids],
-            service_origins: row.service_origins.join('\n'), enabled: row.enabled };
+            service_origins: row.service_origins.join('\n'), enabled: row.enabled,
+            installation: row.installation_declared ? row.installation : '' };
         error = ''; message = '';
     }
     function reset() { editing = null; form = empty(); error = ''; message = ''; }
@@ -66,7 +67,7 @@
 
 <section class="mt-8 bg-white shadow rounded-lg p-6" aria-labelledby="lti13-title">
     <h3 id="lti13-title" class="text-lg font-semibold text-gray-800">LTI 1.3 platform registrations</h3>
-    <p class="mt-2 text-sm text-gray-600">Connect the unified activity tool to an LMS using LTI 1.3. Instructors link their LAMB account on their first launch. Grade return uses the LMS grade column and AGS score permission.</p>
+    <p class="mt-2 text-sm text-gray-600">Connect the unified activity tool to an LMS using LTI 1.3. An LMS is the same installation on LTI 1.1 and on LTI 1.3: its teachers, students and activities keep working when the LMS changes version. Grade return uses the LMS grade column and AGS score permission.</p>
     {#if error}<p role="alert" class="mt-4 text-red-700">{error}</p>{/if}
     {#if message}<p role="status" class="mt-4 text-green-700">{message}</p>{/if}
     {#if info}
@@ -85,7 +86,8 @@
             <thead><tr class="border-b"><th class="p-2">Platform</th><th class="p-2">Client ID</th><th class="p-2">Status</th><th class="p-2">Action</th></tr></thead>
             <tbody>
                 {#each registrations as row}
-                    <tr class="border-b"><td class="p-2">{row.name}<div class="text-xs text-gray-500 break-all">{row.issuer}</div></td>
+                    <tr class="border-b"><td class="p-2">{row.name}<div class="text-xs text-gray-500 break-all">{row.issuer}</div>
+                        <div class="text-xs text-gray-500 break-all">{row.installation ? `Installation: ${row.installation}${row.installation_declared ? ' (declared)' : ''}` : 'Installation: recorded on the first launch'}</div></td>
                         <td class="p-2 break-all">{row.client_id}</td><td class="p-2">{row.enabled ? 'Enabled' : 'Disabled'}</td>
                         <td class="p-2"><button type="button" class="text-brand underline" onclick={() => edit(row)}>Edit</button></td></tr>
                 {:else}<tr><td colspan="4" class="p-3 text-gray-500">No LTI 1.3 platforms registered.</td></tr>{/each}
@@ -104,6 +106,8 @@
             <label class="block text-sm md:col-span-2">Platform public keyset URL<input required type="url" class="mt-1 w-full rounded border border-gray-300 p-2" bind:value={form.jwks_url} /></label>
             <label class="block text-sm">Deployment IDs, one per line<textarea required rows="3" class="mt-1 w-full rounded border border-gray-300 p-2" bind:value={form.deployment_ids}></textarea></label>
             <label class="block text-sm">Allowed grade-service origins, one per line<textarea required rows="3" placeholder="https://moodle.example.edu" class="mt-1 w-full rounded border border-gray-300 p-2" bind:value={form.service_origins}></textarea></label>
+            <label class="block text-sm md:col-span-2">LMS installation (optional)<input maxlength="255" placeholder="moodle.example.edu" class="mt-1 w-full rounded border border-gray-300 p-2" bind:value={form.installation} />
+                <span class="mt-1 block text-xs text-gray-600">What the LMS calls itself on LTI 1.1; for Moodle, its host name. Leave it empty and LAMB records it on the first launch. Fill it in when this LMS used LAMB on LTI 1.1 before LAMB 0.9, so that its earlier activities are found.</span></label>
         </div>
         <fieldset><legend class="text-sm font-medium">Organizations this platform may use</legend>
             <div class="mt-2 flex flex-wrap gap-4">{#each organizations as org}<label class="text-sm"><input type="checkbox" value={Number(org.id)} bind:group={form.organization_ids} /> {org.name} ({org.slug})</label>{/each}</div>

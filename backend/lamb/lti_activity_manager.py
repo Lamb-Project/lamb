@@ -123,14 +123,13 @@ class LtiActivityManager:
 
         Identity is the LMS user, never the email the LMS sends. Only LTI creator accounts
         take part: an account that signs in with a password has nothing to do with LTI
-        endpoints. On LTI 1.3 the identity is scoped to the registration. On LTI 1.1 it is
-        the user id together with the LMS instance, because every LMS on the global key
-        numbers its own users. Returns enabled accounts, possibly in several organizations.
+        endpoints. The identity is the user id together with the LMS installation, because
+        every LMS numbers its own users, and it is the same on LTI 1.1 and on LTI 1.3 (#579).
+        `lms_instance` is what the LMS calls itself on LTI 1.1 and the handle of the session
+        on LTI 1.3: the handle also limits the accounts to the organizations of its
+        registration. Returns enabled accounts, possibly in several organizations. ValueError
+        when the registration of an LTI 1.3 session is no longer enabled.
         """
-        from lamb.lti13 import is_scoped
-        if is_scoped(lms_user_id):
-            from lamb.lti13.store import Store
-            return Store(self.db_manager).creators(lms_user_id)
         from lamb import lti_onboarding
         accounts = self.db_manager.get_lti_creator_users_by_lms_user(lms_user_id)
         return lti_onboarding.accounts_of_instance(self.db_manager, accounts, lms_user_id, lms_instance)
@@ -138,11 +137,6 @@ class LtiActivityManager:
     def link_identity(self, lms_user_id: str, creator_user_id: int,
                        lms_email: str = None) -> Optional[int]:
         """Store a link between an LMS identity and a Creator user."""
-        from lamb.lti13 import is_scoped
-        if is_scoped(lms_user_id):
-            from lamb.lti13.store import Store
-            Store(self.db_manager).link_creator(lms_user_id, creator_user_id)
-            return creator_user_id
         return self.db_manager.create_lti_identity_link(
             lms_user_id=lms_user_id,
             creator_user_id=creator_user_id,
@@ -280,19 +274,6 @@ class LtiActivityManager:
         if not owner_email:
             return False
 
-        from lamb.lti13 import is_scoped
-        if is_scoped(activity.get('resource_link_id')) or is_scoped(lms_user_id):
-            if not is_scoped(lms_user_id):
-                return False
-            from lamb.lti13.store import Store
-            try:
-                store = Store(self.db_manager)
-                resource = store.object(activity['resource_link_id'], 'resource')
-                user = store.object(lms_user_id, 'user')
-                if (resource['registration_id'], resource['deployment_id']) != (user['registration_id'], user['deployment_id']):
-                    return False
-            except ValueError:
-                return False
         try:
             accounts = self.identify_instructor(lms_user_id, lms_instance)
         except ValueError:

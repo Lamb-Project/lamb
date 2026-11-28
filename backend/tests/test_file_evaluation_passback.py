@@ -33,7 +33,10 @@ def delivery(tmp_path, monkeypatch, request):
             CREATE TABLE unrelated_settings (id INTEGER PRIMARY KEY, value INTEGER);
             INSERT INTO unrelated_settings VALUES (1, 0);
         """)
-        resource = "lti13_test_activity" if request.param == "lti13" else "activity"
+        from lamb.lti13.store import migrate as migrate_lti13
+        migrate_lti13(conn.cursor(), "T_")
+        # The activity is the same one on both versions; what differs is each learner's latest launch (#579).
+        resource = "activity"
         conn.execute("INSERT INTO T_lti_activities VALUES (1, ?, ?)",
                      (resource, "https://moodle.example.test/outcomes"))
         for n in range(3):
@@ -44,6 +47,9 @@ def delivery(tmp_path, monkeypatch, request):
                 (f"submission-{n}", f"file-{n}", f"student-{n}", f"target-{n}"))
             conn.execute("INSERT INTO mod_file_eval_grades VALUES (?, 8, 'Reviewed')",
                          (f"file-{n}",))
+            if request.param == "lti13":
+                conn.execute("INSERT INTO T_lti13_grade_endpoints VALUES (?,?,1,'d','subject','{}',1)",
+                             ("activity", f"student-{n}"))
         conn.commit()
     finally:
         conn.close()
@@ -154,3 +160,26 @@ def test_failed_status_write_releases_the_lock_and_keeps_earlier_results(deliver
             other.execute("UPDATE unrelated_settings SET value = 99")
     finally:
         other.close()
+
+
+def test_a_submission_handed_in_on_lti13_gets_its_basic_outcomes_target_from_a_later_lti11_launch(delivery, request):
+    """An LMS changes the tool from LTI 1.3 to LTI 1.1 (#579): the learner's submission has no
+    Basic Outcomes identifier until the learner opens the activity again."""
+    if request.node.callspec.params["delivery"] != "lti11":
+        pytest.skip("the case is the LTI 1.1 side")
+    from lamb.modules.file_evaluation.service import FileEvalService
+    conn = delivery.connect()
+    try:
+        with conn:
+            conn.execute("UPDATE mod_file_eval_student_submissions SET lis_result_sourcedid=NULL")
+    finally:
+        conn.close()
+    sent = []
+    delivery.transport(lambda student: sent.append(student) or {"success": True, "status_code": 200})
+    assert LTIGradePassback.send_activity_grades(1)["error"] == "No graded submissions with a grade-return target"
+    service = FileEvalService.__new__(FileEvalService)
+    service.db = SimpleNamespace(table_prefix="T_", get_connection=delivery.connect)
+    service.remember_grade_target(1, "student-1", "target-1")
+    service.remember_grade_target(1, "student-2", "  ")  # a launch without one changes nothing
+    result = LTIGradePassback.send_activity_grades(1)
+    assert result["success"] and result["sent"] == 1 and sent == ["student-1"]

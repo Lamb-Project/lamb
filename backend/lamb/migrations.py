@@ -26,7 +26,7 @@ logger = get_logger(__name__, component="MIGRATIONS")
 # account_takeovers (this line, #523). 34 adds unified LTI 1.3 registrations and transaction state;
 # 35 persists prompt-filter scenarios (#553); 36 adds creator codes for LTI instructor onboarding (#562).
 # tests/test_migration_runner.py enforces this.
-LATEST_VERSION = 37
+LATEST_VERSION = 38
 
 # Numbers another line has applied to real databases; this line must never define them.
 RESERVED_ON_OTHER_LINES = {
@@ -1362,3 +1362,8 @@ class MigrationRunner:
         """Persist activity LMS context and verified Creator instructor access (#565)."""
         from lamb.activity_access import migrate
         migrate(cursor, self.db.table_prefix)
+
+    def _migration_38(self, cursor):
+        """One installation for LTI 1.1 and LTI 1.3: registration installations and learner grade services (#579)."""
+        from lamb.lti13.store import migrate_installations
+        migrate_installations(cursor, self.db.table_prefix)

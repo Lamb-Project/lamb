@@ -4,6 +4,7 @@ Submission & group service for the file_evaluation module.
 Handles file uploads, group join flow, and query views.
 Activity config lives in ``lti_activities.setup_config`` JSON.
 """
+import sqlite3
 import uuid
 import secrets
 import string
@@ -137,6 +138,26 @@ class FileEvalService:
             conn.close()
 
     # ── Create submission ─────────────────────────────────────────────────
+
+    def remember_grade_target(self, activity_id: int, student_id: str, lis_result_sourcedid: Optional[str]) -> None:
+        """An LTI 1.1 launch names where this learner's grade returns (Basic Outcomes). Keep it on
+        the submission the learner already has: one handed in while the LMS was on LTI 1.3 has
+        none, and a grade must still return after the LMS changes version (#579)."""
+        sourcedid = (lis_result_sourcedid or "").strip()
+        if not sourcedid:
+            return
+        conn = self.db.get_connection()
+        if not conn:
+            return
+        try:
+            with conn:
+                conn.execute(
+                    "UPDATE mod_file_eval_student_submissions SET lis_result_sourcedid=? WHERE student_id=? AND activity_id=?",
+                    (sourcedid, student_id, activity_id))
+        except sqlite3.Error as exc:
+            logger.warning("file_eval could not record the grade target of a launch: %s", exc)
+        finally:
+            conn.close()
 
     def create_submission(
         self,

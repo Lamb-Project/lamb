@@ -4,7 +4,7 @@ from types import SimpleNamespace, MethodType
 from urllib.parse import urlparse, parse_qs
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from lamb import activity_access as access, auth as lamb_auth, lti_router
@@ -201,9 +201,8 @@ def test_assistant_analytics_cannot_reveal_other_owners_activity_chats(env, tmp_
     assert scoped(1).get_chat_detail('private', 11) is None
 
 
-def test_lti13_context_and_instructor_grants_use_registration_and_deployment(env):
+def test_an_lti13_launch_records_the_installation_as_the_lms_names_itself(env):
     from lamb.lti13.store import Store
-    # The object store binds external IDs to both registration and deployment.
     store = Store(env.db)
     registration = dict(name='Platform', issuer='https://platform.example', client_id='client-1',
         authorization_url='https://platform.example/authorize', token_url='https://platform.example/token',
@@ -214,10 +213,28 @@ def test_lti13_context_and_instructor_grants_use_registration_and_deployment(env
     rid = store.object_id(reg, registration['deployment_ids'][0], 'resource', 'same-link')
     with env.db.get_connection() as c:
         c.execute('UPDATE T_lti_activities SET resource_link_id=? WHERE id=1', (rid,))
+    with env.db.get_connection() as c:
+        c.execute("UPDATE T_lti_activities SET lms_origin='', lms_scope='' WHERE id=1")
+    handle = store.instance_handle(reg, 'deployment-1', store.installation_for(store.registration(reg), 'moodle.new.example'))
     activity = access.activity_by_id(env.db, 1)
-    access.record_launch(env.db, activity, {}, instructor=False)
-    assert activity['lms_origin'] == registration['issuer']
-    assert json.loads(activity['lms_scope']) == ['1.3', reg, registration['deployment_ids'][0]]
+    access.record_launch(env.db, activity, {'lti_lms_instance': handle}, instructor=False)
+    assert activity['lms_origin'] == 'moodle.new.example'
+    assert json.loads(activity['lms_scope']) == ['1.3', 'moodle.new.example']
+    # The same installation on LTI 1.1 is the same installation; that it was seen there stays on record.
+    access.record_launch(env.db, activity, {'lti_lms_instance': 'moodle.new.example'}, instructor=False)
+    assert json.loads(activity['lms_scope']) == ['1.1', 'moodle.new.example']
+    access.record_launch(env.db, activity, {'lti_lms_instance': handle}, instructor=False)
+    assert json.loads(access.activity_by_id(env.db, 1)['lms_scope']) == ['1.1', 'moodle.new.example']
+    # Another installation is refused on either version.
+    other = store.save_registration({**registration, 'issuer': 'https://other.example', 'client_id': 'client-2'})
+    stranger = store.instance_handle(other, 'deployment-1', store.installation_for(store.registration(other), 'moodle.other.example'))
+    for instance in (stranger, 'moodle.other.example'):
+        with pytest.raises(HTTPException) as refused:
+            access.record_launch(env.db, activity, {'lti_lms_instance': instance}, instructor=False)
+        assert refused.value.status_code == 403
+    # A record of a build before #579 (registration and deployment) is read as that registration's installation.
+    assert access.scope_instance(env.db, json.dumps(['1.3', reg, 'deployment-1'])) == 'moodle.new.example'
+    assert access.same_scope(json.dumps(['1.3', reg, 'deployment-1']), json.dumps(['1.1', 'moodle.new.example']), env.db)
 
 
 def test_llm_access_instructor_can_manage_students_but_only_owner_changes_timetable(env, monkeypatch, tmp_path):

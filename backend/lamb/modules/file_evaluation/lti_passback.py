@@ -191,13 +191,12 @@ class LTIGradePassback:
             if not activity:
                 return {"success": False, "error": "Activity not found", "sent": 0, "failed": 0}
 
-            from lamb.lti13 import is_scoped
-            is_lti13 = is_scoped(activity.get("resource_link_id"))
-            if not is_lti13 and (not consumer_key or not consumer_secret):
-                return {"success": False, "error": "LTI credentials not configured", "sent": 0, "failed": 0}
+            # A learner's grade returns through the service of their most recent launch: the
+            # LTI 1.3 grade service when they last came in on LTI 1.3, Basic Outcomes when on
+            # LTI 1.1. An LMS that changes version changes it learner by learner (#579).
+            from lamb.lti13.store import Store
+            store = Store(db)
             lis_outcome_url = activity.get("lis_outcome_service_url")
-            if not is_lti13 and not lis_outcome_url:
-                return {"success": False, "error": "No lis_outcome_service_url on activity", "sent": 0, "failed": 0}
 
             rows = conn.execute("""
                 SELECT ss.id AS ss_id, ss.lis_result_sourcedid, ss.student_id,
@@ -206,19 +205,29 @@ class LTIGradePassback:
                   JOIN mod_file_eval_submissions fs ON ss.file_submission_id = fs.id
                   JOIN mod_file_eval_grades g ON fs.id = g.file_submission_id
                  WHERE ss.activity_id = ?
-                   AND (? = 1 OR (ss.lis_result_sourcedid IS NOT NULL AND TRIM(ss.lis_result_sourcedid) != ''))
                    AND g.score IS NOT NULL
-            """, (activity_id, int(is_lti13))).fetchall()
+            """, (activity_id,)).fetchall()
+            rows = [dict(row, lti13=store.has_grade_endpoint(activity["resource_link_id"], row["student_id"])) for row in rows]
+            rows = [row for row in rows if row["lti13"] or (row["lis_result_sourcedid"] or "").strip()]
+            basic_outcomes_error = None
+            if not consumer_key or not consumer_secret:
+                basic_outcomes_error = "LTI credentials not configured"
+            elif not lis_outcome_url:
+                basic_outcomes_error = "No lis_outcome_service_url on activity"
+            if basic_outcomes_error and not any(row["lti13"] for row in rows):
+                return {"success": False, "error": basic_outcomes_error, "sent": 0, "failed": 0}
 
             if not rows:
                 return {"success": False, "error": "No graded submissions with a grade-return target", "sent": 0, "failed": 0}
 
             sent, failed, results = 0, 0, []
             for row in rows:
-                if is_lti13:
+                if row["lti13"]:
                     from lamb.lti13.grades import send_score
                     res = send_score(activity['resource_link_id'], row['student_id'],
                                      row['score'], row['comment'] or 'Grade sent automatically')
+                elif basic_outcomes_error:
+                    res = {"success": False, "status_code": None, "error_message": basic_outcomes_error}
                 else:
                     res = LTIGradePassback.send_grade_to_moodle(
                         lis_result_sourcedid=row["lis_result_sourcedid"],

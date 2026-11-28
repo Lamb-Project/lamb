@@ -99,28 +99,51 @@ def validate_assistants(db, activity, creator, assistant_ids, *, evaluator=False
 
 
 def launch_scope(db, resource_link_id, lms_instance):
+    """The installation a launch comes from and how an activity records it: the LTI version
+    that recorded it, and what the LMS calls itself. The version is a note, not part of the
+    identity: an activity belongs to its installation on LTI 1.1 and on LTI 1.3 (#579)."""
     from lamb.lti13 import is_scoped
-    if is_scoped(resource_link_id):
-        from lamb.lti13.store import Store
-        store = Store(db)
-        obj = store.object(resource_link_id, 'resource')
-        registration = store.registration(obj['registration_id'], obj['deployment_id'])
-        return registration['issuer'], json.dumps(['1.3', obj['registration_id'], obj['deployment_id']])
-    origin = str(lms_instance or '').strip()  # as the LMS sends it, never parsed
-    return origin, json.dumps(['1.1', origin]) if origin else ''
+    from lamb.lti13.store import installation_of
+    origin = installation_of(lms_instance, db)  # as the LMS sends it, never parsed
+    version = '1.3' if is_scoped(lms_instance) else '1.1'
+    return origin, json.dumps([version, origin]) if origin else ''
 
 
-def same_scope(recorded, launched):
-    """Whether a launch comes from the installation an activity is recorded on."""
+def scope_instance(db, scope):
+    """The installation an activity is recorded on; '' when none is."""
+    try:
+        value = json.loads(scope) if scope else None
+    except (TypeError, ValueError):
+        return ''
+    if not isinstance(value, list):
+        return ''
+    if len(value) == 2 and isinstance(value[1], str):
+        return value[1].strip()
+    if len(value) == 3 and value[0] == '1.3' and db is not None:
+        # A record of a build before #579: the registration and the deployment.
+        with closing(db.get_connection()) as conn:
+            row = conn.execute(f'SELECT installation FROM {db.table_prefix}lti13_registrations WHERE id=?',
+                               (value[1],)).fetchone()
+        return (row[0] or '').strip() if row else ''
+    return ''
+
+
+def same_scope(recorded, launched, db=None):
+    """Whether a launch comes from the installation an activity is recorded on, whatever the
+    LTI version of either."""
     if recorded == launched:
         return True
+    from lamb.lti_access import same_instance
+    old, new = scope_instance(db, recorded), scope_instance(db, launched)
+    return bool(old and new) and same_instance(old, new)
+
+
+def _seen_on_lti11(scope):
     try:
-        old, new = json.loads(recorded), json.loads(launched)
+        value = json.loads(scope)
     except (TypeError, ValueError):
         return False
-    from lamb.lti_access import same_instance
-    return (isinstance(old, list) and isinstance(new, list) and len(old) == len(new) == 2
-            and old[0] == new[0] == '1.1' and same_instance(old[1], new[1]))
+    return isinstance(value, list) and len(value) == 2 and value[0] == '1.1'
 
 
 def record_launch(db, activity, payload, *, instructor=True):
@@ -130,12 +153,16 @@ def record_launch(db, activity, payload, *, instructor=True):
     origin, scope = launch_scope(db, activity['resource_link_id'], payload.get('lti_lms_instance', ''))
     accounts = creators_for_payload(db, payload) if instructor else []
     with closing(db.get_connection()) as conn, conn:
-        current = conn.execute(f'SELECT lms_scope FROM {db.table_prefix}lti_activities WHERE id=?', (activity['id'],)).fetchone()
-        if current and current[0] and not same_scope(current[0], scope):
+        current = conn.execute(f'SELECT lms_origin, lms_scope FROM {db.table_prefix}lti_activities WHERE id=?', (activity['id'],)).fetchone()
+        recorded = (current[1] if current else '') or ''
+        if recorded and not same_scope(recorded, scope, db):
             raise HTTPException(403, 'This activity belongs to another LMS installation')
-        if scope:
+        # That the installation was seen on LTI 1.1 stays on record when LTI 1.3 launches follow.
+        if scope and not (_seen_on_lti11(recorded) and not _seen_on_lti11(scope)):
             conn.execute(f'''UPDATE {db.table_prefix}lti_activities SET lms_origin=?, lms_scope=? WHERE id=?''',
                          (origin, scope, activity['id']))
+        elif recorded:
+            origin, scope = current[0] or origin, recorded
         for field in ('context_id', 'context_title'):
             value = payload.get('lti_' + field)
             if value:

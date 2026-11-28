@@ -116,7 +116,7 @@ class LlmAccessModule(ActivityModule):
 
     def on_student_launch(self, ctx: LTIContext) -> RedirectResponse:
         td = self._td_activity(ctx.resource_link_id)
-        return pages.launch_redirect('', td, False, ctx.lms_user_id, ctx.lms_email, ctx.display_name)
+        return pages.launch_redirect('', td, False, ctx.lms_user_id, ctx.lms_email, ctx.display_name, ctx.lms_instance)
 
     def on_instructor_launch(self, ctx: LTIContext) -> RedirectResponse:
         td = self._td_activity(ctx.resource_link_id)

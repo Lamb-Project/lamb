@@ -14,7 +14,7 @@ from urllib.parse import urlencode, urlsplit, urlunsplit, parse_qsl
 import jwt
 from fastapi.responses import HTMLResponse
 
-from . import AGS, CLAIM
+from . import AGS, CLAIM, is_scoped
 from . import network
 from .store import Store, digest
 
@@ -195,6 +195,16 @@ def validate_launch(form, store=None):
         raise ValueError('Invalid LTI context')
     context_id = text(context.get('id'), 'context ID', required=False)
     context_title = text(context.get('title'), 'context title', required=False)
+    platform = claims.get(CLAIM + 'tool_platform', {})
+    if not isinstance(platform, dict):
+        raise ValueError('Invalid LTI platform claim')
+    guid = text(platform.get('guid'), 'platform identifier', 255, required=False).strip()
+    extensions = claims.get(CLAIM + 'ext', {})
+    # The login name, where the LMS shares it as it does on LTI 1.1 (ext_user_username).
+    login = text(extensions.get('user_username'), 'login name', 255, required=False) if isinstance(extensions, dict) else ''
+    # The LMS's own identifiers are kept as they are, as on LTI 1.1. None may look like one of LAMB's.
+    if any(is_scoped(value) for value in (subject, resource_id, context_id, guid, login)):
+        raise ValueError('Reserved LTI identifier')
     roles = claims.get(CLAIM + 'roles')
     if not isinstance(roles, list) or not roles or not all(isinstance(r, str) and len(r) <= 512 for r in roles):
         raise ValueError('Missing or invalid LTI roles')
@@ -212,11 +222,14 @@ def validate_launch(form, store=None):
     endpoint = {k: network.service_url(endpoint[k], reg) for k in ('lineitem', 'lineitems') if k in endpoint} | {'scope': scopes}
     # Everything above is read-only. Replay consumption is the first durable write.
     store.consume(transaction)
-    user_key = store.object_id(reg['id'], deployment, 'user', subject)
-    resource_key = store.object_id(reg['id'], deployment, 'resource', resource_id)
-    context_key = store.object_id(reg['id'], deployment, 'context', context_id) if context_id else ''
-    return {'resource_link_id': resource_key, 'lms_user_id': user_key, 'username': user_key,
+    # One installation for LTI 1.1 and LTI 1.3 (#579): the person and the course are who the
+    # LMS says, the activity is the one already set up from this installation, and the
+    # session carries a handle that names the registration it came through.
+    installation = store.installation_for(reg, guid)
+    return {'resource_link_id': store.activity_key(reg, deployment, installation, resource_id),
+            'lms_user_id': subject, 'username': login or subject,
+            'lms_instance': store.instance_handle(reg['id'], deployment, installation),
             'lms_email': email, 'display_name': name, 'roles': ','.join(roles),
-            'is_instructor': instructor, 'context_id': context_key, 'context_title': context_title,
+            'is_instructor': instructor, 'context_id': context_id, 'context_title': context_title,
             'lti_version': '1.3.0', 'registration_id': reg['id'], 'deployment_id': deployment,
             'grade_endpoint': endpoint}

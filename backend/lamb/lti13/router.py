@@ -27,6 +27,10 @@ class Registration(BaseModel):
     organization_ids: list[int] = Field(min_length=1, max_length=100)
     service_origins: list[str] = Field(min_length=1, max_length=20)
     enabled: bool = True
+    # What the LMS calls itself (on LTI 1.1, tool_consumer_instance_guid). Empty: recorded on
+    # the first launch, or kept as it is. Filled in, the administrator declares that this
+    # registration is that installation (#579).
+    installation: str = Field(default='', max_length=255)
 
     @field_validator('issuer', 'authorization_url', 'token_url', 'jwks_url')
     @classmethod
@@ -61,13 +65,6 @@ class Registration(BaseModel):
             if value != origin(value):
                 raise ValueError('Service origins must contain only scheme, host and optional port')
         return list(dict.fromkeys(values))
-
-
-class IdentityLink(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    deployment_id: str = Field(min_length=1, max_length=1024)
-    subject: str = Field(min_length=1, max_length=255)
-    creator_user_id: int = Field(gt=0)
 
 
 @router.api_route('/login', methods=['GET', 'POST'])
@@ -127,23 +124,6 @@ async def update_registration(registration_id: int, body: Registration,
                               auth: AuthContext = Depends(get_auth_context)):
     auth.require_system_admin()
     return save(body, registration_id)
-
-
-@router.post('/registrations/{registration_id}/identity-links', status_code=201)
-async def link_identity(registration_id: int, body: IdentityLink,
-                        auth: AuthContext = Depends(get_auth_context)):
-    auth.require_system_admin()
-    store = Store()
-    try:
-        reg = store.registration(registration_id, body.deployment_id)
-        creator = store.db.get_creator_user_by_id(body.creator_user_id)
-        if not creator or not creator.get('enabled', True) or creator['organization_id'] not in reg['organization_ids']:
-            raise ValueError('Creator account is not allowed for this LMS registration')
-        user = store.object_id(registration_id, body.deployment_id, 'user', body.subject)
-        store.link_creator(user, body.creator_user_id)
-        return {'user_id': user, 'creator_user_id': body.creator_user_id}
-    except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
 
 
 @router.post('/keys/rotate')

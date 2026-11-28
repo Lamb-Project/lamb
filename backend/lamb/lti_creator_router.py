@@ -151,8 +151,8 @@ async def lti_creator_launch(request: Request):
         
         logger.debug("OAuth signature validated successfully")
         from lamb import lti_access
-        lms_instance = lti_access.instance_id(post_data)
         try:
+            lms_instance = lti_access.instance_id(post_data)
             lti_access.require_organization(db_manager, org, lms_instance)
         except ValueError as exc:
             raise HTTPException(403, str(exc)) from exc

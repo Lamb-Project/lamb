@@ -7,9 +7,15 @@ administrator may lock the organization to the installations it is used from.
 
 LTI 1.1 authenticates a launch with a shared secret, and the installation identifier is a
 claim signed with it. These checks keep honest installations that share credentials apart;
-they do not stop an operator who holds the secret. LTI 1.3 launches are governed by their
-registration and take no part here. Identifiers are compared as the LMS sends them: nothing
-is parsed, so an LMS that names itself with a site id or a free text works like any other.
+they do not stop an operator who holds the secret. An LTI 1.3 launch is governed by its
+registration: its session carries a handle in place of the installation's name, and the
+organizations it may enter are those of the registration, not the whitelist or the lock.
+Identifiers are compared as the LMS sends them: nothing is parsed, so an LMS that names
+itself with a site id or a free text works like any other.
+
+For LAMB an installation is the same one on both versions (#579): what is stored and
+compared is always what the LMS calls itself. Since LTI 1.1 stays open for an installation
+that also uses LTI 1.3, the limit of the shared secret applies to that installation too.
 """
 import json
 import sqlite3
@@ -21,8 +27,23 @@ LEGACY_KEYS = ("moodle_url", "allowed_origins")  # URL settings of the 17 Novemb
 
 
 def instance_id(parameters) -> str:
-    """What an LTI 1.1 launch calls its installation; empty when the LMS does not say."""
-    return str(parameters.get("tool_consumer_instance_guid") or "").strip()
+    """What an LTI 1.1 launch calls its installation; empty when the LMS does not say.
+    A name shaped like the handle of an LTI 1.3 session is refused."""
+    from lamb.lti13 import is_scoped
+    value = str(parameters.get("tool_consumer_instance_guid") or "").strip()
+    if is_scoped(value):
+        raise ValueError("Reserved LTI identifier")
+    return value
+
+
+def registration_of(db, instance):
+    """The LTI 1.3 registration a session came through, or None for an LTI 1.1 session.
+    ValueError when the registration or its deployment is no longer enabled."""
+    from lamb.lti13 import is_scoped
+    if not is_scoped(instance):
+        return None
+    from lamb.lti13.store import Store
+    return Store(db).instance(instance)[1]
 
 
 def same_instance(one, other) -> bool:
@@ -84,7 +105,17 @@ def locked_instances(organization):
 
 
 def require_organization(db, organization, instance):
-    """Refuse an LTI 1.1 launch into this organization only where an administrator asked for it."""
+    """Refuse a launch into this organization: on LTI 1.3 when its registration does not list
+    the organization, on LTI 1.1 only where an administrator asked for it."""
+    registration = registration_of(db, instance)
+    if registration is not None:
+        if not organization:
+            raise ValueError("Organization not found.")
+        if organization.get("status") == "suspended":
+            raise ValueError("This organization is suspended.")
+        if organization["id"] not in registration["organization_ids"]:
+            raise ValueError("Organization is not allowed for this LMS registration")
+        return instance
     require_global(db, instance)
     if not organization:
         raise ValueError("Organization not found.")
@@ -108,10 +139,12 @@ def organization_allowed(db, organization_id, instance):
 
 def session_instance(token_payload) -> str:
     """The installation an LTI 1.1 Creator session was opened from; empty for a password
-    session, an LTI 1.3 session, or an LMS that does not name itself."""
+    session, an LTI 1.3 session, or an LMS that does not name itself. The lock an organization
+    administrator sets with it applies to LTI 1.1 launches only."""
     from lamb.lti13 import is_scoped
     identity = (token_payload or {}).get("lti_identity")
-    if not isinstance(identity, dict) or not identity.get("lms_user_id") or is_scoped(identity["lms_user_id"]):
+    if (not isinstance(identity, dict) or not identity.get("lms_user_id")
+            or is_scoped(identity["lms_user_id"]) or is_scoped(identity.get("lms_instance"))):
         return ""
     instance = str(identity.get("lms_instance") or "").strip()
     return "" if "://" in instance else instance  # a session of the 17 November dev build

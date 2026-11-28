@@ -53,10 +53,10 @@ def access_token(registration, scopes, store=None):
     return token
 
 
-def send_score(resource_id, student_email, score, comment='', store=None):
+def send_score(resource_link_id, student_email, score, comment='', store=None):
     store = store or Store()
     try:
-        reg, subject, endpoint = store.grade_target(resource_id, student_email)
+        reg, subject, endpoint = store.grade_target(resource_link_id, student_email)
         if SCORE_SCOPE not in endpoint.get('scope', []):
             raise ValueError('The LMS did not grant AGS score permission; enable grades and relaunch')
         if not endpoint.get('lineitem'):

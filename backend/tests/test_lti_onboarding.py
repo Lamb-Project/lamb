@@ -114,7 +114,7 @@ INSTANCE = 'moodle.school.example'
 def ticket(user='teacher-1', protocol='1.1', resource='rl-1', email='teacher@school.example', instance=INSTANCE, **changes):
     token = onboarding.issue_ticket(lms_user_id=user, lms_email=email, display_name='Ana Teacher', resource_link_id=resource,
                                     context_id='course-1', context_title='Databases', protocol=protocol,
-                                    lms_instance='' if protocol == '1.3' else instance)
+                                    lms_instance=instance)
     data = onboarding.read_ticket(token)
     assert data is not None
     data.update(changes)
@@ -248,28 +248,42 @@ def lti13(db, monkeypatch):
         name='Moodle', issuer='https://moodle.example', client_id='client-1', authorization_url='https://moodle.example/auth',
         token_url='https://moodle.example/token', jwks_url='https://moodle.example/jwks', deployment_ids=['d1'],
         organization_ids=[ORG_A], service_origins=['https://moodle.example'], enabled=True))
-    return SimpleNamespace(store=store, rid=rid, user=store.object_id(rid, 'd1', 'user', 'subject-1'),
+    # A launch carries the LMS's own user id and the handle of its installation (#579).
+    return SimpleNamespace(store=store, rid=rid, user='subject-1',
+                           instance=store.instance_handle(rid, 'd1', store.installation_for(store.registration(rid), INSTANCE)),
                            resource=store.object_id(rid, 'd1', 'resource', 'resource-1'))
 
 
 def test_on_lti13_the_code_must_belong_to_an_organization_of_the_registration(db, manager, lti13):
     code_a, code_b = onboarding.create_code(db, ORG_A)['code'], onboarding.create_code(db, ORG_B)['code']
-    refused = onboarding.redeem(db, manager, ticket(lti13.user, '1.3', lti13.resource), code_b)
-    assert refused.reason == 'not_allowed' and db.count('Creator_users') == 0 and db.count('lti13_identity_links') == 0
+    on13 = lambda: ticket(lti13.user, '1.3', lti13.resource, instance=lti13.instance)
+    identified = lambda instance: [c['id'] for c in manager.identify_instructor(lms_user_id=lti13.user, lms_instance=instance)]
+    refused = onboarding.redeem(db, manager, on13(), code_b)
+    assert refused.reason == 'not_allowed' and db.count('Creator_users') == 0
     assert onboarding.list_codes(db, ORG_B)[0]['use_count'] == 0
-    accepted = onboarding.redeem(db, manager, ticket(lti13.user, '1.3', lti13.resource), code_a)
+    accepted = onboarding.redeem(db, manager, on13(), code_a)
     assert accepted.ok and accepted.creator_user['organization_id'] == ORG_A
-    assert [c['id'] for c in lti13.store.creators(lti13.user)] == [accepted.creator_user['id']]  # next launch needs no code
-    # The LTI 1.3 identity is scoped to its registration, so the Creator entry needs no instance name.
-    assert [a['creator_user_id'] for a in onboarding.creator_access(db, manager, launch_claims(lti13.user, instance=''))] == [accepted.creator_user['id']]
+    assert identified(lti13.instance) == [accepted.creator_user['id']]  # next launch needs no code
+    assert db._one('SELECT * FROM T_lti_creator_code_redemptions')['lms_instance'] == INSTANCE  # what the LMS calls itself
+    assert [a['creator_user_id'] for a in onboarding.creator_access(db, manager, launch_claims(lti13.user, instance=lti13.instance))] == [accepted.creator_user['id']]
     # ... and no email: whatever the LMS shares about the person, it is the same person.
-    assert [a['creator_user_id'] for a in onboarding.creator_access(db, manager, launch_claims(lti13.user, instance='', email='other@school.example'))] == [accepted.creator_user['id']]
-    # An LTI creator account whose link to the LMS identity went missing is linked again by the code, with no new use.
-    with db.get_connection() as c:
-        c.execute('DELETE FROM T_lti13_identity_links')
-    relinked = onboarding.redeem(db, manager, ticket(lti13.user, '1.3', lti13.resource), code_a)
-    assert relinked.ok and relinked.creator_user['id'] == accepted.creator_user['id'] and db.count('Creator_users') == 1
-    assert onboarding.list_codes(db, ORG_A)[0]['use_count'] == 1 and len(lti13.store.creators(lti13.user)) == 1
+    assert [a['creator_user_id'] for a in onboarding.creator_access(db, manager, launch_claims(lti13.user, instance=lti13.instance, email='other@school.example'))] == [accepted.creator_user['id']]
+    # The same LMS user on LTI 1.1 from the same installation is the same person (#579) ...
+    assert identified(INSTANCE) == [accepted.creator_user['id']]
+    # ... and the same number in another LMS is somebody else.
+    assert identified('moodle.other.example') == []
+    # A second code for the same organization gives no second account.
+    again = onboarding.redeem(db, manager, on13(), code_a)
+    assert again.reason == 'already_member' and db.count('Creator_users') == 1
+    assert onboarding.list_codes(db, ORG_A)[0]['use_count'] == 1
+    # A registration that is switched off identifies nobody.
+    lti13.store.save_registration({**{k: lti13.store.registration(lti13.rid)[k] for k in (
+        'name', 'issuer', 'client_id', 'authorization_url', 'token_url', 'jwks_url', 'deployment_ids',
+        'organization_ids', 'service_origins')}, 'enabled': False}, lti13.rid)
+    with pytest.raises(ValueError):
+        identified(lti13.instance)
+    assert onboarding.creator_access(db, manager, launch_claims(lti13.user, instance=lti13.instance)) == []
+    assert identified(INSTANCE) == [accepted.creator_user['id']]  # LTI 1.1 has its own rules
     # On LTI 1.1 the code alone picks the organization: the same code B lands in B and nowhere else.
     landed = onboarding.redeem(db, manager, ticket('teacher-11'), code_b)
     assert landed.ok and landed.creator_user['organization_id'] == ORG_B
@@ -461,7 +475,7 @@ def test_on_lti13_the_page_offers_no_account_linking_and_shows_the_organizations
     monkeypatch.setattr(lti_router.manager, 'identify_instructor', manager.identify_instructor)
     onboarding.set_page_text(db, db.get_organization_by_id(ORG_A), 'Alpha University policy')
     token = onboarding.issue_ticket(lms_user_id=lti13.user, lms_email='ana@school.example', display_name='Ana',
-                                    resource_link_id=lti13.resource, protocol='1.3')
+                                    resource_link_id=lti13.resource, protocol='1.3', lms_instance=lti13.instance)
     page = lti_router._onboarding_page(SimpleNamespace(), token)
     assert page.status_code == 200 and page.context['page_text'] == 'Alpha University policy'
     # No way to tie an account with a password to the LMS identity (15 November 2026).
@@ -698,15 +712,17 @@ def test_no_route_ties_an_account_with_a_password_to_an_lms_identity(client, db,
     assert client.get('/lamb/v1/lti/link-account', params={'token': token}).status_code == 404
     assert client.post('/lamb/v1/lti/link-account', data={'token': token, 'email': 'x@y.example', 'password': 'p'}).status_code in (404, 405)
     assert not hasattr(LtiActivityManager, 'verify_creator_credentials')
-    # LTI 1.3: neither the store nor, through it, the system administrator's endpoint links one.
+    # LTI 1.3: the store links nobody, and a link to an account with a password made by an
+    # earlier build grants nothing when read.
     regular = password_account(db, ORG_A, 'regular@alpha.example')
-    with pytest.raises(ValueError, match='Only an LTI creator account'):
-        lti13.store.link_creator(lti13.user, regular)
-    assert db.count('lti13_identity_links') == 0
-    # A link that was made before grants nothing when read.
+    assert not hasattr(lti13.store, 'link_creator')
     with db.get_connection() as c:
-        c.execute('INSERT INTO T_lti13_identity_links (user_id, creator_user_id, linked_at) VALUES (?,?,?)', (lti13.user, regular, 1))
-    assert lti13.store.creators(lti13.user) == [] and manager.identify_instructor(lms_user_id=lti13.user) == []
+        c.execute('INSERT INTO T_lti_identity_links (lms_user_id, creator_user_id) VALUES (?,?)', (lti13.user, regular))
+    assert manager.identify_instructor(lms_user_id=lti13.user, lms_instance=lti13.instance) == []
+    # A ticket whose version and instance do not agree is no ticket.
+    forged = onboarding.issue_ticket(lms_user_id=lti13.user, lms_email='', display_name='Ana', resource_link_id='rl-1',
+                                     protocol='1.1', lms_instance=lti13.instance)
+    assert onboarding.read_ticket(forged) is None
 
 
 def test_the_owner_of_an_activity_is_recognised_by_the_launch_and_not_by_the_email(db, manager):
